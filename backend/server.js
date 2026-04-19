@@ -266,7 +266,7 @@ process.on('uncaughtException',  (e) => { console.error('[Server] UncaughtExcept
 
 // ===== Start =====
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 TTplus Backend on port ${PORT} [${isProd ? 'production' : 'development'}]`);
   console.log(`🌐 Frontend: ${process.env.FRONTEND_URL}\n`);
 });
