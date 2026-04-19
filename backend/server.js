@@ -56,12 +56,14 @@ const io = new Server(server, {
 const userSockets = new Map();
 
 // ===== CORS ต้องมาก่อน middleware อื่นทั้งหมด =====
-app.use(cors({
-  origin:      process.env.FRONTEND_URL,
-  credentials: true,
-  methods:     ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
-}));
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin',      process.env.FRONTEND_URL);
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods',     'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers',     'Content-Type, Authorization, x-csrf-token');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 
 // ===== Security Middleware =====
 // HTTPS redirect ใน production
