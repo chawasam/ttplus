@@ -66,15 +66,7 @@ app.use((req, res, next) => {
 });
 
 // ===== Security Middleware =====
-// HTTPS redirect ใน production
-if (isProd) {
-  app.use((req, res, next) => {
-    if (req.headers['x-forwarded-proto'] !== 'https') {
-      return res.redirect(301, `https://${req.get('host')}${req.originalUrl}`);
-    }
-    next();
-  });
-}
+// หมายเหตุ: ไม่ต้องทำ HTTPS redirect เพราะ Railway จัดการ SSL ที่ proxy layer ให้แล้ว
 
 app.use(helmet({
   contentSecurityPolicy: {
