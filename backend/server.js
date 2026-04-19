@@ -55,6 +55,14 @@ const io = new Server(server, {
 
 const userSockets = new Map();
 
+// ===== CORS ต้องมาก่อน middleware อื่นทั้งหมด =====
+app.use(cors({
+  origin:      process.env.FRONTEND_URL,
+  credentials: true,
+  methods:     ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+}));
+
 // ===== Security Middleware =====
 // HTTPS redirect ใน production
 if (isProd) {
@@ -81,12 +89,6 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
   hsts: isProd ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
-}));
-
-app.use(cors({
-  origin:      process.env.FRONTEND_URL,
-  credentials: true,
-  methods:     ['GET', 'POST'],
 }));
 
 app.use(express.json({ limit: '10kb' }));
