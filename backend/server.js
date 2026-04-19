@@ -55,6 +55,9 @@ const io = new Server(server, {
 
 const userSockets = new Map();
 
+// ===== Health check — ต้องมาก่อนทุก middleware =====
+app.get('/health', (_req, res) => res.json({ ok: true }));
+
 // ===== CORS ต้องมาก่อน middleware อื่นทั้งหมด =====
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin',      process.env.FRONTEND_URL);
