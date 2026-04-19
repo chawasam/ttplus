@@ -1,0 +1,29 @@
+# ===== Secrets — ห้าม commit เด็ดขาด =====
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ===== Dependencies =====
+node_modules/
+.npm
+
+# ===== Next.js =====
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+
+# ===== Build outputs =====
+dist/
+build/
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+*.log
+npm-debug.log*
+
+# ===== Misc =====
+*.pem
+.eslintcache

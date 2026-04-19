@@ -1,0 +1,62 @@
+rules_version = '2';
+// Firestore Security Rules — TTplus
+// Deploy ด้วย: firebase deploy --only firestore:rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== user_settings =====
+    // แต่ละ user อ่าน/เขียนได้เฉพาะ document ของตัวเอง
+    match /user_settings/{userId} {
+      allow read:  if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && validateSettings(request.resource.data);
+
+      // ไม่อนุญาต delete จาก client
+      allow delete: if false;
+    }
+
+    // ===== session_logs =====
+    // เขียนได้จาก backend เท่านั้น (Admin SDK bypass rules)
+    // อ่านได้เฉพาะเจ้าของ log
+    match /session_logs/{logId} {
+      allow read:  if request.auth != null
+                   && request.auth.uid == resource.data.userId;
+      allow write: if false; // backend เขียนด้วย Admin SDK
+    }
+
+    // ===== error_logs =====
+    match /error_logs/{logId} {
+      allow read:  if request.auth != null
+                   && request.auth.uid == resource.data.userId;
+      allow write: if false;
+    }
+
+    // ===== audit_logs =====
+    match /audit_logs/{logId} {
+      allow read:  if request.auth != null
+                   && request.auth.uid == resource.data.userId;
+      allow write: if false;
+    }
+
+    // ===== ทุกอย่างอื่นปิดหมด =====
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===== Helper Functions =====
+    function validateSettings(data) {
+      return data.keys().hasOnly([
+        'theme', 'tiktokUsername', 'alertSound', 'alertVolume',
+        'chatMaxItems', 'goalTarget', 'goalCurrent', 'goalType', 'widgets'
+      ])
+      && (!('theme' in data) || data.theme in ['dark', 'light'])
+      && (!('alertVolume' in data) || (data.alertVolume is int && data.alertVolume >= 0 && data.alertVolume <= 100))
+      && (!('chatMaxItems' in data) || (data.chatMaxItems is int && data.chatMaxItems >= 5 && data.chatMaxItems <= 200))
+      && (!('goalTarget' in data) || (data.goalTarget is int && data.goalTarget >= 1 && data.goalTarget <= 1000000))
+      && (!('goalType' in data) || data.goalType in ['gift', 'diamond', 'follower'])
+      && (!('tiktokUsername' in data) || (data.tiktokUsername is string && data.tiktokUsername.size() <= 50));
+    }
+  }
+}
