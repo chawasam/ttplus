@@ -10,11 +10,12 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
 const mainCSP = [
   "default-src 'self'",
   isDev
-    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-    : "script-src 'self' 'unsafe-inline'",          // ลบ unsafe-eval ใน production
+    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://accounts.google.com"
+    : "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com",
   "style-src 'self' 'unsafe-inline'",
-  `connect-src 'self' ${BACKEND} wss: ws:`,
-  "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com",
+  `connect-src 'self' ${BACKEND} wss: ws: https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com`,
+  "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://lh3.googleusercontent.com",
+  "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
