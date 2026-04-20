@@ -6,6 +6,7 @@ import { auth, googleProvider } from '../lib/firebase';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { sanitizeEvent, safeTikTokImageUrl } from '../lib/sanitize';
+import { configureTTS, speak, clearTTSQueue } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
@@ -114,7 +115,10 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
         toast.error(data.message);
       }
     });
-    socket.on('chat',     (data) => { const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1); });
+    socket.on('chat',     (data) => {
+      const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
+      if (s.comment) speak(`${s.nickname || s.uniqueId} พูดว่า ${s.comment}`, 'chat');
+    });
     socket.on('gift',     (data) => {
       const s = sanitizeEvent(data); addEvent(s);
       setTotalGifts(c => c + 1);
@@ -123,9 +127,15 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
       goalCurrentRef.current += d;
       setGoalCurrent(goalCurrentRef.current);
       updateLeaderboard(s, d);
+      const qty = s.repeatCount > 1 ? ` ${s.repeatCount} ชิ้น` : '';
+      speak(`${s.nickname || s.uniqueId} ส่ง ${s.giftName || 'ของขวัญ'}${qty}`, 'gift');
     });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
-    socket.on('follow',   (data) => { const s = sanitizeEvent(data); addEvent(s); toast(`➕ ${s.nickname || s.uniqueId} ติดตามแล้ว!`, { icon: '🎉' }); });
+    socket.on('follow',   (data) => {
+      const s = sanitizeEvent(data); addEvent(s);
+      toast(`➕ ${s.nickname || s.uniqueId} ติดตามแล้ว!`, { icon: '🎉' });
+      speak(`${s.nickname || s.uniqueId} ติดตาม`, 'follow');
+    });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
     socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));
   }, [addEvent, updateLeaderboard]);
@@ -156,16 +166,29 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
             goalCurrentRef.current = s.goalCurrent;
             setGoalCurrent(s.goalCurrent);
           }
+          // Configure TTS from saved settings
+          configureTTS({
+            enabled:    !!s.ttsEnabled,
+            readChat:   s.ttsReadChat  !== false,
+            readGift:   s.ttsReadGift  !== false,
+            readFollow: s.ttsReadFollow !== false,
+            rate:       s.ttsRate   || 1.0,
+            pitch:      s.ttsPitch  || 1.0,
+            volume:     s.ttsVolume !== undefined ? s.ttsVolume : 1.0,
+            voice:      s.ttsVoice  || '',
+          });
         } catch { /* ignore */ }
       })();
     } else {
       // User logged out — disconnect socket
       disconnectSocket();
       socketRef.current = null;
+      clearTTSQueue();
     }
 
     return () => {
       disconnectSocket();
+      clearTTSQueue();
     };
   }, [user, authLoading, setupSocketListeners]);
 
@@ -206,6 +229,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
       eventsRef.current = []; setEvents([]);
       leaderboardMapRef.current.clear(); setLeaderboard([]);
       goalCurrentRef.current = 0; setGoalCurrent(0);
+      clearTTSQueue();
     } catch { /* ignore */ }
   }, []);
 

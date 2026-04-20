@@ -1,9 +1,9 @@
 // widget/chat.js — Chat Overlay สำหรับ OBS (พื้นหลังโปร่งใส)
 // OBS Size แนะนำ: 400 x 600
 import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import { sanitizeEvent } from '../../lib/sanitize';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 // สีสำหรับแต่ละ user (กำหนดแบบ deterministic จาก uniqueId)
 // ใช้ Map + จำกัดขนาดไว้ที่ MAX_COLOR_MAP เพื่อป้องกัน memory leak บน live stream ยาวๆ
@@ -45,22 +45,13 @@ export default function ChatWidget() {
       return;
     }
 
-    if (!widgetToken || !/^[a-f0-9]{64}$/.test(widgetToken)) return;
-
-    const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-      transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay:    2000,
+    const socket = createWidgetSocket(widgetToken, {
+      chat: (data) => {
+        const safe = sanitizeEvent(data);
+        setMessages(prev => [...prev.slice(-(MAX_MESSAGES - 1)), { ...safe, ts: Date.now() }]);
+      },
     });
-
-    socket.on('connect', () => socket.emit('join_widget', { widgetToken }));
-
-    socket.on('chat', (data) => {
-      const safe = sanitizeEvent(data);
-      setMessages(prev => [...prev.slice(-(MAX_MESSAGES - 1)), { ...safe, ts: Date.now() }]);
-    });
-
-    socket.on('widget_error', () => socket.disconnect());
+    if (!socket) return;
 
     return () => socket.disconnect();
   }, []);

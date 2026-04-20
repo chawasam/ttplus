@@ -1,9 +1,9 @@
 // widget/leaderboard.js — Gift Leaderboard Overlay สำหรับ OBS
 // OBS Size แนะนำ: 300 x 400
 import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -29,49 +29,39 @@ export default function LeaderboardWidget() {
       return;
     }
 
-    if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return;
-
-    const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-      transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay:    2000,
-    });
-
-    socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
-
-    // จำกัดขนาด board ป้องกัน memory leak บน stream ยาว
     const MAX_BOARD = 300;
     const board = new Map();
 
-    socket.on('gift', (data) => {
-      // sanitize ทุก field ก่อนนำไปใช้ (defense in depth)
-      const safe     = sanitizeEvent(data);
-      const diamonds = safe.diamondCount * safe.repeatCount;
-      const existing = board.get(safe.uniqueId);
-      board.set(safe.uniqueId, {
-        uniqueId:          safe.uniqueId,
-        nickname:          safe.nickname,
-        profilePictureUrl: safeTikTokImageUrl(safe.profilePictureUrl),
-        diamonds:          (existing?.diamonds || 0) + diamonds,
-      });
+    const socket = createWidgetSocket(wt, {
+      gift: (data) => {
+        const safe     = sanitizeEvent(data);
+        const diamonds = safe.diamondCount * safe.repeatCount;
+        const existing = board.get(safe.uniqueId);
+        board.set(safe.uniqueId, {
+          uniqueId:          safe.uniqueId,
+          nickname:          safe.nickname,
+          profilePictureUrl: safeTikTokImageUrl(safe.profilePictureUrl),
+          diamonds:          (existing?.diamonds || 0) + diamonds,
+        });
 
-      // trim board ถ้าเกิน MAX เก็บแค่ top 150
-      if (board.size > MAX_BOARD) {
-        const top = [...board.entries()]
-          .sort((a, b) => b[1].diamonds - a[1].diamonds)
-          .slice(0, MAX_BOARD / 2);
-        board.clear();
-        top.forEach(([k, v]) => board.set(k, v));
-      }
+        // trim board ถ้าเกิน MAX เก็บแค่ top 150
+        if (board.size > MAX_BOARD) {
+          const top = [...board.entries()]
+            .sort((a, b) => b[1].diamonds - a[1].diamonds)
+            .slice(0, MAX_BOARD / 2);
+          board.clear();
+          top.forEach(([k, v]) => board.set(k, v));
+        }
 
-      setLeaderboard(
-        Array.from(board.values())
-          .sort((a, b) => b.diamonds - a.diamonds)
-          .slice(0, 5)
-      );
+        setLeaderboard(
+          Array.from(board.values())
+            .sort((a, b) => b.diamonds - a.diamonds)
+            .slice(0, 5)
+        );
+      },
     });
+    if (!socket) return;
 
-    socket.on('widget_error', () => socket.disconnect());
     return () => socket.disconnect();
   }, []);
 

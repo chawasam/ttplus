@@ -47,6 +47,124 @@ function getEmoji(name = '') {
   return '🎁';
 }
 
+// ===================== Physics Helper Functions =====================
+
+/** สร้าง Matter.js engine + เพิ่ม walls */
+function setupEngine(M) {
+  const { Engine, Composite } = M;
+  const engine = Engine.create({ gravity: { y: 2.2 } });
+  Composite.add(engine.world, buildJarWalls(M.Bodies));
+  return engine;
+}
+
+/** สร้าง Runner และเริ่มรัน */
+function setupRunner(engine, M) {
+  const { Runner } = M;
+  const runner = Runner.create({ delta: 1000 / 60 });
+  Runner.run(runner, engine);
+  return runner;
+}
+
+/** เริ่ม animation loop (~30fps DOM update, 60fps physics)
+ *  คืน requestAnimationFrame ID เพื่อ cancel ได้ */
+function startAnimationLoop(engine, M, setItems) {
+  const { Composite } = M;
+  let frameCount = 0;
+  let rafId;
+
+  const tick = () => {
+    frameCount++;
+    if (frameCount % 2 === 0) {
+      const bodies = Composite.allBodies(engine.world)
+        .filter(b => b.label === 'gift')
+        .map(b => ({
+          id:    b.id,
+          x:     b.position.x,
+          y:     b.position.y,
+          angle: b.angle,
+          img:   b._img,
+          emoji: b._emoji,
+        }));
+      setItems([...bodies]);
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+
+  rafId = requestAnimationFrame(tick);
+  return { cancel: () => cancelAnimationFrame(rafId) };
+}
+
+/** Preview mode: spawn test gifts + set demo data */
+function runPreviewMode(spawnItem, setTotal, setLb) {
+  const testGifts = [
+    { emoji: '🌹', count: 3 }, { emoji: '🦁', count: 2 },
+    { emoji: '💎', count: 1 }, { emoji: '❤️', count: 4 },
+    { emoji: '🌹', count: 2 }, { emoji: '🎁', count: 1 },
+    { emoji: '🔥', count: 3 }, { emoji: '🐼', count: 2 },
+  ];
+  let delay = 0;
+  testGifts.forEach(g => {
+    setTimeout(() => spawnItem(null, g.emoji, g.count), delay);
+    delay += 700;
+  });
+  setTotal(156);
+  setLb([
+    { name: 'TikTokUser1', coins: 100 },
+    { name: 'TikTokUser2', coins: 56  },
+    { name: 'ผู้ใช้3',     coins: 20  },
+  ]);
+}
+
+/** Live mode: สร้าง socket + set up gift handler */
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap, setLb }) {
+  if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
+
+  const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
+    transports: ['websocket'],
+    reconnectionAttempts: 5,
+    reconnectionDelay:    2000,
+  });
+
+  socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
+
+  socket.on('gift', (data) => {
+    const safe   = sanitizeEvent(data);
+    const coins  = Math.round(safe.diamondCount * safe.repeatCount);
+    const emoji  = getEmoji(safe.giftName || '');
+    const imgUrl = safeTikTokImageUrl(safe.giftPictureUrl) || null;
+
+    spawnItem(imgUrl, emoji, Math.min(safe.repeatCount, 8));
+
+    if (popupTimer.current) clearTimeout(popupTimer.current);
+    setPopup({
+      user:   safe.nickname || safe.uniqueId || 'ผู้ใช้',
+      gift:   safe.giftName || 'Gift',
+      emoji,
+      coins,
+      imgUrl,
+    });
+    popupTimer.current = setTimeout(() => setPopup(null), 4500);
+
+    setTotal(c => c + coins);
+
+    let map = lbMap.current;
+    const prev = map.get(safe.uniqueId) || { name: safe.nickname || safe.uniqueId || '?', coins: 0 };
+    map.set(safe.uniqueId, { name: prev.name, coins: prev.coins + coins });
+
+    if (map.size > 300) {
+      lbMap.current = new Map(
+        [...map.entries()].sort((a, b) => b[1].coins - a[1].coins).slice(0, 150)
+      );
+      map = lbMap.current;
+    }
+
+    setLb([...map.values()].sort((a, b) => b.coins - a.coins).slice(0, 3));
+  });
+
+  socket.on('widget_error', () => socket.disconnect());
+  return socket;
+}
+
 // ===================== Main Widget =====================
 export default function CoinJarWidget() {
   const [items, setItems]         = useState([]);
@@ -116,128 +234,33 @@ export default function CoinJarWidget() {
     let mounted = true; // flag ป้องกัน race condition เมื่อ unmount ก่อน script โหลดเสร็จ
 
     const initPhysics = () => {
-      if (!mounted) return; // component ถูก unmount ไปแล้ว
+      if (!mounted) return;
 
       const M = window.Matter;
       if (!M) return;
-      const { Engine, Bodies, Body, Composite, Runner } = M;
-      mRef.current = { Engine, Bodies, Body, Composite, Runner };
 
-      // สร้าง engine
-      const engine = Engine.create({ gravity: { y: 2.2 } });
+      // เก็บ Matter refs สำหรับ cleanup
+      mRef.current = { Runner: M.Runner, Composite: M.Composite };
+
+      // 1. Engine + walls
+      const engine = setupEngine(M);
       engineRef.current = engine;
 
-      // สร้าง walls (static bodies ที่มองไม่เห็น — ทำหน้าที่เป็นผนังโถ)
-      Composite.add(engine.world, buildJarWalls(Bodies));
+      // 2. Runner
+      runnerRef.current = setupRunner(engine, M);
 
-      // runner
-      const runner = Runner.create({ delta: 1000 / 60 });
-      Runner.run(runner, engine);
-      runnerRef.current = runner;
+      // 3. Animation loop
+      const anim = startAnimationLoop(engine, M, setItems);
+      animRef.current = { cancel: anim.cancel };
 
-      // animation loop — throttle DOM update ที่ ~30fps (physics ยังรัน 60fps)
-      // ลด React re-render ครึ่งหนึ่ง เพราะ setItems 70 items ทุก frame หนักมาก
-      let frameCount = 0;
-      const tick = () => {
-        frameCount++;
-        if (frameCount % 2 === 0) { // อัปเดต DOM ทุก 2 frames (~30fps)
-          const bodies = Composite.allBodies(engine.world)
-            .filter(b => b.label === 'gift')
-            .map(b => ({
-              id:    b.id,
-              x:     b.position.x,
-              y:     b.position.y,
-              angle: b.angle,
-              img:   b._img,
-              emoji: b._emoji,
-            }));
-          setItems([...bodies]);
-        }
-        // อัปเดต ref ทุก frame เพื่อให้ cleanup cancel ได้ถูกต้อง
-        // (ถ้าใช้ ID เก่า cancelAnimationFrame จะเป็น no-op เพราะ frame นั้น execute ไปแล้ว)
-        animRef.current = requestAnimationFrame(tick);
-      };
-      animRef.current = requestAnimationFrame(tick);
-
-      // ======== Preview mode ========
+      // 4. Preview หรือ Live mode
       if (isPreview) {
-        const testGifts = [
-          { emoji: '🌹', count: 3 }, { emoji: '🦁', count: 2 },
-          { emoji: '💎', count: 1 }, { emoji: '❤️', count: 4 },
-          { emoji: '🌹', count: 2 }, { emoji: '🎁', count: 1 },
-          { emoji: '🔥', count: 3 }, { emoji: '🐼', count: 2 },
-        ];
-        let delay = 0;
-        testGifts.forEach(g => {
-          setTimeout(() => spawnItem(null, g.emoji, g.count), delay);
-          delay += 700;
-        });
-        setTotal(156);
-        setLb([
-          { name: 'TikTokUser1', coins: 100 },
-          { name: 'TikTokUser2', coins: 56  },
-          { name: 'ผู้ใช้3',     coins: 20  },
-        ]);
+        runPreviewMode(spawnItem, setTotal, setLb);
         return;
       }
 
-      // ======== Live mode ========
-      if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return;
-
-      socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-        transports: ['websocket'],
-        reconnectionAttempts: 5,
-        reconnectionDelay:    2000,
-      });
-
-      socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
-
-      socket.on('gift', (data) => {
-        // sanitize ก่อนใช้ (defense in depth — backend sanitize แล้ว แต่ widget อาจรับ data โดยตรง)
-        const safe   = sanitizeEvent(data);
-        const coins  = Math.round(safe.diamondCount * safe.repeatCount);
-        const emoji  = getEmoji(safe.giftName || '');
-        // validate gift image URL — ต้องเป็น TikTok CDN เท่านั้น
-        const imgUrl = safeTikTokImageUrl(safe.giftPictureUrl) || null;
-
-        // spawn items
-        spawnItem(imgUrl, emoji, Math.min(safe.repeatCount, 8));
-
-        // popup notification
-        if (popupTimer.current) clearTimeout(popupTimer.current);
-        setPopup({
-          user:   safe.nickname || safe.uniqueId || 'ผู้ใช้',
-          gift:   safe.giftName || 'Gift',
-          emoji,
-          coins,
-          imgUrl,
-        });
-        popupTimer.current = setTimeout(() => setPopup(null), 4500);
-
-        // total
-        setTotal(c => c + coins);
-
-        // leaderboard — จำกัดขนาด map ป้องกัน memory leak บน stream ยาว
-        let map  = lbMap.current;
-        const prev = map.get(safe.uniqueId) || {
-          name:  safe.nickname || safe.uniqueId || '?',
-          coins: 0,
-        };
-        map.set(safe.uniqueId, { name: prev.name, coins: prev.coins + coins });
-
-        // ถ้า map เกิน 300 entries ให้ trim เหลือ top 150 เพื่อป้องกัน memory leak
-        if (map.size > 300) {
-          lbMap.current = new Map(
-            [...map.entries()].sort((a, b) => b[1].coins - a[1].coins).slice(0, 150)
-          );
-          map = lbMap.current;
-        }
-
-        setLb([...map.values()].sort((a, b) => b.coins - a.coins).slice(0, 3));
-      });
-
-      socket.on('widget_error', () => socket.disconnect());
-    }; // end initPhysics
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap, setLb });
+    };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
     if (window.Matter) {
@@ -252,9 +275,9 @@ export default function CoinJarWidget() {
     }
 
     return () => {
-      mounted = false; // บอก initPhysics ว่า unmount แล้ว
-      if (animRef.current)  cancelAnimationFrame(animRef.current);
-      if (runnerRef.current && mRef.current) mRef.current.Runner.stop(runnerRef.current);
+      mounted = false;
+      if (animRef.current?.cancel)  animRef.current.cancel();
+      if (runnerRef.current && mRef.current?.Runner) mRef.current.Runner.stop(runnerRef.current);
       if (popupTimer.current) clearTimeout(popupTimer.current);
       if (socket) socket.disconnect();
     };

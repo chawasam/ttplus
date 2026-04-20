@@ -65,7 +65,9 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
               return merged;
             });
           }
-        } catch { /* ignore */ }
+        } catch (err) {
+          if (process.env.NODE_ENV !== 'production') console.error('[Widgets] settings load failed:', err?.message);
+        }
         await fetchWidgetToken(user); // ส่ง user โดยตรง ไม่ใช่ state
       })();
     } else {

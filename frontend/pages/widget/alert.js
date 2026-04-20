@@ -1,9 +1,9 @@
 // widget/alert.js — Gift Alert Overlay สำหรับ OBS (พื้นหลังโปร่งใส)
 // OBS Size แนะนำ: 400 x 150
 import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function AlertWidget() {
   const [alert, setAlert]   = useState(null);
@@ -22,27 +22,11 @@ export default function AlertWidget() {
       return;
     }
 
-    if (!widgetToken || !/^[a-f0-9]{64}$/.test(widgetToken)) return;
-
-    const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-      transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
+    const socket = createWidgetSocket(widgetToken, {
+      gift:   (data) => showAlert({ ...sanitizeEvent(data), alertType: 'gift' }),
+      follow: (data) => showAlert({ ...sanitizeEvent(data), alertType: 'follow' }),
     });
-
-    socket.on('connect', () => socket.emit('join_widget', { widgetToken }));
-
-    socket.on('gift', (data) => {
-      const safe = sanitizeEvent(data);
-      showAlert({ ...safe, alertType: 'gift' });
-    });
-
-    socket.on('follow', (data) => {
-      const safe = sanitizeEvent(data);
-      showAlert({ ...safe, alertType: 'follow' });
-    });
-
-    socket.on('widget_error', () => socket.disconnect());
+    if (!socket) return;
 
     return () => socket.disconnect();
   }, []);

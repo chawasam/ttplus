@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import api, { getCachedSettings, setCachedSettings, clearSettingsCache } from '../lib/api';
+import { speak, configureTTS, onVoicesReady } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
@@ -11,6 +12,7 @@ export default function SettingsPage({ theme, setTheme, user, authLoading }) {
   const [saving, setSaving]       = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
+  const [voices, setVoices] = useState([]);
   const [settings, setSettings] = useState({
     tiktokUsername: '',
     alertSound: true,
@@ -18,7 +20,21 @@ export default function SettingsPage({ theme, setTheme, user, authLoading }) {
     chatMaxItems: 50,
     goalTarget: 100,
     goalType: 'gift',
+    ttsEnabled:    false,
+    ttsReadChat:   true,
+    ttsReadGift:   true,
+    ttsReadFollow: true,
+    ttsRate:       1.0,
+    ttsPitch:      1.0,
+    ttsVolume:     1.0,
+    ttsVoice:      '',
   });
+
+  // โหลด voices list จาก browser
+  useEffect(() => {
+    const unsub = onVoicesReady(v => setVoices(v));
+    return unsub;
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -31,7 +47,9 @@ export default function SettingsPage({ theme, setTheme, user, authLoading }) {
           setCachedSettings(s);
         }
         setSettings(prev => ({ ...prev, ...s }));
-      } catch { /* ignore */ }
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') console.error('[Settings] load failed:', err?.message);
+      }
     })();
   }, [user]);
 
@@ -123,6 +141,87 @@ export default function SettingsPage({ theme, setTheme, user, authLoading }) {
             </select>
             <Label theme={theme} className="mt-2">เป้าหมาย</Label>
             <input type="number" min="1" className={inputClass} value={settings.goalTarget} onChange={e => set('goalTarget', +e.target.value)} />
+          </Section>
+
+          {/* TTS Settings */}
+          <Section title="🔊 Text-to-Speech" theme={theme}>
+            <div className="flex items-center justify-between">
+              <Label theme={theme}>เปิดใช้งาน TTS</Label>
+              <Toggle value={settings.ttsEnabled} onChange={v => set('ttsEnabled', v)} />
+            </div>
+
+            {settings.ttsEnabled && (<>
+              {/* Read toggles */}
+              <div className={clsx('rounded-lg p-3 space-y-2 mt-1', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-50')}>
+                <div className="flex items-center justify-between">
+                  <Label theme={theme}>อ่าน Chat 💬</Label>
+                  <Toggle value={settings.ttsReadChat} onChange={v => set('ttsReadChat', v)} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label theme={theme}>อ่าน Gift 🎁</Label>
+                  <Toggle value={settings.ttsReadGift} onChange={v => set('ttsReadGift', v)} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label theme={theme}>อ่าน Follow ➕</Label>
+                  <Toggle value={settings.ttsReadFollow} onChange={v => set('ttsReadFollow', v)} />
+                </div>
+              </div>
+
+              {/* Voice selector */}
+              {voices.length > 0 && (
+                <>
+                  <Label theme={theme} className="mt-2">เสียง (Voice)</Label>
+                  <select className={inputClass} value={settings.ttsVoice} onChange={e => set('ttsVoice', e.target.value)}>
+                    <option value="">— ค่าเริ่มต้น (Default) —</option>
+                    {voices.map(v => (
+                      <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                    ))}
+                  </select>
+                </>
+              )}
+
+              {/* Rate */}
+              <Label theme={theme}>ความเร็ว ({settings.ttsRate}x)</Label>
+              <input type="range" min="0.5" max="2" step="0.1"
+                value={settings.ttsRate}
+                onChange={e => set('ttsRate', +e.target.value)}
+                className="w-full accent-brand-500" />
+              <div className="flex justify-between text-xs text-gray-500 -mt-1">
+                <span>ช้า</span><span>เร็ว</span>
+              </div>
+
+              {/* Pitch */}
+              <Label theme={theme}>ระดับเสียง ({settings.ttsPitch})</Label>
+              <input type="range" min="0.5" max="2" step="0.1"
+                value={settings.ttsPitch}
+                onChange={e => set('ttsPitch', +e.target.value)}
+                className="w-full accent-brand-500" />
+              <div className="flex justify-between text-xs text-gray-500 -mt-1">
+                <span>ต่ำ</span><span>สูง</span>
+              </div>
+
+              {/* Volume */}
+              <Label theme={theme}>ความดัง TTS ({Math.round(settings.ttsVolume * 100)}%)</Label>
+              <input type="range" min="0" max="1" step="0.05"
+                value={settings.ttsVolume}
+                onChange={e => set('ttsVolume', +e.target.value)}
+                className="w-full accent-brand-500" />
+
+              {/* Test button */}
+              <button
+                onClick={() => {
+                  configureTTS({
+                    enabled: true,
+                    readChat: true, readGift: true, readFollow: true,
+                    rate: settings.ttsRate, pitch: settings.ttsPitch,
+                    volume: settings.ttsVolume, voice: settings.ttsVoice,
+                  });
+                  speak('สวัสดีครับ นี่คือเสียง TTS จาก TTplus', null);
+                }}
+                className={clsx('w-full py-2 rounded-lg text-sm font-medium transition border', theme === 'dark' ? 'border-gray-700 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-600 hover:bg-gray-50')}>
+                🔊 ทดสอบเสียง
+              </button>
+            </>)}
           </Section>
         </div>
         <button onClick={handleSave} disabled={saving}

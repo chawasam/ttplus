@@ -1,8 +1,8 @@
 // widget/viewers.js — Viewer Count Overlay สำหรับ OBS
 // OBS Size แนะนำ: 200 x 80
 import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function ViewersWidget() {
   const [count, setCount]   = useState(0);
@@ -17,17 +17,10 @@ export default function ViewersWidget() {
 
     if (isPreview) { setCount(1234); return; }
 
-    if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return;
-
-    const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-      transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay:    2000,
+    const socket = createWidgetSocket(wt, {
+      roomUser: (data) => setCount(Math.max(0, Number(data.viewerCount) || 0)),
     });
-
-    socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
-    socket.on('roomUser', (data) => setCount(Math.max(0, Number(data.viewerCount) || 0)));
-    socket.on('widget_error', () => socket.disconnect());
+    if (!socket) return;
 
     return () => socket.disconnect();
   }, []);

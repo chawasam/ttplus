@@ -35,13 +35,22 @@ async function _fetchCsrfDirect() {
       ? data.token
       : null;
   } catch {
-    return null; // CSRF fetch ล้มเหลว — request จะถูก backend ปฏิเสธ
+    return null;
   }
+}
+
+// Retry wrapper: ลองอีก 1 ครั้งหลัง 600ms ถ้า fetch แรกล้มเหลว
+async function _fetchCsrfWithRetry() {
+  const t = await _fetchCsrfDirect();
+  if (t) return t;
+  // รอแล้วลองอีกครั้ง (network blip หรือ Firebase token refresh)
+  await new Promise(r => setTimeout(r, 600));
+  return _fetchCsrfDirect();
 }
 
 function _prefetchCsrf() {
   if (_csrfLoad) return; // มีการ fetch อยู่แล้ว
-  _csrfLoad = _fetchCsrfDirect()
+  _csrfLoad = _fetchCsrfWithRetry()
     .then(t  => { _csrfReady = t; })
     .catch(() => {})
     .finally(() => { _csrfLoad = null; });
@@ -71,8 +80,8 @@ async function consumeCsrf() {
     return t;
   }
 
-  // Cold path: fetch ตรงๆ (first POST หลัง login)
-  const t = await _fetchCsrfDirect();
+  // Cold path: fetch พร้อม retry (first POST หลัง login)
+  const t = await _fetchCsrfWithRetry();
   _prefetchCsrf(); // เตรียมอันต่อไปทันที
   return t;
 }

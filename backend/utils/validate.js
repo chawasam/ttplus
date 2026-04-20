@@ -69,6 +69,42 @@ function validateSettings(raw) {
     allowed.goalType = raw.goalType;
   }
 
+  // ===== TTS settings =====
+  if (raw.ttsEnabled !== undefined) {
+    if (typeof raw.ttsEnabled !== 'boolean') throw new Error('ttsEnabled must be boolean');
+    allowed.ttsEnabled = raw.ttsEnabled;
+  }
+  if (raw.ttsReadChat !== undefined) {
+    if (typeof raw.ttsReadChat !== 'boolean') throw new Error('ttsReadChat must be boolean');
+    allowed.ttsReadChat = raw.ttsReadChat;
+  }
+  if (raw.ttsReadGift !== undefined) {
+    if (typeof raw.ttsReadGift !== 'boolean') throw new Error('ttsReadGift must be boolean');
+    allowed.ttsReadGift = raw.ttsReadGift;
+  }
+  if (raw.ttsReadFollow !== undefined) {
+    if (typeof raw.ttsReadFollow !== 'boolean') throw new Error('ttsReadFollow must be boolean');
+    allowed.ttsReadFollow = raw.ttsReadFollow;
+  }
+  if (raw.ttsRate !== undefined) {
+    const v = Number(raw.ttsRate);
+    if (isNaN(v) || v < 0.5 || v > 2.0) throw new Error('ttsRate must be 0.5-2.0');
+    allowed.ttsRate = Math.round(v * 10) / 10;
+  }
+  if (raw.ttsPitch !== undefined) {
+    const v = Number(raw.ttsPitch);
+    if (isNaN(v) || v < 0.0 || v > 2.0) throw new Error('ttsPitch must be 0.0-2.0');
+    allowed.ttsPitch = Math.round(v * 10) / 10;
+  }
+  if (raw.ttsVolume !== undefined) {
+    const v = Number(raw.ttsVolume);
+    if (isNaN(v) || v < 0 || v > 1) throw new Error('ttsVolume must be 0.0-1.0');
+    allowed.ttsVolume = Math.round(v * 100) / 100;
+  }
+  if (raw.ttsVoice !== undefined) {
+    allowed.ttsVoice = sanitizeStr(String(raw.ttsVoice || ''), 100);
+  }
+
   // widgetStyles — ค่า appearance ของแต่ละ widget
   if (raw.widgetStyles !== undefined) {
     if (typeof raw.widgetStyles !== 'object' || Array.isArray(raw.widgetStyles)) {

@@ -1,9 +1,9 @@
 // widget/goal.js — Goal Bar Overlay สำหรับ OBS
 // OBS Size แนะนำ: 500 x 80
 import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
 import { sanitizeEvent } from '../../lib/sanitize';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function GoalWidget() {
   const [current, setCurrent] = useState(0);
@@ -23,22 +23,14 @@ export default function GoalWidget() {
 
     if (isPreview) { setCurrent(65); return; }
 
-    if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return;
-
-    const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-      transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay:    2000,
+    const socket = createWidgetSocket(wt, {
+      gift: (data) => {
+        const safe = sanitizeEvent(data);
+        setCurrent(c => Math.min(c + safe.diamondCount * safe.repeatCount, target));
+      },
     });
+    if (!socket) return;
 
-    socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
-
-    socket.on('gift', (data) => {
-      const safe = sanitizeEvent(data);
-      setCurrent(c => Math.min(c + safe.diamondCount * safe.repeatCount, target));
-    });
-
-    socket.on('widget_error', () => socket.disconnect());
     return () => socket.disconnect();
   }, []);
 

@@ -288,6 +288,8 @@ function defaultSettings() {
   return {
     theme: 'dark', tiktokUsername: '', alertSound: true, alertVolume: 80,
     chatMaxItems: 50, goalTarget: 100, goalCurrent: 0, goalType: 'gift',
+    ttsEnabled: false, ttsReadChat: true, ttsReadGift: true, ttsReadFollow: true,
+    ttsRate: 1.0, ttsPitch: 1.0, ttsVolume: 1.0, ttsVoice: '',
     widgets: {
       alert:       { enabled: true, position: 'bottom-right', duration: 5 },
       chat:        { enabled: true, maxItems: 10, showAvatar: true },
