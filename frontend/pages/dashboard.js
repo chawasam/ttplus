@@ -9,6 +9,23 @@ import { sanitizeEvent, safeTikTokImageUrl } from '../lib/sanitize';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
+// ===== TikTok username history helpers =====
+const USERNAME_HISTORY_KEY = 'tiktok_usernames';
+const MAX_HISTORY = 5;
+
+function loadUsernameHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(USERNAME_HISTORY_KEY) || '[]');
+  } catch { return []; }
+}
+
+function saveUsernameHistory(username, current) {
+  const filtered = current.filter(u => u !== username);
+  const next = [username, ...filtered].slice(0, MAX_HISTORY);
+  localStorage.setItem(USERNAME_HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+
 import Sidebar from '../components/Sidebar';
 import StatCard from '../components/StatCard';
 import LiveFeed from '../components/LiveFeed';
@@ -46,6 +63,15 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
 
+  // ===== TikTok username history =====
+  const [usernameHistory, setUsernameHistory] = useState([]);
+  const [showHistory, setShowHistory]         = useState(false);
+  const usernameInputRef = useRef(null);
+
+  useEffect(() => {
+    setUsernameHistory(loadUsernameHistory());
+  }, []);
+
   // ===== addEvent / updateLeaderboard — stable refs =====
   const addEvent = useCallback((event) => {
     const next = [...eventsRef.current.slice(-(MAX_EVENTS - 1)), event];
@@ -75,6 +101,10 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
         setConnected(true);
         setConnecting(false);
         toast.success(`✅ เชื่อมต่อ @${data.tiktokUsername} สำเร็จ!`);
+        // Save to username history
+        if (data.tiktokUsername) {
+          setUsernameHistory(prev => saveUsernameHistory(data.tiktokUsername, prev));
+        }
       } else if (data.status === 'disconnected') {
         setConnected(false);
         toast(`📴 ตัดการเชื่อมต่อแล้ว`);
@@ -211,9 +241,23 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
             {user ? (
-              <button onClick={handleSignOut} className="text-xs text-gray-400 hover:text-red-400 transition px-3 py-2">
-                ออกจากระบบ
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Profile picture */}
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="profile" className="w-7 h-7 rounded-full object-cover border border-gray-600" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center text-white text-xs font-bold">
+                    {(user.displayName || user.email || 'U')[0].toUpperCase()}
+                  </div>
+                )}
+                {/* Email */}
+                <span className={clsx('text-xs hidden sm:block max-w-[120px] truncate', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                  {user.email}
+                </span>
+                <button onClick={handleSignOut} className="text-xs text-gray-400 hover:text-red-400 transition px-2 py-1">
+                  ออกจากระบบ
+                </button>
+              </div>
             ) : (
               <button onClick={() => setShowLoginModal(true)} className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-semibold transition">
                 เข้าสู่ระบบ
@@ -226,14 +270,34 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
         <div className={clsx('rounded-2xl p-4 mb-6 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
           <h2 className={clsx('text-sm font-semibold mb-3', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>🔴 TikTok Live</h2>
           <div className="flex gap-2">
-            <input
-              className={clsx('flex-1 px-3 py-2 rounded-lg text-sm outline-none border transition', theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-brand-500')}
-              placeholder={user ? 'TikTok username (ไม่ต้องมี @)' : '🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok'}
-              value={tiktokUsername}
-              onChange={e => setTiktokUsername(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !connected && !connecting && handleConnect()}
-              disabled={connected || connecting}
-            />
+            <div className="relative flex-1">
+              <input
+                ref={usernameInputRef}
+                className={clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition', theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-brand-500')}
+                placeholder={user ? 'TikTok username (ไม่ต้องมี @)' : '🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok'}
+                value={tiktokUsername}
+                onChange={e => { setTiktokUsername(e.target.value); setShowHistory(true); }}
+                onFocus={() => setShowHistory(true)}
+                onBlur={() => setTimeout(() => setShowHistory(false), 150)}
+                onKeyDown={e => e.key === 'Enter' && !connected && !connecting && handleConnect()}
+                disabled={connected || connecting}
+              />
+              {/* Username history dropdown */}
+              {showHistory && !connected && !connecting && usernameHistory.length > 0 && (
+                <div className={clsx('absolute top-full left-0 right-0 mt-1 rounded-lg border shadow-lg z-20 overflow-hidden', theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}>
+                  {usernameHistory
+                    .filter(u => !tiktokUsername || u.toLowerCase().includes(tiktokUsername.toLowerCase()))
+                    .map(u => (
+                      <button key={u}
+                        onMouseDown={e => { e.preventDefault(); setTiktokUsername(u); setShowHistory(false); }}
+                        className={clsx('w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition', theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50')}>
+                        <span className="text-gray-500 text-xs">🕐</span>
+                        @{u}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
             {connected ? (
               <button onClick={handleDisconnect} className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition">
                 ตัดการเชื่อมต่อ
