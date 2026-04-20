@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import '../styles/globals.css';
 
-// ฟังก์ชันกลาง — apply theme ทั้ง class + body background
 function applyTheme(t) {
   const isDark = t === 'dark';
   document.documentElement.classList.toggle('dark', isDark);
-  // ทำให้ body/html มีสีพื้นหลังถูกต้อง (ป้องกันสีขาวโผล่ขณะ scroll)
   document.documentElement.style.backgroundColor = isDark ? '#030712' : '#f9fafb';
   document.body.style.backgroundColor            = isDark ? '#030712' : '#f9fafb';
 }
 
 export default function App({ Component, pageProps }) {
-  // อ่าน theme จาก localStorage ก่อน mount เพื่อป้องกัน flash
   const [theme, setThemeState] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') || 'dark';
@@ -20,12 +19,24 @@ export default function App({ Component, pageProps }) {
     return 'dark';
   });
 
-  // Sync DOM ทุกครั้งที่ theme เปลี่ยน (ไม่ใช่แค่ตอน mount)
+  // ===== Global Auth State — single source of truth =====
+  // ทุก page ใช้ user จาก _app.js ผ่าน props
+  // ไม่มี onAuthStateChanged แยกในแต่ละ page อีกต่อไป
+  const [user, setUser]               = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u || null);
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
-  // setTheme — ห่อให้ save localStorage พร้อมกันด้วย
   function setTheme(t) {
     localStorage.setItem('theme', t);
     setThemeState(t);
@@ -44,7 +55,13 @@ export default function App({ Component, pageProps }) {
           },
         }}
       />
-      <Component {...pageProps} theme={theme} setTheme={setTheme} />
+      <Component
+        {...pageProps}
+        theme={theme}
+        setTheme={setTheme}
+        user={user}
+        authLoading={authLoading}
+      />
     </>
   );
 }

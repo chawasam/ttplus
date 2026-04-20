@@ -207,6 +207,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ===== Real-time style update (authenticated user → widget room) =====
+  socket.on('push_style_update', (data) => {
+    if (!socket.userId) return; // ต้อง authenticate ก่อน
+    if (!socketRateLimit(socket.id, 20, 5000)) return; // max 20 updates per 5s
+    const { widgetId, style } = data || {};
+    if (!widgetId || typeof widgetId !== 'string' || widgetId.length > 50) return;
+    if (!style || typeof style !== 'object') return;
+    // Broadcast ไปยัง widget room ของ user คนนี้
+    io.to(`widget_${socket.userId}`).emit('style_update', { widgetId, style });
+  });
+
   socket.on('join_widget', async (data) => {
     if (!socketRateLimit(socket.id, 5, 10000)) {
       socket.emit('widget_error', { error: 'Too many requests' });
