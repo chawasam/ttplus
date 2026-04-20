@@ -4,10 +4,11 @@ import { useRouter } from 'next/router';
 import clsx from 'clsx';
 
 const navItems = [
-  { href: '/dashboard',      icon: '📊', label: 'Dashboard' },
-  { href: '/widgets',        icon: '🎛️', label: 'Widgets' },
-  { href: '/settings',       icon: '⚙️', label: 'Settings' },
-  { href: '/donate',         icon: '❤️', label: 'Donate' },
+  { href: '/dashboard', icon: '📊',  label: 'Dashboard'   },
+  { href: '/tts',       icon: '🔊',  label: 'TTS (สิริ)'  },
+  { href: '/widgets',   icon: '🎛️', label: 'Widgets'     },
+  { href: '/settings',  icon: '⚙️', label: 'Settings'    },
+  { href: '/donate',    icon: '❤️', label: 'Donate'      },
 ];
 
 export default function Sidebar({ theme, user }) {

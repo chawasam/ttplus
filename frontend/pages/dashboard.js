@@ -6,7 +6,7 @@ import { auth, googleProvider } from '../lib/firebase';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { sanitizeEvent, safeTikTokImageUrl } from '../lib/sanitize';
-import { configureTTS, speak, clearTTSQueue, onVoicesReady } from '../lib/tts';
+import { configureTTS, speak, clearTTSQueue } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
@@ -64,19 +64,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
 
-  // ===== TTS controls =====
-  const [tts, setTts] = useState({
-    enabled:    false,
-    readChat:   true,
-    readGift:   true,
-    readFollow: true,
-    rate:       1.0,
-    pitch:      1.0,
-    volume:     1.0,
-    voice:      '',
-  });
-  const [ttsExpanded, setTtsExpanded] = useState(false);
-  const [voices, setVoices]           = useState([]);
 
   // ===== TikTok username history =====
   const [usernameHistory, setUsernameHistory] = useState([]);
@@ -85,11 +72,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
 
   useEffect(() => {
     setUsernameHistory(loadUsernameHistory());
-  }, []);
-
-  useEffect(() => {
-    const unsub = onVoicesReady(v => setVoices(v));
-    return unsub;
   }, []);
 
   // ===== addEvent / updateLeaderboard — stable refs =====
@@ -196,17 +178,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
             volume:     s.ttsVolume !== undefined ? s.ttsVolume : 1.0,
             voice:      s.ttsVoice  || '',
           };
-          configureTTS(ttsCfg);
-          setTts({
-            enabled:    ttsCfg.enabled,
-            readChat:   ttsCfg.readChat,
-            readGift:   ttsCfg.readGift,
-            readFollow: ttsCfg.readFollow,
-            rate:       ttsCfg.rate,
-            pitch:      ttsCfg.pitch,
-            volume:     ttsCfg.volume,
-            voice:      ttsCfg.voice,
-          });
+          configureTTS(ttsCfg); // โหลดค่า TTS เข้า lib เพื่อให้ speak() ทำงานถูกต้อง
         } catch { /* ignore */ }
       })();
     } else {
@@ -268,27 +240,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
     disconnectSocket();
     router.push('/');
   }, [router]);
-
-  // ===== TTS quick toggle =====
-  const handleTtsChange = useCallback(async (key, val) => {
-    const next = { ...tts, [key]: val };
-    setTts(next);
-    configureTTS(next);
-    try {
-      await api.post('/api/settings', {
-        settings: {
-          ttsEnabled:    next.enabled,
-          ttsReadChat:   next.readChat,
-          ttsReadGift:   next.readGift,
-          ttsReadFollow: next.readFollow,
-          ttsRate:       next.rate,
-          ttsPitch:      next.pitch,
-          ttsVolume:     next.volume,
-          ttsVoice:      next.voice,
-        },
-      });
-    } catch { /* silent — non-critical */ }
-  }, [tts]);
 
   const toggleTheme = useCallback(() => setTheme(theme === 'dark' ? 'light' : 'dark'), [theme, setTheme]);
   const topLeaderboard = useMemo(() => leaderboard.slice(0, 5), [leaderboard]);
@@ -388,101 +339,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
               🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok
             </p>
           )}
-        </div>
-
-        {/* TTS Controls */}
-        <div className={clsx('rounded-2xl p-4 mb-6 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
-          {/* Row 1: title + toggle */}
-          <div className="flex items-center justify-between">
-            <h2 className={clsx('text-sm font-semibold', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>🔊 Text-to-Speech</h2>
-            <button
-              onClick={() => handleTtsChange('enabled', !tts.enabled)}
-              className={clsx('relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none', tts.enabled ? 'bg-brand-500' : (theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'))}
-              role="switch" aria-checked={tts.enabled}>
-              <span className={clsx('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', tts.enabled ? 'translate-x-6' : 'translate-x-1')} />
-            </button>
-          </div>
-
-          {tts.enabled && (<>
-            {/* Row 2: type toggles */}
-            <div className="flex flex-wrap gap-2 mt-3">
-              {[
-                { key: 'readChat',   icon: '💬', label: 'Chat' },
-                { key: 'readGift',   icon: '🎁', label: 'Gift' },
-                { key: 'readFollow', icon: '➕', label: 'Follow' },
-              ].map(({ key, icon, label }) => (
-                <button key={key}
-                  onClick={() => handleTtsChange(key, !tts[key])}
-                  className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition',
-                    tts[key]
-                      ? 'bg-brand-500/15 border-brand-500/40 text-brand-400'
-                      : (theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-500' : 'bg-gray-100 border-gray-200 text-gray-400'))}>
-                  {icon} {label} {tts[key] ? '✓' : '✗'}
-                </button>
-              ))}
-              <button onClick={() => setTtsExpanded(p => !p)}
-                className={clsx('ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs border transition',
-                  theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200' : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-700')}>
-                ⚙️ {ttsExpanded ? 'ซ่อน' : 'ตั้งค่า'}
-              </button>
-            </div>
-
-            {/* Row 3: advanced settings (expandable) */}
-            {ttsExpanded && (
-              <div className={clsx('mt-3 pt-3 border-t space-y-3', theme === 'dark' ? 'border-gray-800' : 'border-gray-100')}>
-
-                {/* Voice selector */}
-                {voices.length > 0 && (
-                  <div>
-                    <p className={clsx('text-xs mb-1', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>เสียง (Voice)</p>
-                    <select
-                      value={tts.voice}
-                      onChange={e => handleTtsChange('voice', e.target.value)}
-                      className={clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition', theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900')}>
-                      <option value="">— ค่าเริ่มต้น —</option>
-                      {voices.map(v => <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>)}
-                    </select>
-                  </div>
-                )}
-
-                {/* Rate */}
-                <div>
-                  <p className={clsx('text-xs mb-1', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>ความเร็ว ({tts.rate}x)</p>
-                  <input type="range" min="0.5" max="2" step="0.1" value={tts.rate}
-                    onChange={e => handleTtsChange('rate', +e.target.value)}
-                    className="w-full accent-brand-500" />
-                  <div className="flex justify-between text-xs text-gray-500 -mt-1"><span>ช้า</span><span>เร็ว</span></div>
-                </div>
-
-                {/* Pitch */}
-                <div>
-                  <p className={clsx('text-xs mb-1', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>ระดับเสียง ({tts.pitch})</p>
-                  <input type="range" min="0.5" max="2" step="0.1" value={tts.pitch}
-                    onChange={e => handleTtsChange('pitch', +e.target.value)}
-                    className="w-full accent-brand-500" />
-                  <div className="flex justify-between text-xs text-gray-500 -mt-1"><span>ต่ำ</span><span>สูง</span></div>
-                </div>
-
-                {/* Volume */}
-                <div>
-                  <p className={clsx('text-xs mb-1', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>ความดัง ({Math.round(tts.volume * 100)}%)</p>
-                  <input type="range" min="0" max="1" step="0.05" value={tts.volume}
-                    onChange={e => handleTtsChange('volume', +e.target.value)}
-                    className="w-full accent-brand-500" />
-                </div>
-
-                {/* Test button */}
-                <button
-                  onClick={() => {
-                    configureTTS({ ...tts, enabled: true, readChat: true, readGift: true, readFollow: true });
-                    speak('สวัสดีครับ นี่คือเสียง TTS จาก TTplus', null);
-                  }}
-                  className={clsx('w-full py-2 rounded-lg text-sm font-medium transition border', theme === 'dark' ? 'border-gray-700 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-600 hover:bg-gray-50')}>
-                  🔊 ทดสอบเสียง
-                </button>
-              </div>
-            )}
-          </>)}
         </div>
 
         {/* Stats */}
