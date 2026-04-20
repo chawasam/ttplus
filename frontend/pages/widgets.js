@@ -105,8 +105,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
       } else {
         toast.error('Widget Token ไม่ถูกต้อง กรุณาลองใหม่');
       }
-    } catch {
-      toast.error('ไม่สามารถสร้าง Widget Token ได้ กรุณาลองใหม่');
+    } catch (err) {
+      const status = err?.response?.status;
+      const code   = status ? `ERR-${status}` : 'ERR-NET';
+      toast.error(`[${code}] ไม่สามารถสร้าง Widget Token ได้ — แจ้งโค้ดนี้เพื่อขอความช่วยเหลือ`);
     } finally {
       setTokenLoading(false);
     }

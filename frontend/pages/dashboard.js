@@ -64,6 +64,14 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
 
+  // ===== TTS quick controls =====
+  const [tts, setTts] = useState({
+    enabled:    false,
+    readChat:   true,
+    readGift:   true,
+    readFollow: true,
+  });
+
   // ===== TikTok username history =====
   const [usernameHistory, setUsernameHistory] = useState([]);
   const [showHistory, setShowHistory]         = useState(false);
@@ -167,7 +175,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
             setGoalCurrent(s.goalCurrent);
           }
           // Configure TTS from saved settings
-          configureTTS({
+          const ttsCfg = {
             enabled:    !!s.ttsEnabled,
             readChat:   s.ttsReadChat  !== false,
             readGift:   s.ttsReadGift  !== false,
@@ -176,6 +184,13 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
             pitch:      s.ttsPitch  || 1.0,
             volume:     s.ttsVolume !== undefined ? s.ttsVolume : 1.0,
             voice:      s.ttsVoice  || '',
+          };
+          configureTTS(ttsCfg);
+          setTts({
+            enabled:    ttsCfg.enabled,
+            readChat:   ttsCfg.readChat,
+            readGift:   ttsCfg.readGift,
+            readFollow: ttsCfg.readFollow,
           });
         } catch { /* ignore */ }
       })();
@@ -238,6 +253,23 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
     disconnectSocket();
     router.push('/');
   }, [router]);
+
+  // ===== TTS quick toggle =====
+  const handleTtsChange = useCallback(async (key, val) => {
+    const next = { ...tts, [key]: val };
+    setTts(next);
+    configureTTS(next);
+    try {
+      await api.post('/api/settings', {
+        settings: {
+          ttsEnabled:    next.enabled,
+          ttsReadChat:   next.readChat,
+          ttsReadGift:   next.readGift,
+          ttsReadFollow: next.readFollow,
+        },
+      });
+    } catch { /* silent — non-critical */ }
+  }, [tts]);
 
   const toggleTheme = useCallback(() => setTheme(theme === 'dark' ? 'light' : 'dark'), [theme, setTheme]);
   const topLeaderboard = useMemo(() => leaderboard.slice(0, 5), [leaderboard]);
@@ -336,6 +368,50 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
             <p className={clsx('text-xs mt-2', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
               🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok
             </p>
+          )}
+        </div>
+
+        {/* TTS Quick Controls */}
+        <div className={clsx('rounded-2xl p-4 mb-6 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
+          <div className="flex items-center justify-between">
+            <h2 className={clsx('text-sm font-semibold', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>🔊 Text-to-Speech</h2>
+            <button
+              onClick={() => handleTtsChange('enabled', !tts.enabled)}
+              className={clsx(
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none',
+                tts.enabled ? 'bg-brand-500' : (theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300')
+              )}
+              role="switch" aria-checked={tts.enabled}>
+              <span className={clsx('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', tts.enabled ? 'translate-x-6' : 'translate-x-1')} />
+            </button>
+          </div>
+
+          {tts.enabled && (
+            <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-800/30">
+              {[
+                { key: 'readChat',   icon: '💬', label: 'Chat' },
+                { key: 'readGift',   icon: '🎁', label: 'Gift' },
+                { key: 'readFollow', icon: '➕', label: 'Follow' },
+              ].map(({ key, icon, label }) => (
+                <button key={key}
+                  onClick={() => handleTtsChange(key, !tts[key])}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition',
+                    tts[key]
+                      ? 'bg-brand-500/15 border-brand-500/40 text-brand-400'
+                      : (theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-500' : 'bg-gray-100 border-gray-200 text-gray-400')
+                  )}>
+                  {icon} {label}
+                  <span className={clsx('ml-1 text-xs', tts[key] ? 'text-brand-400' : 'text-gray-600')}>
+                    {tts[key] ? '✓' : '✗'}
+                  </span>
+                </button>
+              ))}
+              <p className={clsx('w-full text-xs mt-1', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+                ปรับ Rate / Pitch / Voice ได้ที่{' '}
+                <a href="/settings" className="underline text-brand-400 hover:text-brand-300">Settings</a>
+              </p>
+            </div>
           )}
         </div>
 
