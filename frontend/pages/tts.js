@@ -23,6 +23,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
   const [tts, setTts]         = useState(DEFAULT_TTS);
   const [voices, setVoices]   = useState([]);
   const [saving, setSaving]   = useState(false);
+  const [testText, setTestText] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
 
@@ -228,6 +229,37 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
             <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
               ทดสอบเสียง
             </h2>
+
+            {/* ช่องพิมพ์ custom */}
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={testText}
+                onChange={e => setTestText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && testText.trim()) {
+                    configureTTS({ ...tts, enabled: true });
+                    speak(testText.trim(), null);
+                  }
+                }}
+                placeholder="พิมพ์ข้อความแล้วกด ▶ หรือ Enter..."
+                className={clsx('flex-1 px-3 py-2 rounded-lg text-sm outline-none border transition',
+                  isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500'
+                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-brand-500')}
+              />
+              <button
+                onClick={() => {
+                  if (!testText.trim()) return;
+                  configureTTS({ ...tts, enabled: true });
+                  speak(testText.trim(), null);
+                }}
+                disabled={!testText.trim()}
+                className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold transition">
+                ▶
+              </button>
+            </div>
+
+            {/* Quick presets */}
             <div className="grid grid-cols-3 gap-2">
               {[
                 { text: 'สวัสดีครับ ผม TTplus', label: '👋 ทักทาย' },
