@@ -93,8 +93,11 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
           ttsVoice:      next.voice,
         },
       });
-    } catch {
-      toast.error('บันทึกไม่สำเร็จ กรุณาลองใหม่');
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg    = err?.response?.data?.error;
+      const code   = status ? `ERR-${status}` : 'ERR-NET';
+      toast.error(`[${code}] บันทึกไม่สำเร็จ${msg ? ': ' + msg : ''}`);
     } finally {
       setSaving(false);
     }
