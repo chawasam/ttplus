@@ -5,6 +5,7 @@ import { auth, googleProvider } from '../lib/firebase';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { configureTTS, speak, onVoicesReady } from '../lib/tts';
 import toast from 'react-hot-toast';
+import { showError } from '../lib/errorHandler';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
 
@@ -94,10 +95,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
         },
       });
     } catch (err) {
-      const status = err?.response?.status;
-      const msg    = err?.response?.data?.error;
-      const code   = status ? `ERR-${status}` : 'ERR-NET';
-      toast.error(`[${code}] บันทึกไม่สำเร็จ${msg ? ': ' + msg : ''}`);
+      showError(err, 'บันทึก TTS ไม่สำเร็จ');
     } finally {
       setSaving(false);
     }

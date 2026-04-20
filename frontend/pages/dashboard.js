@@ -5,6 +5,7 @@ import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
+import { showError } from '../lib/errorHandler';
 import { sanitizeEvent, safeTikTokImageUrl } from '../lib/sanitize';
 import { configureTTS, speak, clearTTSQueue } from '../lib/tts';
 import toast from 'react-hot-toast';
@@ -218,7 +219,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่');
+      showError(err, 'ไม่สามารถเชื่อมต่อได้');
       setConnecting(false);
     }
   }, [user, tiktokUsername]);

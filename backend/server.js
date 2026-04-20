@@ -166,8 +166,9 @@ app.get('/api/settings', verifyToken, settingsLimiter, async (req, res) => {
     const doc = await admin.firestore().collection('user_settings').doc(req.user.uid).get();
     res.json({ settings: doc.exists ? doc.data() : defaultSettings() });
   } catch (err) {
-    console.error('[API] settings GET:', err.code);
-    res.status(500).json({ error: 'Failed to get settings' });
+    const code = err.code || 'UNKNOWN';
+    console.error('[API] settings GET:', code, err.message);
+    res.status(500).json({ error: 'Failed to get settings', code });
   }
 });
 
@@ -177,9 +178,12 @@ app.post('/api/settings', verifyToken, settingsLimiter, async (req, res) => {
     await admin.firestore().collection('user_settings').doc(req.user.uid).set(clean, { merge: true });
     res.json({ success: true });
   } catch (err) {
-    if (err.message?.match(/^(Invalid|Settings)/)) return res.status(400).json({ error: err.message });
-    console.error('[API] settings POST:', err.code);
-    res.status(500).json({ error: 'Failed to save settings' });
+    if (err.message?.match(/^(Invalid|Settings|Must|tts|alert|chat|goal|widget)/i)) {
+      return res.status(400).json({ error: err.message, code: 'VALIDATION_ERROR' });
+    }
+    const code = err.code || 'UNKNOWN';
+    console.error('[API] settings POST:', code, err.message);
+    res.status(500).json({ error: 'Failed to save settings', code });
   }
 });
 

@@ -4,6 +4,7 @@ import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { connectSocket, disconnectSocket, getSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
+import { showError } from '../lib/errorHandler';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
@@ -106,9 +107,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
         toast.error('Widget Token ไม่ถูกต้อง กรุณาลองใหม่');
       }
     } catch (err) {
-      const status = err?.response?.status;
-      const code   = status ? `ERR-${status}` : 'ERR-NET';
-      toast.error(`[${code}] ไม่สามารถสร้าง Widget Token ได้ — แจ้งโค้ดนี้เพื่อขอความช่วยเหลือ`);
+      showError(err, 'ไม่สามารถสร้าง Widget Token ได้');
     } finally {
       setTokenLoading(false);
     }
@@ -154,12 +153,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
       await api.post('/api/settings', { settings: { widgetStyles: newStyles } });
       toast.success(`✅ บันทึก ${WIDGETS.find(w => w.id === widgetId)?.name} แล้ว`);
     } catch (err) {
-      const status = err?.response?.status;
-      const msg    = err?.response?.data?.error;
-      if (status === 403) toast.error('⚠️ Session หมดอายุ กรุณา Refresh หน้าเว็บ');
-      else if (status === 401) toast.error('⚠️ กรุณา Login ใหม่');
-      else if (msg)  toast.error(`บันทึกไม่สำเร็จ: ${msg}`);
-      else           toast.error('บันทึกไม่สำเร็จ กรุณาลองใหม่');
+      showError(err, 'บันทึก Widget ไม่สำเร็จ');
     }
   }, [user, styles]);
 

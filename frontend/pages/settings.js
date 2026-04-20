@@ -6,6 +6,7 @@ import api, { getCachedSettings, setCachedSettings, clearSettingsCache } from '.
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
+import { showError } from '../lib/errorHandler';
 
 export default function SettingsPage({ theme, setTheme, user, authLoading }) {
   const [saving, setSaving]       = useState(false);
@@ -57,8 +58,8 @@ export default function SettingsPage({ theme, setTheme, user, authLoading }) {
       await api.post('/api/settings', { settings });
       clearSettingsCache();
       toast.success('บันทึก settings แล้ว ✅');
-    } catch {
-      toast.error('บันทึกไม่สำเร็จ กรุณาลองใหม่');
+    } catch (err) {
+      showError(err, 'บันทึก Settings ไม่สำเร็จ');
     } finally {
       setSaving(false);
     }
