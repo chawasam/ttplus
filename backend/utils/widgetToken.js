@@ -2,12 +2,13 @@
 // - Token เก็บใน Firestore: widget_tokens/{token} → { uid }
 // - In-memory cache ลด Firestore reads หลัง server restart
 // - ไม่มี expiry — URL ไม่เปลี่ยนแม้ปิดเปิด browser
+// - ถ้า Firestore ไม่พร้อม → fallback เป็น session-only token (ยังใช้งานได้)
 
 const crypto = require('crypto');
 
-// In-memory cache: token → uid
-// โหลดจาก Firestore ครั้งแรกที่ใช้ แล้วเก็บ cache ไว้ตลอด server uptime
-const tokenCache = new Map();
+// Bidirectional in-memory cache
+const tokenCache = new Map(); // token → uid
+const uidCache   = new Map(); // uid   → token
 
 /**
  * สร้าง token ใหม่ (64-char hex)
@@ -21,6 +22,7 @@ function generateToken() {
  */
 function registerToken(token, uid) {
   tokenCache.set(token, uid);
+  uidCache.set(uid, token);
 }
 
 /**
@@ -32,4 +34,12 @@ function verifyTokenFromMemory(token) {
   return tokenCache.get(token) || null;
 }
 
-module.exports = { generateToken, registerToken, verifyTokenFromMemory };
+/**
+ * ค้นหา token ที่ uid เคย register ไว้ (reverse lookup)
+ * คืน token หรือ null
+ */
+function getTokenForUid(uid) {
+  return uidCache.get(uid) || null;
+}
+
+module.exports = { generateToken, registerToken, verifyTokenFromMemory, getTokenForUid };

@@ -21,7 +21,7 @@ const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection } = require('./handlers/tiktok');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
-const { generateToken, registerToken, verifyTokenFromMemory } = require('./utils/widgetToken');
+const { generateToken, registerToken, verifyTokenFromMemory, getTokenForUid } = require('./utils/widgetToken');
 
 // ===== Firebase Admin — wrapped in try-catch =====
 try {
@@ -120,34 +120,44 @@ app.get('/api/csrf-token', verifyToken, (_req, res) => {
 
 app.post('/api/widget-token', verifyToken, async (req, res) => {
   const uid = req.user.uid;
+
+  // Fast path: token อยู่ใน memory cache แล้ว (ไม่ต้องไป Firestore)
+  const cached = getTokenForUid(uid);
+  if (cached) return res.json({ token: cached });
+
+  let token = null;
   try {
     // 1. ดึง token ที่มีอยู่แล้วจาก Firestore (permanent token ไม่เปลี่ยน)
     const userDoc = await admin.firestore().collection('user_settings').doc(uid).get();
     if (userDoc.exists) {
       const existing = userDoc.data()?.widgetToken;
       if (existing && /^[a-f0-9]{64}$/.test(existing)) {
-        registerToken(existing, uid); // เพิ่มเข้า memory cache
+        registerToken(existing, uid);
         return res.json({ token: existing });
       }
     }
 
     // 2. สร้าง token ใหม่ (ครั้งแรกเท่านั้น)
-    const token = generateToken();
+    token = generateToken();
 
     // 3. บันทึกลง Firestore — 2 collections
     const db = admin.firestore();
     const batch = db.batch();
-    batch.set(db.collection('user_settings').doc(uid),     { widgetToken: token }, { merge: true });
-    batch.set(db.collection('widget_tokens').doc(token),   { uid, createdAt: Date.now() });
+    batch.set(db.collection('user_settings').doc(uid),   { widgetToken: token }, { merge: true });
+    batch.set(db.collection('widget_tokens').doc(token), { uid, createdAt: Date.now() });
     await batch.commit();
 
-    // 4. เพิ่มเข้า memory cache
     registerToken(token, uid);
+    return res.json({ token });
 
-    res.json({ token });
   } catch (err) {
-    console.error('[API] widget-token:', err.message);
-    res.status(503).json({ error: 'Server is busy. Please try again.' });
+    console.error('[API] widget-token Firestore error:', err.message);
+    // Fallback: session-only token — ใช้งานได้จนกว่า server จะ restart
+    // (เกิดขึ้นถ้า Firestore ยังไม่ได้ enable หรือ network issue ชั่วคราว)
+    if (!token) token = generateToken();
+    registerToken(token, uid);
+    console.warn('[API] widget-token: using memory-only token for uid:', uid);
+    return res.json({ token });
   }
 });
 
