@@ -1,77 +1,35 @@
-// widgetToken.js — Short-lived widget token สำหรับ OBS widgets
+// widgetToken.js — Permanent widget tokens (ผูกกับ userId ตลอดไป)
+// - Token เก็บใน Firestore: widget_tokens/{token} → { uid }
+// - In-memory cache ลด Firestore reads หลัง server restart
+// - ไม่มี expiry — URL ไม่เปลี่ยนแม้ปิดเปิด browser
+
 const crypto = require('crypto');
 
-// Forward map: token -> { userId, expiresAt }
-const widgetTokens = new Map();
-// Reverse index: userId -> token  (ทำให้ generateWidgetToken O(1) แทน O(n))
-const userTokens   = new Map();
-
-const TOKEN_TTL_MS = 10 * 60 * 1000; // 10 นาที
-const MAX_TOKENS   = 5000;            // flood guard — ป้องกัน map โตไม่จำกัด
+// In-memory cache: token → uid
+// โหลดจาก Firestore ครั้งแรกที่ใช้ แล้วเก็บ cache ไว้ตลอด server uptime
+const tokenCache = new Map();
 
 /**
- * สร้าง token ใหม่ — 1 user = 1 token เท่านั้น
- * ใช้ reverse index เพื่อ O(1) lookup แทนการ scan map ทั้งหมด
+ * สร้าง token ใหม่ (64-char hex)
  */
-function generateWidgetToken(userId) {
-  // ลบ token เดิมของ user (O(1) ด้วย reverse index)
-  const existing = userTokens.get(userId);
-  if (existing) {
-    widgetTokens.delete(existing);
-    userTokens.delete(userId);
-  }
-
-  // Flood guard: ถ้า map เต็ม ล้าง expired ก่อน
-  if (widgetTokens.size >= MAX_TOKENS) {
-    const now = Date.now();
-    for (const [t, v] of widgetTokens.entries()) {
-      if (now > v.expiresAt) {
-        widgetTokens.delete(t);
-        userTokens.delete(v.userId);
-      }
-    }
-    // ถ้ายังเกินอยู่ (expired ไม่พอ) ให้ปฏิเสธ — ป้องกัน memory flood
-    if (widgetTokens.size >= MAX_TOKENS) {
-      throw new Error('Server token capacity exceeded. Please try again later.');
-    }
-  }
-
-  const token    = crypto.randomBytes(32).toString('hex');
-  const expiresAt = Date.now() + TOKEN_TTL_MS;
-  widgetTokens.set(token, { userId, expiresAt });
-  userTokens.set(userId, token);
-  return token;
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 /**
- * Verify — คืน userId หรือ null
- * @param {boolean} consume - true = ลบ token หลัง verify (single-use)
+ * เพิ่ม token เข้า memory cache (เรียกหลังอ่านจาก Firestore หรือหลัง generate ใหม่)
  */
-function verifyWidgetToken(token, consume = false) {
+function registerToken(token, uid) {
+  tokenCache.set(token, uid);
+}
+
+/**
+ * ตรวจ token จาก memory cache เท่านั้น (sync, fast path)
+ * คืน uid หรือ null
+ */
+function verifyTokenFromMemory(token) {
   if (!token || typeof token !== 'string' || token.length !== 64) return null;
-  const entry = widgetTokens.get(token);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    widgetTokens.delete(token);
-    userTokens.delete(entry.userId);
-    return null;
-  }
-  if (consume) {
-    widgetTokens.delete(token);
-    userTokens.delete(entry.userId);
-  }
-  return entry.userId;
+  return tokenCache.get(token) || null;
 }
 
-// ล้าง expired entries ทุก 1 นาที (cleanup ทั้ง 2 map พร้อมกัน)
-setInterval(() => {
-  const now = Date.now();
-  for (const [t, v] of widgetTokens.entries()) {
-    if (now > v.expiresAt) {
-      widgetTokens.delete(t);
-      userTokens.delete(v.userId);
-    }
-  }
-}, 60 * 1000);
-
-module.exports = { generateWidgetToken, verifyWidgetToken };
+module.exports = { generateToken, registerToken, verifyTokenFromMemory };

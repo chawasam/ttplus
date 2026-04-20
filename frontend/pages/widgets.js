@@ -150,9 +150,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
 
     try {
       await api.post('/api/settings', { settings: { widgetStyles: newStyles } });
-      toast.success(`✅ บันทึกและ update Widget ${WIDGETS.find(w => w.id === widgetId)?.name} แล้ว`);
-    } catch {
-      toast.error('บันทึกไม่สำเร็จ');
+      toast.success(`✅ บันทึก ${WIDGETS.find(w => w.id === widgetId)?.name} แล้ว`);
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg    = err?.response?.data?.error;
+      if (status === 403) toast.error('⚠️ Session หมดอายุ กรุณา Refresh หน้าเว็บ');
+      else if (status === 401) toast.error('⚠️ กรุณา Login ใหม่');
+      else if (msg)  toast.error(`บันทึกไม่สำเร็จ: ${msg}`);
+      else           toast.error('บันทึกไม่สำเร็จ กรุณาลองใหม่');
     }
   }, [user, styles]);
 
@@ -187,13 +192,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {user ? (
-              <button onClick={() => fetchWidgetToken(user)} disabled={tokenLoading}
-                title="Token มีอายุ 10 นาที"
-                className={clsx('text-xs px-3 py-2 rounded-lg transition font-medium', btn2nd)}>
-                {tokenLoading ? '⏳' : '🔄'} Refresh Token
-              </button>
-            ) : (
+            {!user && (
               <button onClick={() => setShowLoginModal(true)}
                 className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-semibold transition">
                 เข้าสู่ระบบ
@@ -219,12 +218,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
         ) : tokenReady ? (
           <div className={clsx('rounded-xl p-3 mb-4 text-sm flex items-center gap-2 border',
             isDark ? 'bg-green-500/10 border-green-500/25 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
-            ✅ Token พร้อมใช้งาน — ปรับแต่งสีแล้วกด "บันทึก" Widget จะ update ทันทีโดยไม่ต้อง copy URL ใหม่ 🎨
+            ✅ Widget URL ของคุณพร้อมใช้งาน — URL นี้ผูกกับบัญชีของคุณ ไม่เปลี่ยนแปลง 🔗
           </div>
         ) : (
           <div className={clsx('rounded-xl p-3 mb-4 text-sm flex items-center gap-2 border',
             isDark ? 'bg-yellow-500/10 border-yellow-500/25 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-700')}>
-            ⏳ {tokenLoading ? 'กำลังสร้าง Widget Token...' : 'ยังไม่มี Token — กด Refresh Token'}
+            ⏳ {tokenLoading ? 'กำลังโหลด Widget URL...' : 'กำลังเตรียม Widget URL...'}
           </div>
         )}
 
@@ -234,8 +233,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
           <h3 className="text-blue-400 font-semibold text-sm mb-3">📌 วิธีใช้กับ TikTok Studio / OBS</h3>
           <div className="space-y-2">
             {[
-              { n: '1', t: 'Login ด้วย Google',    d: 'กดปุ่ม Login มุมขวาบน' },
-              { n: '2', t: 'Copy link ของ Widget',  d: 'กด 📋 Copy URL → วางใน OBS หรือ TikTok Studio ครั้งเดียว' },
+              { n: '1', t: 'Login ด้วย Google',    d: 'กดปุ่ม Login มุมขวาบน — URL ของคุณจะถูกสร้างอัตโนมัติและไม่เปลี่ยนแปลง' },
+              { n: '2', t: 'Copy URL ของ Widget',   d: 'กด 📋 Copy URL → วางใน OBS หรือ TikTok Studio ครั้งเดียวพอ' },
               { n: '3', t: 'Customize ได้ตลอด',    d: 'กด ⚙️ Customize → ปรับสี → กด บันทึก → Widget update ทันที ไม่ต้อง copy URL ใหม่!' },
               { n: '4', t: 'TikTok Studio',          d: 'Add Sources → Link → วาง URL' },
             ].map(s => (

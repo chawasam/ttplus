@@ -21,7 +21,7 @@ const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection } = require('./handlers/tiktok');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
-const { generateWidgetToken, verifyWidgetToken } = require('./utils/widgetToken');
+const { generateToken, registerToken, verifyTokenFromMemory } = require('./utils/widgetToken');
 
 // ===== Firebase Admin — wrapped in try-catch =====
 try {
@@ -118,11 +118,35 @@ app.get('/api/csrf-token', verifyToken, (_req, res) => {
   res.json({ token: generateCsrfToken() });
 });
 
-app.post('/api/widget-token', verifyToken, (req, res) => {
+app.post('/api/widget-token', verifyToken, async (req, res) => {
+  const uid = req.user.uid;
   try {
-    const token = generateWidgetToken(req.user.uid);
-    res.json({ token, expiresIn: 600 });
-  } catch {
+    // 1. ดึง token ที่มีอยู่แล้วจาก Firestore (permanent token ไม่เปลี่ยน)
+    const userDoc = await admin.firestore().collection('user_settings').doc(uid).get();
+    if (userDoc.exists) {
+      const existing = userDoc.data()?.widgetToken;
+      if (existing && /^[a-f0-9]{64}$/.test(existing)) {
+        registerToken(existing, uid); // เพิ่มเข้า memory cache
+        return res.json({ token: existing });
+      }
+    }
+
+    // 2. สร้าง token ใหม่ (ครั้งแรกเท่านั้น)
+    const token = generateToken();
+
+    // 3. บันทึกลง Firestore — 2 collections
+    const db = admin.firestore();
+    const batch = db.batch();
+    batch.set(db.collection('user_settings').doc(uid),     { widgetToken: token }, { merge: true });
+    batch.set(db.collection('widget_tokens').doc(token),   { uid, createdAt: Date.now() });
+    await batch.commit();
+
+    // 4. เพิ่มเข้า memory cache
+    registerToken(token, uid);
+
+    res.json({ token });
+  } catch (err) {
+    console.error('[API] widget-token:', err.message);
     res.status(503).json({ error: 'Server is busy. Please try again.' });
   }
 });
@@ -237,9 +261,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const userId = verifyWidgetToken(widgetToken);
+    // Fast path: ตรวจจาก memory cache
+    let userId = verifyTokenFromMemory(widgetToken);
+
+    // Fallback: อ่านจาก Firestore (หลัง server restart token หายจาก memory)
     if (!userId) {
-      socket.emit('widget_error', { error: 'Token expired. Please refresh widget URL.' });
+      try {
+        const doc = await admin.firestore().collection('widget_tokens').doc(widgetToken).get();
+        if (doc.exists) {
+          userId = doc.data().uid;
+          registerToken(widgetToken, userId); // cache ไว้สำหรับ request ต่อไป
+        }
+      } catch (e) {
+        console.error('[Socket] widget token lookup:', e.message);
+      }
+    }
+
+    if (!userId) {
+      socket.emit('widget_error', { error: 'Invalid token.' });
       return;
     }
 
