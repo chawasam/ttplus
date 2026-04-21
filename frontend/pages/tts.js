@@ -21,10 +21,11 @@ const DEFAULT_TTS = {
 };
 
 export default function TtsPage({ theme, setTheme, user, authLoading }) {
-  const [tts, setTts]         = useState(DEFAULT_TTS);
-  const [voices, setVoices]   = useState([]);
-  const [saving, setSaving]   = useState(false);
+  const [tts, setTts]           = useState(DEFAULT_TTS);
+  const [voices, setVoices]     = useState([]);
+  const [saving, setSaving]     = useState(false);
   const [testText, setTestText] = useState('');
+  const [simpleMode, setSimpleMode] = useState(true); // true = ง่าย, false = ปรับได้
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
   const saveTimerRef  = useRef(null);
@@ -126,6 +127,39 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
     }, 600);
   }, [tts, user]);
 
+  // หาเสียงไทยตัวแรกจาก voices list
+  const thaiVoice = voices.find(v => v.lang?.startsWith('th')) || null;
+
+  // สลับ mode — ถ้าไปหน้าง่ายให้ reset rate/pitch + ใช้เสียงไทย
+  const switchMode = useCallback((toSimple) => {
+    setSimpleMode(toSimple);
+    if (toSimple) {
+      const thai = voices.find(v => v.lang?.startsWith('th'));
+      const patch = { rate: 1.0, pitch: 1.0, voice: thai ? thai.name : '' };
+      const next = { ...tts, ...patch };
+      setTts(next);
+      configureTTS(next);
+      // save
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(async () => {
+        if (!mountedRef.current) return;
+        try {
+          await api.post('/api/settings', { settings: {
+            ttsEnabled: next.enabled, ttsReadChat: next.readChat, ttsReadGift: next.readGift,
+            ttsReadFollow: next.readFollow, ttsRate: next.rate, ttsPitch: next.pitch,
+            ttsVolume: next.volume, ttsVoice: next.voice,
+          }});
+          if (!mountedRef.current) return;
+          setCachedSettings({ ...(getCachedSettings() || {}),
+            ttsEnabled: next.enabled, ttsReadChat: next.readChat, ttsReadGift: next.readGift,
+            ttsReadFollow: next.readFollow, ttsRate: next.rate, ttsPitch: next.pitch,
+            ttsVolume: next.volume, ttsVoice: next.voice,
+          });
+        } catch (err) { if (mountedRef.current) showError(err, 'บันทึก TTS ไม่สำเร็จ'); }
+      }, 600);
+    }
+  }, [tts, voices, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isDark = theme === 'dark';
   const card   = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
   const inputCls = clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition',
@@ -205,49 +239,141 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
             </div>
           </div>
 
-          {/* เสียง */}
+          {/* เสียงและความเร็ว */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
-            <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
-              เสียงและความเร็ว
-            </h2>
-            <div className="space-y-4">
 
-              {voices.length > 0 && (
-                <div>
-                  <Label isDark={isDark}>เสียง (Voice)</Label>
-                  <select className={inputCls} value={tts.voice} onChange={e => handleChange('voice', e.target.value)}>
-                    <option value="">— ค่าเริ่มต้น (เสียงไทยถ้ามี) —</option>
-                    {voices.map(v => (
-                      <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <Label isDark={isDark}>ความเร็ว ({tts.rate}x)</Label>
-                <input type="range" min="0.5" max="2" step="0.1" value={tts.rate}
-                  onChange={e => handleChange('rate', +e.target.value)}
-                  className="w-full accent-brand-500 mt-1" />
-                <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ช้า (0.5)</span><span>เร็ว (2.0)</span></div>
-              </div>
-
-              <div>
-                <Label isDark={isDark}>ระดับเสียง ({tts.pitch})</Label>
-                <input type="range" min="0.5" max="2" step="0.1" value={tts.pitch}
-                  onChange={e => handleChange('pitch', +e.target.value)}
-                  className="w-full accent-brand-500 mt-1" />
-                <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ต่ำ</span><span>สูง</span></div>
-              </div>
-
-              <div>
-                <Label isDark={isDark}>ความดัง ({Math.round(tts.volume * 100)}%)</Label>
-                <input type="range" min="0" max="1" step="0.05" value={tts.volume}
-                  onChange={e => handleChange('volume', +e.target.value)}
-                  className="w-full accent-brand-500 mt-1" />
-                <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>เบา</span><span>ดัง</span></div>
+            {/* Mode toggle */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+                เสียงและความเร็ว
+              </h2>
+              <div className={clsx('flex rounded-xl p-0.5 gap-0.5', isDark ? 'bg-gray-800' : 'bg-gray-100')}>
+                {[
+                  { val: true,  label: '⚡ ง่าย'   },
+                  { val: false, label: '🎛️ ปรับได้' },
+                ].map(opt => (
+                  <button
+                    key={String(opt.val)}
+                    onClick={() => switchMode(opt.val)}
+                    className={clsx(
+                      'px-3 py-1 rounded-lg text-xs font-semibold transition',
+                      simpleMode === opt.val
+                        ? 'bg-brand-500 text-white shadow-sm'
+                        : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
+                    )}>
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
+
+            {simpleMode ? (
+              /* ===== Mode ง่าย ===== */
+              <div className="space-y-4">
+
+                {/* เสียงภาษาไทย */}
+                <div className={clsx('flex items-center gap-3 p-3 rounded-xl border',
+                  isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
+                  <span className="text-xl">🇹🇭</span>
+                  <div>
+                    <p className={clsx('text-sm font-semibold', isDark ? 'text-white' : 'text-gray-900')}>
+                      เสียงภาษาไทย
+                    </p>
+                    <p className={clsx('text-xs', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                      {thaiVoice ? thaiVoice.name : 'ใช้เสียงเริ่มต้นของระบบ'}
+                    </p>
+                  </div>
+                  <span className="ml-auto text-xs text-green-400 font-semibold">✓ ใช้งาน</span>
+                </div>
+
+                {/* ความเร็ว + ระดับเสียง — fixed */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className={clsx('flex items-center gap-2 p-3 rounded-xl border',
+                    isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
+                    <span className="text-lg">🐢</span>
+                    <div>
+                      <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>ความเร็ว</p>
+                      <p className="text-xs text-brand-400 font-bold">x1.0</p>
+                    </div>
+                  </div>
+                  <div className={clsx('flex items-center gap-2 p-3 rounded-xl border',
+                    isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
+                    <span className="text-lg">🎵</span>
+                    <div>
+                      <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>ระดับเสียง</p>
+                      <p className="text-xs text-brand-400 font-bold">1.0</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ความดัง — 3 preset */}
+                <div>
+                  <Label isDark={isDark}>ความดัง</Label>
+                  <div className="grid grid-cols-3 gap-2 mt-1">
+                    {[
+                      { pct: 0.25, label: '🔈 25%' },
+                      { pct: 0.50, label: '🔉 50%' },
+                      { pct: 1.00, label: '🔊 100%' },
+                    ].map(opt => (
+                      <button
+                        key={opt.pct}
+                        onClick={() => handleChange('volume', opt.pct)}
+                        className={clsx(
+                          'py-2.5 rounded-xl text-sm font-bold transition border',
+                          Math.abs(tts.volume - opt.pct) < 0.01
+                            ? 'bg-brand-500 border-brand-500 text-white'
+                            : isDark
+                              ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        )}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+            ) : (
+              /* ===== Mode ปรับได้ ===== */
+              <div className="space-y-4">
+
+                {voices.length > 0 && (
+                  <div>
+                    <Label isDark={isDark}>เสียง (Voice)</Label>
+                    <select className={inputCls} value={tts.voice} onChange={e => handleChange('voice', e.target.value)}>
+                      <option value="">— ค่าเริ่มต้น (เสียงไทยถ้ามี) —</option>
+                      {voices.map(v => (
+                        <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <Label isDark={isDark}>ความเร็ว ({tts.rate}x)</Label>
+                  <input type="range" min="0.5" max="2" step="0.1" value={tts.rate}
+                    onChange={e => handleChange('rate', +e.target.value)}
+                    className="w-full accent-brand-500 mt-1" />
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ช้า (0.5)</span><span>เร็ว (2.0)</span></div>
+                </div>
+
+                <div>
+                  <Label isDark={isDark}>ระดับเสียง ({tts.pitch})</Label>
+                  <input type="range" min="0.5" max="2" step="0.1" value={tts.pitch}
+                    onChange={e => handleChange('pitch', +e.target.value)}
+                    className="w-full accent-brand-500 mt-1" />
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ต่ำ</span><span>สูง</span></div>
+                </div>
+
+                <div>
+                  <Label isDark={isDark}>ความดัง ({Math.round(tts.volume * 100)}%)</Label>
+                  <input type="range" min="0" max="1" step="0.05" value={tts.volume}
+                    onChange={e => handleChange('volume', +e.target.value)}
+                    className="w-full accent-brand-500 mt-1" />
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>เบา</span><span>ดัง</span></div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ทดสอบ */}
