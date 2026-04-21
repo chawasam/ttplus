@@ -134,7 +134,7 @@ function _speakWeb(text) {
   });
 }
 
-// ===== Internal: process queue =====
+// ===== Internal: process queue (cascade fallback) =====
 async function _next() {
   if (_busy || _queue.length === 0) return;
   if (typeof window === 'undefined') return;
@@ -144,14 +144,31 @@ async function _next() {
 
   try {
     if (_cfg.geminiApiKey) {
-      await _speakGemini(text);
-    } else if (_cfg.googleApiKey) {
-      await _speakGoogle(text);
-    } else {
-      await _speakWeb(text);
+      try {
+        await _speakGemini(text);
+        _busy = false; _next(); return;
+      } catch (e) {
+        // quota (429) หรือ auth error (401/403) → ไปต่อ
+        const msg = e?.message || '';
+        const isFatal = msg.includes('429') || msg.includes('401') || msg.includes('403') || msg.includes('quota');
+        if (!isFatal) { _busy = false; _next(); return; } // error อื่น ข้ามข้อความ
+        // ไม่ return → fallthrough ไป Google
+      }
     }
+    if (_cfg.googleApiKey) {
+      try {
+        await _speakGoogle(text);
+        _busy = false; _next(); return;
+      } catch (e) {
+        const msg = e?.message || '';
+        const isFatal = msg.includes('429') || msg.includes('401') || msg.includes('403') || msg.includes('quota');
+        if (!isFatal) { _busy = false; _next(); return; }
+        // fallthrough ไป Web Speech
+      }
+    }
+    await _speakWeb(text);
   } catch {
-    // ข้ามไปข้อความถัดไปถ้า error
+    // ข้ามข้อความถ้า error ทุก engine
   } finally {
     _busy = false;
     _next();
@@ -238,17 +255,26 @@ export const GEMINI_VOICES = [
 
 // ===== Gemini personas (speaking styles) =====
 export const GEMINI_PERSONAS = [
-  { id: '',          label: '😐 ปกติ',          instruction: '' },
-  { id: 'cheerful',  label: '😄 สนุกสนาน',      instruction: 'Speak in a cheerful, warm, and friendly tone.' },
-  { id: 'excited',   label: '🎉 กระตือรือร้น',  instruction: 'Speak with high energy and excitement, like you are very enthusiastic.' },
-  { id: 'soft',      label: '🌸 นุ่มนวล',       instruction: 'Speak in a soft, gentle, and calming voice.' },
-  { id: 'formal',    label: '👔 เป็นทางการ',     instruction: 'Speak in a formal, professional, and clear tone.' },
-  { id: 'dramatic',  label: '🎭 ดราม่า',         instruction: 'Speak dramatically with lots of emotion and expression.' },
-  { id: 'funny',     label: '😂 ตลก',            instruction: 'Speak in a playful, humorous tone, like a comedian.' },
-  { id: 'news',      label: '📰 ข่าว',           instruction: 'Speak like a news anchor — clear, authoritative, and neutral.' },
-  { id: 'cute',      label: '🐱 น่ารัก',         instruction: 'Speak in a cute, bubbly, and innocent tone.' },
-  { id: 'whisper',   label: '🤫 กระซิบ',         instruction: 'Speak in a soft whisper, as if sharing a secret.' },
+  { id: '',           label: '😐 ปกติ',              instruction: '' },
+  { id: 'sleepy',     label: '😴 เพิ่งตื่นนอน',      instruction: 'Speak as if you just woke up and are very groggy and half-asleep. Slur your words slightly, speak slowly, sound exhausted.' },
+  { id: 'lazy',       label: '🛋️ ขี้เกียจ',          instruction: 'Speak in the most lazy, unenthusiastic, monotone way possible, as if you cannot be bothered to care about anything.' },
+  { id: 'annoyed',    label: '😒 กวนตีน',             instruction: 'Speak in a slightly snarky, mischievous, and teasing tone, like you are casually trolling someone.' },
+  { id: 'bored',      label: '🥱 เบื่อมาก',           instruction: 'Speak as if you are extremely bored and have zero interest in what you are saying. Flat, slow, lifeless.' },
+  { id: 'hungry',     label: '🍜 หิวข้าว',            instruction: 'Speak as if you are very hungry and distracted, occasionally sounding like you are thinking about food.' },
+  { id: 'dramatic',   label: '🎭 ดราม่า',              instruction: 'Speak dramatically with extreme emotion and expression, as if everything is a life-or-death situation.' },
+  { id: 'excited',    label: '🎉 ตื่นเต้น',           instruction: 'Speak with very high energy and excitement, like you just won the lottery.' },
+  { id: 'news',       label: '📰 ผู้ประกาศข่าว',      instruction: 'Speak like a serious Thai news anchor — clear, authoritative, and very formal.' },
+  { id: 'cute',       label: '🐱 น่ารักมาก',          instruction: 'Speak in an extremely cute, bubbly, and sweet tone, like an anime character.' },
 ];
+
+/**
+ * สุ่ม voice + persona combination (10 × 30 = 300 แบบ)
+ */
+export function randomGeminiCombo() {
+  const voice   = GEMINI_VOICES[Math.floor(Math.random() * GEMINI_VOICES.length)];
+  const persona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)];
+  return { voice: voice.name, persona: persona.instruction, voiceObj: voice, personaObj: persona };
+}
 
 // ===== Google Cloud TTS voices =====
 export const GOOGLE_THAI_VOICES = [

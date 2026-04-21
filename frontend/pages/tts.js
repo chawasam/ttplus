@@ -6,7 +6,7 @@ import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import {
   configureTTS, speak, onVoicesReady,
   GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
-  GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
+  GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey, randomGeminiCombo,
 } from '../lib/tts';
 import toast from 'react-hot-toast';
 import { showError } from '../lib/errorHandler';
@@ -251,14 +251,14 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 ✨ Gemini TTS
-                <span className="text-xs font-normal text-purple-400 ml-2">30 voices × 10 personas</span>
+                <span className="text-xs font-normal text-purple-400 ml-2">10 × 30 = 300 เสียง</span>
               </h2>
               {geminiKey
                 ? <span className="text-xs text-purple-400 font-semibold">✓ Priority 1</span>
                 : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
             </div>
             <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ใช้ Google AI Studio key (ฟรี) — เสียงดีที่สุด รองรับหลาย persona
+              ใช้ Google AI Studio key (ฟรี) — ถ้า token หมดจะ fallback → Google Cloud → Web Speech อัตโนมัติ
             </p>
 
             {/* Gemini API key */}
@@ -341,6 +341,23 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 ))}
               </div>
             </div>
+
+            {/* ปุ่มสุ่ม 300 combo */}
+            <button
+              onClick={() => {
+                const combo = randomGeminiCombo();
+                setGeminiVoice(combo.voice);
+                setGeminiPersona(combo.persona);
+                localStorage.setItem('ttplus_gemini_voice', combo.voice);
+                localStorage.setItem('ttplus_gemini_persona', combo.persona);
+                configureTTS({ geminiVoice: combo.voice, geminiPersona: combo.persona });
+                toast.success(`🎲 สุ่มได้: ${combo.voice} + ${combo.personaObj.label}`);
+              }}
+              className={clsx('w-full py-2 rounded-lg text-xs font-semibold border transition mb-2',
+                isDark ? 'border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-400'
+                       : 'border-gray-200 text-gray-500 hover:border-purple-400 hover:text-purple-500')}>
+              🎲 สุ่ม 300 combo
+            </button>
 
             {/* ทดสอบ */}
             <button
