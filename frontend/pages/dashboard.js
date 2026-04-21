@@ -110,10 +110,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     });
     socket.on('gift',     (data) => { addEvent(sanitizeEvent(data)); });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
-    socket.on('follow',   (data) => {
-      const s = sanitizeEvent(data); addEvent(s);
-      toast(`➕ ${s.nickname || s.uniqueId} ติดตามแล้ว!`, { icon: '🎉' });
-    });
+    socket.on('follow',   (data) => { const s = sanitizeEvent(data); addEvent(s); });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
     socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));
   }, [addEvent]);
