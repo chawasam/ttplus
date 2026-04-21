@@ -19,7 +19,10 @@ export default function GoalWidget() {
     setStyles(s);
 
     if (params.get('target')) setTarget(Math.max(1, +params.get('target')));
-    if (params.get('label'))  setLabel(decodeURIComponent(params.get('label')).slice(0, 80));
+    if (params.get('label'))  {
+      try { setLabel(decodeURIComponent(params.get('label')).slice(0, 80)); }
+      catch { setLabel('Goal'); }
+    }
 
     if (isPreview) { setCurrent(65); return; }
 

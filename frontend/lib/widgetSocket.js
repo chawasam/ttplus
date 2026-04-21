@@ -5,7 +5,7 @@
 import { io } from 'socket.io-client';
 
 const BACKEND_URL    = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-const WIDGET_TOKEN_RE = /^[a-f0-9]{64}$/;
+const WIDGET_TOKEN_RE = /^[a-f0-9]{64}$/i;
 
 /**
  * สร้าง Socket.io connection สำหรับ widget
@@ -40,6 +40,21 @@ export function createWidgetSocket(widgetToken, handlers = {}) {
   // ถ้า token หมดอายุหรือ invalid → disconnect
   socket.on('widget_error', () => {
     socket.disconnect();
+  });
+
+  // socket-level error (network, server crash ฯลฯ)
+  socket.on('error', (err) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[widgetSocket] socket error:', err?.message || err);
+    }
+    socket.disconnect();
+  });
+
+  // connect_error (ติดต่อ backend ไม่ได้)
+  socket.on('connect_error', (err) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[widgetSocket] connect_error:', err?.message);
+    }
   });
 
   // Register event handlers ที่ส่งมา

@@ -1,14 +1,20 @@
 // widget/alert.js — Gift Alert Overlay สำหรับ OBS (พื้นหลังโปร่งใส)
 // OBS Size แนะนำ: 400 x 150
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function AlertWidget() {
-  const [alert, setAlert]   = useState(null);
+  const [alert, setAlert]     = useState(null);
   const [visible, setVisible] = useState(false);
   const [styles, setStyles]   = useState(null);
+  const timersRef = useRef([]);
+
+  // ล้าง timer ทั้งหมดเมื่อ unmount
+  useEffect(() => {
+    return () => { timersRef.current.forEach(id => clearTimeout(id)); };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -34,10 +40,12 @@ export default function AlertWidget() {
   function showAlert(data) {
     setAlert(data);
     setVisible(true);
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       setVisible(false);
-      setTimeout(() => setAlert(null), 500);
+      const t2 = setTimeout(() => setAlert(null), 500);
+      timersRef.current.push(t2);
     }, data.alertType === 'follow' ? 4000 : 5000);
+    timersRef.current.push(t1);
   }
 
   if (!alert || !styles) return <div style={{ background: 'transparent' }} />;

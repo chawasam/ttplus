@@ -54,7 +54,7 @@ const LiveFeed = memo(function LiveFeed({ events = [], theme }) {
           reversed.map((event, idx) => {
             const style = TYPE_COLORS[event.type] || TYPE_COLORS.chat;
             return (
-              <div key={idx} className={clsx('flex items-start gap-2 p-2 rounded-lg animate-slide-in-up', style.bg)}>
+              <div key={`${event.type}_${event.timestamp || idx}_${event.uniqueId || idx}`} className={clsx('flex items-start gap-2 p-2 rounded-lg animate-slide-in-up', style.bg)}>
                 <span className="text-base mt-0.5">{style.label}</span>
                 <div className="flex-1 min-w-0">
                   <span className={clsx('font-semibold text-xs', style.text)}>

@@ -27,16 +27,20 @@ function enqueue(collection, doc) {
   if (queues[collection].length >= MAX_QUEUE_SIZE) flushQueue(collection);
 }
 
-// Flush หนึ่ง collection ด้วย Firestore batch
+// Flush หนึ่ง collection ด้วย Firestore batch (split ทุก 500 ตาม Firestore limit)
 async function flushQueue(collection) {
   const items = queues[collection].splice(0); // ดึงออกทั้งหมด
   if (items.length === 0) return;
   try {
-    const db = admin.firestore();
-    const batch = db.batch();
+    const db  = admin.firestore();
     const col = db.collection(collection);
-    items.forEach(item => batch.set(col.doc(), item));
-    await batch.commit();
+    // Firestore batch limit = 500 operations
+    for (let i = 0; i < items.length; i += 500) {
+      const chunk = items.slice(i, i + 500);
+      const batch = db.batch();
+      chunk.forEach(item => batch.set(col.doc(), item));
+      await batch.commit();
+    }
   } catch (err) {
     console.error(`[Logger] flush ${collection} failed:`, err.code || err.message);
     // ไม่ re-enqueue เพื่อป้องกัน infinite loop; log หายบางส่วนได้ในกรณีนี้

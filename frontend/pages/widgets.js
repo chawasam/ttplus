@@ -42,9 +42,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
     setBaseUrl(window.location.origin);
     if (authLoading) return;
 
+    let mounted = true;
+
     if (user) {
       // Connect socket for real-time style push
       user.getIdToken().then(token => {
+        if (!mounted) return;
         const socket = connectSocket(token);
         socketRef.current = socket;
       });
@@ -58,6 +61,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
             s = res.data.settings;
             setCachedSettings(s);
           }
+          if (!mounted) return;
           if (s?.widgetStyles) {
             setStyles(prev => {
               const merged = { ...prev };
@@ -70,7 +74,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
         } catch (err) {
           if (process.env.NODE_ENV !== 'production') console.error('[Widgets] settings load failed:', err?.message);
         }
-        await fetchWidgetToken(user); // ส่ง user โดยตรง ไม่ใช่ state
+        if (mounted) await fetchWidgetToken(user);
       })();
     } else {
       // Not logged in — no socket needed on widgets page
@@ -78,6 +82,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
     }
 
     return () => {
+      mounted = false;
       // ไม่ disconnect socket ที่นี่ เพราะ dashboard อาจยังใช้อยู่
     };
   }, [user, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps

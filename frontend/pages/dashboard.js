@@ -24,7 +24,7 @@ function loadUsernameHistory() {
 function saveUsernameHistory(username, current) {
   const filtered = current.filter(u => u !== username);
   const next = [username, ...filtered].slice(0, MAX_HISTORY);
-  localStorage.setItem(USERNAME_HISTORY_KEY, JSON.stringify(next));
+  try { localStorage.setItem(USERNAME_HISTORY_KEY, JSON.stringify(next)); } catch { /* quota full */ }
   return next;
 }
 
@@ -271,7 +271,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
               <div className="flex items-center gap-2">
                 {/* Profile picture */}
                 {user.photoURL ? (
-                  <img src={user.photoURL} alt="profile" className="w-7 h-7 rounded-full object-cover border border-gray-600" referrerPolicy="no-referrer" />
+                  <img src={user.photoURL} alt="profile" className="w-7 h-7 rounded-full object-cover border border-gray-600" referrerPolicy="no-referrer" onError={e => { e.target.style.display = 'none'; }} />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center text-white text-xs font-bold">
                     {(user.displayName || user.email || 'U')[0].toUpperCase()}

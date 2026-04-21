@@ -163,7 +163,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
 async function stopConnection(userId) {
   const conn = activeConnections.get(userId);
   if (!conn) return;
-  try { conn.connection.disconnect(); } catch { /* ignore */ }
+  try { conn.connection.disconnect(); } catch (e) { console.warn('[TikTok] disconnect error:', e?.message); }
   activeConnections.delete(userId);
   await logSession({ userId, tiktokUsername: conn.tiktokUsername, action: 'manual_disconnect' });
 }

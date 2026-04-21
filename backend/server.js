@@ -131,7 +131,7 @@ app.post('/api/widget-token', verifyToken, async (req, res) => {
     const userDoc = await admin.firestore().collection('user_settings').doc(uid).get();
     if (userDoc.exists) {
       const existing = userDoc.data()?.widgetToken;
-      if (existing && /^[a-f0-9]{64}$/.test(existing)) {
+      if (existing && /^[a-f0-9]{64}$/i.test(existing)) {
         registerToken(existing, uid);
         return res.json({ token: existing });
       }
@@ -264,7 +264,7 @@ io.on('connection', (socket) => {
     }
 
     const { widgetToken } = data || {};
-    if (!widgetToken || !/^[a-f0-9]{64}$/.test(widgetToken)) {
+    if (!widgetToken || !/^[a-f0-9]{64}$/i.test(widgetToken)) {
       socket.emit('widget_error', { error: 'Invalid token' });
       return;
     }
