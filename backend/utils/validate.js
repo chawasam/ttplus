@@ -21,6 +21,10 @@ function validateSettings(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('Settings must be an object');
   }
+  // ป้องกัน settings ขนาดใหญ่เกินไปเข้า Firestore
+  if (JSON.stringify(raw).length > 50000) {
+    throw new Error('Settings payload too large');
+  }
 
   const allowed = {};
 
@@ -110,7 +114,7 @@ function validateSettings(raw) {
     if (typeof raw.widgetStyles !== 'object' || Array.isArray(raw.widgetStyles)) {
       throw new Error('widgetStyles must be object');
     }
-    const widgetKeys = ['alert', 'chat', 'leaderboard', 'goal', 'viewers', 'coinjar'];
+    const widgetKeys = ['alert', 'chat', 'pinchat', 'leaderboard', 'goal', 'viewers', 'coinjar'];
     const cleanStyles = {};
     const hexRe = /^[0-9a-f]{6}$/i;
 
@@ -151,6 +155,17 @@ function validateSettings(raw) {
         const v = Number(s.br);
         if (isNaN(v) || v < 0 || v > 48) throw new Error(`widgetStyles.${key}.br must be 0-48`);
         clean.br = Math.round(v);
+      }
+      // dir — chat direction (chat widget only)
+      if (s.dir !== undefined) {
+        if (!['up', 'down'].includes(s.dir)) throw new Error(`widgetStyles.${key}.dir must be 'up' or 'down'`);
+        clean.dir = s.dir;
+      }
+      // max — max messages 3-50 (chat widget only)
+      if (s.max !== undefined) {
+        const v = Number(s.max);
+        if (isNaN(v) || v < 3 || v > 50) throw new Error(`widgetStyles.${key}.max must be 3-50`);
+        clean.max = Math.round(v);
       }
 
       cleanStyles[key] = clean;

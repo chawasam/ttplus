@@ -126,8 +126,11 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
       setTotalGifts(c => c + 1);
       const d = s.diamondCount * s.repeatCount;
       setTotalDiamonds(c => c + d);
-      goalCurrentRef.current += d;
-      setGoalCurrent(goalCurrentRef.current);
+      setGoalCurrent(prev => {
+        const next = prev + d;
+        goalCurrentRef.current = next;
+        return next;
+      });
       updateLeaderboard(s, d);
       const qty = s.repeatCount > 1 ? ` ${s.repeatCount} ชิ้น` : '';
       speak(`${s.nickname || s.uniqueId} ส่ง ${s.giftName || 'ของขวัญ'}${qty}`, 'gift');

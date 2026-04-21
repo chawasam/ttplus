@@ -29,8 +29,8 @@ export default function AlertWidget() {
     }
 
     const socket = createWidgetSocket(widgetToken, {
-      gift:   (data) => showAlert({ ...sanitizeEvent(data), alertType: 'gift' }),
-      follow: (data) => showAlert({ ...sanitizeEvent(data), alertType: 'follow' }),
+      gift:   (data) => { if (data) showAlert({ ...sanitizeEvent(data), alertType: 'gift' }); },
+      follow: (data) => { if (data) showAlert({ ...sanitizeEvent(data), alertType: 'follow' }); },
     });
     if (!socket) return;
 

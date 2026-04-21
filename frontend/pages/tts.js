@@ -27,7 +27,13 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
   const [testText, setTestText] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
-  const saveTimerRef = useRef(null);
+  const saveTimerRef  = useRef(null);
+  const mountedRef    = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // โหลด voice list จาก browser
   useEffect(() => {
@@ -85,6 +91,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
     // ยกเลิก timer เดิม — รอหยุดเลื่อนแล้วค่อย save ครั้งเดียว
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
+      if (!mountedRef.current) return;
       setSaving(true);
       try {
         await api.post('/api/settings', {
@@ -99,6 +106,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
             ttsVoice:      next.voice,
           },
         });
+        if (!mountedRef.current) return;
         setCachedSettings({
           ...(getCachedSettings() || {}),
           ttsEnabled:    next.enabled,
@@ -111,9 +119,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
           ttsVoice:      next.voice,
         });
       } catch (err) {
-        showError(err, 'บันทึก TTS ไม่สำเร็จ');
+        if (mountedRef.current) showError(err, 'บันทึก TTS ไม่สำเร็จ');
       } finally {
-        setSaving(false);
+        if (mountedRef.current) setSaving(false);
       }
     }, 600);
   }, [tts, user]);

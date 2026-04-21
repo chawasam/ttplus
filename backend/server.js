@@ -15,7 +15,7 @@ const { Server } = require('socket.io');
 const helmet = require('helmet');
 const admin = require('firebase-admin');
 
-const { generalLimiter, connectLimiter, settingsLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
+const { generalLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection } = require('./handlers/tiktok');
@@ -55,7 +55,7 @@ const io = new Server(server, {
   pingTimeout: 30000,
   pingInterval: 10000,
   perMessageDeflate: {
-    threshold: 256,
+    threshold: 1024,
     zlibDeflateOptions: { level: 6 },
     zlibInflateOptions: { chunkSize: 16 * 1024 },
     clientNoContextTakeover: true,
@@ -118,7 +118,7 @@ app.get('/api/csrf-token', verifyToken, (_req, res) => {
   res.json({ token: generateCsrfToken() });
 });
 
-app.post('/api/widget-token', verifyToken, async (req, res) => {
+app.post('/api/widget-token', verifyToken, tokenLimiter, async (req, res) => {
   const uid = req.user.uid;
 
   // Fast path: token อยู่ใน memory cache แล้ว (ไม่ต้องไป Firestore)

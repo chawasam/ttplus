@@ -22,10 +22,13 @@ function getUserColor(id) {
 }
 
 // BroadcastChannel สำหรับส่งข้อความ pin ไปยัง pinchat widget
-let pinChannel = null;
+let pinChannel      = null;
+let pinChannelError = false;
 function getPinChannel() {
+  if (pinChannelError) return null;
   if (!pinChannel && typeof BroadcastChannel !== 'undefined') {
-    try { pinChannel = new BroadcastChannel('ttplus_pinchat'); } catch { /* ไม่รองรับ */ }
+    try { pinChannel = new BroadcastChannel('ttplus_pinchat'); }
+    catch { pinChannelError = true; return null; }
   }
   return pinChannel;
 }

@@ -28,6 +28,14 @@ const settingsLimiter = rateLimit({
   message: { error: 'Too many settings updates.' },
 });
 
+const tokenLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 ชั่วโมง
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many token requests. Try again in 1 hour.' },
+});
+
 // ===== Socket.io Rate Limiter — Per USER (ไม่ใช่ per socket) =====
 // ป้องกันการสร้าง socket ใหม่เพื่อ bypass limit
 const userEventCounts = new Map(); // userId -> { count, resetAt }
@@ -81,7 +89,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 module.exports = {
-  generalLimiter, connectLimiter, settingsLimiter,
+  generalLimiter, connectLimiter, settingsLimiter, tokenLimiter,
   socketRateLimit, socketRateLimitByUser,
   clearSocketLimit, clearUserLimit,
 };
