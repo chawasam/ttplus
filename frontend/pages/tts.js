@@ -216,26 +216,15 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
           {/* สิ่งที่อ่าน */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
-            <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
-              สิริอ่านอะไรบ้าง
-            </h2>
-            <div className="space-y-3">
-              {[
-                { key: 'readChat',   icon: '💬', label: 'Chat',   desc: 'อ่านข้อความ comment จากผู้ชม' },
-                { key: 'readGift',   icon: '🎁', label: 'Gift',   desc: 'ประกาศเมื่อมีคนส่งของขวัญ' },
-                { key: 'readFollow', icon: '➕', label: 'Follow', desc: 'ประกาศเมื่อมีคนติดตาม' },
-              ].map(({ key, icon, label, desc }) => (
-                <div key={key} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{icon}</span>
-                    <div>
-                      <p className={clsx('text-sm font-medium', isDark ? 'text-white' : 'text-gray-900')}>{label}</p>
-                      <p className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>{desc}</p>
-                    </div>
-                  </div>
-                  <Toggle value={tts[key]} onChange={v => handleChange(key, v)} />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💬</span>
+                <div>
+                  <p className={clsx('text-sm font-medium', isDark ? 'text-white' : 'text-gray-900')}>Chat</p>
+                  <p className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>อ่านข้อความ comment จากผู้ชม</p>
                 </div>
-              ))}
+              </div>
+              <Toggle value={tts.readChat} onChange={v => handleChange('readChat', v)} />
             </div>
           </div>
 

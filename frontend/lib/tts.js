@@ -46,7 +46,8 @@ function _next() {
 // ลบ emoji และ symbol ออกจากข้อความก่อนอ่าน
 function _stripEmoji(str) {
   return str
-    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
+    .replace(/\[.*?\]/g, '')                                        // ลบ [ข้อความในวงเล็บเหลี่ยม]
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '') // ลบ emoji
     .replace(/\s{2,}/g, ' ')
     .trim();
 }

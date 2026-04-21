@@ -93,7 +93,7 @@ export default function ChatWidget() {
   const animName = styles.dir === 'up' ? 'fadeDown' : 'fadeUp';
 
   return (
-    <div style={{ background: 'transparent', padding: 10, display: 'flex', flexDirection: 'column', gap: 5, minHeight: 200 }}>
+    <div style={{ background: 'transparent', padding: 10, display: 'flex', flexDirection: 'column', gap: 5, minHeight: 200, maxWidth: 400 }}>
       {messages.map((msg, i) => (
         <div
           key={`${msg.ts}-${i}`}
@@ -109,9 +109,11 @@ export default function ChatWidget() {
             padding:      '6px 10px',
             borderLeft:   `3px solid ${getUserColor(msg.uniqueId)}`,
             cursor:       'pointer',
+            width:        '100%',
+            boxSizing:    'border-box',
           }}
         >
-          <div style={{ flex: 1, wordBreak: 'break-word' }}>
+          <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
             <span style={{ color: getUserColor(msg.uniqueId), fontWeight: 700, fontSize: styles.fs, fontFamily: 'sans-serif' }}>
               {msg.nickname || msg.uniqueId}
             </span>

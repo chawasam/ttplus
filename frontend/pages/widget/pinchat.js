@@ -51,7 +51,7 @@ export default function PinChatWidget() {
             display:      'flex',
             alignItems:   'flex-start',
             gap:          8,
-            animation:    'pinIn 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+            animation:    'pinDrop 0.7s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.7s infinite',
             position:     'relative',
           }}
         >
@@ -109,9 +109,16 @@ export default function PinChatWidget() {
         </div>
       )}
       <style>{`
-        @keyframes pinIn {
-          from { opacity:0; transform: scale(0.95) translateY(-4px); }
-          to   { opacity:1; transform: scale(1)    translateY(0);    }
+        @keyframes pinDrop {
+          0%   { opacity:0; transform: translateY(-48px) scale(0.9); }
+          55%  { opacity:1; transform: translateY(8px)   scale(1.02); }
+          72%  { transform: translateY(-4px) scale(0.99); }
+          86%  { transform: translateY(3px)  scale(1.005); }
+          100% { transform: translateY(0)    scale(1); }
+        }
+        @keyframes pinFloat {
+          0%,100% { transform: translateY(0px); }
+          50%     { transform: translateY(-5px); }
         }
       `}</style>
     </div>
