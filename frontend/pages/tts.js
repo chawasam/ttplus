@@ -1,5 +1,5 @@
 // pages/tts.js — TTS (สิริ) หน้าตั้งค่าเสียงอ่านออกเสียง
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
@@ -27,6 +27,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
   const [testText, setTestText] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
+  const saveTimerRef = useRef(null);
 
   // โหลด voice list จาก browser
   useEffect(() => {
@@ -74,16 +75,32 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
     }
   }, []);
 
-  // เปลี่ยนค่า → อัปเดต state + lib + บันทึก API ทันที
-  const handleChange = useCallback(async (key, val) => {
+  // เปลี่ยนค่า → อัปเดต state + lib ทันที, debounce บันทึก API 600ms
+  const handleChange = useCallback((key, val) => {
     if (!user) { setShowLoginModal(true); return; }
     const next = { ...tts, [key]: val };
     setTts(next);
     configureTTS(next);
-    setSaving(true);
-    try {
-      await api.post('/api/settings', {
-        settings: {
+
+    // ยกเลิก timer เดิม — รอหยุดเลื่อนแล้วค่อย save ครั้งเดียว
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      setSaving(true);
+      try {
+        await api.post('/api/settings', {
+          settings: {
+            ttsEnabled:    next.enabled,
+            ttsReadChat:   next.readChat,
+            ttsReadGift:   next.readGift,
+            ttsReadFollow: next.readFollow,
+            ttsRate:       next.rate,
+            ttsPitch:      next.pitch,
+            ttsVolume:     next.volume,
+            ttsVoice:      next.voice,
+          },
+        });
+        setCachedSettings({
+          ...(getCachedSettings() || {}),
           ttsEnabled:    next.enabled,
           ttsReadChat:   next.readChat,
           ttsReadGift:   next.readGift,
@@ -92,26 +109,13 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
           ttsPitch:      next.pitch,
           ttsVolume:     next.volume,
           ttsVoice:      next.voice,
-        },
-      });
-      // อัปเดต cache ทันที — ไม่ให้โหลดค่าเก่าตอนสลับกลับมาหน้านี้
-      // ครอบ case ที่ cache เป็น null ด้วย (merge กับ {} ถ้าไม่มี cache)
-      setCachedSettings({
-        ...(getCachedSettings() || {}),
-        ttsEnabled:    next.enabled,
-        ttsReadChat:   next.readChat,
-        ttsReadGift:   next.readGift,
-        ttsReadFollow: next.readFollow,
-        ttsRate:       next.rate,
-        ttsPitch:      next.pitch,
-        ttsVolume:     next.volume,
-        ttsVoice:      next.voice,
-      });
-    } catch (err) {
-      showError(err, 'บันทึก TTS ไม่สำเร็จ');
-    } finally {
-      setSaving(false);
-    }
+        });
+      } catch (err) {
+        showError(err, 'บันทึก TTS ไม่สำเร็จ');
+      } finally {
+        setSaving(false);
+      }
+    }, 600);
   }, [tts, user]);
 
   const isDark = theme === 'dark';
