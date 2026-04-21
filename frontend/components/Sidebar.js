@@ -1,19 +1,15 @@
-// Sidebar.js — Navigation sidebar
-import Link from 'next/link';
-import { useRouter } from 'next/router';
+// Sidebar.js — Navigation sidebar (SPA mode — ไม่ navigate เปลี่ยนหน้า)
 import clsx from 'clsx';
 
 const navItems = [
-  { href: '/dashboard', icon: '📊',  label: 'Dashboard'   },
-  { href: '/tts',       icon: '🔊',  label: 'TTS (สิริ)'  },
-  { href: '/widgets',   icon: '🎛️', label: 'Widgets'     },
-  { href: '/settings',  icon: '⚙️', label: 'Settings'    },
-  { href: '/donate',    icon: '❤️', label: 'Donate'      },
+  { id: 'dashboard', icon: '📊',  label: 'Dashboard'   },
+  { id: 'tts',       icon: '🔊',  label: 'TTS (สิริ)'  },
+  { id: 'widgets',   icon: '🎛️', label: 'Widgets'     },
+  { id: 'settings',  icon: '⚙️', label: 'Settings'    },
+  { id: 'donate',    icon: '❤️', label: 'Donate'      },
 ];
 
-export default function Sidebar({ theme, user }) {
-  const router = useRouter();
-
+export default function Sidebar({ theme, user, activePage, setActivePage }) {
   return (
     <aside className={clsx(
       'flex flex-col w-16 md:w-56 h-screen fixed left-0 top-0 z-40 border-r transition-all',
@@ -35,22 +31,25 @@ export default function Sidebar({ theme, user }) {
 
       {/* Nav */}
       <nav className="flex-1 py-4 space-y-1 px-2">
-        {navItems.map(({ href, icon, label }) => {
-          const active = router.pathname === href;
+        {navItems.map(({ id, icon, label }) => {
+          const active = activePage === id;
           return (
-            <Link key={href} href={href}>
-              <div className={clsx(
-                'flex items-center gap-3 px-2 md:px-3 py-2.5 rounded-lg cursor-pointer transition',
+            <button
+              key={id}
+              onClick={() => setActivePage?.(id)}
+              className={clsx(
+                'w-full flex items-center gap-3 px-2 md:px-3 py-2.5 rounded-lg transition text-left',
                 active
                   ? 'bg-brand-500 text-white'
                   : theme === 'dark'
                     ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )}>
-                <span className="text-lg">{icon}</span>
-                <span className="hidden md:block text-sm font-medium">{label}</span>
-              </div>
-            </Link>
+              )}
+              aria-current={active ? 'page' : undefined}
+            >
+              <span className="text-lg">{icon}</span>
+              <span className="hidden md:block text-sm font-medium">{label}</span>
+            </button>
           );
         })}
       </nav>
@@ -62,7 +61,13 @@ export default function Sidebar({ theme, user }) {
           theme === 'dark' ? 'border-gray-800' : 'border-gray-200'
         )}>
           {user.photoURL && (
-            <img src={user.photoURL} alt="avatar" referrerPolicy="no-referrer" className="w-7 h-7 rounded-full flex-shrink-0" />
+            <img
+              src={user.photoURL}
+              alt="avatar"
+              referrerPolicy="no-referrer"
+              className="w-7 h-7 rounded-full flex-shrink-0"
+              onError={e => { e.target.style.display = 'none'; }}
+            />
           )}
           <div className="hidden md:block overflow-hidden">
             <p className={clsx('text-xs font-medium truncate', theme === 'dark' ? 'text-white' : 'text-gray-900')}>

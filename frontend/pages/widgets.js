@@ -22,7 +22,7 @@ const WIDGETS = [
 ];
 
 // user, authLoading มาจาก _app.js
-export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
+export default function WidgetsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
   const [widgetToken, setWidgetToken] = useState('');
   const [tokenLoading, setTokenLoading] = useState(false);
   const [baseUrl, setBaseUrl]         = useState('');
@@ -179,7 +179,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading }) {
 
   return (
     <div className={clsx('min-h-screen', bg)}>
-      <Sidebar theme={theme} user={user} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
 
       <main className="ml-16 md:ml-56 p-4 md:p-6">
 

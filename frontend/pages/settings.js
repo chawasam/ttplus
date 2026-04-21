@@ -8,7 +8,7 @@ import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
 import { showError } from '../lib/errorHandler';
 
-export default function SettingsPage({ theme, setTheme, user, authLoading }) {
+export default function SettingsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
   const [saving, setSaving]       = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -82,7 +82,7 @@ export default function SettingsPage({ theme, setTheme, user, authLoading }) {
 
   return (
     <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
       <main className="ml-16 md:ml-56 p-4 md:p-6 max-w-2xl">
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>⚙️ Settings</h1>

@@ -2,13 +2,13 @@
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
 
-export default function DonatePage({ theme, setTheme, user }) {
+export default function DonatePage({ theme, setTheme, user, activePage, setActivePage }) {
   const isDark = theme === 'dark';
   const card = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
 
   return (
     <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
       <main className="ml-16 md:ml-56 p-4 md:p-6 max-w-xl">
 
         {/* Header */}

@@ -20,7 +20,7 @@ const DEFAULT_TTS = {
   voice:      '',
 };
 
-export default function TtsPage({ theme, setTheme, user, authLoading }) {
+export default function TtsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
   const [tts, setTts]           = useState(DEFAULT_TTS);
   const [voices, setVoices]     = useState([]);
   const [saving, setSaving]     = useState(false);
@@ -167,7 +167,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
 
   return (
     <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
 
       <main className="ml-16 md:ml-56 p-4 md:p-6 max-w-xl">
 
