@@ -33,6 +33,8 @@ function getPinChannel() {
   return pinChannel;
 }
 
+let _msgSeq = 0; // counter สำหรับ unique key — ไม่เปลี่ยนเมื่อ slice
+
 export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
   const [styles, setStyles]     = useState(null);
@@ -54,9 +56,9 @@ export default function ChatWidget() {
 
     if (isPreview) {
       const preview = [
-        { uniqueId: 'u1', nickname: 'น้องแมว',    comment: 'สวัสดีครับ! 🐱',    ts: Date.now() - 5000 },
-        { uniqueId: 'u2', nickname: 'TTplusFan',   comment: 'ไลฟ์สนุกมากเลย 🎉', ts: Date.now() - 3000 },
-        { uniqueId: 'u3', nickname: 'Hello_World', comment: '555555 ขำมากก',      ts: Date.now() - 1000 },
+        { _key: ++_msgSeq, uniqueId: 'u1', nickname: 'น้องแมว',    comment: 'สวัสดีครับ! 🐱',    ts: Date.now() - 5000 },
+        { _key: ++_msgSeq, uniqueId: 'u2', nickname: 'TTplusFan',   comment: 'ไลฟ์สนุกมากเลย 🎉', ts: Date.now() - 3000 },
+        { _key: ++_msgSeq, uniqueId: 'u3', nickname: 'Hello_World', comment: '555555 ขำมากก',      ts: Date.now() - 1000 },
       ];
       setMessages(preview);
       return;
@@ -66,7 +68,7 @@ export default function ChatWidget() {
       chat: (data) => {
         const safe = sanitizeEvent(data);
         const cur = stylesRef.current || s;
-        addMsg({ ...safe, ts: Date.now() }, cur.max);
+        addMsg({ ...safe, _key: ++_msgSeq, ts: Date.now() }, cur.max);
       },
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'chat') return;
@@ -119,9 +121,9 @@ export default function ChatWidget() {
         scrollbarWidth: 'none',
       }}
     >
-      {displayMsgs.map((msg, i) => (
+      {displayMsgs.map((msg) => (
         <div
-          key={`${msg.ts}-${i}`}
+          key={msg._key}
           onClick={() => pinMessage(msg)}
           title="คลิกเพื่อ Pin ข้อความนี้"
           style={{
