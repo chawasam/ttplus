@@ -18,7 +18,7 @@ const admin = require('firebase-admin');
 const { generalLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
-const { startConnection, stopConnection } = require('./handlers/tiktok');
+const { startConnection, stopConnection, hasConnection } = require('./handlers/tiktok');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
 const { generateToken, registerToken, verifyTokenFromMemory, getTokenForUid } = require('./utils/widgetToken');
@@ -298,6 +298,26 @@ io.on('connection', (socket) => {
 
     socket.join(`widget_${userId}`);
     socket.emit('widget_joined', { success: true });
+
+    // Auto-connect TikTok live ถ้ายังไม่มี connection อยู่
+    // ทำให้ widget ดึงแชทสดได้โดยไม่ต้องมี dashboard เปิดค้างไว้
+    if (!hasConnection(userId)) {
+      try {
+        const settingsDoc = await admin.firestore().collection('settings').doc(userId).get();
+        const savedUsername = settingsDoc.exists ? settingsDoc.data()?.tiktokUsername : null;
+        if (savedUsername && typeof savedUsername === 'string' && savedUsername.trim()) {
+          const clean = savedUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
+          if (clean) {
+            // socketId = null → events จะ broadcast เฉพาะ widget room
+            startConnection(userId, clean, io, null).catch((e) => {
+              console.warn('[Widget] auto-connect failed for', clean, e?.message);
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[Widget] auto-connect settings read failed:', e?.message);
+      }
+    }
   });
 
   socket.on('disconnect', () => {

@@ -47,28 +47,33 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
 
     await logSession({ userId, tiktokUsername, action: 'connect', roomId: state.roomId });
 
-    io.to(socketId).emit('connection_status', {
-      status: 'connected',
-      tiktokUsername,
-      roomId: state.roomId,
-    });
+    if (socketId) {
+      io.to(socketId).emit('connection_status', {
+        status: 'connected',
+        tiktokUsername,
+        roomId: state.roomId,
+      });
+    }
 
     // ===== Event Listeners (ทุก event sanitize ก่อนส่ง) =====
     // emit ไปทั้ง dashboard socket (socketId) และ widget room (widget_${userId})
+    // socketId อาจเป็น null ได้ เมื่อ widget auto-connect โดยไม่มี dashboard เปิดค้าง
     const widgetRoom = `widget_${userId}`;
+    const emitAll = (event, payload) => {
+      if (socketId) io.to(socketId).emit(event, payload);
+      io.to(widgetRoom).emit(event, payload);
+    };
 
     connection.on('chat', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      const payload = {
+      emitAll('chat', {
         type: 'chat',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         comment:           safe.comment,
         timestamp:         Date.now(),
-      };
-      io.to(socketId).emit('chat', payload);
-      io.to(widgetRoom).emit('chat', payload);
+      });
     });
 
     connection.on('gift', (data) => {
@@ -76,83 +81,70 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       if (data.giftType === 1 && !data.repeatEnd) return;
 
       const safe = sanitizeTikTokEvent(data);
-      const repeatCount  = Math.min(Number(data.repeatCount)  || 1, 9999);
-      const diamondCount = Math.max(0, Number(data.diamondCount) || 0);
-
-      const payload = {
+      emitAll('gift', {
         type: 'gift',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         giftName:          safe.giftName,
         giftPictureUrl:    safe.giftPictureUrl,
-        diamondCount,
-        repeatCount,
+        diamondCount:      Math.max(0, Number(data.diamondCount) || 0),
+        repeatCount:       Math.min(Number(data.repeatCount) || 1, 9999),
         timestamp:         Date.now(),
-      };
-      io.to(socketId).emit('gift', payload);
-      io.to(widgetRoom).emit('gift', payload);
+      });
     });
 
     connection.on('like', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      const payload = {
+      emitAll('like', {
         type: 'like',
         uniqueId:       safe.uniqueId,
         nickname:       safe.nickname,
         likeCount:      Math.max(0, Number(data.likeCount) || 0),
         totalLikeCount: Math.max(0, Number(data.totalLikeCount) || 0),
         timestamp:      Date.now(),
-      };
-      io.to(socketId).emit('like', payload);
-      io.to(widgetRoom).emit('like', payload);
+      });
     });
 
     connection.on('follow', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      const payload = {
+      emitAll('follow', {
         type: 'follow',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         timestamp:         Date.now(),
-      };
-      io.to(socketId).emit('follow', payload);
-      io.to(widgetRoom).emit('follow', payload);
+      });
     });
 
     connection.on('share', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      const payload = {
+      emitAll('share', {
         type: 'share',
         uniqueId:  safe.uniqueId,
         nickname:  safe.nickname,
         timestamp: Date.now(),
-      };
-      io.to(socketId).emit('share', payload);
-      io.to(widgetRoom).emit('share', payload);
+      });
     });
 
     connection.on('roomUser', (data) => {
-      const payload = {
+      emitAll('roomUser', {
         viewerCount: Math.max(0, Number(data.viewerCount) || 0),
         timestamp:   Date.now(),
-      };
-      io.to(socketId).emit('roomUser', payload);
-      io.to(widgetRoom).emit('roomUser', payload);
+      });
     });
 
     connection.on('disconnected', async () => {
       activeConnections.delete(userId);
       await logSession({ userId, tiktokUsername, action: 'disconnect' });
-      io.to(socketId).emit('connection_status', { status: 'disconnected', tiktokUsername });
+      if (socketId) io.to(socketId).emit('connection_status', { status: 'disconnected', tiktokUsername });
+      io.to(widgetRoom).emit('connection_status', { status: 'disconnected', tiktokUsername });
     });
 
     connection.on('error', async (err) => {
-      // Log จริง server-side, ส่งข้อความกว้างๆ ไป client
       console.error(`[TikTok] Error for @${tiktokUsername}:`, err.message);
       await logError(userId, tiktokUsername, err.message);
-      io.to(socketId).emit('connection_error', { message: 'Connection error. Please reconnect.' });
+      if (socketId) io.to(socketId).emit('connection_error', { message: 'Connection error. Please reconnect.' });
     });
 
   } catch (err) {
@@ -169,7 +161,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       userMessage = `ไม่พบ username @${tiktokUsername}`;
     }
 
-    io.to(socketId).emit('connection_status', { status: 'error', message: userMessage });
+    if (socketId) io.to(socketId).emit('connection_status', { status: 'error', message: userMessage });
     throw err;
   }
 }
