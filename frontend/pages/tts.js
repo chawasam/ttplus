@@ -94,6 +94,21 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
           ttsVoice:      next.voice,
         },
       });
+      // อัปเดต cache เพื่อไม่ให้โหลดค่าเก่าตอนสลับกลับมาหน้านี้
+      const cached = getCachedSettings();
+      if (cached) {
+        setCachedSettings({
+          ...cached,
+          ttsEnabled:    next.enabled,
+          ttsReadChat:   next.readChat,
+          ttsReadGift:   next.readGift,
+          ttsReadFollow: next.readFollow,
+          ttsRate:       next.rate,
+          ttsPitch:      next.pitch,
+          ttsVolume:     next.volume,
+          ttsVoice:      next.voice,
+        });
+      }
     } catch (err) {
       showError(err, 'บันทึก TTS ไม่สำเร็จ');
     } finally {
