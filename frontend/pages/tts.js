@@ -127,38 +127,18 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     }, 600);
   }, [tts, user]);
 
-  // หาเสียงไทยตัวแรกจาก voices list
-  const thaiVoice = voices.find(v => v.lang?.startsWith('th')) || null;
+  // เสียงไทยทั้งหมด + เรียง: Neural/Online ขึ้นก่อน
+  const thaiVoices = voices
+    .filter(v => v.lang?.startsWith('th'))
+    .sort((a, b) => {
+      const score = v => (v.localService ? 0 : 1); // online/neural ขึ้นก่อน
+      return score(b) - score(a);
+    });
 
-  // สลับ mode — ถ้าไปหน้าง่ายให้ reset rate/pitch + ใช้เสียงไทย
+  // สลับ mode — ถ้าไปหน้าง่ายให้ reset rate/pitch
   const switchMode = useCallback((toSimple) => {
     setSimpleMode(toSimple);
-    if (toSimple) {
-      const thai = voices.find(v => v.lang?.startsWith('th'));
-      const patch = { rate: 1.0, pitch: 1.0, voice: thai ? thai.name : '' };
-      const next = { ...tts, ...patch };
-      setTts(next);
-      configureTTS(next);
-      // save
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(async () => {
-        if (!mountedRef.current) return;
-        try {
-          await api.post('/api/settings', { settings: {
-            ttsEnabled: next.enabled, ttsReadChat: next.readChat, ttsReadGift: next.readGift,
-            ttsReadFollow: next.readFollow, ttsRate: next.rate, ttsPitch: next.pitch,
-            ttsVolume: next.volume, ttsVoice: next.voice,
-          }});
-          if (!mountedRef.current) return;
-          setCachedSettings({ ...(getCachedSettings() || {}),
-            ttsEnabled: next.enabled, ttsReadChat: next.readChat, ttsReadGift: next.readGift,
-            ttsReadFollow: next.readFollow, ttsRate: next.rate, ttsPitch: next.pitch,
-            ttsVolume: next.volume, ttsVoice: next.voice,
-          });
-        } catch (err) { if (mountedRef.current) showError(err, 'บันทึก TTS ไม่สำเร็จ'); }
-      }, 600);
-    }
-  }, [tts, voices, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const isDark = theme === 'dark';
   const card   = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
@@ -247,39 +227,43 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               /* ===== Mode ง่าย ===== */
               <div className="space-y-4">
 
-                {/* เสียงภาษาไทย */}
-                <div className={clsx('flex items-center gap-3 p-3 rounded-xl border',
-                  isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
-                  <span className="text-xl">🇹🇭</span>
-                  <div>
-                    <p className={clsx('text-sm font-semibold', isDark ? 'text-white' : 'text-gray-900')}>
-                      เสียงภาษาไทย
-                    </p>
-                    <p className={clsx('text-xs', isDark ? 'text-gray-400' : 'text-gray-500')}>
-                      {thaiVoice ? thaiVoice.name : 'ใช้เสียงเริ่มต้นของระบบ'}
-                    </p>
-                  </div>
-                  <span className="ml-auto text-xs text-green-400 font-semibold">✓ ใช้งาน</span>
-                </div>
-
-                {/* ความเร็ว + ระดับเสียง — fixed */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className={clsx('flex items-center gap-2 p-3 rounded-xl border',
-                    isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
-                    <span className="text-lg">🐢</span>
-                    <div>
-                      <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>ความเร็ว</p>
-                      <p className="text-xs text-brand-400 font-bold">x1.0</p>
+                {/* เสียงภาษาไทย — แสดงทั้งหมดให้เลือก */}
+                <div>
+                  <Label isDark={isDark}>เสียงภาษาไทย ({thaiVoices.length} เสียงในเครื่องคุณ)</Label>
+                  {thaiVoices.length === 0 ? (
+                    <div className={clsx('p-3 rounded-xl border text-xs', isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500')}>
+                      ไม่พบเสียงไทยในเครื่อง — ใช้เสียงเริ่มต้นของระบบ
                     </div>
-                  </div>
-                  <div className={clsx('flex items-center gap-2 p-3 rounded-xl border',
-                    isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
-                    <span className="text-lg">🎵</span>
-                    <div>
-                      <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>ระดับเสียง</p>
-                      <p className="text-xs text-brand-400 font-bold">1.0</p>
+                  ) : (
+                    <div className="space-y-1.5 mt-1">
+                      {thaiVoices.map(v => {
+                        const isSelected = tts.voice === v.name || (!tts.voice && v === thaiVoices[0]);
+                        const isOnline   = !v.localService;
+                        return (
+                          <button
+                            key={v.name}
+                            onClick={() => handleChange('voice', v.name)}
+                            className={clsx(
+                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition',
+                              isSelected
+                                ? 'bg-brand-500 border-brand-500 text-white'
+                                : isDark
+                                  ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                            )}>
+                            <span className="text-base flex-shrink-0">{isOnline ? '🌐' : '💻'}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate">{v.name}</p>
+                              <p className={clsx('text-xs', isSelected ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
+                                {isOnline ? 'Online · Neural (เสียงดีกว่า)' : 'Offline · ในเครื่อง'}
+                              </p>
+                            </div>
+                            {isSelected && <span className="text-xs font-bold flex-shrink-0">✓</span>}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* ความดัง — 3 preset */}
