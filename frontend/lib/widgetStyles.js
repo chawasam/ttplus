@@ -3,7 +3,8 @@
 // ค่า default ของแต่ละ widget (hex ไม่มี #)
 export const WIDGET_DEFAULTS = {
   alert:       { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16 },
-  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10 },
+  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12 },
+  pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12 },
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
@@ -44,13 +45,19 @@ export function parseWidgetStyles(params, widgetId) {
   const fs  = clamp(parseInt(params.get('fs')  ?? d.fs),  10, 28);
   const br  = clamp(parseInt(params.get('br')  ?? d.br),  0,  48);
 
+  // chat-specific params
+  const dir = ['up', 'down'].includes(params.get('dir') || '') ? params.get('dir') : (d.dir || 'down');
+  const max = clamp(parseInt(params.get('max') ?? (d.max ?? 12)), 3, 50);
+
   return {
     bgRgba: hexAlphaToRgba(bg, bga),
     tc:     '#' + tc,
     ac:     '#' + ac,
     fs,
     br,
-    raw:    { bg, bga, tc, ac, fs, br },
+    dir,
+    max,
+    raw:    { bg, bga, tc, ac, fs, br, dir, max },
   };
 }
 
@@ -67,6 +74,9 @@ export function styleToParams(style, widgetId) {
   if (style.ac  !== d.ac)                  p.set('ac',  style.ac);
   if (style.fs  !== d.fs)                  p.set('fs',  style.fs);
   if (style.br  !== d.br)                  p.set('br',  style.br);
+  // chat-specific
+  if (d.dir !== undefined && style.dir !== d.dir) p.set('dir', style.dir);
+  if (d.max !== undefined && style.max !== d.max) p.set('max', style.max);
   return p.toString();
 }
 

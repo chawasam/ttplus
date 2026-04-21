@@ -6,6 +6,7 @@ import { addHash, stripHash, hexAlphaToRgba, WIDGET_DEFAULTS } from '../lib/widg
 const WIDGET_LABELS = {
   alert:       '🔔 Gift Alert',
   chat:        '💬 Chat Overlay',
+  pinchat:     '📌 Pin Chat',
   leaderboard: '🏆 Leaderboard',
   goal:        '🎯 Goal Bar',
   viewers:     '👥 Viewer Count',
@@ -147,6 +148,51 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
           className="w-full accent-brand-500"
         />
       </div>
+
+      {/* Chat-specific: direction + max messages */}
+      {widgetId === 'chat' && (
+        <>
+          <div className="space-y-2">
+            <span className={label}>ทิศทางแชท (แชทใหม่อยู่ที่ไหน)</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 'down', icon: '⬇️', text: 'ล่างสุด' },
+                { val: 'up',   icon: '⬆️', text: 'บนสุด'  },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('dir', opt.val)}
+                  className={clsx(
+                    'py-2 px-3 rounded-lg text-xs font-semibold transition border',
+                    (style.dir ?? 'down') === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>จำนวนข้อความสูงสุด</span>
+              <span className={clsx('text-xs font-mono', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                {style.max ?? 12} ข้อความ
+              </span>
+            </div>
+            <input type="range" min="3" max="50"
+              value={style.max ?? 12}
+              onChange={e => set('max', +e.target.value)}
+              className="w-full accent-brand-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>น้อย (3)</span><span>เยอะ (50)</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Reset all */}
       <button
