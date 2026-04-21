@@ -16,7 +16,7 @@ export default function DonatePage({ theme, setTheme, user }) {
           <div>
             <h1 className={clsx('text-xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>❤️ สนับสนุน</h1>
             <p className={clsx('text-sm mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>
-              TTplus ฟรี 100% ถ้าชอบช่วยสนับสนุนได้นะครับ 🙏
+              TTplus ฟรี ถ้าชอบช่วยสนับสนุนได้นะครับ 🙏
             </p>
           </div>
           <button onClick={() => setTheme(isDark ? 'light' : 'dark')}
@@ -92,7 +92,7 @@ export default function DonatePage({ theme, setTheme, user }) {
                 </div>
                 <p className="font-bold text-sm" style={{ color: isDark ? '#fff' : '#333' }}>Shopee</p>
                 <p className="text-xs mt-1" style={{ color: isDark ? '#ff8c6b' : '#EE4D2D' }}>
-                  กดลิ้งค์ก่อนซื้อของ<br />ได้ค่าคอมทุกชิ้น 🙏
+                  กดลิ้งค์ก่อนซื้อของ<br />ได้ค่าคอมทุกชิ้น 🙏<br />อย่าลืมกดส่วนลดก่อน!
                 </p>
                 <div className="mt-3 h-px" style={{ background: 'linear-gradient(90deg, #EE4D2D, #ff8c6b, transparent)' }} />
               </div>
