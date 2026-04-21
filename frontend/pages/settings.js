@@ -14,11 +14,6 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   const [loginLoading, setLoginLoading]     = useState(false);
   const [settings, setSettings] = useState({
     tiktokUsername: '',
-    alertSound: true,
-    alertVolume: 80,
-    chatMaxItems: 50,
-    goalTarget: 100,
-    goalType: 'gift',
   });
 
   useEffect(() => {
@@ -105,28 +100,6 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
               ))}
             </div>
           </Section>
-          <Section title="Alert Settings" theme={theme}>
-            <div className="flex items-center justify-between">
-              <Label theme={theme}>เสียง Alert</Label>
-              <Toggle value={settings.alertSound} onChange={v => set('alertSound', v)} />
-            </div>
-            <Label theme={theme}>ความดังเสียง ({settings.alertVolume}%)</Label>
-            <input type="range" min="0" max="100" value={settings.alertVolume} onChange={e => set('alertVolume', +e.target.value)} className="w-full accent-brand-500" />
-          </Section>
-          <Section title="Chat Settings" theme={theme}>
-            <Label theme={theme}>จำนวน comment สูงสุดใน Feed</Label>
-            <input type="number" min="10" max="200" className={inputClass} value={settings.chatMaxItems} onChange={e => set('chatMaxItems', +e.target.value)} />
-          </Section>
-          <Section title="Goal Settings" theme={theme}>
-            <Label theme={theme}>ประเภท Goal</Label>
-            <select className={inputClass} value={settings.goalType} onChange={e => set('goalType', e.target.value)}>
-              <option value="gift">จำนวน Gift</option>
-              <option value="diamond">จำนวน Diamond</option>
-              <option value="follower">จำนวน Follower</option>
-            </select>
-            <Label theme={theme} className="mt-2">เป้าหมาย</Label>
-            <input type="number" min="1" className={inputClass} value={settings.goalTarget} onChange={e => set('goalTarget', +e.target.value)} />
-          </Section>
 
         </div>
         <button onClick={handleSave} disabled={saving}
@@ -165,11 +138,4 @@ function Section({ title, children, theme }) {
 }
 function Label({ children, theme }) {
   return <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>{children}</p>;
-}
-function Toggle({ value, onChange }) {
-  return (
-    <button onClick={() => onChange(!value)} className={clsx('w-10 h-5 rounded-full transition relative', value ? 'bg-brand-500' : 'bg-gray-600')}>
-      <span className={clsx('absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all', value ? 'left-5' : 'left-0.5')} />
-    </button>
-  );
 }
