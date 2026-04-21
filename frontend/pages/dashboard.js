@@ -131,7 +131,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     });
     socket.on('chat',     (data) => {
       const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
-      if (s.comment) speak(`${s.nickname || s.uniqueId} พูดว่า ${s.comment}`, 'chat');
+      if (s.comment) speak(s.comment, 'chat');
     });
     socket.on('gift',     (data) => {
       const s = sanitizeEvent(data); addEvent(s);
@@ -145,13 +145,13 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       });
       updateLeaderboard(s, d);
       const qty = s.repeatCount > 1 ? ` ${s.repeatCount} ชิ้น` : '';
-      speak(`${s.nickname || s.uniqueId} ส่ง ${s.giftName || 'ของขวัญ'}${qty}`, 'gift');
+      speak(`ได้รับ ${s.giftName || 'ของขวัญ'}${qty}`, 'gift');
     });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
     socket.on('follow',   (data) => {
       const s = sanitizeEvent(data); addEvent(s);
       toast(`➕ ${s.nickname || s.uniqueId} ติดตามแล้ว!`, { icon: '🎉' });
-      speak(`${s.nickname || s.uniqueId} ติดตาม`, 'follow');
+      speak('มีคนติดตาม', 'follow');
     });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
     socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));

@@ -42,6 +42,15 @@ function _next() {
   window.speechSynthesis.speak(utt);
 }
 
+// ===== Internal: strip emoji =====
+// ลบ emoji และ symbol ออกจากข้อความก่อนอ่าน
+function _stripEmoji(str) {
+  return str
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 // ===== Public API =====
 
 /**
@@ -69,7 +78,9 @@ export function speak(text, type = null) {
   // กันสแปม: ถ้า queue เต็มแล้ว ให้ทิ้ง
   if (_queue.length >= MAX_QUEUE) return;
 
-  _queue.push(text.slice(0, 200)); // จำกัดความยาวกันพัง
+  const clean = _stripEmoji(text).slice(0, 200);
+  if (!clean) return; // ถ้าเหลือแค่ emoji ล้วนๆ ไม่ต้องอ่าน
+  _queue.push(clean);
   _next();
 }
 
