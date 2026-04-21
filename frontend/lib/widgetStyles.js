@@ -84,3 +84,26 @@ function clamp(n, min, max) {
   if (isNaN(n)) return min;
   return Math.max(min, Math.min(max, n));
 }
+
+/**
+ * แปลง raw style object (จาก style_update socket event) → parsed style
+ * เหมือน parseWidgetStyles แต่รับ object แทน URLSearchParams
+ */
+export function rawToStyle(raw = {}, widgetId) {
+  const d   = WIDGET_DEFAULTS[widgetId] || WIDGET_DEFAULTS.chat;
+  const bg  = /^[0-9a-f]{6}$/i.test(raw.bg  || '') ? raw.bg  : d.bg;
+  const bga = clamp(parseInt(raw.bga  ?? d.bga), 0,  100);
+  const tc  = /^[0-9a-f]{6}$/i.test(raw.tc  || '') ? raw.tc  : d.tc;
+  const ac  = /^[0-9a-f]{6}$/i.test(raw.ac  || '') ? raw.ac  : d.ac;
+  const fs  = clamp(parseInt(raw.fs   ?? d.fs),  10, 28);
+  const br  = clamp(parseInt(raw.br   ?? d.br),  0,  48);
+  const dir = ['up', 'down'].includes(raw.dir || '') ? raw.dir : (d.dir || 'down');
+  const max = clamp(parseInt(raw.max  ?? (d.max ?? 12)), 3, 50);
+  return {
+    bgRgba: hexAlphaToRgba(bg, bga),
+    tc:     '#' + tc,
+    ac:     '#' + ac,
+    fs, br, dir, max,
+    raw:    { bg, bga, tc, ac, fs, br, dir, max },
+  };
+}

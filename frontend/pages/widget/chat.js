@@ -3,7 +3,7 @@
 // คลิกข้อความเพื่อ Pin ไปยัง widget/pinchat ผ่าน BroadcastChannel
 import { useEffect, useState, useRef } from 'react';
 import { sanitizeEvent } from '../../lib/sanitize';
-import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 
 const PALETTE = ['#ff2d62','#ff6b35','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899'];
@@ -68,7 +68,15 @@ export default function ChatWidget() {
     const socket = createWidgetSocket(widgetToken, {
       chat: (data) => {
         const safe = sanitizeEvent(data);
-        addMsg({ ...safe, ts: Date.now() }, s.dir, s.max);
+        // ใช้ stylesRef เพื่อได้ dir/max ล่าสุดเสมอ (แม้ state เปลี่ยนไปแล้ว)
+        const cur = stylesRef.current || s;
+        addMsg({ ...safe, ts: Date.now() }, cur.dir, cur.max);
+      },
+      style_update: ({ widgetId, style }) => {
+        if (widgetId !== 'chat') return;
+        const next = rawToStyle(style, 'chat');
+        stylesRef.current = next;
+        setStyles(next);
       },
     });
     if (!socket) return;

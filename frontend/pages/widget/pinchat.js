@@ -2,7 +2,8 @@
 // รับข้อความ pin มาจาก Chat Overlay ผ่าน BroadcastChannel
 // OBS Size แนะนำ: 500 x 100
 import { useEffect, useState } from 'react';
-import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function PinChatWidget() {
   const [pinned,  setPinned]  = useState(null);
@@ -11,9 +12,10 @@ export default function PinChatWidget() {
   const [styles,  setStyles]  = useState(null);
 
   useEffect(() => {
-    const params    = new URLSearchParams(window.location.search);
-    const isPreview = params.get('preview') === '1';
-    const s         = parseWidgetStyles(params, 'pinchat');
+    const params      = new URLSearchParams(window.location.search);
+    const widgetToken = params.get('wt');
+    const isPreview   = params.get('preview') === '1';
+    const s           = parseWidgetStyles(params, 'pinchat');
     setStyles(s);
 
     if (isPreview) {
@@ -22,20 +24,33 @@ export default function PinChatWidget() {
       return;
     }
 
-    if (typeof BroadcastChannel === 'undefined') return;
+    // BroadcastChannel — รับ pin จาก chat overlay
     let ch;
-    try {
-      ch = new BroadcastChannel('ttplus_pinchat');
-      ch.onmessage = (e) => {
-        if (e.data?.type === 'pin' && e.data.message) {
-          setPinned(e.data.message);
-          setVisible(true);
-          setPinKey(k => k + 1); // force remount ทุกครั้ง
-        }
-      };
-    } catch { /* ไม่รองรับ BroadcastChannel */ }
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        ch = new BroadcastChannel('ttplus_pinchat');
+        ch.onmessage = (e) => {
+          if (e.data?.type === 'pin' && e.data.message) {
+            setPinned(e.data.message);
+            setVisible(true);
+            setPinKey(k => k + 1);
+          }
+        };
+      } catch { /* ไม่รองรับ BroadcastChannel */ }
+    }
 
-    return () => { try { ch?.close(); } catch { /* ignore */ } };
+    // Socket — รับ style_update แบบ real-time
+    const socket = createWidgetSocket(widgetToken, {
+      style_update: ({ widgetId, style }) => {
+        if (widgetId !== 'pinchat') return;
+        setStyles(rawToStyle(style, 'pinchat'));
+      },
+    });
+
+    return () => {
+      try { ch?.close(); } catch { /* ignore */ }
+      socket?.disconnect();
+    };
   }, []);
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
