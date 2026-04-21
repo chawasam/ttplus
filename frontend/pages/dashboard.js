@@ -49,7 +49,7 @@ const MAX_EVENTS = 100;
 export default function Dashboard({ theme, setTheme, user, authLoading }) {
   const router = useRouter();
 
-  const [tiktokUsername, setTiktokUsername] = useState(() => loadLastUsername());
+  const [tiktokUsername, setTiktokUsername] = useState('');
   const [connected, setConnected]           = useState(false);
   const [connecting, setConnecting]         = useState(false);
 
@@ -82,6 +82,9 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
 
   useEffect(() => {
     setUsernameHistory(loadUsernameHistory());
+    // โหลด username ที่พิมพ์ล่าสุด (client-side only — ไม่รัน SSR)
+    const last = loadLastUsername();
+    if (last) setTiktokUsername(last);
   }, []);
 
   // ===== addEvent / updateLeaderboard — stable refs =====
