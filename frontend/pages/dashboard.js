@@ -11,14 +11,23 @@ import { configureTTS, speak, clearTTSQueue } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
-// ===== TikTok username history helpers =====
+// ===== TikTok username helpers =====
 const USERNAME_HISTORY_KEY = 'tiktok_usernames';
+const LAST_USERNAME_KEY    = 'tiktok_last_username';
 const MAX_HISTORY = 5;
 
 function loadUsernameHistory() {
   try {
     return JSON.parse(localStorage.getItem(USERNAME_HISTORY_KEY) || '[]');
   } catch { return []; }
+}
+
+function loadLastUsername() {
+  try { return localStorage.getItem(LAST_USERNAME_KEY) || ''; } catch { return ''; }
+}
+
+function saveLastUsername(username) {
+  try { localStorage.setItem(LAST_USERNAME_KEY, username); } catch { /* quota full */ }
 }
 
 function saveUsernameHistory(username, current) {
@@ -40,7 +49,7 @@ const MAX_EVENTS = 100;
 export default function Dashboard({ theme, setTheme, user, authLoading }) {
   const router = useRouter();
 
-  const [tiktokUsername, setTiktokUsername] = useState('');
+  const [tiktokUsername, setTiktokUsername] = useState(() => loadLastUsername());
   const [connected, setConnected]           = useState(false);
   const [connecting, setConnecting]         = useState(false);
 
@@ -165,7 +174,11 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
             s = res.data.settings;
             setCachedSettings(s);
           }
-          if (s.tiktokUsername) setTiktokUsername(s.tiktokUsername);
+          // ถ้ายังไม่มีใน localStorage ให้ใช้จาก settings
+          if (s.tiktokUsername && !loadLastUsername()) {
+            setTiktokUsername(s.tiktokUsername);
+            saveLastUsername(s.tiktokUsername);
+          }
           if (s.goalTarget)     setGoalTarget(s.goalTarget);
           if (s.goalCurrent) {
             goalCurrentRef.current = s.goalCurrent;
@@ -306,7 +319,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading }) {
                 className={clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition', theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500' : 'bg-gray-50 border-gray-300 text-gray-900 focus:border-brand-500')}
                 placeholder={user ? 'TikTok username (ไม่ต้องมี @)' : '🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok'}
                 value={tiktokUsername}
-                onChange={e => { setTiktokUsername(e.target.value); setShowHistory(true); }}
+                onChange={e => { setTiktokUsername(e.target.value); saveLastUsername(e.target.value); setShowHistory(true); }}
                 onFocus={() => setShowHistory(true)}
                 onBlur={() => setTimeout(() => setShowHistory(false), 150)}
                 onKeyDown={e => e.key === 'Enter' && !connected && !connecting && handleConnect()}
