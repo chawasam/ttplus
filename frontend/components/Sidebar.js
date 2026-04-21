@@ -91,7 +91,7 @@ export default function Sidebar({ theme, user, activePage, setActivePage }) {
               @samsoundcard
             </p>
             <p className={clsx('text-xs truncate', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-              ติดตามบน TikTok
+              ซับพอร์ทหน่อยคับ🙏🥺
             </p>
           </div>
         </a>
