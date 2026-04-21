@@ -1,12 +1,12 @@
 // pages/dashboard.js — Main Dashboard
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { showError } from '../lib/errorHandler';
-import { sanitizeEvent, safeTikTokImageUrl } from '../lib/sanitize';
+import { sanitizeEvent } from '../lib/sanitize';
 import { configureTTS, speak, clearTTSQueue } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -40,8 +40,6 @@ function saveUsernameHistory(username, current) {
 import Sidebar from '../components/Sidebar';
 import StatCard from '../components/StatCard';
 import LiveFeed from '../components/LiveFeed';
-import GiftLeaderboard from '../components/GiftLeaderboard';
-import GoalBar from '../components/GoalBar';
 
 const MAX_EVENTS = 100;
 
@@ -55,19 +53,10 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   const [viewers, setViewers]           = useState(0);
   const [totalLikes, setTotalLikes]     = useState(0);
-  const [totalGifts, setTotalGifts]     = useState(0);
-  const [totalDiamonds, setTotalDiamonds] = useState(0);
   const [totalComments, setTotalComments] = useState(0);
 
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
-
-  const leaderboardMapRef  = useRef(new Map());
-  const [leaderboard, setLeaderboard] = useState([]);
-
-  const goalCurrentRef   = useRef(0);
-  const [goalCurrent, setGoalCurrent] = useState(0);
-  const [goalTarget, setGoalTarget]   = useState(100);
 
   const socketRef = useRef(null);
 
@@ -94,20 +83,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     setEvents(next);
   }, []);
 
-  const updateLeaderboard = useCallback((giftData, diamonds) => {
-    const map = leaderboardMapRef.current;
-    const existing = map.get(giftData.uniqueId);
-    map.set(giftData.uniqueId, {
-      uniqueId:          giftData.uniqueId,
-      nickname:          giftData.nickname,
-      profilePictureUrl: safeTikTokImageUrl(giftData.profilePictureUrl),
-      diamonds:          (existing?.diamonds || 0) + diamonds,
-    });
-    const sorted = Array.from(map.values())
-      .sort((a, b) => b.diamonds - a.diamonds)
-      .slice(0, 20);
-    setLeaderboard(sorted);
-  }, []);
 
   // ===== Socket Listeners =====
   const setupSocketListeners = useCallback((socket) => {
@@ -133,19 +108,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
       if (s.comment) speak(s.comment, 'chat');
     });
-    socket.on('gift',     (data) => {
-      const s = sanitizeEvent(data); addEvent(s);
-      setTotalGifts(c => c + 1);
-      const d = s.diamondCount * s.repeatCount;
-      setTotalDiamonds(c => c + d);
-      setGoalCurrent(prev => {
-        const next = prev + d;
-        goalCurrentRef.current = next;
-        return next;
-      });
-      updateLeaderboard(s, d);
-      const qty = s.repeatCount > 1 ? ` ${s.repeatCount} ชิ้น` : '';
-    });
+    socket.on('gift',     (data) => { addEvent(sanitizeEvent(data)); });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
     socket.on('follow',   (data) => {
       const s = sanitizeEvent(data); addEvent(s);
@@ -153,7 +116,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
     socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));
-  }, [addEvent, updateLeaderboard]);
+  }, [addEvent]);
 
   // ===== React to user prop (from _app.js) =====
   useEffect(() => {
@@ -179,11 +142,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           if (s.tiktokUsername && !loadLastUsername()) {
             setTiktokUsername(s.tiktokUsername);
             saveLastUsername(s.tiktokUsername);
-          }
-          if (s.goalTarget)     setGoalTarget(s.goalTarget);
-          if (s.goalCurrent) {
-            goalCurrentRef.current = s.goalCurrent;
-            setGoalCurrent(s.goalCurrent);
           }
           // Configure TTS from saved settings
           const ttsCfg = {
@@ -245,10 +203,8 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     try {
       await api.post('/api/disconnect');
       setConnected(false);
-      setViewers(0); setTotalLikes(0); setTotalGifts(0); setTotalDiamonds(0); setTotalComments(0);
+      setViewers(0); setTotalLikes(0); setTotalComments(0);
       eventsRef.current = []; setEvents([]);
-      leaderboardMapRef.current.clear(); setLeaderboard([]);
-      goalCurrentRef.current = 0; setGoalCurrent(0);
       clearTTSQueue();
     } catch { /* ignore */ }
   }, []);
@@ -260,7 +216,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   }, [router]);
 
   const toggleTheme = useCallback(() => setTheme(theme === 'dark' ? 'light' : 'dark'), [theme, setTheme]);
-  const topLeaderboard = useMemo(() => leaderboard.slice(0, 5), [leaderboard]);
 
   // Loading spinner ขณะรอ auth check
   if (authLoading) {
@@ -311,7 +266,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         </div>
 
         {/* Connect Section */}
-        <div className={clsx('rounded-2xl p-4 mb-6 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
+        <div className={clsx('rounded-2xl p-4 mb-5 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
           <h2 className={clsx('text-sm font-semibold mb-3', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>🔴 TikTok Live</h2>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -326,7 +281,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
                 onKeyDown={e => e.key === 'Enter' && !connected && !connecting && handleConnect()}
                 disabled={connected || connecting}
               />
-              {/* Username history dropdown */}
               {showHistory && !connected && !connecting && usernameHistory.length > 0 && (
                 <div className={clsx('absolute top-full left-0 right-0 mt-1 rounded-lg border shadow-lg z-20 overflow-hidden', theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}>
                   {usernameHistory
@@ -359,27 +313,16 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           )}
         </div>
 
+        {/* Live Feed */}
+        <div className="mb-5">
+          <LiveFeed events={events} theme={theme} />
+        </div>
+
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <StatCard label="👥 ผู้ชม"      value={viewers}       theme={theme} />
-          <StatCard label="❤️ Likes"      value={totalLikes}    theme={theme} />
-          <StatCard label="🎁 Gifts"      value={totalGifts}    theme={theme} />
-          <StatCard label="💎 Diamonds"   value={totalDiamonds} theme={theme} />
-        </div>
-
-        {/* Goal */}
-        <div className="mb-6">
-          <GoalBar current={goalCurrent} target={goalTarget} theme={theme} />
-        </div>
-
-        {/* Feed + Leaderboard */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="md:col-span-2">
-            <LiveFeed events={events} theme={theme} />
-          </div>
-          <div>
-            <GiftLeaderboard leaderboard={topLeaderboard} theme={theme} />
-          </div>
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label="👥 ผู้ชม"   value={viewers}       theme={theme} />
+          <StatCard label="❤️ Likes"   value={totalLikes}    theme={theme} />
+          <StatCard label="💬 แชท"     value={totalComments} theme={theme} />
         </div>
 
       </main>

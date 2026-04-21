@@ -178,7 +178,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               🔊 TTS (สิริ)
             </h1>
             <p className={clsx('text-sm mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>
-              ให้สิริอ่าน Chat, Gift และ Follow ออกเสียงให้คุณแบบ Real-time
+              ให้สิริอ่าน Chat
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -214,19 +214,6 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             </div>
           </div>
 
-          {/* สิ่งที่อ่าน */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">💬</span>
-                <div>
-                  <p className={clsx('text-sm font-medium', isDark ? 'text-white' : 'text-gray-900')}>Chat</p>
-                  <p className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>อ่านข้อความ comment จากผู้ชม</p>
-                </div>
-              </div>
-              <Toggle value={tts.readChat} onChange={v => handleChange('readChat', v)} />
-            </div>
-          </div>
 
           {/* เสียงและความเร็ว */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
