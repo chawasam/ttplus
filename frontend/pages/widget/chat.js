@@ -36,7 +36,6 @@ function getPinChannel() {
 export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
   const [styles, setStyles]     = useState(null);
-  const containerRef            = useRef(null);
   const stylesRef               = useRef(null);
 
   useEffect(() => {
@@ -47,12 +46,10 @@ export default function ChatWidget() {
     setStyles(s);
     stylesRef.current = s;
 
-    const addMsg = (msg, currentDir, currentMax) => {
-      if (currentDir === 'up') {
-        setMessages(prev => [msg, ...prev.slice(0, currentMax - 1)]);
-      } else {
-        setMessages(prev => [...prev.slice(-(currentMax - 1)), msg]);
-      }
+    // addMsg: เพิ่มข้อความใหม่เข้า array (newest always at end)
+    // column-reverse จะแสดงตัวล่างสุดของ array ไว้ล่างสุดของจอเสมอโดยไม่ต้อง scroll
+    const addMsg = (msg, currentMax) => {
+      setMessages(prev => [...prev.slice(-(currentMax - 1)), msg]);
     };
 
     if (isPreview) {
@@ -61,16 +58,15 @@ export default function ChatWidget() {
         { uniqueId: 'u2', nickname: 'TTplusFan',   comment: 'ไลฟ์สนุกมากเลย 🎉', ts: Date.now() - 3000 },
         { uniqueId: 'u3', nickname: 'Hello_World', comment: '555555 ขำมากก',      ts: Date.now() - 1000 },
       ];
-      setMessages(s.dir === 'up' ? [...preview].reverse() : preview);
+      setMessages(preview);
       return;
     }
 
     const socket = createWidgetSocket(widgetToken, {
       chat: (data) => {
         const safe = sanitizeEvent(data);
-        // ใช้ stylesRef เพื่อได้ dir/max ล่าสุดเสมอ (แม้ state เปลี่ยนไปแล้ว)
         const cur = stylesRef.current || s;
-        addMsg({ ...safe, ts: Date.now() }, cur.dir, cur.max);
+        addMsg({ ...safe, ts: Date.now() }, cur.max);
       },
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'chat') return;
@@ -99,39 +95,31 @@ export default function ChatWidget() {
     }
   };
 
-  // Smooth scroll ทุกครั้งที่ messages เปลี่ยน
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || !styles) return;
-    if (styles.dir === 'up') {
-      el.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    }
-  }, [messages, styles]);
-
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
-  const animName = styles.dir === 'up' ? 'slideDown' : 'slideUp';
+  // dir === 'down' (default): column-reverse → newest อยู่ล่างสุด browser anchor เองไม่กระพริบ
+  // dir === 'up': column ปกติ → newest อยู่บน (reverse messages array)
+  const isUp          = styles.dir === 'up';
+  const flexDir       = isUp ? 'column' : 'column-reverse';
+  const displayMsgs   = isUp ? [...messages].reverse() : messages;
+  const animName      = isUp ? 'slideDown' : 'slideUp';
 
   return (
     <div
-      ref={containerRef}
       style={{
-        background:  'transparent',
-        padding:     10,
-        maxWidth:    400,
-        height:      '100vh',           // เต็มความสูง OBS browser source
-        overflowY:   'scroll',          // scroll ได้แต่ซ่อน scrollbar ด้วย CSS
-        display:     'flex',
-        flexDirection: 'column',
-        gap:         5,
-        justifyContent: styles.dir === 'up' ? 'flex-start' : 'flex-end',
-        boxSizing:   'border-box',
-        scrollbarWidth: 'none',         // Firefox
+        background:     'transparent',
+        padding:        10,
+        maxWidth:       400,
+        height:         '100vh',
+        overflowY:      'auto',
+        display:        'flex',
+        flexDirection:  flexDir,
+        gap:            5,
+        boxSizing:      'border-box',
+        scrollbarWidth: 'none',
       }}
     >
-      {messages.map((msg, i) => (
+      {displayMsgs.map((msg, i) => (
         <div
           key={`${msg.ts}-${i}`}
           onClick={() => pinMessage(msg)}
@@ -140,7 +128,7 @@ export default function ChatWidget() {
             display:      'flex',
             alignItems:   'flex-start',
             gap:          8,
-            animation:    `${animName} 0.3s cubic-bezier(0.22,1,0.36,1)`,
+            animation:    `${animName} 0.25s ease-out both`,
             background:   styles.bgRgba,
             borderRadius: styles.br,
             padding:      '6px 10px',
@@ -161,10 +149,9 @@ export default function ChatWidget() {
         </div>
       ))}
       <style>{`
-        /* ซ่อน scrollbar แต่ยังเลื่อนได้ */
         div::-webkit-scrollbar { display: none; }
-        @keyframes slideUp   { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes slideDown { from { opacity:0; transform:translateY(-12px);} to { opacity:1; transform:translateY(0); } }
+        @keyframes slideUp   { from { opacity:0; } to { opacity:1; } }
+        @keyframes slideDown { from { opacity:0; } to { opacity:1; } }
       `}</style>
     </div>
   );
