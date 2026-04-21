@@ -45,6 +45,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [showGeminiKey, setShowGeminiKey]     = useState(false);
   const [testingGemini, setTestingGemini]     = useState(false);
   const [geminiShuffle, setGeminiShuffle]     = useState(false);
+  const [testGeminiText, setTestGeminiText]   = useState('สวัสดีค่ะ');
+  const [testGoogleText, setTestGoogleText]   = useState('สวัสดีค่ะ');
+  const [testWebText, setTestWebText]         = useState('สวัสดีค่ะ');
   const saveTimerRef  = useRef(null);
   const mountedRef    = useRef(true);
 
@@ -372,24 +375,37 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               />
             </div>
 
-            {/* ทดสอบ */}
-            <button
-              disabled={!geminiKey || testingGemini}
-              onClick={async () => {
-                if (!geminiKey) return;
-                setTestingGemini(true);
-                try {
-                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, enabled: true });
-                  speak('สวัสดีครับ นี่คือเสียง Gemini TTS', null);
-                } catch {
-                  toast.error('ทดสอบไม่สำเร็จ ลองตรวจสอบ API key');
-                } finally {
+            {/* ทดสอบ Gemini */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={testGeminiText}
+                onChange={e => setTestGeminiText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && geminiKey && testGeminiText.trim()) {
+                    setTestingGemini(true);
+                    configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false, enabled: true });
+                    speak(testGeminiText.trim(), null);
+                    setTimeout(() => setTestingGemini(false), 4000);
+                  }
+                }}
+                className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition',
+                  isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500'
+                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500')}
+              />
+              <button
+                disabled={!geminiKey || testingGemini || !testGeminiText.trim()}
+                onClick={() => {
+                  if (!geminiKey) return;
+                  setTestingGemini(true);
+                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false, enabled: true });
+                  speak(testGeminiText.trim(), null);
                   setTimeout(() => setTestingGemini(false), 4000);
-                }
-              }}
-              className="w-full py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20">
-              {testingGemini ? '🔊 กำลังเล่น...' : '▶ ทดสอบ Gemini'}
-            </button>
+                }}
+                className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20 flex-shrink-0">
+                {testingGemini ? '🔊' : '▶'}
+              </button>
+            </div>
 
             <p className={clsx('text-xs mt-3', isDark ? 'text-gray-600' : 'text-gray-400')}>
               ยังไม่มี key?{' '}
@@ -473,23 +489,39 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             </div>
 
             {/* ทดสอบ Google TTS */}
-            <button
-              disabled={!googleKey || testingGoogle}
-              onClick={async () => {
-                if (!googleKey) return;
-                setTestingGoogle(true);
-                try {
-                  configureTTS({ googleApiKey: googleKey, googleVoice, enabled: true });
-                  speak('สวัสดีครับ นี่คือเสียง Google Cloud TTS', null);
-                } catch {
-                  toast.error('ทดสอบไม่สำเร็จ ลองตรวจสอบ API key');
-                } finally {
-                  setTimeout(() => setTestingGoogle(false), 3000);
-                }
-              }}
-              className="w-full py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20">
-              {testingGoogle ? '🔊 กำลังเล่น...' : '▶ ทดสอบเสียง Google'}
-            </button>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={testGoogleText}
+                onChange={e => setTestGoogleText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && googleKey && testGoogleText.trim()) {
+                    setTestingGoogle(true);
+                    configureTTS({ googleApiKey: googleKey, geminiApiKey: '', googleVoice, enabled: true });
+                    speak(testGoogleText.trim(), null);
+                    setTimeout(() => setTestingGoogle(false), 3000);
+                  }
+                }}
+                className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition',
+                  isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-green-500'
+                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-green-500')}
+              />
+              <button
+                disabled={!googleKey || testingGoogle || !testGoogleText.trim()}
+                onClick={() => {
+                  if (!googleKey) return;
+                  setTestingGoogle(true);
+                  configureTTS({ googleApiKey: googleKey, geminiApiKey: '', googleVoice, enabled: true });
+                  speak(testGoogleText.trim(), null);
+                  setTimeout(() => {
+                    setTestingGoogle(false);
+                    configureTTS({ geminiApiKey: geminiKey }); // คืนค่า gemini key
+                  }, 3000);
+                }}
+                className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20 flex-shrink-0">
+                {testingGoogle ? '🔊' : '▶'}
+              </button>
+            </div>
 
             {/* ลิงก์ขอ key */}
             <p className={clsx('text-xs mt-3', isDark ? 'text-gray-600' : 'text-gray-400')}>
@@ -646,36 +678,36 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             )}
           </div>
 
-          {/* ทดสอบ */}
+          {/* ทดสอบ Web Speech */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
             <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
-              ทดสอบเสียง
+              🔈 ทดสอบ Web Speech (ฟรี)
             </h2>
 
-            {/* ช่องพิมพ์ custom */}
             <div className="flex gap-2 mb-3">
               <input
                 type="text"
-                value={testText}
-                onChange={e => setTestText(e.target.value)}
+                value={testWebText}
+                onChange={e => setTestWebText(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && testText.trim()) {
-                    configureTTS({ ...tts, enabled: true });
-                    speak(testText.trim(), null);
+                  if (e.key === 'Enter' && testWebText.trim()) {
+                    configureTTS({ ...tts, geminiApiKey: '', googleApiKey: '', enabled: true });
+                    speak(testWebText.trim(), null);
+                    setTimeout(() => configureTTS({ geminiApiKey: geminiKey, googleApiKey: googleKey }), 3000);
                   }
                 }}
-                placeholder="พิมพ์ข้อความแล้วกด ▶ หรือ Enter..."
                 className={clsx('flex-1 px-3 py-2 rounded-lg text-sm outline-none border transition',
                   isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500'
                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-brand-500')}
               />
               <button
                 onClick={() => {
-                  if (!testText.trim()) return;
-                  configureTTS({ ...tts, enabled: true });
-                  speak(testText.trim(), null);
+                  if (!testWebText.trim()) return;
+                  configureTTS({ ...tts, geminiApiKey: '', googleApiKey: '', enabled: true });
+                  speak(testWebText.trim(), null);
+                  setTimeout(() => configureTTS({ geminiApiKey: geminiKey, googleApiKey: googleKey }), 3000);
                 }}
-                disabled={!testText.trim()}
+                disabled={!testWebText.trim()}
                 className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold transition">
                 ▶
               </button>
