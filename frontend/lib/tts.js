@@ -9,19 +9,20 @@ const MAX_QUEUE = 8;
 let _queue = [];
 let _busy  = false;
 let _cfg = {
-  enabled:       false,
-  readChat:      true,
-  readGift:      true,
-  readFollow:    true,
-  rate:          1.0,
-  pitch:         1.0,
-  volume:        1.0,
-  voice:         '',               // Web Speech voice name
-  googleApiKey:  '',               // Google Cloud TTS key
-  googleVoice:   'th-TH-Neural2-C',
-  geminiApiKey:  '',               // Google AI Studio / Gemini key
-  geminiVoice:   'Aoede',
-  geminiPersona: '',               // system instruction สำหรับ persona
+  enabled:        false,
+  readChat:       true,
+  readGift:       true,
+  readFollow:     true,
+  rate:           1.0,
+  pitch:          1.0,
+  volume:         1.0,
+  voice:          '',               // Web Speech voice name
+  googleApiKey:   '',               // Google Cloud TTS key
+  googleVoice:    'th-TH-Neural2-C',
+  geminiApiKey:   '',               // Google AI Studio / Gemini key
+  geminiVoice:    'Aoede',
+  geminiPersona:  '',               // system instruction สำหรับ persona
+  geminiShuffle:  false,            // สุ่ม voice+persona ทุกแชท
 };
 
 // ===== Internal: strip emoji + brackets =====
@@ -34,10 +35,10 @@ function _stripEmoji(str) {
 }
 
 // ===== Engine 1: Gemini TTS =====
-async function _speakGemini(text) {
+async function _speakGemini(text, voiceOverride, personaOverride) {
   const key      = _cfg.geminiApiKey;
-  const voice    = _cfg.geminiVoice  || 'Aoede';
-  const persona  = _cfg.geminiPersona || '';
+  const voice    = voiceOverride   ?? _cfg.geminiVoice   ?? 'Aoede';
+  const persona  = personaOverride ?? _cfg.geminiPersona ?? '';
   const model    = 'gemini-2.5-flash-preview-tts';
 
   const body = {
@@ -142,10 +143,18 @@ async function _next() {
   _busy = true;
   const text = _queue.shift();
 
+  // สุ่ม voice+persona ทุกครั้งถ้า shuffleMode เปิด
+  let geminiVoice   = _cfg.geminiVoice;
+  let geminiPersona = _cfg.geminiPersona;
+  if (_cfg.geminiShuffle && _cfg.geminiApiKey) {
+    geminiVoice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
+    geminiPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
+  }
+
   try {
     if (_cfg.geminiApiKey) {
       try {
-        await _speakGemini(text);
+        await _speakGemini(text, geminiVoice, geminiPersona);
         _busy = false; _next(); return;
       } catch (e) {
         // quota (429) หรือ auth error (401/403) → ไปต่อ
@@ -289,5 +298,7 @@ export const GOOGLE_THAI_VOICES = [
 // ===== localStorage helpers (key ไม่ผ่าน server) =====
 export function loadGoogleApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_google_tts_key')  || '' : ''; }
 export function saveGoogleApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_google_tts_key', k)  : localStorage.removeItem('ttplus_google_tts_key'); }
-export function loadGeminiApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')  || '' : ''; }
-export function saveGeminiApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)  : localStorage.removeItem('ttplus_gemini_tts_key'); }
+export function loadGeminiApiKey()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
+export function saveGeminiApiKey(k)    { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
+export function loadGeminiShuffle()    { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }
+export function saveGeminiShuffle(on)  { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini_shuffle', '1') : localStorage.removeItem('ttplus_gemini_shuffle'); }

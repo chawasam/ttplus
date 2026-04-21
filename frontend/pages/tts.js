@@ -6,7 +6,8 @@ import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import {
   configureTTS, speak, onVoicesReady,
   GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
-  GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey, randomGeminiCombo,
+  GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
+  loadGeminiShuffle, saveGeminiShuffle, randomGeminiCombo,
 } from '../lib/tts';
 import toast from 'react-hot-toast';
 import { showError } from '../lib/errorHandler';
@@ -41,8 +42,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [geminiKey, setGeminiKey]         = useState('');
   const [geminiVoice, setGeminiVoice]     = useState('Aoede');
   const [geminiPersona, setGeminiPersona] = useState('');
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [testingGemini, setTestingGemini] = useState(false);
+  const [showGeminiKey, setShowGeminiKey]     = useState(false);
+  const [testingGemini, setTestingGemini]     = useState(false);
+  const [geminiShuffle, setGeminiShuffle]     = useState(false);
   const saveTimerRef  = useRef(null);
   const mountedRef    = useRef(true);
 
@@ -64,15 +66,17 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     setGoogleKey(gKey);
     setGoogleVoice(gVoice);
 
-    const mKey     = loadGeminiApiKey();
-    const mVoice   = localStorage.getItem('ttplus_gemini_voice')   || 'Aoede';
-    const mPersona = localStorage.getItem('ttplus_gemini_persona') || '';
+    const mKey      = loadGeminiApiKey();
+    const mVoice    = localStorage.getItem('ttplus_gemini_voice')   || 'Aoede';
+    const mPersona  = localStorage.getItem('ttplus_gemini_persona') || '';
+    const mShuffle  = loadGeminiShuffle();
     setGeminiKey(mKey);
     setGeminiVoice(mVoice);
     setGeminiPersona(mPersona);
+    setGeminiShuffle(mShuffle);
 
     if (mKey || gKey) {
-      configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona });
+      configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona, geminiShuffle: mShuffle });
       setShowGoogleSection(true);
     }
   }, []);
@@ -342,22 +346,31 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               </div>
             </div>
 
-            {/* ปุ่มสุ่ม 300 combo */}
-            <button
-              onClick={() => {
-                const combo = randomGeminiCombo();
-                setGeminiVoice(combo.voice);
-                setGeminiPersona(combo.persona);
-                localStorage.setItem('ttplus_gemini_voice', combo.voice);
-                localStorage.setItem('ttplus_gemini_persona', combo.persona);
-                configureTTS({ geminiVoice: combo.voice, geminiPersona: combo.persona });
-                toast.success(`🎲 สุ่มได้: ${combo.voice} + ${combo.personaObj.label}`);
-              }}
-              className={clsx('w-full py-2 rounded-lg text-xs font-semibold border transition mb-2',
-                isDark ? 'border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-400'
-                       : 'border-gray-200 text-gray-500 hover:border-purple-400 hover:text-purple-500')}>
-              🎲 สุ่ม 300 combo
-            </button>
+            {/* Shuffle toggle */}
+            <div className={clsx('flex items-center justify-between p-3 rounded-xl border mb-2 transition',
+              geminiShuffle
+                ? isDark ? 'bg-purple-900/30 border-purple-600' : 'bg-purple-50 border-purple-300'
+                : isDark ? 'bg-gray-800 border-gray-700'        : 'bg-gray-50 border-gray-200')}>
+              <div>
+                <p className={clsx('text-xs font-semibold', geminiShuffle ? 'text-purple-400' : isDark ? 'text-gray-300' : 'text-gray-700')}>
+                  🎲 สุ่ม 300 combo ทุกแชท
+                </p>
+                <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-500' : 'text-gray-400')}>
+                  {geminiShuffle
+                    ? 'เปิดอยู่ — ทุกแชทสุ่ม voice+persona ใหม่'
+                    : 'ปิดอยู่ — ใช้ voice+persona ที่เลือกไว้'}
+                </p>
+              </div>
+              <Toggle
+                value={geminiShuffle}
+                onChange={v => {
+                  setGeminiShuffle(v);
+                  saveGeminiShuffle(v);
+                  configureTTS({ geminiShuffle: v });
+                  toast.success(v ? '🎲 เปิดสุ่มทุกแชทแล้ว!' : 'ปิดโหมดสุ่มแล้ว');
+                }}
+              />
+            </div>
 
             {/* ทดสอบ */}
             <button
