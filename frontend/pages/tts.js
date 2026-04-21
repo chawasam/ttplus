@@ -3,7 +3,10 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
-import { configureTTS, speak, onVoicesReady } from '../lib/tts';
+import {
+  configureTTS, speak, onVoicesReady,
+  GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
+} from '../lib/tts';
 import toast from 'react-hot-toast';
 import { showError } from '../lib/errorHandler';
 import clsx from 'clsx';
@@ -21,13 +24,17 @@ const DEFAULT_TTS = {
 };
 
 export default function TtsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
-  const [tts, setTts]           = useState(DEFAULT_TTS);
-  const [voices, setVoices]     = useState([]);
-  const [saving, setSaving]     = useState(false);
-  const [testText, setTestText] = useState('');
-  const [simpleMode, setSimpleMode] = useState(true); // true = ง่าย, false = ปรับได้
+  const [tts, setTts]               = useState(DEFAULT_TTS);
+  const [voices, setVoices]         = useState([]);
+  const [saving, setSaving]         = useState(false);
+  const [testText, setTestText]     = useState('');
+  const [simpleMode, setSimpleMode] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
+  const [googleKey, setGoogleKey]   = useState('');
+  const [googleVoice, setGoogleVoice] = useState('th-TH-Neural2-C');
+  const [showKey, setShowKey]       = useState(false);
+  const [testingGoogle, setTestingGoogle] = useState(false);
   const saveTimerRef  = useRef(null);
   const mountedRef    = useRef(true);
 
@@ -40,6 +47,15 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   useEffect(() => {
     const unsub = onVoicesReady(v => setVoices(v));
     return unsub;
+  }, []);
+
+  // โหลด Google API key จาก localStorage
+  useEffect(() => {
+    const key   = loadGoogleApiKey();
+    const voice = localStorage.getItem('ttplus_google_tts_voice') || 'th-TH-Neural2-C';
+    setGoogleKey(key);
+    setGoogleVoice(voice);
+    if (key) configureTTS({ googleApiKey: key, googleVoice: voice });
   }, []);
 
   // โหลด settings จาก API
@@ -194,6 +210,109 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             </div>
           </div>
 
+
+          {/* Google Cloud TTS — BYOK */}
+          <div className={clsx('rounded-2xl p-4 border', card)}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+                🔑 Google Cloud TTS <span className="text-xs font-normal text-green-400 ml-1">(เสียงดีกว่ามาก)</span>
+              </h2>
+              {googleKey && (
+                <span className="text-xs text-green-400 font-semibold">✓ เปิดใช้งาน</span>
+              )}
+            </div>
+            <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
+              ใส่ API key ของคุณเองเพื่อใช้เสียง Neural ภาษาไทย ฟรี 1M chars/เดือน — key เก็บในเครื่องคุณเท่านั้น ไม่ส่ง server
+            </p>
+
+            {/* API Key input */}
+            <div className="flex gap-2 mb-3">
+              <div className="relative flex-1">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={googleKey}
+                  onChange={e => setGoogleKey(e.target.value)}
+                  placeholder="AIza..."
+                  className={clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition pr-10',
+                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500'
+                           : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-brand-500')}
+                />
+                <button
+                  onClick={() => setShowKey(s => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 text-xs px-1">
+                  {showKey ? '🙈' : '👁️'}
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  saveGoogleApiKey(googleKey);
+                  configureTTS({ googleApiKey: googleKey, googleVoice });
+                  toast.success(googleKey ? 'บันทึก API key แล้ว' : 'ลบ API key แล้ว — ใช้ Web Speech');
+                }}
+                className="px-3 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold transition flex-shrink-0">
+                บันทึก
+              </button>
+            </div>
+
+            {/* Voice selector */}
+            <div className="mb-3">
+              <Label isDark={isDark}>เสียงที่ใช้</Label>
+              <div className="space-y-1.5 mt-1">
+                {GOOGLE_THAI_VOICES.map(v => (
+                  <button
+                    key={v.name}
+                    onClick={() => {
+                      setGoogleVoice(v.name);
+                      localStorage.setItem('ttplus_google_tts_voice', v.name);
+                      configureTTS({ googleVoice: v.name });
+                    }}
+                    className={clsx(
+                      'w-full flex items-center gap-3 px-3 py-2 rounded-xl border text-left transition',
+                      googleVoice === v.name
+                        ? 'bg-brand-500 border-brand-500 text-white'
+                        : isDark
+                          ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    <span className="text-xs font-mono flex-shrink-0 w-16 opacity-60">{v.tier}</span>
+                    <span className="text-xs flex-1">{v.label}</span>
+                    {googleVoice === v.name && <span className="text-xs font-bold">✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ทดสอบ Google TTS */}
+            <button
+              disabled={!googleKey || testingGoogle}
+              onClick={async () => {
+                if (!googleKey) return;
+                setTestingGoogle(true);
+                try {
+                  configureTTS({ googleApiKey: googleKey, googleVoice, enabled: true });
+                  speak('สวัสดีครับ นี่คือเสียง Google Cloud TTS', null);
+                } catch {
+                  toast.error('ทดสอบไม่สำเร็จ ลองตรวจสอบ API key');
+                } finally {
+                  setTimeout(() => setTestingGoogle(false), 3000);
+                }
+              }}
+              className="w-full py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20">
+              {testingGoogle ? '🔊 กำลังเล่น...' : '▶ ทดสอบเสียง Google'}
+            </button>
+
+            {/* ลิงก์ขอ key */}
+            <p className={clsx('text-xs mt-3', isDark ? 'text-gray-600' : 'text-gray-400')}>
+              ยังไม่มี API key?{' '}
+              <a
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank" rel="noreferrer"
+                className="text-brand-400 hover:underline">
+                สร้างได้ที่ Google Cloud Console
+              </a>
+              {' '}→ เปิด Text-to-Speech API → สร้าง API key
+            </p>
+          </div>
 
           {/* เสียงและความเร็ว */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
