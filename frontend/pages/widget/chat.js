@@ -1,7 +1,7 @@
 // widget/chat.js — Chat Overlay สำหรับ OBS (พื้นหลังโปร่งใส)
 // OBS Size แนะนำ: 400 x 600
 // คลิกข้อความเพื่อ Pin ไปยัง widget/pinchat ผ่าน BroadcastChannel
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { sanitizeEvent } from '../../lib/sanitize';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
@@ -36,6 +36,8 @@ function getPinChannel() {
 export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
   const [styles, setStyles]     = useState(null);
+  const containerRef            = useRef(null);
+  const stylesRef               = useRef(null);
 
   useEffect(() => {
     const params      = new URLSearchParams(window.location.search);
@@ -43,6 +45,7 @@ export default function ChatWidget() {
     const isPreview   = params.get('preview') === '1';
     const s           = parseWidgetStyles(params, 'chat');
     setStyles(s);
+    stylesRef.current = s;
 
     const addMsg = (msg, currentDir, currentMax) => {
       if (currentDir === 'up') {
@@ -88,12 +91,38 @@ export default function ChatWidget() {
     }
   };
 
+  // Smooth scroll ทุกครั้งที่ messages เปลี่ยน
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !styles) return;
+    if (styles.dir === 'up') {
+      el.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages, styles]);
+
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
-  const animName = styles.dir === 'up' ? 'fadeDown' : 'fadeUp';
+  const animName = styles.dir === 'up' ? 'slideDown' : 'slideUp';
 
   return (
-    <div style={{ background: 'transparent', padding: 10, display: 'flex', flexDirection: 'column', gap: 5, minHeight: 200, maxWidth: 400 }}>
+    <div
+      ref={containerRef}
+      style={{
+        background:  'transparent',
+        padding:     10,
+        maxWidth:    400,
+        height:      '100vh',           // เต็มความสูง OBS browser source
+        overflowY:   'scroll',          // scroll ได้แต่ซ่อน scrollbar ด้วย CSS
+        display:     'flex',
+        flexDirection: 'column',
+        gap:         5,
+        justifyContent: styles.dir === 'up' ? 'flex-start' : 'flex-end',
+        boxSizing:   'border-box',
+        scrollbarWidth: 'none',         // Firefox
+      }}
+    >
       {messages.map((msg, i) => (
         <div
           key={`${msg.ts}-${i}`}
@@ -103,13 +132,13 @@ export default function ChatWidget() {
             display:      'flex',
             alignItems:   'flex-start',
             gap:          8,
-            animation:    `${animName} 0.3s ease-out`,
+            animation:    `${animName} 0.3s cubic-bezier(0.22,1,0.36,1)`,
             background:   styles.bgRgba,
             borderRadius: styles.br,
             padding:      '6px 10px',
             borderLeft:   `3px solid ${getUserColor(msg.uniqueId)}`,
             cursor:       'pointer',
-            width:        '100%',
+            flexShrink:   0,
             boxSizing:    'border-box',
           }}
         >
@@ -124,8 +153,10 @@ export default function ChatWidget() {
         </div>
       ))}
       <style>{`
-        @keyframes fadeUp   { from { opacity:0; transform:translateY(6px);  } to { opacity:1; transform:translateY(0); } }
-        @keyframes fadeDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+        /* ซ่อน scrollbar แต่ยังเลื่อนได้ */
+        div::-webkit-scrollbar { display: none; }
+        @keyframes slideUp   { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes slideDown { from { opacity:0; transform:translateY(-12px);} to { opacity:1; transform:translateY(0); } }
       `}</style>
     </div>
   );

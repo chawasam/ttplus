@@ -153,11 +153,11 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
       {widgetId === 'chat' && (
         <>
           <div className="space-y-2">
-            <span className={label}>ทิศทางแชท (แชทใหม่อยู่ที่ไหน)</span>
+            <span className={label}>แชทใหม่โผล่ที่ไหน</span>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { val: 'down', icon: '⬇️', text: 'ล่างสุด' },
-                { val: 'up',   icon: '⬆️', text: 'บนสุด'  },
+                { val: 'down', icon: '⬇️', text: 'ล่าง (แนะนำ)' },
+                { val: 'up',   icon: '⬆️', text: 'บน'            },
               ].map(opt => (
                 <button key={opt.val}
                   onClick={() => set('dir', opt.val)}
