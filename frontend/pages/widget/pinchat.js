@@ -7,6 +7,7 @@ import { parseWidgetStyles } from '../../lib/widgetStyles';
 export default function PinChatWidget() {
   const [pinned,  setPinned]  = useState(null);
   const [visible, setVisible] = useState(false);
+  const [pinKey,  setPinKey]  = useState(0); // เปลี่ยนทุกครั้งที่ pin → force remount → animation เล่นใหม่
   const [styles,  setStyles]  = useState(null);
 
   useEffect(() => {
@@ -21,7 +22,6 @@ export default function PinChatWidget() {
       return;
     }
 
-    // ฟัง pin event จาก Chat Overlay
     if (typeof BroadcastChannel === 'undefined') return;
     let ch;
     try {
@@ -30,6 +30,7 @@ export default function PinChatWidget() {
         if (e.data?.type === 'pin' && e.data.message) {
           setPinned(e.data.message);
           setVisible(true);
+          setPinKey(k => k + 1); // force remount ทุกครั้ง
         }
       };
     } catch { /* ไม่รองรับ BroadcastChannel */ }
@@ -40,9 +41,10 @@ export default function PinChatWidget() {
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
   return (
-    <div style={{ background: 'transparent', padding: '8px 10px' }}>
+    <div style={{ background: 'transparent', padding: '8px 10px', maxWidth: 400, boxSizing: 'border-box' }}>
       {visible && pinned && (
         <div
+          key={pinKey}  /* key เปลี่ยน → React unmount+remount → animation restart */
           style={{
             background:   styles.bgRgba,
             borderRadius: styles.br,
@@ -53,59 +55,39 @@ export default function PinChatWidget() {
             gap:          8,
             animation:    'pinDrop 0.7s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.7s infinite',
             position:     'relative',
+            width:        '100%',
+            boxSizing:    'border-box',
           }}
         >
-          {/* Pin icon */}
-          <span style={{
-            fontSize:   12,
-            opacity:    0.75,
-            flexShrink: 0,
-            marginTop:  2,
-            color:      styles.ac,
-            fontFamily: 'sans-serif',
-          }}>
+          <span style={{ fontSize: 12, opacity: 0.75, flexShrink: 0, marginTop: 2, color: styles.ac, fontFamily: 'sans-serif' }}>
             📌
           </span>
 
-          <div style={{ flex: 1, wordBreak: 'break-word' }}>
+          <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
             <div style={{
-              color:       pinned.color || styles.ac,
-              fontWeight:  700,
-              fontSize:    styles.fs,
-              fontFamily:  'sans-serif',
-              marginBottom: 2,
+              color: pinned.color || styles.ac, fontWeight: 700,
+              fontSize: styles.fs, fontFamily: 'sans-serif', marginBottom: 2,
             }}>
               {pinned.nickname}
             </div>
             <div style={{
-              color:      styles.tc,
-              fontSize:   styles.fs,
-              fontFamily: 'sans-serif',
-              lineHeight: 1.4,
+              color: styles.tc, fontSize: styles.fs,
+              fontFamily: 'sans-serif', lineHeight: 1.4,
             }}>
               {pinned.comment}
             </div>
           </div>
 
-          {/* ✕ clear button */}
           <button
             onClick={() => setVisible(false)}
             style={{
-              position:   'absolute',
-              top:        6,
-              right:      8,
-              background: 'none',
-              border:     'none',
-              color:      'rgba(255,255,255,0.35)',
-              cursor:     'pointer',
-              fontSize:   13,
-              lineHeight: 1,
-              padding:    0,
+              position: 'absolute', top: 6, right: 8,
+              background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.35)', cursor: 'pointer',
+              fontSize: 13, lineHeight: 1, padding: 0,
             }}
             title="ล้างข้อความ pin"
-          >
-            ✕
-          </button>
+          >✕</button>
         </div>
       )}
       <style>{`
