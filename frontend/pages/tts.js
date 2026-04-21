@@ -33,8 +33,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [loginLoading, setLoginLoading]     = useState(false);
   const [googleKey, setGoogleKey]   = useState('');
   const [googleVoice, setGoogleVoice] = useState('th-TH-Neural2-C');
-  const [showKey, setShowKey]       = useState(false);
+  const [showKey, setShowKey]             = useState(false);
   const [testingGoogle, setTestingGoogle] = useState(false);
+  const [showGoogleSection, setShowGoogleSection] = useState(false);
   const saveTimerRef  = useRef(null);
   const mountedRef    = useRef(true);
 
@@ -55,7 +56,10 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     const voice = localStorage.getItem('ttplus_google_tts_voice') || 'th-TH-Neural2-C';
     setGoogleKey(key);
     setGoogleVoice(voice);
-    if (key) configureTTS({ googleApiKey: key, googleVoice: voice });
+    if (key) {
+      configureTTS({ googleApiKey: key, googleVoice: voice });
+      setShowGoogleSection(true); // เปิด section ให้อัตโนมัติถ้ามี key แล้ว
+    }
   }, []);
 
   // โหลด settings จาก API
@@ -211,7 +215,17 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
 
 
-          {/* Google Cloud TTS — BYOK */}
+          {/* Google Cloud TTS — BYOK (ซ่อนสำหรับ user ทั่วไป) */}
+          <button
+            onClick={() => setShowGoogleSection(s => !s)}
+            className={clsx('w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs transition',
+              isDark ? 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
+                     : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300')}>
+            <span>⚙️ ตั้งค่าขั้นสูง (Advanced)</span>
+            <span>{showGoogleSection ? '▲' : '▼'}</span>
+          </button>
+
+          {showGoogleSection && (
           <div className={clsx('rounded-2xl p-4 border', card)}>
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
@@ -313,6 +327,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               {' '}→ เปิด Text-to-Speech API → สร้าง API key
             </p>
           </div>
+          )}
 
           {/* เสียงและความเร็ว */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
