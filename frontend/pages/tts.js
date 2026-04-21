@@ -94,21 +94,19 @@ export default function TtsPage({ theme, setTheme, user, authLoading }) {
           ttsVoice:      next.voice,
         },
       });
-      // อัปเดต cache เพื่อไม่ให้โหลดค่าเก่าตอนสลับกลับมาหน้านี้
-      const cached = getCachedSettings();
-      if (cached) {
-        setCachedSettings({
-          ...cached,
-          ttsEnabled:    next.enabled,
-          ttsReadChat:   next.readChat,
-          ttsReadGift:   next.readGift,
-          ttsReadFollow: next.readFollow,
-          ttsRate:       next.rate,
-          ttsPitch:      next.pitch,
-          ttsVolume:     next.volume,
-          ttsVoice:      next.voice,
-        });
-      }
+      // อัปเดต cache ทันที — ไม่ให้โหลดค่าเก่าตอนสลับกลับมาหน้านี้
+      // ครอบ case ที่ cache เป็น null ด้วย (merge กับ {} ถ้าไม่มี cache)
+      setCachedSettings({
+        ...(getCachedSettings() || {}),
+        ttsEnabled:    next.enabled,
+        ttsReadChat:   next.readChat,
+        ttsReadGift:   next.readGift,
+        ttsReadFollow: next.readFollow,
+        ttsRate:       next.rate,
+        ttsPitch:      next.pitch,
+        ttsVolume:     next.volume,
+        ttsVoice:      next.voice,
+      });
     } catch (err) {
       showError(err, 'บันทึก TTS ไม่สำเร็จ');
     } finally {
