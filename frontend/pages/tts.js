@@ -6,6 +6,7 @@ import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import {
   configureTTS, speak, onVoicesReady,
   GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
+  GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
 } from '../lib/tts';
 import toast from 'react-hot-toast';
 import { showError } from '../lib/errorHandler';
@@ -36,6 +37,12 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [showKey, setShowKey]             = useState(false);
   const [testingGoogle, setTestingGoogle] = useState(false);
   const [showGoogleSection, setShowGoogleSection] = useState(false);
+  // Gemini state
+  const [geminiKey, setGeminiKey]         = useState('');
+  const [geminiVoice, setGeminiVoice]     = useState('Aoede');
+  const [geminiPersona, setGeminiPersona] = useState('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [testingGemini, setTestingGemini] = useState(false);
   const saveTimerRef  = useRef(null);
   const mountedRef    = useRef(true);
 
@@ -50,15 +57,23 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     return unsub;
   }, []);
 
-  // โหลด Google API key จาก localStorage
+  // โหลด Google + Gemini API keys จาก localStorage
   useEffect(() => {
-    const key   = loadGoogleApiKey();
-    const voice = localStorage.getItem('ttplus_google_tts_voice') || 'th-TH-Neural2-C';
-    setGoogleKey(key);
-    setGoogleVoice(voice);
-    if (key) {
-      configureTTS({ googleApiKey: key, googleVoice: voice });
-      setShowGoogleSection(true); // เปิด section ให้อัตโนมัติถ้ามี key แล้ว
+    const gKey   = loadGoogleApiKey();
+    const gVoice = localStorage.getItem('ttplus_google_tts_voice') || 'th-TH-Neural2-C';
+    setGoogleKey(gKey);
+    setGoogleVoice(gVoice);
+
+    const mKey     = loadGeminiApiKey();
+    const mVoice   = localStorage.getItem('ttplus_gemini_voice')   || 'Aoede';
+    const mPersona = localStorage.getItem('ttplus_gemini_persona') || '';
+    setGeminiKey(mKey);
+    setGeminiVoice(mVoice);
+    setGeminiPersona(mPersona);
+
+    if (mKey || gKey) {
+      configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona });
+      setShowGoogleSection(true);
     }
   }, []);
 
@@ -215,17 +230,148 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
 
 
-          {/* Google Cloud TTS — BYOK (ซ่อนสำหรับ user ทั่วไป) */}
+          {/* Advanced toggle */}
           <button
             onClick={() => setShowGoogleSection(s => !s)}
             className={clsx('w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs transition',
               isDark ? 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
                      : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300')}>
             <span>⚙️ ตั้งค่าขั้นสูง (Advanced)</span>
-            <span>{showGoogleSection ? '▲' : '▼'}</span>
+            <span className="flex items-center gap-2">
+              {geminiKey && <span className="text-purple-400 font-semibold">Gemini ✓</span>}
+              {googleKey && !geminiKey && <span className="text-green-400 font-semibold">Google ✓</span>}
+              {showGoogleSection ? '▲' : '▼'}
+            </span>
           </button>
 
-          {showGoogleSection && (
+          {showGoogleSection && (<>
+
+          {/* ─── Gemini TTS ─── */}
+          <div className={clsx('rounded-2xl p-4 border', card)}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+                ✨ Gemini TTS
+                <span className="text-xs font-normal text-purple-400 ml-2">30 voices × 10 personas</span>
+              </h2>
+              {geminiKey
+                ? <span className="text-xs text-purple-400 font-semibold">✓ Priority 1</span>
+                : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
+            </div>
+            <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
+              ใช้ Google AI Studio key (ฟรี) — เสียงดีที่สุด รองรับหลาย persona
+            </p>
+
+            {/* Gemini API key */}
+            <div className="flex gap-2 mb-3">
+              <div className="relative flex-1">
+                <input
+                  type={showGeminiKey ? 'text' : 'password'}
+                  value={geminiKey}
+                  onChange={e => setGeminiKey(e.target.value)}
+                  placeholder="AIza... (จาก aistudio.google.com)"
+                  className={clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition pr-10',
+                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500'
+                           : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500')}
+                />
+                <button onClick={() => setShowGeminiKey(s => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 text-xs px-1">
+                  {showGeminiKey ? '🙈' : '👁️'}
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  saveGeminiApiKey(geminiKey);
+                  configureTTS({ geminiApiKey: geminiKey });
+                  toast.success(geminiKey ? '✨ บันทึก Gemini key แล้ว' : 'ลบ key แล้ว');
+                }}
+                className="px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition flex-shrink-0">
+                บันทึก
+              </button>
+            </div>
+
+            {/* Voice selector — grid 2 cols */}
+            <div className="mb-3">
+              <Label isDark={isDark}>เสียง (Voice) — {GEMINI_VOICES.length} แบบ</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1 max-h-48 overflow-y-auto pr-1">
+                {GEMINI_VOICES.map(v => (
+                  <button key={v.name}
+                    onClick={() => {
+                      setGeminiVoice(v.name);
+                      localStorage.setItem('ttplus_gemini_voice', v.name);
+                      configureTTS({ geminiVoice: v.name });
+                    }}
+                    className={clsx(
+                      'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition',
+                      geminiVoice === v.name
+                        ? 'bg-purple-600 border-purple-600 text-white'
+                        : isDark
+                          ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    <span className="text-xs font-semibold">{v.name}</span>
+                    <span className={clsx('text-xs', geminiVoice === v.name ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
+                      {v.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Persona selector */}
+            <div className="mb-3">
+              <Label isDark={isDark}>Persona (สไตล์การพูด) — 10 แบบ</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                {GEMINI_PERSONAS.map(p => (
+                  <button key={p.id}
+                    onClick={() => {
+                      setGeminiPersona(p.instruction);
+                      localStorage.setItem('ttplus_gemini_persona', p.instruction);
+                      configureTTS({ geminiPersona: p.instruction });
+                    }}
+                    className={clsx(
+                      'px-3 py-2 rounded-xl border text-left text-xs font-semibold transition',
+                      geminiPersona === p.instruction
+                        ? 'bg-purple-600 border-purple-600 text-white'
+                        : isDark
+                          ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ทดสอบ */}
+            <button
+              disabled={!geminiKey || testingGemini}
+              onClick={async () => {
+                if (!geminiKey) return;
+                setTestingGemini(true);
+                try {
+                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, enabled: true });
+                  speak('สวัสดีครับ นี่คือเสียง Gemini TTS', null);
+                } catch {
+                  toast.error('ทดสอบไม่สำเร็จ ลองตรวจสอบ API key');
+                } finally {
+                  setTimeout(() => setTestingGemini(false), 4000);
+                }
+              }}
+              className="w-full py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20">
+              {testingGemini ? '🔊 กำลังเล่น...' : '▶ ทดสอบ Gemini'}
+            </button>
+
+            <p className={clsx('text-xs mt-3', isDark ? 'text-gray-600' : 'text-gray-400')}>
+              ยังไม่มี key?{' '}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer"
+                className="text-purple-400 hover:underline">
+                aistudio.google.com/apikey
+              </a>
+              {' '}— ฟรี ไม่ต้องใส่บัตรเครดิต
+            </p>
+          </div>
+
+          {/* ─── Google Cloud TTS ─── */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
@@ -327,7 +473,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               {' '}→ เปิด Text-to-Speech API → สร้าง API key
             </p>
           </div>
-          )}
+          </>)}
 
           {/* เสียงและความเร็ว */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
