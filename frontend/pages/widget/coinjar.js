@@ -153,8 +153,11 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
-  if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
+  // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
+  const isCid   = /^\d{4,8}$/.test(cidOrWt);
+  const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
+  if (!cidOrWt || (!isCid && !isToken)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
     transports: ['websocket'],
@@ -162,7 +165,10 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, gif
     reconnectionDelay:    2000,
   });
 
-  socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
+  socket.on('connect', () => {
+    if (isCid) socket.emit('join_widget', { cid: cidOrWt });
+    else        socket.emit('join_widget', { widgetToken: cidOrWt });
+  });
 
   socket.on('gift', (data) => {
     const safe     = sanitizeEvent(data);
@@ -312,16 +318,18 @@ export default function CoinJarWidget() {
 
     const init = async () => {
       const params    = new URLSearchParams(window.location.search);
-      const wt        = params.get('wt');
+      const cidOrWt   = params.get('cid') ?? params.get('wt'); // cid ใหม่ หรือ wt เก่า
       const isPreview = params.get('preview') === '1';
 
-      // โหลด style: ถ้ามี wt และไม่ใช่ preview → ดึงจาก API (short URL)
+      // โหลด style: ถ้ามี cid/wt และไม่ใช่ preview → ดึงจาก API
       // fallback → อ่านจาก URL params เหมือนเดิม
       let s = parseWidgetStyles(params, 'coinjar');
-      if (wt && !isPreview) {
+      if (cidOrWt && !isPreview) {
         try {
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-          const res = await fetch(`${backendUrl}/api/widget-styles?wt=${encodeURIComponent(wt)}`);
+          const isCid = /^\d{4,8}$/.test(cidOrWt);
+          const qs    = isCid ? `cid=${encodeURIComponent(cidOrWt)}` : `wt=${encodeURIComponent(cidOrWt)}`;
+          const res   = await fetch(`${backendUrl}/api/widget-styles?${qs}`);
           if (res.ok) {
             const data = await res.json();
             if (data.styles?.coinjar) s = rawToStyle(data.styles.coinjar, 'coinjar');
@@ -369,7 +377,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -634,6 +642,26 @@ function JarSVG({ acColor, offset = 0 }) {
         </filter>
       </defs>
 
+      {/* ===== Jar body — outline ด้านหลัง (เงา/ความลึก) ===== */}
+      <path
+        d={`
+          M ${NECK_L} ${NECK_B}
+          L ${BODY_L + 2} ${NECK_B + 30}
+          L ${BODY_L} ${NECK_B + 50}
+          L ${BODY_L} ${BODY_B}
+          Q ${BODY_L} ${FLOOR} ${BODY_L + 18} ${FLOOR}
+          L ${BODY_R - 18} ${FLOOR}
+          Q ${BODY_R} ${FLOOR} ${BODY_R} ${BODY_B}
+          L ${BODY_R} ${NECK_B + 50}
+          L ${BODY_R - 2} ${NECK_B + 30}
+          L ${NECK_R} ${NECK_B}
+          Z
+        `}
+        fill="none"
+        stroke="rgba(0,0,0,0.25)"
+        strokeWidth="5"
+      />
+
       {/* ===== Jar body (ตัวโถ) ===== */}
       <path
         d={`
@@ -650,8 +678,8 @@ function JarSVG({ acColor, offset = 0 }) {
           Z
         `}
         fill="url(#jarGlass)"
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth="1.5"
+        stroke="rgba(255,255,255,0.72)"
+        strokeWidth="2.5"
       />
 
       {/* ===== Neck (ปากโถ) ===== */}
@@ -660,8 +688,8 @@ function JarSVG({ acColor, offset = 0 }) {
         width={NECK_R - NECK_L}
         height={NECK_B - NECK_T - 20}
         fill="rgba(255,255,255,0.04)"
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth="1.5"
+        stroke="rgba(255,255,255,0.72)"
+        strokeWidth="2.5"
         rx="3"
       />
 
@@ -836,16 +864,16 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
           <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
 
           {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (93,248) เพื่อหมุนแขนติดลำตัว */}
+          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (107,205) เพื่อหมุนแขนติดลำตัว */}
           <g style={{
             transformBox: 'view-box',
-            transformOrigin: '93px 248px',
+            transformOrigin: '107px 205px',
             animation: 'catPawPoint 5s ease-in-out infinite',
             animationDelay: '2s',
           }}>
             {/* ขาหน้า foreleg จากต้นแขน (ไหล่) ลงมาถึงเท้า */}
-            <line x1="93" y1="248" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-            <line x1="93" y1="248" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
+            <line x1="107" y1="205" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
+            <line x1="107" y1="205" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
             {/* เท้า */}
             <ellipse cx="96" cy="271" rx="19" ry="12" fill="#fbbf24" />
             <ellipse cx="96" cy="269" rx="15" ry="9"  fill="#f59e0b" />

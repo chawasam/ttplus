@@ -28,12 +28,9 @@ let _cfg = {
   googleApiKey:   '',               // Google Cloud TTS key
   googleVoice:    'th-TH-Neural2-C',
   geminiApiKey:   '',               // Google AI Studio / Gemini key (ใช้ได้ทั้ง 3.1 + 2.5)
-  geminiVoice:    'Aoede',          // Gemini 3.1 voice
-  geminiPersona:  '',               // Gemini 3.1 persona
-  geminiShuffle:  false,            // Gemini 3.1 shuffle
-  gemini25Voice:   'Aoede',         // Gemini 2.5 voice (แยกจาก 3.1)
-  gemini25Persona: '',              // Gemini 2.5 persona (แยกจาก 3.1)
-  gemini25Shuffle: false,           // Gemini 2.5 shuffle (แยกจาก 3.1)
+  geminiVoice:    'Aoede',
+  geminiPersona:  '',               // style instruction ฝังใน content text
+  geminiShuffle:  false,            // สุ่ม voice+persona ทุกแชท (ใช้กับทั้ง 3.1 + 2.5)
 };
 
 // ===== Internal: strip emoji + brackets =====
@@ -299,20 +296,12 @@ async function _next() {
   // เติม engine ที่ enabled แต่ไม่อยู่ใน customOrder (ป้องกัน missing)
   enabled.forEach(e => { if (!ordered.includes(e)) ordered.push(e); });
 
-  // สุ่ม voice+persona สำหรับ Gemini 3.1 ถ้า shuffle เปิด
+  // สุ่ม voice+persona สำหรับ Gemini ถ้า shuffle เปิด
   let gVoice   = _cfg.geminiVoice;
   let gPersona = _cfg.geminiPersona;
   if (_cfg.geminiShuffle && _cfg.geminiApiKey) {
     gVoice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
     gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
-  }
-
-  // สุ่ม voice+persona สำหรับ Gemini 2.5 (แยกอิสระจาก 3.1)
-  let g25Voice   = _cfg.gemini25Voice   || 'Aoede';
-  let g25Persona = _cfg.gemini25Persona || '';
-  if (_cfg.gemini25Shuffle && _cfg.geminiApiKey) {
-    g25Voice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
-    g25Persona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
   }
 
   // ลอง engine ตามลำดับ — emit status ก่อนพูด ถ้าล้มเหลวข้ามถัดไป
@@ -332,8 +321,8 @@ async function _next() {
         _emitStatus('gemini31', gVoice, gPersona);
         await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
       } else if (eng === 'gemini25') {
-        _emitStatus('gemini25', g25Voice, g25Persona);
-        await _speakGemini(text, g25Voice, g25Persona, GEMINI_25_MODEL);
+        _emitStatus('gemini25', gVoice, gPersona);
+        await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL);
       } else if (eng === 'google') {
         _emitStatus('google', _cfg.googleVoice, null);
         await _speakGoogle(text);
@@ -445,8 +434,8 @@ export const GEMINI_PERSONAS = [
   { id: 'sleepy',     label: '😴 เพิ่งตื่นนอน',      instruction: 'Speak as if you just woke up and are very groggy and half-asleep. Slur your words slightly, speak slowly, sound exhausted.' },
   { id: 'lazy',       label: '🛋️ ขี้เกียจ',          instruction: 'Speak in the most lazy, unenthusiastic, monotone way possible, as if you cannot be bothered to care about anything.' },
   { id: 'annoyed',    label: '😒 กวนตีน',             instruction: 'Speak in a slightly snarky, mischievous, and teasing tone, like you are casually trolling someone.' },
-  { id: 'giggle',     label: '😂 คนเส้นตื้นหัวเราะง่าย', instruction: 'Speak with a very low threshold for laughter — giggle and chuckle frequently even at completely normal things, as if everything is somehow hilarious. Occasional snorts welcome.' },
-  { id: 'cheerful',   label: '✨ สดใสน่ารัก',          instruction: 'Speak in an upbeat, warm, and genuinely cheerful tone — bright energy, friendly smile in your voice, like a sunshine person who makes everyone around them feel good.' },
+  { id: 'bored',      label: '🥱 เบื่อมาก',           instruction: 'Speak as if you are extremely bored and have zero interest in what you are saying. Flat, slow, lifeless.' },
+  { id: 'hungry',     label: '🍜 หิวข้าว',            instruction: 'Speak as if you are very hungry and distracted, occasionally sounding like you are thinking about food.' },
   { id: 'dramatic',   label: '🎭 ดราม่า',              instruction: 'Speak dramatically with extreme emotion and expression, as if everything is a life-or-death situation.' },
   { id: 'excited',    label: '🎉 ตื่นเต้น',           instruction: 'Speak with very high energy and excitement, like you just won the lottery.' },
   { id: 'oldman',     label: '👴 คนแก่เคี้ยวหมาก',   instruction: 'Speak like a very old Thai person slowly chewing betel nut — gravelly raspy voice, slow mumbling pace, pausing mid-sentence, teeth sound missing, warm but very aged.' },
@@ -508,7 +497,7 @@ export async function speakDirect(engine, text) {
   if (!clean) throw new Error('ข้อความว่างเปล่า');
   switch (engine) {
     case 'gemini31': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL);
-    case 'gemini25': return _speakGemini(clean, _cfg.gemini25Voice || 'Aoede', _cfg.gemini25Persona || '', GEMINI_25_MODEL);
+    case 'gemini25': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_25_MODEL);
     case 'gemini':   return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL); // backward compat
     case 'google':   return _speakGoogle(clean);
     case 'web':      return _speakWeb(clean);
@@ -516,15 +505,7 @@ export async function speakDirect(engine, text) {
   }
 }
 
-export function loadGeminiApiKey()      { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
-export function saveGeminiApiKey(k)     { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
-export function loadGeminiShuffle()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }
-export function saveGeminiShuffle(on)   { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini_shuffle', '1') : localStorage.removeItem('ttplus_gemini_shuffle'); }
-
-// Gemini 2.5 — แยก storage จาก 3.1
-export function loadGemini25Voice()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_voice')   || 'Aoede' : 'Aoede'; }
-export function saveGemini25Voice(v)    { if (typeof window === 'undefined') return; v ? localStorage.setItem('ttplus_gemini25_voice', v) : localStorage.removeItem('ttplus_gemini25_voice'); }
-export function loadGemini25Persona()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_persona') || ''      : ''; }
-export function saveGemini25Persona(p)  { if (typeof window === 'undefined') return; p ? localStorage.setItem('ttplus_gemini25_persona', p) : localStorage.removeItem('ttplus_gemini25_persona'); }
-export function loadGemini25Shuffle()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_shuffle') === '1' : false; }
-export function saveGemini25Shuffle(on) { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini25_shuffle', '1') : localStorage.removeItem('ttplus_gemini25_shuffle'); }
+export function loadGeminiApiKey()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
+export function saveGeminiApiKey(k)    { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
+export function loadGeminiShuffle()    { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }
+export function saveGeminiShuffle(on)  { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini_shuffle', '1') : localStorage.removeItem('ttplus_gemini_shuffle'); }
