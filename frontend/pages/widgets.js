@@ -16,6 +16,7 @@ const WIDGETS = [
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',      desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',  size: '500 × 100' },
   { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',   desc: 'อันดับผู้ส่งของขวัญ',                  size: '300 × 400' },
   { id: 'coinjar',     icon: '🫙', name: 'Coin Jar',      desc: 'โถฟิสิกส์ของขวัญ TikTok',              size: '400 × 600' },
+  { id: 'rosejar',     icon: '🌹', name: 'Rose Jar',      desc: 'โถแก้วรับดอกกุหลาบ + ของขวัญ',         size: '400 × 600' },
 ];
 
 // user, authLoading มาจาก _app.js

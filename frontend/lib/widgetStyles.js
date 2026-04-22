@@ -9,6 +9,7 @@ export const WIDGET_DEFAULTS = {
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
   coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'fbbf24', fs: 13, br: 20 },
+  rosejar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20 },
 };
 
 /** hex (6 chars no #) + alpha (0-100) -> rgba(r,g,b,a) */
