@@ -134,9 +134,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
-    const style  = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
+    const base  = `${baseUrl}/widget/${widgetId}?preview=1`;
+    const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
+    if (!style) return base; // widget ที่ไม่มี style (เช่น ttsmonitor)
     const styleQ = styleToParams(style, widgetId);
-    const base   = `${baseUrl}/widget/${widgetId}?preview=1`;
     return styleQ ? `${base}&${styleQ}` : base;
   }, [baseUrl, styles]);
 
