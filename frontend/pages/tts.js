@@ -5,9 +5,11 @@ import { auth, googleProvider } from '../lib/firebase';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import {
   configureTTS, speak, speakDirect, onVoicesReady,
+  GEMINI_31_MODEL, GEMINI_25_MODEL,
   GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
   GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
-  loadGeminiShuffle, saveGeminiShuffle, randomGeminiCombo,
+  loadGeminiShuffle, saveGeminiShuffle,
+  loadEngine, saveEngine,
 } from '../lib/tts';
 import toast from 'react-hot-toast';
 import { showError } from '../lib/errorHandler';
@@ -43,8 +45,10 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [geminiVoice, setGeminiVoice]     = useState('Aoede');
   const [geminiPersona, setGeminiPersona] = useState('');
   const [showGeminiKey, setShowGeminiKey]     = useState(false);
-  const [testingGemini, setTestingGemini]     = useState(false);
-  const [geminiShuffle, setGeminiShuffle]     = useState(false);
+  const [testingGemini31, setTestingGemini31]   = useState(false);
+  const [testingGemini25, setTestingGemini25]   = useState(false);
+  const [geminiShuffle, setGeminiShuffle]       = useState(false);
+  const [engine, setEngine]                     = useState('auto');
   const [testGeminiText, setTestGeminiText]   = useState('สวัสดีค่ะ');
   const [testGoogleText, setTestGoogleText]   = useState('สวัสดีค่ะ');
   const [testWebText, setTestWebText]         = useState('สวัสดีค่ะ');
@@ -73,14 +77,18 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     const mVoice    = localStorage.getItem('ttplus_gemini_voice')   || 'Aoede';
     const mPersona  = localStorage.getItem('ttplus_gemini_persona') || '';
     const mShuffle  = loadGeminiShuffle();
+    const eng       = loadEngine();
     setGeminiKey(mKey);
     setGeminiVoice(mVoice);
     setGeminiPersona(mPersona);
     setGeminiShuffle(mShuffle);
+    setEngine(eng);
 
     if (mKey || gKey) {
-      configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona, geminiShuffle: mShuffle });
+      configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona, geminiShuffle: mShuffle, engine: eng });
       setShowGoogleSection(true);
+    } else {
+      configureTTS({ engine: eng });
     }
   }, []);
 
@@ -237,6 +245,66 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
 
 
+          {/* ── Engine Mode ── */}
+          <div className={clsx('rounded-2xl p-4 border', card)}>
+            <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
+              🎚️ เลือก Engine เสียง
+            </h2>
+
+            {/* Auto */}
+            {(() => {
+              const setEng = (e) => { setEngine(e); saveEngine(e); configureTTS({ engine: e }); };
+              const engBtn = (id, icon, label, sub, color) => {
+                const active = engine === id;
+                return (
+                  <button key={id} onClick={() => setEng(id)}
+                    className={clsx('flex items-start gap-2 px-3 py-2.5 rounded-xl border text-left text-xs transition',
+                      active
+                        ? `${color} text-white`
+                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                                 : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
+                    <div>
+                      <p className="font-semibold">{label}</p>
+                      {sub && <p className={clsx('text-xs mt-0.5', active ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>{sub}</p>}
+                    </div>
+                    {active && <span className="ml-auto text-sm">✓</span>}
+                  </button>
+                );
+              };
+              return (
+                <div className="space-y-2">
+                  {/* Auto — full width */}
+                  <button onClick={() => setEng('auto')}
+                    className={clsx('w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition',
+                      engine === 'auto'
+                        ? 'bg-brand-500 border-brand-500 text-white'
+                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                                 : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    <span className="text-xl">🤖</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold">Auto (แนะนำ)</p>
+                      <p className={clsx('text-xs mt-0.5', engine === 'auto' ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
+                        Gemini 3.1 → Gemini 2.5 → Google Cloud → Web Speech
+                      </p>
+                    </div>
+                    {engine === 'auto' && <span className="text-base">✓</span>}
+                  </button>
+
+                  {/* 4 engines — 2×2 grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {engBtn('gemini31', '✨', 'Gemini 3.1', '300 combo (key ต้องการ)', 'bg-purple-600 border-purple-600')}
+                    {engBtn('gemini25', '🌟', 'Gemini 2.5', '300 combo (key ต้องการ)', 'bg-violet-600 border-violet-600')}
+                    {engBtn('google',   '🔑', 'Google Cloud', 'Neural Thai (key ต้องการ)', 'bg-green-600 border-green-600')}
+                    {engBtn('web',      '🔈', 'Web Speech', 'ฟรี ไม่ต้อง key', 'bg-brand-500 border-brand-500')}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
           {/* Advanced toggle */}
           <button
             onClick={() => setShowGoogleSection(s => !s)}
@@ -258,14 +326,14 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 ✨ Gemini TTS
-                <span className="text-xs font-normal text-purple-400 ml-2">10 × 30 = 300 เสียง</span>
+                <span className="text-xs font-normal text-purple-400 ml-2">3.1 + 2.5 · 300 combo</span>
               </h2>
               {geminiKey
-                ? <span className="text-xs text-purple-400 font-semibold">✓ Priority 1</span>
+                ? <span className="text-xs text-purple-400 font-semibold">✓ เปิดใช้งาน</span>
                 : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
             </div>
             <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ใช้ Google AI Studio key (ฟรี) — ถ้า token หมดจะ fallback → Google Cloud → Web Speech อัตโนมัติ
+              ใช้ Google AI Studio key (ฟรี) — Gemini 3.1 ใหม่กว่า / Gemini 2.5 สำรอง — key เดียวกัน ใช้ได้ทั้งคู่
             </p>
 
             {/* Gemini API key */}
@@ -375,34 +443,73 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               />
             </div>
 
-            {/* ทดสอบ Gemini */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={testGeminiText}
-                onChange={e => setTestGeminiText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.nextSibling?.click(); }}
-                className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition',
-                  isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500'
-                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500')}
-              />
-              <button
-                disabled={!geminiKey || testingGemini || !testGeminiText.trim()}
-                onClick={async () => {
-                  if (!geminiKey || !testGeminiText.trim()) return;
-                  setTestingGemini(true);
-                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false });
-                  try {
-                    await speakDirect('gemini', testGeminiText.trim());
-                  } catch (e) {
-                    toast.error(`Gemini: ${e.message}`);
-                  } finally {
-                    setTestingGemini(false);
-                  }
-                }}
-                className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20 flex-shrink-0">
-                {testingGemini ? '🔊' : '▶'}
-              </button>
+            {/* ทดสอบ Gemini — 2 rows: 3.1 + 2.5 */}
+            <div className="flex flex-col gap-2">
+              {/* Row 1: Gemini 3.1 */}
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-purple-400 font-semibold w-16 flex-shrink-0">✨ 3.1</span>
+                <input
+                  type="text"
+                  value={testGeminiText}
+                  onChange={e => setTestGeminiText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const btn = e.currentTarget.parentElement?.querySelector('button');
+                      btn?.click();
+                    }
+                  }}
+                  placeholder="พิมพ์ข้อความทดสอบ..."
+                  className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition',
+                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500'
+                           : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500')}
+                />
+                <button
+                  disabled={!geminiKey || testingGemini31 || !testGeminiText.trim()}
+                  onClick={async () => {
+                    if (!geminiKey || !testGeminiText.trim()) return;
+                    setTestingGemini31(true);
+                    configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false });
+                    try {
+                      await speakDirect('gemini31', testGeminiText.trim());
+                    } catch (e) {
+                      toast.error(`Gemini 3.1: ${e.message}`);
+                    } finally {
+                      setTestingGemini31(false);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20 flex-shrink-0">
+                  {testingGemini31 ? '🔊' : '▶'}
+                </button>
+              </div>
+              {/* Row 2: Gemini 2.5 */}
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-violet-400 font-semibold w-16 flex-shrink-0">🌟 2.5</span>
+                <input
+                  type="text"
+                  value={testGeminiText}
+                  readOnly
+                  className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition opacity-60',
+                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
+                           : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
+                />
+                <button
+                  disabled={!geminiKey || testingGemini25 || !testGeminiText.trim()}
+                  onClick={async () => {
+                    if (!geminiKey || !testGeminiText.trim()) return;
+                    setTestingGemini25(true);
+                    configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false });
+                    try {
+                      await speakDirect('gemini25', testGeminiText.trim());
+                    } catch (e) {
+                      toast.error(`Gemini 2.5: ${e.message}`);
+                    } finally {
+                      setTestingGemini25(false);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 flex-shrink-0">
+                  {testingGemini25 ? '🔊' : '▶'}
+                </button>
+              </div>
             </div>
 
             <p className={clsx('text-xs mt-3', isDark ? 'text-gray-600' : 'text-gray-400')}>

@@ -1,8 +1,14 @@
 // lib/tts.js — Text-to-Speech utility
-// Priority:
-//   Engine 1: Gemini TTS  (gemini API key — 30 voices × personas)
-//   Engine 2: Google Cloud TTS (cloud API key — Neural Thai voices)
-//   Engine 3: Web Speech API (ฟรี fallback ไม่ต้อง key)
+// Engines (auto cascade order):
+//   1. Gemini 3.1 TTS  (gemini API key — 30 voices × 10 personas = 300 combo)
+//   2. Gemini 2.5 TTS  (same key — fallback)
+//   3. Google Cloud TTS (cloud key — Neural Thai voices)
+//   4. Web Speech API   (ฟรี fallback ไม่ต้อง key)
+
+// ── Gemini TTS model names ──────────────────────────────────────────────────
+// อัปเดตตรงนี้ถ้า Google เปลี่ยนชื่อ model
+export const GEMINI_31_MODEL = 'gemini-3.1-flash-preview-tts';
+export const GEMINI_25_MODEL = 'gemini-2.5-flash-preview-tts';
 
 const MAX_QUEUE = 8;
 
@@ -18,11 +24,12 @@ let _cfg = {
   pitch:          1.0,
   volume:         1.0,
   voice:          '',               // Web Speech voice name
+  engine:         'auto',           // 'auto'|'gemini31'|'gemini25'|'google'|'web'
   googleApiKey:   '',               // Google Cloud TTS key
   googleVoice:    'th-TH-Neural2-C',
-  geminiApiKey:   '',               // Google AI Studio / Gemini key
+  geminiApiKey:   '',               // Google AI Studio / Gemini key (ใช้ได้ทั้ง 3.1 + 2.5)
   geminiVoice:    'Aoede',
-  geminiPersona:  '',               // system instruction สำหรับ persona
+  geminiPersona:  '',               // style instruction ฝังใน content text
   geminiShuffle:  false,            // สุ่ม voice+persona ทุกแชท
 };
 
@@ -35,12 +42,11 @@ function _stripEmoji(str) {
     .trim();
 }
 
-// ===== Engine 1: Gemini TTS =====
-async function _speakGemini(text, voiceOverride, personaOverride) {
-  const key      = _cfg.geminiApiKey;
-  const voice    = voiceOverride   ?? _cfg.geminiVoice   ?? 'Aoede';
-  const persona  = personaOverride ?? _cfg.geminiPersona ?? '';
-  const model    = 'gemini-2.5-flash-preview-tts';
+// ===== Engine 1+2: Gemini TTS (3.1 หรือ 2.5 ตาม model param) =====
+async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI_31_MODEL) {
+  const key     = _cfg.geminiApiKey;
+  const voice   = voiceOverride   ?? _cfg.geminiVoice   ?? 'Aoede';
+  const persona = personaOverride ?? _cfg.geminiPersona ?? '';
 
   // Gemini TTS ไม่รองรับ systemInstruction — model จะพยายาม generate text แทน audio
   // วิธีใส่ persona: ฝัง style instruction ลงใน content text โดยตรง
@@ -222,47 +228,64 @@ function _speakWeb(text) {
   });
 }
 
-// ===== Internal: process queue (cascade fallback) =====
+// ===== Internal: process queue =====
 async function _next() {
   if (_busy || _queue.length === 0) return;
   if (typeof window === 'undefined') return;
 
   _busy = true;
-  const text = _queue.shift();
+  const text   = _queue.shift();
+  const engine = _cfg.engine || 'auto';
 
-  // สุ่ม voice+persona ทุกครั้งถ้า shuffleMode เปิด
-  let geminiVoice   = _cfg.geminiVoice;
-  let geminiPersona = _cfg.geminiPersona;
+  // สุ่ม voice+persona ถ้า shuffleMode เปิด
+  let gVoice   = _cfg.geminiVoice;
+  let gPersona = _cfg.geminiPersona;
   if (_cfg.geminiShuffle && _cfg.geminiApiKey) {
-    geminiVoice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
-    geminiPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
+    gVoice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
+    gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
   }
 
+  const fatal = (e) => {
+    const m = (e?.message || '').toLowerCase();
+    return m.includes('429') || m.includes('401') || m.includes('403') || m.includes('quota');
+  };
+
   try {
-    if (_cfg.geminiApiKey) {
-      try {
-        await _speakGemini(text, geminiVoice, geminiPersona);
-        _busy = false; _next(); return;
-      } catch (e) {
-        // quota (429) หรือ auth error (401/403) → ไปต่อ
-        const msg = e?.message || '';
-        const isFatal = msg.includes('429') || msg.includes('401') || msg.includes('403') || msg.includes('quota');
-        if (!isFatal) { _busy = false; _next(); return; } // error อื่น ข้ามข้อความ
-        // ไม่ return → fallthrough ไป Google
+    if (engine === 'auto') {
+      // ── Cascade: Gemini 3.1 → Gemini 2.5 → Google Cloud → Web Speech ──
+      if (_cfg.geminiApiKey) {
+        try {
+          await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
+          _busy = false; _next(); return;
+        } catch (e) {
+          if (!fatal(e)) { _busy = false; _next(); return; }
+        }
+        try {
+          await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL);
+          _busy = false; _next(); return;
+        } catch (e) {
+          if (!fatal(e)) { _busy = false; _next(); return; }
+        }
+      }
+      if (_cfg.googleApiKey) {
+        try {
+          await _speakGoogle(text);
+          _busy = false; _next(); return;
+        } catch (e) {
+          if (!fatal(e)) { _busy = false; _next(); return; }
+        }
+      }
+      await _speakWeb(text);
+    } else {
+      // ── Manual: ใช้ engine ที่ user เลือก ──
+      switch (engine) {
+        case 'gemini31': await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL); break;
+        case 'gemini25': await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL); break;
+        case 'google':   await _speakGoogle(text); break;
+        case 'web':
+        default:         await _speakWeb(text);
       }
     }
-    if (_cfg.googleApiKey) {
-      try {
-        await _speakGoogle(text);
-        _busy = false; _next(); return;
-      } catch (e) {
-        const msg = e?.message || '';
-        const isFatal = msg.includes('429') || msg.includes('401') || msg.includes('403') || msg.includes('quota');
-        if (!isFatal) { _busy = false; _next(); return; }
-        // fallthrough ไป Web Speech
-      }
-    }
-    await _speakWeb(text);
   } catch {
     // ข้ามข้อความถ้า error ทุก engine
   } finally {
@@ -385,18 +408,23 @@ export const GOOGLE_THAI_VOICES = [
 // ===== localStorage helpers (key ไม่ผ่าน server) =====
 export function loadGoogleApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_google_tts_key')  || '' : ''; }
 export function saveGoogleApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_google_tts_key', k)  : localStorage.removeItem('ttplus_google_tts_key'); }
+export function loadEngine()         { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_tts_engine') || 'auto' : 'auto'; }
+export function saveEngine(e)        { if (typeof window === 'undefined') return; e && e !== 'auto' ? localStorage.setItem('ttplus_tts_engine', e) : localStorage.removeItem('ttplus_tts_engine'); }
+
 /**
  * ทดสอบ engine โดยตรง — ไม่ผ่าน queue ได้ error จริง
- * engine: 'gemini' | 'google' | 'web'
+ * engine: 'gemini31' | 'gemini25' | 'google' | 'web'
  */
 export async function speakDirect(engine, text) {
   if (typeof window === 'undefined') return;
   const clean = _stripEmoji(text).slice(0, 200);
   if (!clean) throw new Error('ข้อความว่างเปล่า');
   switch (engine) {
-    case 'gemini': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona);
-    case 'google': return _speakGoogle(clean);
-    case 'web':    return _speakWeb(clean);
+    case 'gemini31': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL);
+    case 'gemini25': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_25_MODEL);
+    case 'gemini':   return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL); // backward compat
+    case 'google':   return _speakGoogle(clean);
+    case 'web':      return _speakWeb(clean);
     default: throw new Error(`unknown engine: ${engine}`);
   }
 }
