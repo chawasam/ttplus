@@ -74,12 +74,20 @@ async function _speakGemini(text, voiceOverride, personaOverride) {
   const part      = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
   if (!part?.data) throw new Error('Gemini: ไม่มี audio ในผลลัพธ์');
 
-  // Gemini returns audio/wav with LINEAR16 PCM — use AudioContext instead of <Audio>
-  // because some browsers' <Audio> cannot handle this specific WAV variant
-  const binaryStr  = atob(part.data);
-  const bytes      = new Uint8Array(binaryStr.length);
+  const mime = (part.mimeType || '').toLowerCase();
+  console.log('[TTplus Gemini] mimeType:', part.mimeType);
+
+  // decode base64 → bytes
+  const binaryStr = atob(part.data);
+  const bytes     = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-  const arrayBuffer = bytes.buffer;
+
+  // Gemini TTS ส่งกลับเป็น raw LINEAR16 PCM (audio/L16) ไม่มี WAV header
+  // ต้องสร้าง WAV header ครอบก่อน จึง decodeAudioData ได้
+  const rateMatch  = mime.match(/rate=(\d+)/);
+  const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+  const isRawPcm   = mime.includes('l16') || mime.includes('pcm') || mime.includes('raw');
+  const arrayBuffer = isRawPcm ? _pcmToWav(bytes.buffer, sampleRate) : bytes.buffer;
 
   // reuse a shared AudioContext (avoid creating too many)
   if (!_audioCtx || _audioCtx.state === 'closed') {
@@ -90,20 +98,43 @@ async function _speakGemini(text, voiceOverride, personaOverride) {
   let audioBuffer;
   try {
     audioBuffer = await _audioCtx.decodeAudioData(arrayBuffer);
-  } catch {
-    throw new Error('Gemini: รูปแบบ audio ไม่รองรับ (decodeAudioData ล้มเหลว)');
+  } catch (e) {
+    console.error('[TTplus Gemini] decodeAudioData error, mime:', part.mimeType, e);
+    throw new Error(`Gemini: decodeAudioData ล้มเหลว (${part.mimeType})`);
   }
 
   return new Promise((resolve) => {
     const source = _audioCtx.createBufferSource();
     source.buffer = audioBuffer;
-    // volume via GainNode
-    const gain = _audioCtx.createGain();
+    const gain    = _audioCtx.createGain();
     gain.gain.value = Math.max(0, Math.min(1, _cfg.volume));
     source.connect(gain).connect(_audioCtx.destination);
     source.onended = resolve;
     source.start(0);
   });
+}
+
+// ===== Helper: เพิ่ม WAV header ให้ raw LINEAR16 PCM =====
+function _pcmToWav(pcmBuffer, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const dataLen  = pcmBuffer.byteLength;
+  const wav      = new ArrayBuffer(44 + dataLen);
+  const v        = new DataView(wav);
+  const w        = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  w(0,  'RIFF');
+  v.setUint32(4,  36 + dataLen, true);
+  w(8,  'WAVE');
+  w(12, 'fmt ');
+  v.setUint32(16, 16, true);                                              // fmt chunk size
+  v.setUint16(20, 1,  true);                                              // PCM = 1
+  v.setUint16(22, numChannels, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true);   // byte rate
+  v.setUint16(32, numChannels * bitsPerSample / 8, true);                // block align
+  v.setUint16(34, bitsPerSample, true);
+  w(36, 'data');
+  v.setUint32(40, dataLen, true);
+  new Uint8Array(wav, 44).set(new Uint8Array(pcmBuffer));
+  return wav;
 }
 
 // ===== Engine 2: Google Cloud TTS =====
