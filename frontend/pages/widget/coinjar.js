@@ -1,5 +1,5 @@
 // widget/coinjar.js — Gift Jar Physics Widget สำหรับ OBS / TikTok Studio
-// OBS Size แนะนำ: 400 × 600
+// OBS Size แนะนำ: 600 × 600
 // เมื่อมีคนส่ง gift ใน TikTok Live → รูป gift ตกลงมาในโถพร้อม physics จริง
 // ของขวัญล้นออกนอกโถได้ — กองบนพื้นข้างขวดโหล
 // URL params: ?wt=TOKEN&jx=OFFSET(-150~150)&cat=left|right|behind&preview=1
@@ -8,8 +8,8 @@ import { io } from 'socket.io-client';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 
-// ขนาด canvas
-const W = 400;
+// ขนาด canvas (กว้างขึ้น → พื้นที่รอบขวดโหลมากขึ้น)
+const W = 600;
 const H = 600;
 
 // รัศมี gift item (px)
@@ -21,12 +21,13 @@ const MAX_ITEMS = 150;
 // พื้น ground สำหรับ overflow — ของที่ล้นออกมากองที่นี่
 const GROUND_Y = H - 30;
 
-// พิกัดโถ base (offset = 0 → กลาง canvas)
-// ปรับ jarOffset จาก URL param ?jx=... (-150 ถึง +150)
+// พิกัดโถ base (offset = 0 → กลาง canvas W=600)
+// shift +100 จากเดิม (W=400 center=200 → W=600 center=300)
+// ปรับ jarOffset จาก URL param ?jx=... (-200 ถึง +200)
 const JAR_BASE = {
-  nL: 128, nR: 272,
+  nL: 228, nR: 372,   // เดิม 128/272 + 100
   nT: 62,  nB: 158,
-  bL: 68,  bR: 332,
+  bL: 168, bR: 432,   // เดิม 68/332 + 100
   bB: 516,
   floor: 522,
 };
@@ -77,7 +78,12 @@ function isRose(name = '') {
  *  ox = horizontal offset ของโถ (จาก ?jx=) */
 function setupEngine(M, ox = 0) {
   const { Engine, Composite } = M;
-  const engine = Engine.create({ gravity: { y: 2.2 } });
+  // เพิ่ม iterations ป้องกัน tunneling (ค่า default: position=6, velocity=4)
+  const engine = Engine.create({
+    gravity: { y: 2.2 },
+    positionIterations: 10,
+    velocityIterations: 8,
+  });
   Composite.add(engine.world, buildJarWalls(M.Bodies, ox));
   return engine;
 }
@@ -413,29 +419,32 @@ export default function CoinJarWidget() {
  * ox = horizontal offset (จาก ?jx=)
  */
 function buildJarWalls(Bodies, ox = 0) {
-  const T  = 12;
+  const T  = 16; // หนาขึ้น (เดิม 12) ป้องกัน tunneling
   const Jx = getJ(ox);
   // center x ของ shoulder แต่ละข้าง
   const shL = (Jx.nL + Jx.bL) / 2;
   const shR = (Jx.nR + Jx.bR) / 2;
+  // ก้นโถ: ขยายลงถึง floor+T เพื่อ overlap กับ body walls
+  const floorCY     = Jx.floor + T;          // center y ของ floor wall
+  const floorHeight = T * 3;                  // หนา 3× ป้องกัน tunneling
 
   return [
-    // ── ก้นโถ ──
+    // ── ก้นโถ (หนาขึ้น + ขยับขึ้นให้ overlap กับ body walls) ──
     Bodies.rectangle(
-      (Jx.bL + Jx.bR) / 2, Jx.floor + T / 2,
-      Jx.bR - Jx.bL + T, T,
-      { isStatic: true, friction: 0.7, label: 'wall' }
+      (Jx.bL + Jx.bR) / 2, floorCY,
+      Jx.bR - Jx.bL + T * 2, floorHeight,
+      { isStatic: true, friction: 0.7, restitution: 0.05, label: 'wall' }
     ),
-    // ── ผนังซ้าย body ──
+    // ── ผนังซ้าย body (extend ลงถึง floor+T ปิด gap) ──
     Bodies.rectangle(
-      Jx.bL - T / 2, (Jx.nB + Jx.bB) / 2,
-      T, Jx.bB - Jx.nB,
+      Jx.bL - T / 2, (Jx.nB + floorCY) / 2,
+      T, floorCY - Jx.nB,
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
-    // ── ผนังขวา body ──
+    // ── ผนังขวา body (extend ลงถึง floor+T ปิด gap) ──
     Bodies.rectangle(
-      Jx.bR + T / 2, (Jx.nB + Jx.bB) / 2,
-      T, Jx.bB - Jx.nB,
+      Jx.bR + T / 2, (Jx.nB + floorCY) / 2,
+      T, floorCY - Jx.nB,
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
     // ── ผนังซ้าย neck ──
