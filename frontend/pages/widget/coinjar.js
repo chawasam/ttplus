@@ -12,8 +12,16 @@ import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 const W = 600;
 const H = 600;
 
-// รัศมี gift item (px)
+// รัศมี gift item base (px) — ปรับได้ผ่าน gs param (50-200%)
 const ITEM_R = 22;
+
+// คำนวณ radius ตาม diamond tier + base scale
+function getItemR(diamonds = 0, giftScale = 100) {
+  const base = Math.round(ITEM_R * (giftScale / 100));
+  if (diamonds >= 9999) return Math.round(base * 1.5);
+  if (diamonds >= 999)  return Math.round(base * 0.75);
+  return Math.round(base * 0.5);
+}
 
 // จำนวน item สูงสุด default (อ่านจาก ?mi= ที่ runtime)
 
@@ -90,7 +98,7 @@ function setupEngine(M, ox = 0) {
 /** สร้าง Runner และเริ่มรัน */
 function setupRunner(engine, M) {
   const { Runner } = M;
-  const runner = Runner.create({ delta: 1000 / 60 });
+  const runner = Runner.create({ delta: 1000 / 30 }); // 30fps physics — เบากว่า 60fps ครึ่งนึง
   Runner.run(runner, engine);
   return runner;
 }
@@ -104,7 +112,7 @@ function startAnimationLoop(engine, M, setItems) {
 
   const tick = () => {
     frameCount++;
-    if (frameCount % 2 === 0) {
+    if (frameCount % 3 === 0) { // DOM update ~20fps — ลด reflow
       const bodies = Composite.allBodies(engine.world)
         .filter(b => b.label === 'gift')
         .map(b => ({
@@ -114,6 +122,7 @@ function startAnimationLoop(engine, M, setItems) {
           angle: b.angle,
           img:   b._img,
           emoji: b._emoji,
+          r:     b._r || ITEM_R,
         }));
       setItems([...bodies]);
     }
@@ -124,17 +133,21 @@ function startAnimationLoop(engine, M, setItems) {
   return { cancel: () => cancelAnimationFrame(rafId) };
 }
 
-/** Preview mode: spawn test gifts */
+/** Preview mode: spawn test gifts (ครอบคลุมทั้ง 3 tier) */
 function runPreviewMode(spawnItem) {
   const testGifts = [
-    { emoji: '🌹', count: 3 }, { emoji: '🦁', count: 2 },
-    { emoji: '💎', count: 1 }, { emoji: '❤️', count: 4 },
-    { emoji: '🌹', count: 2 }, { emoji: '🎁', count: 1 },
-    { emoji: '🔥', count: 3 }, { emoji: '🐼', count: 2 },
+    { emoji: '🌹', count: 3, diamonds: 5    },  // tier 1 (1x)
+    { emoji: '🦁', count: 2, diamonds: 100  },  // tier 1 (1x)
+    { emoji: '💎', count: 2, diamonds: 2000 },  // tier 2 (1.5x)
+    { emoji: '❤️', count: 2, diamonds: 5000 },  // tier 2 (1.5x)
+    { emoji: '👑', count: 1, diamonds: 15000},  // tier 3 (2x)
+    { emoji: '🌹', count: 2, diamonds: 50   },  // tier 1 (1x)
+    { emoji: '🔥', count: 2, diamonds: 1500 },  // tier 2 (1.5x)
+    { emoji: '🐼', count: 1, diamonds: 9999 },  // tier 3 (2x)
   ];
   let delay = 0;
   testGifts.forEach(g => {
-    setTimeout(() => spawnItem(null, g.emoji, g.count), delay);
+    setTimeout(() => spawnItem(null, g.emoji, g.count, g.diamonds), delay);
     delay += 700;
   });
 }
@@ -152,12 +165,13 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, eng
   socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
 
   socket.on('gift', (data) => {
-    const safe   = sanitizeEvent(data);
-    const emoji  = getEmoji(safe.giftName || '');
-    const imgUrl = safeTikTokImageUrl(safe.giftPictureUrl) || null;
-    const repeat = safe.repeatCount || 1;
+    const safe     = sanitizeEvent(data);
+    const emoji    = getEmoji(safe.giftName || '');
+    const imgUrl   = safeTikTokImageUrl(safe.giftPictureUrl) || null;
+    const repeat   = safe.repeatCount || 1;
+    const diamonds = Math.max(0, Number(safe.diamondCount) || 0);
 
-    spawnItem(imgUrl, emoji, Math.min(repeat, 8));
+    spawnItem(imgUrl, emoji, Math.min(repeat, 8), diamonds);
 
     if (popupTimer.current) clearTimeout(popupTimer.current);
     setPopup({
@@ -210,6 +224,11 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, eng
     if (style?.cg !== undefined) {
       setCatGap(Math.max(-30, Math.min(150, parseInt(style.cg) || 0)));
     }
+
+    // gs — ขนาด gift base scale
+    if (style?.gs !== undefined) {
+      giftScaleRef.current = Math.max(50, Math.min(200, parseInt(style.gs) || 100));
+    }
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -232,14 +251,16 @@ export default function CoinJarWidget() {
   const animRef     = useRef(null);
   const popupTimer  = useRef(null);
   const spawnTimers = useRef([]);
-  const maxItemsRef = useRef(150); // อ่านจาก ?mi= ใน useEffect
+  const maxItemsRef   = useRef(150); // อ่านจาก ?mi= ใน useEffect
+  const giftScaleRef  = useRef(100); // อ่านจาก ?gs= ใน useEffect (50-200%)
 
   // ===== spawn gift item =====
-  const spawnItem = useCallback((imgUrl, emoji, count = 1) => {
+  const spawnItem = useCallback((imgUrl, emoji, count = 1, diamonds = 0) => {
     const M = mRef.current;
     if (!M || !engineRef.current) return;
     const { Bodies, Body, Composite } = M;
     const n = Math.min(count, 8);
+    const itemR = getItemR(diamonds, giftScaleRef.current);
 
     for (let i = 0; i < n; i++) {
       const tid = setTimeout(() => {
@@ -247,10 +268,10 @@ export default function CoinJarWidget() {
         if (!engineRef.current) return;
 
         // สุ่ม x ภายในปาก neck
-        const x = J.nL + ITEM_R + 4 + Math.random() * (J.nR - J.nL - (ITEM_R + 4) * 2);
+        const x = J.nL + itemR + 4 + Math.random() * (J.nR - J.nL - (itemR + 4) * 2);
         const y = J.nT + 14;
 
-        const body = Bodies.circle(x, y, ITEM_R, {
+        const body = Bodies.circle(x, y, itemR, {
           restitution: 0.32,
           friction:    0.65,
           frictionAir: 0.009,
@@ -259,6 +280,7 @@ export default function CoinJarWidget() {
         });
         body._img   = imgUrl;
         body._emoji = emoji;
+        body._r     = itemR;
 
         Body.setVelocity(body, {
           x: (Math.random() - 0.5) * 3.5,
@@ -289,7 +311,8 @@ export default function CoinJarWidget() {
     setStyles(s);
 
     const ox = s.jx ?? 0;
-    maxItemsRef.current = s.mi ?? 150;
+    maxItemsRef.current  = s.mi ?? 150;
+    giftScaleRef.current = s.gs ?? 100;
     J = getJ(ox);
     setJarOffset(ox);
 
@@ -409,15 +432,15 @@ export default function CoinJarWidget() {
             key={item.id}
             style={{
               position:        'absolute',
-              left:            item.x - ITEM_R,
-              top:             item.y - ITEM_R,
-              width:           ITEM_R * 2,
-              height:          ITEM_R * 2,
+              left:            item.x - item.r,
+              top:             item.y - item.r,
+              width:           item.r * 2,
+              height:          item.r * 2,
               transform:       `rotate(${item.angle}rad)`,
               display:         'flex',
               alignItems:      'center',
               justifyContent:  'center',
-              fontSize:        ITEM_R * 1.45,
+              fontSize:        item.r * 1.45,
               lineHeight:      1,
               userSelect:      'none',
               filter:          'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',

@@ -8,7 +8,7 @@ export const WIDGET_DEFAULTS = {
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
-  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, cat: 'none', cs: 100, cg: 0 },
+  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, cat: 'none', cs: 100, cg: 0, gs: 100 },
 };
 
 /** hex (6 chars no #) + alpha (0-100) -> rgba(r,g,b,a) */
@@ -69,6 +69,7 @@ export function parseWidgetStyles(params, widgetId) {
   const cat = ['left', 'right', 'behind'].includes(params.get('cat') || '') ? params.get('cat') : (d.cat || 'none');
   const cs  = clamp(parseInt(params.get('cs') ?? (d.cs ?? 100)), 50, 200);
   const cg  = clamp(parseInt(params.get('cg') ?? (d.cg ?? 0)), -30, 150);
+  const gs  = clamp(parseInt(params.get('gs') ?? (d.gs ?? 100)), 50, 200);
 
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
@@ -79,9 +80,9 @@ export function parseWidgetStyles(params, widgetId) {
     dir,
     max,
     rx, ry, rz,
-    jx, mi, cat, cs, cg,
+    jx, mi, cat, cs, cg, gs,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, cat, cs, cg },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, cat, cs, cg, gs },
   };
 }
 
@@ -111,6 +112,7 @@ export function styleToParams(style, widgetId) {
   if (d.cat !== undefined && style.cat !== d.cat) p.set('cat', style.cat);
   if (d.cs  !== undefined && style.cs  !== d.cs)  p.set('cs',  style.cs);
   if (d.cg  !== undefined && style.cg  !== d.cg)  p.set('cg',  style.cg);
+  if (d.gs  !== undefined && style.gs  !== d.gs)  p.set('gs',  style.gs);
   return p.toString();
 }
 
@@ -141,14 +143,15 @@ export function rawToStyle(raw = {}, widgetId) {
   const cat = ['left', 'right', 'behind'].includes(raw.cat || '') ? raw.cat : (d.cat || 'none');
   const cs  = clamp(parseInt(raw.cs   ?? (d.cs ?? 100)), 50, 200);
   const cg  = clamp(parseInt(raw.cg   ?? (d.cg ?? 0)), -30, 150);
+  const gs  = clamp(parseInt(raw.gs   ?? (d.gs ?? 100)), 50, 200);
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
     ac:          '#' + ac,
     fs, br, dir, max,
     rx, ry, rz,
-    jx, mi, cat, cs, cg,
+    jx, mi, cat, cs, cg, gs,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, cat, cs, cg },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, cat, cs, cg, gs },
   };
 }

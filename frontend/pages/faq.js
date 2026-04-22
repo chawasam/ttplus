@@ -1,6 +1,10 @@
 // pages/faq.js — คำถามที่พบบ่อย
+import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
+import api from '../lib/api';
+
+const OWNER_EMAIL = 'cksamg@gmail.com';
 
 const FAQS = [
   {
@@ -49,7 +53,24 @@ const TAG_COLORS = {
 };
 
 export default function FaqPage({ theme, user, activePage, setActivePage }) {
-  const isDark = theme === 'dark';
+  const isDark  = theme === 'dark';
+  const isOwner = user?.email === OWNER_EMAIL;
+  const [stats, setStats]       = useState(null);
+  const [statsErr, setStatsErr] = useState(false);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    const fetchStats = async () => {
+      try {
+        const res = await api.get('/api/stats');
+        setStats(res.data);
+        setStatsErr(false);
+      } catch { setStatsErr(true); }
+    };
+    fetchStats();
+    const iv = setInterval(fetchStats, 30000); // refresh ทุก 30 วิ
+    return () => clearInterval(iv);
+  }, [isOwner]);
 
   return (
     <div className={clsx('flex min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900')}>
@@ -65,6 +86,34 @@ export default function FaqPage({ theme, user, activePage, setActivePage }) {
             ปัญหาที่เจอบ่อยและวิธีแก้ไข
           </p>
         </div>
+
+        {/* ===== Owner-only stats ===== */}
+        {isOwner && (
+          <div className={clsx('mb-6 rounded-xl border p-4', isDark ? 'bg-gray-900/80 border-gray-700' : 'bg-gray-50 border-gray-200')}>
+            <p className={clsx('text-xs font-semibold mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
+              🔒 สถิติ (เห็นเฉพาะเจ้าของ)
+            </p>
+            {statsErr ? (
+              <p className="text-xs text-red-400">โหลด stats ไม่ได้ — ลอง refresh</p>
+            ) : !stats ? (
+              <p className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>กำลังโหลด...</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: '🟢 Online ตอนนี้', value: stats.online,       sub: 'dashboard เปิดอยู่' },
+                  { label: '🎥 Live sessions',  value: stats.liveSessions, sub: 'เชื่อม TikTok อยู่' },
+                  { label: '📦 Registered',     value: stats.registered,   sub: 'user ทั้งหมด'       },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} className={clsx('rounded-lg p-3 text-center border', isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}>
+                    <p className={clsx('text-xs mb-1', isDark ? 'text-gray-400' : 'text-gray-500')}>{label}</p>
+                    <p className={clsx('text-2xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>{value ?? '—'}</p>
+                    <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-600' : 'text-gray-400')}>{sub}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* FAQ list */}
         <div className="space-y-3">

@@ -18,7 +18,7 @@ const admin = require('firebase-admin');
 const { generalLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
-const { startConnection, stopConnection, hasConnection } = require('./handlers/tiktok');
+const { startConnection, stopConnection, hasConnection, getActiveConnectionCount } = require('./handlers/tiktok');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
 const { generateToken, registerToken, verifyTokenFromMemory, getTokenForUid } = require('./utils/widgetToken');
@@ -210,6 +210,25 @@ app.post('/api/connect', verifyToken, connectLimiter, async (req, res) => {
 app.post('/api/disconnect', verifyToken, async (req, res) => {
   await stopConnection(req.user.uid);
   res.json({ success: true });
+});
+
+// ===== Stats (owner only) =====
+const OWNER_EMAIL = 'cksamg@gmail.com';
+app.get('/api/stats', verifyToken, async (req, res) => {
+  if (req.user.email !== OWNER_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    // registered users — count Firestore docs
+    const snap = await admin.firestore().collection('user_settings').count().get();
+    const registered = snap.data().count;
+    res.json({
+      online:     userSockets.size,
+      liveSessions: getActiveConnectionCount(),
+      registered,
+    });
+  } catch (err) {
+    console.error('[API] stats:', err.message);
+    res.status(500).json({ error: 'Failed to get stats' });
+  }
 });
 
 // ===== Error Handlers =====

@@ -225,6 +225,28 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
 
+          {/* Gift size scale */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>📦 ขนาด Gift (Base Size)</span>
+              <span className={clsx('text-xs font-mono font-bold', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
+                {style.gs ?? 100}%
+              </span>
+            </div>
+            <input
+              type="range" min="50" max="200" step="5"
+              value={style.gs ?? 100}
+              onChange={e => set('gs', +e.target.value)}
+              className="w-full accent-amber-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>เล็ก (50%)</span><span>ปกติ (100%)</span><span>ใหญ่ (200%)</span>
+            </div>
+            <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              💡 &lt;999 coin = 0.5× &nbsp;|&nbsp; 999+ = 0.75× &nbsp;|&nbsp; 9999+ = 1.5×
+            </p>
+          </div>
+
           {/* Max items */}
           <div className="space-y-1">
             <div className={row}>
