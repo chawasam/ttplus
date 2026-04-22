@@ -48,7 +48,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [testingGemini31, setTestingGemini31]   = useState(false);
   const [testingGemini25, setTestingGemini25]   = useState(false);
   const [geminiShuffle, setGeminiShuffle]       = useState(false);
-  const [engine, setEngine]                     = useState('auto');
+  const [engine, setEngine]                     = useState('web');
   const [testGeminiText, setTestGeminiText]   = useState('สวัสดีค่ะ');
   const [testGoogleText, setTestGoogleText]   = useState('สวัสดีค่ะ');
   const [testWebText, setTestWebText]         = useState('สวัสดีค่ะ');

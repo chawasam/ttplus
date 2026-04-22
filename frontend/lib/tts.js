@@ -24,7 +24,7 @@ let _cfg = {
   pitch:          1.0,
   volume:         1.0,
   voice:          '',               // Web Speech voice name
-  engine:         'auto',           // 'auto'|'gemini31'|'gemini25'|'google'|'web'
+  engine:         'web',            // 'auto'|'gemini31'|'gemini25'|'google'|'web'
   googleApiKey:   '',               // Google Cloud TTS key
   googleVoice:    'th-TH-Neural2-C',
   geminiApiKey:   '',               // Google AI Studio / Gemini key (ใช้ได้ทั้ง 3.1 + 2.5)
@@ -400,8 +400,8 @@ export const GOOGLE_THAI_VOICES = [
 // ===== localStorage helpers (key ไม่ผ่าน server) =====
 export function loadGoogleApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_google_tts_key')  || '' : ''; }
 export function saveGoogleApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_google_tts_key', k)  : localStorage.removeItem('ttplus_google_tts_key'); }
-export function loadEngine()         { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_tts_engine') || 'auto' : 'auto'; }
-export function saveEngine(e)        { if (typeof window === 'undefined') return; e && e !== 'auto' ? localStorage.setItem('ttplus_tts_engine', e) : localStorage.removeItem('ttplus_tts_engine'); }
+export function loadEngine()         { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_tts_engine') || 'web' : 'web'; }
+export function saveEngine(e)        { if (typeof window === 'undefined') return; e && e !== 'web' ? localStorage.setItem('ttplus_tts_engine', e) : localStorage.removeItem('ttplus_tts_engine'); }
 
 /**
  * ทดสอบ engine โดยตรง — ไม่ผ่าน queue ได้ error จริง
