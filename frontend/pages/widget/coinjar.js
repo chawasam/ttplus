@@ -196,7 +196,7 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
 
     // mi — อัปเดต ref ทันที ไม่ต้อง rebuild
     if (style?.mi !== undefined) {
-      maxItemsRef.current = Math.max(10, Math.min(300, parseInt(style.mi) || 150));
+      maxItemsRef.current = Math.max(10, Math.min(600, parseInt(style.mi) || 150));
     }
 
     // jx — rebuild jar walls ใหม่ในตำแหน่งที่ถูกต้อง
