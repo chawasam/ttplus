@@ -340,36 +340,36 @@ export function onVoicesReady(callback) {
 
 // ===== Gemini voices (30 prebuilt) =====
 export const GEMINI_VOICES = [
-  { name: 'Aoede',       desc: 'หญิง · นุ่มนวล'     },
-  { name: 'Puck',        desc: 'ชาย · ร่าเริง'       },
-  { name: 'Charon',      desc: 'ชาย · ทรงพลัง'       },
-  { name: 'Kore',        desc: 'หญิง · จริงจัง'      },
-  { name: 'Fenrir',      desc: 'ชาย · หนักแน่น'      },
-  { name: 'Leda',        desc: 'หญิง · อ่อนโยน'      },
-  { name: 'Orus',        desc: 'ชาย · มั่นใจ'        },
-  { name: 'Zephyr',      desc: 'ชาย · เบาสบาย'       },
-  { name: 'Achird',      desc: 'ชาย · เป็นกันเอง'    },
-  { name: 'Algenib',     desc: 'ชาย · เป็นทางการ'    },
-  { name: 'Algieba',     desc: 'ชาย · อบอุ่น'        },
-  { name: 'Alnair',      desc: 'หญิง · ชัดเจน'       },
-  { name: 'Auva',        desc: 'หญิง · อ่อนหวาน'     },
-  { name: 'Caliban',     desc: 'ชาย · ลึกซึ้ง'       },
-  { name: 'Capella',     desc: 'หญิง · สดใส'         },
-  { name: 'Despina',     desc: 'หญิง · เบาบาง'       },
-  { name: 'Enceladus',   desc: 'ชาย · เงียบสงบ'      },
-  { name: 'Erinome',     desc: 'หญิง · ละเอียดอ่อน'  },
-  { name: 'Gacrux',      desc: 'ชาย · กังวาน'        },
-  { name: 'Iocaste',     desc: 'หญิง · อบอุ่น'       },
-  { name: 'Izar',        desc: 'ชาย · ชัดเจน'        },
-  { name: 'Laomedeia',   desc: 'หญิง · สุภาพ'        },
-  { name: 'Rasalas',     desc: 'ชาย · หนักแน่น'      },
-  { name: 'Sadachbia',   desc: 'ชาย · เบาสบาย'       },
-  { name: 'Schedar',     desc: 'ชาย · เข้มแข็ง'      },
-  { name: 'Sulafat',     desc: 'หญิง · นุ่มนวล'      },
-  { name: 'Umbriel',     desc: 'ชาย · ลึก'           },
-  { name: 'Vindemiatrix',desc: 'หญิง · สดใส'         },
-  { name: 'Wasat',       desc: 'ชาย · เป็นกันเอง'    },
-  { name: 'Yildun',      desc: 'ชาย · มีพลัง'        },
+  { name: 'Aoede',          desc: 'หญิง · นุ่มนวล'        },
+  { name: 'Puck',           desc: 'ชาย · ร่าเริง'          },
+  { name: 'Charon',         desc: 'ชาย · ทรงพลัง'          },
+  { name: 'Kore',           desc: 'หญิง · จริงจัง'         },
+  { name: 'Fenrir',         desc: 'ชาย · หนักแน่น'         },
+  { name: 'Leda',           desc: 'หญิง · อ่อนโยน'         },
+  { name: 'Orus',           desc: 'ชาย · มั่นใจ'           },
+  { name: 'Zephyr',         desc: 'ชาย · เบาสบาย'          },
+  { name: 'Achird',         desc: 'ชาย · เป็นกันเอง'       },
+  { name: 'Algenib',        desc: 'ชาย · เป็นทางการ'       },
+  { name: 'Algieba',        desc: 'ชาย · อบอุ่น'           },
+  { name: 'Alnilam',        desc: 'ชาย · หนักแน่นมั่นคง'   },
+  { name: 'Achernar',       desc: 'หญิง · อ่อนโยนนุ่มนวล'  },
+  { name: 'Autonoe',        desc: 'หญิง · สดใสมีชีวิตชีวา' },
+  { name: 'Callirrhoe',     desc: 'หญิง · ผ่อนคลายเป็นกันเอง' },
+  { name: 'Despina',        desc: 'หญิง · เบาบาง'          },
+  { name: 'Enceladus',      desc: 'ชาย · เงียบสงบ'         },
+  { name: 'Erinome',        desc: 'หญิง · ละเอียดอ่อน'     },
+  { name: 'Gacrux',         desc: 'ชาย · กังวาน'           },
+  { name: 'Iapetus',        desc: 'ชาย · ชัดเจนกระชับ'     },
+  { name: 'Laomedeia',      desc: 'หญิง · สุภาพ'           },
+  { name: 'Pulcherrima',    desc: 'หญิง · แสดงออกสดใส'     },
+  { name: 'Rasalgethi',     desc: 'ชาย · เป็นทางการมืออาชีพ' },
+  { name: 'Sadachbia',      desc: 'ชาย · มีชีวิตชีวา'      },
+  { name: 'Sadaltager',     desc: 'ชาย · มีความรู้น้ำเสียงดี' },
+  { name: 'Schedar',        desc: 'ชาย · เข้มแข็ง'         },
+  { name: 'Sulafat',        desc: 'หญิง · นุ่มนวล'         },
+  { name: 'Umbriel',        desc: 'ชาย · ลึก'              },
+  { name: 'Vindemiatrix',   desc: 'หญิง · สดใส'            },
+  { name: 'Zubenelgenubi',  desc: 'ชาย · สบายๆ เป็นกันเอง' },
 ];
 
 // ===== Gemini personas (speaking styles) =====
@@ -387,7 +387,7 @@ export const GEMINI_PERSONAS = [
 ];
 
 /**
- * สุ่ม voice + persona combination (10 × 30 = 300 แบบ)
+ * สุ่ม voice + persona combination (30 × 10 = 300 แบบ)
  */
 export function randomGeminiCombo() {
   const voice   = GEMINI_VOICES[Math.floor(Math.random() * GEMINI_VOICES.length)];
