@@ -10,6 +10,7 @@ import {
   GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
   loadGeminiShuffle, saveGeminiShuffle,
   loadEnabledEngines, saveEnabledEngines,
+  loadEngineOrder, saveEngineOrder,
 } from '../lib/tts';
 import toast from 'react-hot-toast';
 import { showError } from '../lib/errorHandler';
@@ -49,6 +50,8 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [testingGemini25, setTestingGemini25]   = useState(false);
   const [geminiShuffle, setGeminiShuffle]   = useState(false);
   const [enabledEngines, setEnabledEngines] = useState(['web']);
+  const [engineOrder, setEngineOrder]       = useState(['gemini31','gemini25','google','web']);
+  const [dragOver, setDragOver]             = useState(null); // id ของ engine ที่ hover อยู่
   const [testGeminiText, setTestGeminiText]   = useState('สวัสดีค่ะ');
   const [testGoogleText, setTestGoogleText]   = useState('สวัสดีค่ะ');
   const [testWebText, setTestWebText]         = useState('สวัสดีค่ะ');
@@ -78,11 +81,13 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     const mPersona  = localStorage.getItem('ttplus_gemini_persona') || '';
     const mShuffle  = loadGeminiShuffle();
     const engs      = loadEnabledEngines();
+    const order     = loadEngineOrder();
     setGeminiKey(mKey);
     setGeminiVoice(mVoice);
     setGeminiPersona(mPersona);
     setGeminiShuffle(mShuffle);
     setEnabledEngines(engs);
+    setEngineOrder(order);
 
     if (mKey || gKey) {
       configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona, geminiShuffle: mShuffle, enabledEngines: engs });
@@ -432,78 +437,126 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               🎚️ เลือก Engine เสียง
             </h2>
             <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ติ๊กเลือกได้หลายตัว — ระบบลองตามลำดับ ถ้าตัวแรกล้มเหลวข้ามถัดไปอัตโนมัติ
+              ติ๊กเลือกได้หลายตัว · ลากเพื่อเรียงลำดับ — ระบบลองตามลำดับ ถ้าล้มเหลวข้ามถัดไปอัตโนมัติ
             </p>
 
-            {[
-              { id: 'gemini31', icon: '✨', label: 'Gemini 3.1 Flash TTS', sub: '30 เสียง × 10 persona = 300 combo', color: 'text-purple-400', needKey: 'gemini' },
-              { id: 'gemini25', icon: '🌟', label: 'Gemini 2.5 Flash TTS', sub: '30 เสียง × 10 persona = 300 combo', color: 'text-violet-400', needKey: 'gemini' },
-              { id: 'google',   icon: '🔑', label: 'Google Cloud TTS',     sub: 'Neural Thai · เสียงดีมาก',         color: 'text-green-400',  needKey: 'google'  },
-              { id: 'web',      icon: '🔈', label: 'Web Speech',            sub: 'ฟรี · ไม่ต้อง key',               color: 'text-brand-400',  needKey: null      },
-            ].map(({ id, icon, label, sub, color, needKey }, idx) => {
-              const checked   = enabledEngines.includes(id);
-              const missingKey = needKey === 'gemini' ? !geminiKey : needKey === 'google' ? !googleKey : false;
-              const priority  = (() => {
-                const order = ['gemini31','gemini25','google','web'];
-                const pos   = enabledEngines.filter(e => order.indexOf(e) <= order.indexOf(id)).length;
-                return checked ? pos : null;
-              })();
-
-              const toggle = () => {
-                setEnabledEngines(prev => {
-                  const next = prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id];
-                  // ป้องกัน empty — อย่างน้อยต้องมีหนึ่ง
-                  const result = next.length > 0 ? next : ['web'];
-                  saveEnabledEngines(result);
-                  configureTTS({ enabledEngines: result });
-                  return result;
-                });
+            {(() => {
+              const ENGINE_CONFIGS = {
+                gemini31: { icon: '✨', label: 'Gemini 3.1 Flash TTS', sub: '30 เสียง × 10 persona = 300 combo', color: 'text-purple-400', needKey: 'gemini' },
+                gemini25: { icon: '🌟', label: 'Gemini 2.5 Flash TTS', sub: '30 เสียง × 10 persona = 300 combo', color: 'text-violet-400', needKey: 'gemini' },
+                google:   { icon: '🔑', label: 'Google Cloud TTS',     sub: 'Neural Thai · เสียงดีมาก',         color: 'text-green-400',  needKey: 'google'  },
+                web:      { icon: '🔈', label: 'Web Speech',           sub: 'ฟรี · ไม่ต้อง key',               color: 'text-brand-400',  needKey: null      },
               };
 
-              return (
-                <label key={id}
-                  onClick={toggle}
-                  className={clsx(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl border mb-2 cursor-pointer transition select-none',
-                    checked
-                      ? isDark ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-300'
-                      : isDark ? 'bg-gray-900 border-gray-800 opacity-60' : 'bg-white border-gray-200 opacity-60'
-                  )}>
-                  {/* Checkbox */}
-                  <div className={clsx(
-                    'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition',
-                    checked ? 'bg-brand-500 border-brand-500' : isDark ? 'border-gray-600' : 'border-gray-300'
-                  )}>
-                    {checked && <span className="text-white text-xs font-bold">✓</span>}
-                  </div>
+              const onDragStart = (e, id) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', id);
+              };
+              const onDragOver = (e, id) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOver(id);
+              };
+              const onDrop = (e, targetId) => {
+                e.preventDefault();
+                const dragId = e.dataTransfer.getData('text/plain');
+                if (!dragId || dragId === targetId) { setDragOver(null); return; }
+                setEngineOrder(prev => {
+                  const arr = [...prev];
+                  const from = arr.indexOf(dragId);
+                  const to   = arr.indexOf(targetId);
+                  if (from < 0 || to < 0) return prev;
+                  arr.splice(from, 1);
+                  arr.splice(to, 0, dragId);
+                  saveEngineOrder(arr);
+                  return arr;
+                });
+                setDragOver(null);
+              };
 
-                  <span className="text-base leading-none flex-shrink-0">{icon}</span>
+              return engineOrder.map((id, idx) => {
+                const cfg = ENGINE_CONFIGS[id];
+                if (!cfg) return null;
+                const { icon, label, sub, color, needKey } = cfg;
+                const checked    = enabledEngines.includes(id);
+                const missingKey = needKey === 'gemini' ? !geminiKey : needKey === 'google' ? !googleKey : false;
+                const priority   = checked ? engineOrder.filter(e => enabledEngines.includes(e)).indexOf(id) + 1 : null;
+                const isOver     = dragOver === id;
 
-                  <div className="flex-1 min-w-0">
-                    <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>{label}</p>
-                    <p className={clsx('text-xs mt-0.5', color)}>{sub}</p>
-                  </div>
+                const toggle = (e) => {
+                  e.preventDefault();
+                  setEnabledEngines(prev => {
+                    const next   = prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id];
+                    const result = next.length > 0 ? next : ['web'];
+                    saveEnabledEngines(result);
+                    configureTTS({ enabledEngines: result });
+                    return result;
+                  });
+                };
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {missingKey && checked && (
-                      <span className="text-xs text-yellow-500">⚠️ ต้อง key</span>
+                return (
+                  <div
+                    key={id}
+                    draggable
+                    onDragStart={e => onDragStart(e, id)}
+                    onDragOver={e => onDragOver(e, id)}
+                    onDrop={e => onDrop(e, id)}
+                    onDragLeave={() => setDragOver(null)}
+                    onDragEnd={() => setDragOver(null)}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl border mb-2 transition select-none',
+                      isOver
+                        ? isDark ? 'border-brand-500 bg-brand-500/10' : 'border-brand-400 bg-brand-50'
+                        : checked
+                          ? isDark ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-300'
+                          : isDark ? 'bg-gray-900 border-gray-800 opacity-60' : 'bg-white border-gray-200 opacity-60'
                     )}
-                    {checked && priority !== null && (
-                      <span className={clsx('text-xs font-bold px-1.5 py-0.5 rounded',
-                        isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500')}>
-                        #{priority}
-                      </span>
-                    )}
-                  </div>
-                </label>
-              );
-            })}
+                  >
+                    {/* Drag handle */}
+                    <span
+                      className={clsx('text-sm cursor-grab active:cursor-grabbing flex-shrink-0', isDark ? 'text-gray-600' : 'text-gray-300')}
+                      style={{ userSelect: 'none' }}
+                    >⠿</span>
 
-            {/* แสดงลำดับจริงที่จะใช้ */}
+                    {/* Checkbox */}
+                    <div
+                      onClick={toggle}
+                      className={clsx(
+                        'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition cursor-pointer',
+                        checked ? 'bg-brand-500 border-brand-500' : isDark ? 'border-gray-600' : 'border-gray-300'
+                      )}
+                    >
+                      {checked && <span className="text-white text-xs font-bold">✓</span>}
+                    </div>
+
+                    <span className="text-base leading-none flex-shrink-0">{icon}</span>
+
+                    <div className="flex-1 min-w-0" onClick={toggle} style={{ cursor: 'pointer' }}>
+                      <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>{label}</p>
+                      <p className={clsx('text-xs mt-0.5', color)}>{sub}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {missingKey && checked && (
+                        <span className="text-xs text-yellow-500">⚠️ ต้อง key</span>
+                      )}
+                      {checked && priority !== null && (
+                        <span className={clsx('text-xs font-bold px-1.5 py-0.5 rounded',
+                          isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500')}>
+                          #{priority}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+
+            {/* ลำดับจริง */}
             {enabledEngines.length > 0 && (
               <p className={clsx('text-xs mt-1', isDark ? 'text-gray-600' : 'text-gray-400')}>
                 ลำดับ:{' '}
-                {['gemini31','gemini25','google','web']
+                {engineOrder
                   .filter(e => enabledEngines.includes(e))
                   .map(e => ({ gemini31:'Gemini 3.1', gemini25:'Gemini 2.5', google:'Google Cloud', web:'Web Speech' }[e]))
                   .join(' → ')

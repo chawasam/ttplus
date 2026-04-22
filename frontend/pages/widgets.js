@@ -12,10 +12,11 @@ import WidgetStyleEditor from '../components/WidgetStyleEditor';
 import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const WIDGETS = [
-  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',      desc: 'ขวดโหลของขวัญ',                        size: '600 × 600' },
-  { id: 'chat',        icon: '💬', name: 'Chat Overlay',  desc: 'แสดง comment บนจอ — คลิกเพื่อ Pin',    size: '400 × 600' },
-  { id: 'pinchat',     icon: '📌', name: 'Pin Chat',      desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',  size: '500 × 100' },
-  { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',   desc: 'อันดับผู้ส่งของขวัญ',                  size: '300 × 400' },
+  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '600 × 600' },
+  { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดง comment บนจอ — คลิกเพื่อ Pin',    size: '400 × 600' },
+  { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',  size: '500 × 100' },
+  { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ',                  size: '300 × 400' },
+  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้', size: '400 × 200', noStyle: true },
 ];
 
 // user, authLoading มาจาก _app.js
@@ -288,15 +289,17 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold text-center transition border', btn2nd)}>
                       ▶ Test
                     </a>
-                    <button onClick={() => toggleExpand(w.id)}
-                      className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold transition border',
-                        isOpen ? 'bg-brand-500/10 border-brand-500/40 text-brand-400' : btn2nd)}>
-                      ⚙️ {isOpen ? 'ปิด' : 'Customize'}
-                    </button>
+                    {!w.noStyle && (
+                      <button onClick={() => toggleExpand(w.id)}
+                        className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold transition border',
+                          isOpen ? 'bg-brand-500/10 border-brand-500/40 text-brand-400' : btn2nd)}>
+                        ⚙️ {isOpen ? 'ปิด' : 'Customize'}
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                {isOpen && (
+                {!w.noStyle && isOpen && (
                   <div className={clsx('border-t px-4 pb-4 pt-3', divider)}>
                     <WidgetStyleEditor
                       widgetId={w.id}

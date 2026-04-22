@@ -230,9 +230,47 @@ function _speakWeb(text) {
   });
 }
 
+// ===== Status callback (สำหรับ widget ttsmonitor + toast บนหน้าเว็บ) =====
+let _statusCallback = null;
+/** ลงทะเบียน callback ที่จะถูกเรียกทุกครั้งที่ TTS เริ่มพูด */
+export function onTtsStatus(fn) { _statusCallback = typeof fn === 'function' ? fn : null; }
+
+function _emitStatus(engine, voice, personaInstruction) {
+  if (!_statusCallback) return;
+  const voiceObj   = GEMINI_VOICES.find(v => v.name === voice);
+  const personaObj = GEMINI_PERSONAS.find(p => p.instruction === personaInstruction);
+  try {
+    _statusCallback({
+      engine,
+      voice:        voice || '',
+      voiceDesc:    voiceObj?.desc   || '',
+      personaLabel: personaObj?.label || '',
+    });
+  } catch { /* ไม่ให้ error ใน callback ทำให้ TTS หยุด */ }
+}
+
+// ===== Engine order helpers =====
+const DEFAULT_ENGINE_ORDER = ['gemini31', 'gemini25', 'google', 'web'];
+
+export function loadEngineOrder() {
+  if (typeof window === 'undefined') return [...DEFAULT_ENGINE_ORDER];
+  try {
+    const saved = localStorage.getItem('ttplus_engine_order');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [...DEFAULT_ENGINE_ORDER];
+}
+export function saveEngineOrder(order) {
+  if (typeof window === 'undefined') return;
+  if (Array.isArray(order) && order.length > 0)
+    localStorage.setItem('ttplus_engine_order', JSON.stringify(order));
+}
+
 // ===== Internal: process queue =====
-// ลำดับ priority คงที่ — ใช้เฉพาะ engine ที่ user เปิด (enabledEngines)
-const ENGINE_PRIORITY = ['gemini31', 'gemini25', 'google', 'web'];
+const ENGINE_PRIORITY = DEFAULT_ENGINE_ORDER; // backward compat
 
 async function _next() {
   if (_busy || _queue.length === 0) return;
@@ -241,9 +279,12 @@ async function _next() {
   _busy = true;
   const text = _queue.shift();
 
-  // เรียง engine ตาม priority คงที่ กรองเฉพาะที่ user เปิด
-  const enabled = _cfg.enabledEngines?.length ? _cfg.enabledEngines : ['web'];
-  const ordered = ENGINE_PRIORITY.filter(e => enabled.includes(e));
+  // ใช้ custom order จาก user (drag-to-reorder) กรองเฉพาะที่ user เปิด
+  const enabled     = _cfg.enabledEngines?.length ? _cfg.enabledEngines : ['web'];
+  const customOrder = loadEngineOrder();
+  const ordered     = customOrder.filter(e => enabled.includes(e));
+  // เติม engine ที่ enabled แต่ไม่อยู่ใน customOrder (ป้องกัน missing)
+  enabled.forEach(e => { if (!ordered.includes(e)) ordered.push(e); });
 
   // สุ่ม voice+persona สำหรับ Gemini ถ้า shuffle เปิด
   let gVoice   = _cfg.geminiVoice;
@@ -253,13 +294,22 @@ async function _next() {
     gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
   }
 
-  // ลอง engine ตามลำดับ — ถ้าล้มเหลวข้ามถัดไปอัตโนมัติ
+  // ลอง engine ตามลำดับ — emit status ก่อนพูด ถ้าล้มเหลวข้ามถัดไป
   for (const eng of ordered) {
     try {
-      if      (eng === 'gemini31' && _cfg.geminiApiKey) { await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL); break; }
-      else if (eng === 'gemini25' && _cfg.geminiApiKey) { await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL); break; }
-      else if (eng === 'google'   && _cfg.googleApiKey) { await _speakGoogle(text); break; }
-      else if (eng === 'web')                           { await _speakWeb(text);   break; }
+      if (eng === 'gemini31' && _cfg.geminiApiKey) {
+        _emitStatus('gemini31', gVoice, gPersona);
+        await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL); break;
+      } else if (eng === 'gemini25' && _cfg.geminiApiKey) {
+        _emitStatus('gemini25', gVoice, gPersona);
+        await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL); break;
+      } else if (eng === 'google' && _cfg.googleApiKey) {
+        _emitStatus('google', _cfg.googleVoice, null);
+        await _speakGoogle(text); break;
+      } else if (eng === 'web') {
+        _emitStatus('web', _cfg.voice, null);
+        await _speakWeb(text); break;
+      }
     } catch { /* cascade → ถัดไป */ }
   }
 

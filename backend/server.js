@@ -286,6 +286,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ===== TTS status relay (authenticated user → widget ttsmonitor) =====
+  socket.on('tts_status', (data) => {
+    if (!socket.userId) return;
+    if (!socketRateLimit(socket.id, 30, 5000)) return; // max 30 per 5s (1 per chat message)
+    const engine = String(data?.engine || 'web').slice(0, 20);
+    const safe = {
+      engine,
+      voice:        String(data?.voice        || '').slice(0, 60),
+      voiceDesc:    String(data?.voiceDesc    || '').slice(0, 60),
+      personaLabel: String(data?.personaLabel || '').slice(0, 40),
+    };
+    io.to(`widget_${socket.userId}`).emit('tts_status', safe);
+  });
+
   // ===== Real-time style update (authenticated user → widget room) =====
   socket.on('push_style_update', (data) => {
     if (!socket.userId) return; // ต้อง authenticate ก่อน
