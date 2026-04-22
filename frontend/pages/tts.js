@@ -231,7 +231,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
         <div className="space-y-4">
 
-          {/* เปิด/ปิด */}
+          {/* ══ 1. เปิด/ปิด ══ */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
             <div className="flex items-center justify-between">
               <div>
@@ -246,8 +246,187 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             </div>
           </div>
 
+          {/* ══ 2. Web Speech ฟรี — เสียงและความเร็ว + ทดสอบ (รวมการ์ดเดียว) ══ */}
+          <div className={clsx('rounded-2xl p-4 border', card)}>
 
-          {/* ── Engine Mode ── */}
+            {/* Header + mode toggle */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+                🔈 Web Speech
+                <span className="text-xs font-normal text-brand-400 ml-1.5">ฟรี ไม่ต้อง key</span>
+              </h2>
+              <div className={clsx('flex rounded-xl p-0.5 gap-0.5', isDark ? 'bg-gray-800' : 'bg-gray-100')}>
+                {[
+                  { val: true,  label: '⚡ ง่าย'   },
+                  { val: false, label: '🎛️ ปรับได้' },
+                ].map(opt => (
+                  <button
+                    key={String(opt.val)}
+                    onClick={() => switchMode(opt.val)}
+                    className={clsx(
+                      'px-3 py-1 rounded-lg text-xs font-semibold transition',
+                      simpleMode === opt.val
+                        ? 'bg-brand-500 text-white shadow-sm'
+                        : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
+                    )}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {simpleMode ? (
+              /* ── Mode ง่าย ── */
+              <div className="space-y-4">
+                <div>
+                  <Label isDark={isDark}>เสียงภาษาไทย ({thaiVoices.length} เสียงในเครื่องคุณ)</Label>
+                  {thaiVoices.length === 0 ? (
+                    <div className={clsx('p-3 rounded-xl border text-xs', isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500')}>
+                      ไม่พบเสียงไทยในเครื่อง — ใช้เสียงเริ่มต้นของระบบ
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 mt-1">
+                      {thaiVoices.map(v => {
+                        const isSelected = tts.voice === v.name || (!tts.voice && v === thaiVoices[0]);
+                        const isOnline   = !v.localService;
+                        return (
+                          <button
+                            key={v.name}
+                            onClick={() => handleChange('voice', v.name)}
+                            className={clsx(
+                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition',
+                              isSelected
+                                ? 'bg-brand-500 border-brand-500 text-white'
+                                : isDark
+                                  ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                            )}>
+                            <span className="text-base flex-shrink-0">{isOnline ? '🌐' : '💻'}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate">{v.name}</p>
+                              <p className={clsx('text-xs', isSelected ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
+                                {isOnline ? 'Online · Neural (เสียงดีกว่า)' : 'Offline · ในเครื่อง'}
+                              </p>
+                            </div>
+                            {isSelected && <span className="text-xs font-bold flex-shrink-0">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <Label isDark={isDark}>ความดัง</Label>
+                  <div className="grid grid-cols-3 gap-2 mt-1">
+                    {[
+                      { pct: 0.25, label: '🔈 25%' },
+                      { pct: 0.50, label: '🔉 50%' },
+                      { pct: 1.00, label: '🔊 100%' },
+                    ].map(opt => (
+                      <button
+                        key={opt.pct}
+                        onClick={() => handleChange('volume', opt.pct)}
+                        className={clsx(
+                          'py-2.5 rounded-xl text-sm font-bold transition border',
+                          Math.abs(tts.volume - opt.pct) < 0.01
+                            ? 'bg-brand-500 border-brand-500 text-white'
+                            : isDark
+                              ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        )}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ── Mode ปรับได้ ── */
+              <div className="space-y-4">
+                {voices.length > 0 && (
+                  <div>
+                    <Label isDark={isDark}>เสียง (Voice)</Label>
+                    <select className={inputCls} value={tts.voice} onChange={e => handleChange('voice', e.target.value)}>
+                      <option value="">— ค่าเริ่มต้น (เสียงไทยถ้ามี) —</option>
+                      {voices.map(v => (
+                        <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <Label isDark={isDark}>ความเร็ว ({tts.rate}x)</Label>
+                  <input type="range" min="0.5" max="2" step="0.1" value={tts.rate}
+                    onChange={e => handleChange('rate', +e.target.value)}
+                    className="w-full accent-brand-500 mt-1" />
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ช้า (0.5)</span><span>เร็ว (2.0)</span></div>
+                </div>
+                <div>
+                  <Label isDark={isDark}>ระดับเสียง ({tts.pitch})</Label>
+                  <input type="range" min="0.5" max="2" step="0.1" value={tts.pitch}
+                    onChange={e => handleChange('pitch', +e.target.value)}
+                    className="w-full accent-brand-500 mt-1" />
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ต่ำ</span><span>สูง</span></div>
+                </div>
+                <div>
+                  <Label isDark={isDark}>ความดัง ({Math.round(tts.volume * 100)}%)</Label>
+                  <input type="range" min="0" max="1" step="0.05" value={tts.volume}
+                    onChange={e => handleChange('volume', +e.target.value)}
+                    className="w-full accent-brand-500 mt-1" />
+                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>เบา</span><span>ดัง</span></div>
+                </div>
+              </div>
+            )}
+
+            {/* ── divider + ทดสอบ ── */}
+            <div className={clsx('border-t mt-4 pt-4', isDark ? 'border-gray-800' : 'border-gray-100')}>
+              <p className={clsx('text-xs font-semibold mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>ทดสอบเสียง</p>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={testWebText}
+                  onChange={e => setTestWebText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.nextSibling?.click(); }}
+                  className={clsx('flex-1 px-3 py-2 rounded-lg text-sm outline-none border transition',
+                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500'
+                           : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-brand-500')}
+                />
+                <button
+                  onClick={async () => {
+                    if (!testWebText.trim()) return;
+                    configureTTS({ voice: tts.voice, rate: tts.rate, pitch: tts.pitch, volume: tts.volume });
+                    try {
+                      await speakDirect('web', testWebText.trim());
+                    } catch (e) {
+                      toast.error(`Web Speech: ${e.message}`);
+                    }
+                  }}
+                  disabled={!testWebText.trim()}
+                  className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold transition">
+                  ▶
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { text: 'สวัสดีครับ ผม TTplus', label: '👋 ทักทาย' },
+                  { text: 'มีคนส่งของขวัญ 10 ชิ้น', label: '🎁 Gift' },
+                  { text: 'มีคนใหม่ติดตามแล้ว', label: '➕ Follow' },
+                ].map(({ text, label }) => (
+                  <button key={label}
+                    onClick={() => {
+                      configureTTS({ ...tts, enabled: true });
+                      speak(text, null);
+                    }}
+                    className={clsx('py-2.5 rounded-xl text-xs font-semibold transition border',
+                      isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ══ 3. Engine Mode ══ */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
             <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
               🎚️ เลือก Engine เสียง
@@ -669,198 +848,6 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
           </>)}
 
-          {/* เสียงและความเร็ว */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
-
-            {/* Mode toggle */}
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
-                เสียงและความเร็ว
-              </h2>
-              <div className={clsx('flex rounded-xl p-0.5 gap-0.5', isDark ? 'bg-gray-800' : 'bg-gray-100')}>
-                {[
-                  { val: true,  label: '⚡ ง่าย'   },
-                  { val: false, label: '🎛️ ปรับได้' },
-                ].map(opt => (
-                  <button
-                    key={String(opt.val)}
-                    onClick={() => switchMode(opt.val)}
-                    className={clsx(
-                      'px-3 py-1 rounded-lg text-xs font-semibold transition',
-                      simpleMode === opt.val
-                        ? 'bg-brand-500 text-white shadow-sm'
-                        : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
-                    )}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {simpleMode ? (
-              /* ===== Mode ง่าย ===== */
-              <div className="space-y-4">
-
-                {/* เสียงภาษาไทย — แสดงทั้งหมดให้เลือก */}
-                <div>
-                  <Label isDark={isDark}>เสียงภาษาไทย ({thaiVoices.length} เสียงในเครื่องคุณ)</Label>
-                  {thaiVoices.length === 0 ? (
-                    <div className={clsx('p-3 rounded-xl border text-xs', isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500')}>
-                      ไม่พบเสียงไทยในเครื่อง — ใช้เสียงเริ่มต้นของระบบ
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 mt-1">
-                      {thaiVoices.map(v => {
-                        const isSelected = tts.voice === v.name || (!tts.voice && v === thaiVoices[0]);
-                        const isOnline   = !v.localService;
-                        return (
-                          <button
-                            key={v.name}
-                            onClick={() => handleChange('voice', v.name)}
-                            className={clsx(
-                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition',
-                              isSelected
-                                ? 'bg-brand-500 border-brand-500 text-white'
-                                : isDark
-                                  ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
-                                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                            )}>
-                            <span className="text-base flex-shrink-0">{isOnline ? '🌐' : '💻'}</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold truncate">{v.name}</p>
-                              <p className={clsx('text-xs', isSelected ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
-                                {isOnline ? 'Online · Neural (เสียงดีกว่า)' : 'Offline · ในเครื่อง'}
-                              </p>
-                            </div>
-                            {isSelected && <span className="text-xs font-bold flex-shrink-0">✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* ความดัง — 3 preset */}
-                <div>
-                  <Label isDark={isDark}>ความดัง</Label>
-                  <div className="grid grid-cols-3 gap-2 mt-1">
-                    {[
-                      { pct: 0.25, label: '🔈 25%' },
-                      { pct: 0.50, label: '🔉 50%' },
-                      { pct: 1.00, label: '🔊 100%' },
-                    ].map(opt => (
-                      <button
-                        key={opt.pct}
-                        onClick={() => handleChange('volume', opt.pct)}
-                        className={clsx(
-                          'py-2.5 rounded-xl text-sm font-bold transition border',
-                          Math.abs(tts.volume - opt.pct) < 0.01
-                            ? 'bg-brand-500 border-brand-500 text-white'
-                            : isDark
-                              ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
-                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                        )}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-            ) : (
-              /* ===== Mode ปรับได้ ===== */
-              <div className="space-y-4">
-
-                {voices.length > 0 && (
-                  <div>
-                    <Label isDark={isDark}>เสียง (Voice)</Label>
-                    <select className={inputCls} value={tts.voice} onChange={e => handleChange('voice', e.target.value)}>
-                      <option value="">— ค่าเริ่มต้น (เสียงไทยถ้ามี) —</option>
-                      {voices.map(v => (
-                        <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <Label isDark={isDark}>ความเร็ว ({tts.rate}x)</Label>
-                  <input type="range" min="0.5" max="2" step="0.1" value={tts.rate}
-                    onChange={e => handleChange('rate', +e.target.value)}
-                    className="w-full accent-brand-500 mt-1" />
-                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ช้า (0.5)</span><span>เร็ว (2.0)</span></div>
-                </div>
-
-                <div>
-                  <Label isDark={isDark}>ระดับเสียง ({tts.pitch})</Label>
-                  <input type="range" min="0.5" max="2" step="0.1" value={tts.pitch}
-                    onChange={e => handleChange('pitch', +e.target.value)}
-                    className="w-full accent-brand-500 mt-1" />
-                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>ต่ำ</span><span>สูง</span></div>
-                </div>
-
-                <div>
-                  <Label isDark={isDark}>ความดัง ({Math.round(tts.volume * 100)}%)</Label>
-                  <input type="range" min="0" max="1" step="0.05" value={tts.volume}
-                    onChange={e => handleChange('volume', +e.target.value)}
-                    className="w-full accent-brand-500 mt-1" />
-                  <div className="flex justify-between text-xs text-gray-500 mt-0.5"><span>เบา</span><span>ดัง</span></div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ทดสอบ Web Speech */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
-            <h2 className={clsx('font-semibold text-sm mb-3', isDark ? 'text-white' : 'text-gray-900')}>
-              🔈 ทดสอบ Web Speech (ฟรี)
-            </h2>
-
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={testWebText}
-                onChange={e => setTestWebText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.nextSibling?.click(); }}
-                className={clsx('flex-1 px-3 py-2 rounded-lg text-sm outline-none border transition',
-                  isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500'
-                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-brand-500')}
-              />
-              <button
-                onClick={async () => {
-                  if (!testWebText.trim()) return;
-                  configureTTS({ voice: tts.voice, rate: tts.rate, pitch: tts.pitch, volume: tts.volume });
-                  try {
-                    await speakDirect('web', testWebText.trim());
-                  } catch (e) {
-                    toast.error(`Web Speech: ${e.message}`);
-                  }
-                }}
-                disabled={!testWebText.trim()}
-                className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold transition">
-                ▶
-              </button>
-            </div>
-
-            {/* Quick presets */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { text: 'สวัสดีครับ ผม TTplus', label: '👋 ทักทาย' },
-                { text: 'มีคนส่งของขวัญ 10 ชิ้น', label: '🎁 Gift' },
-                { text: 'มีคนใหม่ติดตามแล้ว', label: '➕ Follow' },
-              ].map(({ text, label }) => (
-                <button key={label}
-                  onClick={() => {
-                    configureTTS({ ...tts, enabled: true });
-                    speak(text, null);
-                  }}
-                  className={clsx('py-2.5 rounded-xl text-xs font-semibold transition border',
-                    isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
 
         </div>
       </main>
