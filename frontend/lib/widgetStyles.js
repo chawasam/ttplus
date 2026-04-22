@@ -8,7 +8,7 @@ export const WIDGET_DEFAULTS = {
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
-  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150 },
+  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, cat: 'none' },
 };
 
 /** hex (6 chars no #) + alpha (0-100) -> rgba(r,g,b,a) */
@@ -64,8 +64,9 @@ export function parseWidgetStyles(params, widgetId) {
   const rz = clamp(parseInt(params.get('rz') ?? (d.rz ?? 0)), -30, 30);
 
   // coinjar-specific params
-  const jx = clamp(parseInt(params.get('jx') ?? (d.jx ?? 0)), -200, 200);
-  const mi = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 300);
+  const jx  = clamp(parseInt(params.get('jx') ?? (d.jx ?? 0)), -200, 200);
+  const mi  = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 300);
+  const cat = ['left', 'right', 'behind'].includes(params.get('cat') || '') ? params.get('cat') : (d.cat || 'none');
 
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
@@ -76,9 +77,9 @@ export function parseWidgetStyles(params, widgetId) {
     dir,
     max,
     rx, ry, rz,
-    jx, mi,
+    jx, mi, cat,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, cat },
   };
 }
 
@@ -103,8 +104,9 @@ export function styleToParams(style, widgetId) {
   if (d.ry !== undefined && style.ry !== d.ry) p.set('ry', style.ry);
   if (d.rz !== undefined && style.rz !== d.rz) p.set('rz', style.rz);
   // coinjar-specific
-  if (d.jx !== undefined && style.jx !== d.jx) p.set('jx', style.jx);
-  if (d.mi !== undefined && style.mi !== d.mi) p.set('mi', style.mi);
+  if (d.jx  !== undefined && style.jx  !== d.jx)  p.set('jx',  style.jx);
+  if (d.mi  !== undefined && style.mi  !== d.mi)  p.set('mi',  style.mi);
+  if (d.cat !== undefined && style.cat !== d.cat) p.set('cat', style.cat);
   return p.toString();
 }
 
@@ -132,14 +134,15 @@ export function rawToStyle(raw = {}, widgetId) {
   const rz  = clamp(parseInt(raw.rz   ?? (d.rz ?? 0)), -30, 30);
   const jx  = clamp(parseInt(raw.jx   ?? (d.jx ?? 0)), -200, 200);
   const mi  = clamp(parseInt(raw.mi   ?? (d.mi ?? 150)), 10, 300);
+  const cat = ['left', 'right', 'behind'].includes(raw.cat || '') ? raw.cat : (d.cat || 'none');
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
     ac:          '#' + ac,
     fs, br, dir, max,
     rx, ry, rz,
-    jx, mi,
+    jx, mi, cat,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, cat },
   };
 }

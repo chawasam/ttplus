@@ -316,7 +316,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <StatCard label="👥 ผู้ชม"   value={viewers}       theme={theme} />
           <StatCard label="❤️ Likes"   value={totalLikes}    theme={theme} />
           <StatCard label="💬 แชท"     value={totalComments} theme={theme} />

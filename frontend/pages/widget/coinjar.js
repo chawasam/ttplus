@@ -140,7 +140,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -169,11 +169,36 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef }) {
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
   });
 
-  // real-time style update — อัปเดตเฉพาะ mi (jx ต้องการ reinit physics จึงไม่รองรับ real-time)
+  // real-time style update
   socket.on('style_update', ({ widgetId, style }) => {
     if (widgetId !== 'coinjar') return;
+
+    // mi — อัปเดต ref ทันที ไม่ต้อง rebuild
     if (style?.mi !== undefined) {
       maxItemsRef.current = Math.max(10, Math.min(300, parseInt(style.mi) || 150));
+    }
+
+    // jx — rebuild jar walls ใหม่ในตำแหน่งที่ถูกต้อง
+    if (style?.jx !== undefined) {
+      const newOx = Math.max(-200, Math.min(200, parseInt(style.jx) || 0));
+      const M      = mRef.current;
+      const engine = engineRef.current;
+      if (M && engine) {
+        const { Composite, Bodies } = M;
+        // ลบ walls + ground เดิมออกทั้งหมด
+        const toRemove = Composite.allBodies(engine.world)
+          .filter(b => b.label === 'wall' || b.label === 'ground');
+        toRemove.forEach(b => Composite.remove(engine.world, b));
+        // คำนวณพิกัดโถใหม่ + เพิ่ม walls ชุดใหม่
+        J = getJ(newOx);
+        Composite.add(engine.world, buildJarWalls(Bodies, newOx));
+        setJarOffset(newOx);
+      }
+    }
+
+    // cat — อัปเดต mascot ทันที
+    if (style?.cat !== undefined) {
+      setCatPos(['left', 'right', 'behind'].includes(style.cat) ? style.cat : null);
     }
   });
 
@@ -246,19 +271,18 @@ export default function CoinJarWidget() {
     const params    = new URLSearchParams(window.location.search);
     const wt        = params.get('wt');
     const isPreview = params.get('preview') === '1';
-    setStyles(parseWidgetStyles(params, 'coinjar'));
 
-    // อ่าน jar offset จาก ?jx= (clamp -200 ถึง +200)
-    const ox = Math.max(-200, Math.min(200, parseInt(params.get('jx') || '0') || 0));
+    // parseWidgetStyles รวม jx, mi, cat ทุกอย่างในก้อนเดียว
+    const s = parseWidgetStyles(params, 'coinjar');
+    setStyles(s);
 
-    // อ่านจำนวน item สูงสุดจาก ?mi= (clamp 10-300, default 150)
-    maxItemsRef.current = Math.max(10, Math.min(300, parseInt(params.get('mi') || '150') || 150));
+    const ox = s.jx ?? 0;
+    maxItemsRef.current = s.mi ?? 150;
     J = getJ(ox);
     setJarOffset(ox);
 
-    // อ่าน cat position จาก ?cat=
-    const catParam = params.get('cat');
-    if (['left', 'right', 'behind'].includes(catParam)) setCatPos(catParam);
+    // init cat mascot จาก parsed style
+    if (['left', 'right', 'behind'].includes(s.cat)) setCatPos(s.cat);
 
     let socket;
     let mounted = true;
@@ -289,7 +313,7 @@ export default function CoinJarWidget() {
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)

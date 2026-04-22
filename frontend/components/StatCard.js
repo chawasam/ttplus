@@ -13,18 +13,13 @@ const StatCard = memo(function StatCard({ icon, label, value, color = 'brand', t
 
   return (
     <div className={clsx(
-      'rounded-xl p-4 flex items-center gap-4',
+      'rounded-xl p-2.5 flex flex-col gap-0.5 min-w-0',
       theme === 'dark' ? 'bg-gray-800' : 'bg-white border border-gray-200 shadow-sm'
     )}>
-      <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center text-xl flex-shrink-0', colorMap[color])}>
-        {icon}
-      </div>
-      <div>
-        <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>{label}</p>
-        <p className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>
-          {typeof value === 'number' ? value.toLocaleString() : value}
-        </p>
-      </div>
+      <p className={clsx('text-xs truncate', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>{label}</p>
+      <p className={clsx('text-lg font-bold truncate', theme === 'dark' ? 'text-white' : 'text-gray-900')}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </p>
     </div>
   );
 });

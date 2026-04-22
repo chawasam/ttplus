@@ -243,6 +243,32 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
               <span>น้อย (10)</span><span>150</span><span>เยอะ (300)</span>
             </div>
           </div>
+
+          {/* Cat mascot */}
+          <div className="space-y-1.5">
+            <span className={label}>🐱 แมวมาสคอต</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { val: 'none',   icon: '❌', text: 'ไม่มี'    },
+                { val: 'left',   icon: '👈', text: 'ซ้ายโถ'  },
+                { val: 'right',  icon: '👉', text: 'ขวาโถ'  },
+                { val: 'behind', icon: '🫙', text: 'หลังโถ' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('cat', opt.val)}
+                  className={clsx(
+                    'py-2 px-2 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5',
+                    (style.cat ?? 'none') === opt.val
+                      ? 'bg-amber-500 border-amber-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  <span>{opt.icon}</span><span>{opt.text}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

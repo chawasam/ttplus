@@ -247,35 +247,25 @@ async function _next() {
     gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
   }
 
-  const fatal = (e) => {
-    const m = (e?.message || '').toLowerCase();
-    return m.includes('429') || m.includes('401') || m.includes('403') || m.includes('quota');
-  };
-
   try {
     if (engine === 'auto') {
       // ── Cascade: Gemini 3.1 → Gemini 2.5 → Google Cloud → Web Speech ──
+      // หลัก: ถ้า engine ใดล้มเหลว (ไม่ว่าสาเหตุ) → ลอง engine ถัดไปเสมอ
       if (_cfg.geminiApiKey) {
         try {
           await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
           _busy = false; _next(); return;
-        } catch (e) {
-          if (!fatal(e)) { _busy = false; _next(); return; }
-        }
+        } catch { /* cascade → 2.5 */ }
         try {
           await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL);
           _busy = false; _next(); return;
-        } catch (e) {
-          if (!fatal(e)) { _busy = false; _next(); return; }
-        }
+        } catch { /* cascade → Google */ }
       }
       if (_cfg.googleApiKey) {
         try {
           await _speakGoogle(text);
           _busy = false; _next(); return;
-        } catch (e) {
-          if (!fatal(e)) { _busy = false; _next(); return; }
-        }
+        } catch { /* cascade → Web */ }
       }
       await _speakWeb(text);
     } else {

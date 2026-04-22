@@ -439,18 +439,16 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 const active = engine === id;
                 return (
                   <button key={id} onClick={() => setEng(id)}
-                    className={clsx('flex items-start gap-2 px-3 py-2.5 rounded-xl border text-left text-xs transition',
+                    className={clsx('flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border text-center text-xs transition relative',
                       active
                         ? `${color} text-white`
                         : isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
                                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
                     )}>
-                    <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
-                    <div>
-                      <p className="font-semibold">{label}</p>
-                      {sub && <p className={clsx('text-xs mt-0.5', active ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>{sub}</p>}
-                    </div>
-                    {active && <span className="ml-auto text-sm">✓</span>}
+                    <span className="text-lg leading-none">{icon}</span>
+                    <p className="font-semibold leading-tight">{label}</p>
+                    {sub && <p className={clsx('text-xs leading-tight', active ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>{sub}</p>}
+                    {active && <span className="absolute top-1.5 right-2 text-xs font-bold">✓</span>}
                   </button>
                 );
               };
@@ -474,9 +472,25 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                     {engine === 'auto' && <span className="text-base">✓</span>}
                   </button>
 
-                  {/* Web Speech — free, ขึ้นก่อน */}
-                  {engBtn('web', '🔈', 'Web Speech (ฟรี)', 'ไม่ต้อง key — พร้อมใช้เลย', 'bg-brand-500 border-brand-500')}
-                  {/* 3 paid engines — 3 cols */}
+                  {/* Web Speech — free, full-width */}
+                  <button onClick={() => setEng('web')}
+                    className={clsx('w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition',
+                      engine === 'web'
+                        ? 'bg-brand-500 border-brand-500 text-white'
+                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                                 : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    <span className="text-xl">🔈</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold">Web Speech <span className="text-brand-400 text-xs font-normal">(ฟรี)</span></p>
+                      <p className={clsx('text-xs mt-0.5', engine === 'web' ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
+                        ไม่ต้อง key — พร้อมใช้เลย
+                      </p>
+                    </div>
+                    {engine === 'web' && <span className="text-base">✓</span>}
+                  </button>
+
+                  {/* 3 paid engines — 3 cols (vertical icon layout ใช้พื้นที่น้อยกว่า) */}
                   <div className="grid grid-cols-3 gap-2">
                     {engBtn('gemini31', '✨', 'Gemini 3.1', '300 combo', 'bg-purple-600 border-purple-600')}
                     {engBtn('gemini25', '🌟', 'Gemini 2.5', '300 combo', 'bg-violet-600 border-violet-600')}

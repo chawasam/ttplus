@@ -39,12 +39,9 @@ function applyTheme(t) {
 export default function App({ Component, pageProps }) {
   const router = useRouter();
 
-  const [theme, setThemeState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') || 'dark';
-    }
-    return 'dark';
-  });
+  // เริ่มต้น 'dark' เสมอ (ทั้ง server + client first render ต้องตรงกันเพื่อไม่เกิด hydration mismatch)
+  // อ่าน localStorage ใน useEffect หลัง hydration แทน
+  const [theme, setThemeState] = useState('dark');
 
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -72,6 +69,14 @@ export default function App({ Component, pageProps }) {
     });
     return () => unsub();
   }, []);
+
+  // อ่าน theme จาก localStorage หลัง hydration เสร็จ (ป้องกัน hydration mismatch)
+  useEffect(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved && saved !== theme) {
+      setThemeState(saved);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     applyTheme(theme);
