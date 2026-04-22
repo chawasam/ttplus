@@ -9,6 +9,9 @@ import {
   GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
   GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
   loadGeminiShuffle, saveGeminiShuffle,
+  loadGemini25Voice, saveGemini25Voice,
+  loadGemini25Persona, saveGemini25Persona,
+  loadGemini25Shuffle, saveGemini25Shuffle,
   loadEnabledEngines, saveEnabledEngines,
   loadEngineOrder, saveEngineOrder,
 } from '../lib/tts';
@@ -48,8 +51,12 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [showGeminiKey, setShowGeminiKey]     = useState(false);
   const [testingGemini31, setTestingGemini31]   = useState(false);
   const [testingGemini25, setTestingGemini25]   = useState(false);
-  const [geminiShuffle, setGeminiShuffle]   = useState(false);
-  const [enabledEngines, setEnabledEngines] = useState(['web']);
+  const [geminiShuffle, setGeminiShuffle]     = useState(false);
+  // Gemini 2.5 — แยก state จาก 3.1
+  const [gemini25Voice, setGemini25Voice]     = useState('Aoede');
+  const [gemini25Persona, setGemini25Persona] = useState('');
+  const [gemini25Shuffle, setGemini25Shuffle] = useState(false);
+  const [enabledEngines, setEnabledEngines]   = useState(['web']);
   const [engineOrder, setEngineOrder]       = useState(['gemini31','gemini25','google','web']);
   const [dragOver, setDragOver]             = useState(null); // id ของ engine ที่ hover อยู่
   const [testGeminiText, setTestGeminiText]   = useState('สวัสดีค่ะ');
@@ -80,17 +87,28 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     const mVoice    = localStorage.getItem('ttplus_gemini_voice')   || 'Aoede';
     const mPersona  = localStorage.getItem('ttplus_gemini_persona') || '';
     const mShuffle  = loadGeminiShuffle();
+    const m25Voice   = loadGemini25Voice();
+    const m25Persona = loadGemini25Persona();
+    const m25Shuffle = loadGemini25Shuffle();
     const engs      = loadEnabledEngines();
     const order     = loadEngineOrder();
     setGeminiKey(mKey);
     setGeminiVoice(mVoice);
     setGeminiPersona(mPersona);
     setGeminiShuffle(mShuffle);
+    setGemini25Voice(m25Voice);
+    setGemini25Persona(m25Persona);
+    setGemini25Shuffle(m25Shuffle);
     setEnabledEngines(engs);
     setEngineOrder(order);
 
     if (mKey || gKey) {
-      configureTTS({ googleApiKey: gKey, googleVoice: gVoice, geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona, geminiShuffle: mShuffle, enabledEngines: engs });
+      configureTTS({
+        googleApiKey: gKey, googleVoice: gVoice,
+        geminiApiKey: mKey, geminiVoice: mVoice, geminiPersona: mPersona, geminiShuffle: mShuffle,
+        gemini25Voice: m25Voice, gemini25Persona: m25Persona, gemini25Shuffle: m25Shuffle,
+        enabledEngines: engs,
+      });
       setShowGoogleSection(true);
     } else {
       configureTTS({ enabledEngines: engs });
@@ -761,7 +779,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
             </div>
             <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ใช้ key เดียวกับ Gemini 3.1 ด้านบน — voice / persona / shuffle ก็ใช้ร่วมกัน — เปิดใช้เป็น fallback อัตโนมัติเมื่อ 3.1 ล้มเหลว
+              ใช้ key เดียวกับ Gemini 3.1 — voice / persona / shuffle ตั้งค่าแยกอิสระ — เลือกสไตล์ของ 2.5 ได้เอง
             </p>
 
             {/* แสดง key status */}
@@ -772,6 +790,85 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               {geminiKey
                 ? <><span>🔑</span><span>ใช้ key จาก Gemini 3.1 (บันทึกแล้ว)</span></>
                 : <><span>⚠️</span><span>ใส่ key ในการ์ด Gemini 3.1 ด้านบนก่อน</span></>}
+            </div>
+
+            {/* Voice selector — 30 เสียง */}
+            <div className="mb-3">
+              <Label isDark={isDark}>เสียง (Voice) — {GEMINI_VOICES.length} แบบ</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1 max-h-48 overflow-y-auto pr-1">
+                {GEMINI_VOICES.map(v => (
+                  <button key={v.name}
+                    onClick={() => {
+                      setGemini25Voice(v.name);
+                      saveGemini25Voice(v.name);
+                      configureTTS({ gemini25Voice: v.name });
+                    }}
+                    className={clsx(
+                      'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition',
+                      gemini25Voice === v.name
+                        ? 'bg-violet-600 border-violet-600 text-white'
+                        : isDark
+                          ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    <span className="text-xs font-semibold">{v.name}</span>
+                    <span className={clsx('text-xs', gemini25Voice === v.name ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
+                      {v.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Persona selector — 10 แบบ */}
+            <div className="mb-3">
+              <Label isDark={isDark}>Persona (สไตล์การพูด) — 10 แบบ</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                {GEMINI_PERSONAS.map(p => (
+                  <button key={p.id}
+                    onClick={() => {
+                      setGemini25Persona(p.instruction);
+                      saveGemini25Persona(p.instruction);
+                      configureTTS({ gemini25Persona: p.instruction });
+                    }}
+                    className={clsx(
+                      'px-3 py-2 rounded-xl border text-left text-xs font-semibold transition',
+                      gemini25Persona === p.instruction
+                        ? 'bg-violet-600 border-violet-600 text-white'
+                        : isDark
+                          ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                    )}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Shuffle toggle */}
+            <div className={clsx('flex items-center justify-between p-3 rounded-xl border mb-3 transition',
+              gemini25Shuffle
+                ? isDark ? 'bg-violet-900/30 border-violet-600' : 'bg-violet-50 border-violet-300'
+                : isDark ? 'bg-gray-800 border-gray-700'        : 'bg-gray-50 border-gray-200')}>
+              <div>
+                <p className={clsx('text-xs font-semibold', gemini25Shuffle ? 'text-violet-400' : isDark ? 'text-gray-300' : 'text-gray-700')}>
+                  🎲 สุ่ม 300 combo ทุกแชท
+                </p>
+                <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-500' : 'text-gray-400')}>
+                  {gemini25Shuffle
+                    ? 'เปิดอยู่ — ทุกแชทสุ่ม voice+persona ใหม่'
+                    : 'ปิดอยู่ — ใช้ voice+persona ที่เลือกไว้'}
+                </p>
+              </div>
+              <Toggle
+                value={gemini25Shuffle}
+                onChange={v => {
+                  setGemini25Shuffle(v);
+                  saveGemini25Shuffle(v);
+                  configureTTS({ gemini25Shuffle: v });
+                  toast.success(v ? '🎲 เปิดสุ่มทุกแชทแล้ว!' : 'ปิดโหมดสุ่มแล้ว');
+                }}
+              />
             </div>
 
             {/* ทดสอบ Gemini 2.5 */}
@@ -796,7 +893,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 onClick={async () => {
                   if (!geminiKey || !testGeminiText.trim()) return;
                   setTestingGemini25(true);
-                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false });
+                  configureTTS({ geminiApiKey: geminiKey, gemini25Voice, gemini25Persona, gemini25Shuffle: false });
                   try {
                     await speakDirect('gemini25', testGeminiText.trim());
                   } catch (e) {
