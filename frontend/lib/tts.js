@@ -42,8 +42,14 @@ async function _speakGemini(text, voiceOverride, personaOverride) {
   const persona  = personaOverride ?? _cfg.geminiPersona ?? '';
   const model    = 'gemini-2.5-flash-preview-tts';
 
+  // Gemini TTS ไม่รองรับ systemInstruction — model จะพยายาม generate text แทน audio
+  // วิธีใส่ persona: ฝัง style instruction ลงใน content text โดยตรง
+  const ttsText = persona
+    ? `[Speaking style: ${persona}]\n${text}`
+    : text;
+
   const body = {
-    contents: [{ parts: [{ text }] }],
+    contents: [{ parts: [{ text: ttsText }] }],
     generationConfig: {
       responseModalities: ['AUDIO'],
       speechConfig: {
@@ -53,10 +59,6 @@ async function _speakGemini(text, voiceOverride, personaOverride) {
       },
     },
   };
-
-  if (persona) {
-    body.systemInstruction = { parts: [{ text: persona }] };
-  }
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
