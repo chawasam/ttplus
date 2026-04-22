@@ -249,11 +249,10 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             <span className={label}>🐱 แมวมาสคอต</span>
             <div className="grid grid-cols-2 gap-1.5">
               {[
-                { val: 'none',   icon: '❌', text: 'ไม่มี'      },
-                { val: 'left',   icon: '👈', text: 'ซ้ายโถ'    },
-                { val: 'right',  icon: '👉', text: 'ขวาโถ'    },
-                { val: 'behind', icon: '🫙', text: 'หลังโถ'   },
-                { val: 'group',  icon: '🐱', text: '×4 กลุ่ม' },
+                { val: 'none',   icon: '❌', text: 'ไม่มี'    },
+                { val: 'left',   icon: '👈', text: 'ซ้ายโถ'  },
+                { val: 'right',  icon: '👉', text: 'ขวาโถ'  },
+                { val: 'behind', icon: '🫙', text: 'หลังโถ' },
               ].map(opt => (
                 <button key={opt.val}
                   onClick={() => set('cat', opt.val)}
