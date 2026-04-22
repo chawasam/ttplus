@@ -194,6 +194,90 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
         </>
       )}
 
+      {/* ── 3D Transform (chat + pinchat เท่านั้น) ── */}
+      {(widgetId === 'chat' || widgetId === 'pinchat') && (
+        <div className="space-y-3 pt-1">
+          {/* Section header */}
+          <div className={row}>
+            <span className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-purple-400' : 'text-purple-600')}>
+              🎲 3D Perspective
+            </span>
+            {(style.rx || style.ry || style.rz) ? (
+              <button
+                onClick={() => onChange({ ...style, rx: 0, ry: 0, rz: 0 })}
+                className="text-xs text-gray-500 hover:text-brand-400 transition"
+                title="รีเซ็ต 3D">
+                ↩ รีเซ็ต 3D
+              </button>
+            ) : (
+              <span className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>0° / 0° / 0°</span>
+            )}
+          </div>
+
+          {/* แกน X — เอียงหน้า/หลัง */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>↕ แกน X (เอียงหน้า-หลัง)</span>
+              <span className={clsx('text-xs font-mono font-bold', (style.rx ?? 0) !== 0 ? 'text-purple-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                {style.rx ?? 0}°
+              </span>
+            </div>
+            <input
+              type="range" min="-60" max="60" step="1"
+              value={style.rx ?? 0}
+              onChange={e => set('rx', +e.target.value)}
+              className="w-full accent-purple-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>-60° (เอียงมา)</span><span>0°</span><span>+60° (เอียงไป)</span>
+            </div>
+          </div>
+
+          {/* แกน Y — เอียงซ้าย/ขวา */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>↔ แกน Y (เอียงซ้าย-ขวา)</span>
+              <span className={clsx('text-xs font-mono font-bold', (style.ry ?? 0) !== 0 ? 'text-purple-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                {style.ry ?? 0}°
+              </span>
+            </div>
+            <input
+              type="range" min="-60" max="60" step="1"
+              value={style.ry ?? 0}
+              onChange={e => set('ry', +e.target.value)}
+              className="w-full accent-purple-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>-60° (ซ้าย)</span><span>0°</span><span>+60° (ขวา)</span>
+            </div>
+          </div>
+
+          {/* แกน Z — หมุนตามเข็ม/ทวน */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>🔄 แกน Z (หมุนแกนหลัก)</span>
+              <span className={clsx('text-xs font-mono font-bold', (style.rz ?? 0) !== 0 ? 'text-purple-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                {style.rz ?? 0}°
+              </span>
+            </div>
+            <input
+              type="range" min="-30" max="30" step="1"
+              value={style.rz ?? 0}
+              onChange={e => set('rz', +e.target.value)}
+              className="w-full accent-purple-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>-30° (ทวน)</span><span>0°</span><span>+30° (ตาม)</span>
+            </div>
+          </div>
+
+          {/* hint */}
+          <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+            💡 เปลี่ยนแปลง real-time ใน OBS ไม่ต้องใช้ plugin 3D Effect
+          </p>
+        </div>
+      )}
+
       {/* Reset all */}
       <button
         onClick={() => onChange({ ...d })}

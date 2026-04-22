@@ -56,7 +56,15 @@ export default function PinChatWidget() {
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
   return (
-    <div style={{ background: 'transparent', padding: '8px 10px', maxWidth: 400, boxSizing: 'border-box' }}>
+    <div style={{
+      background:      'transparent',
+      padding:         '8px 10px',
+      maxWidth:        400,
+      boxSizing:       'border-box',
+      transform:       styles.transform3D,
+      transformOrigin: 'center center',
+      transformStyle:  'preserve-3d',
+    }}>
       {visible && pinned && (
         <div
           key={pinKey}  /* key เปลี่ยน → React unmount+remount → animation restart */

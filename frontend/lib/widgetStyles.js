@@ -3,8 +3,8 @@
 // ค่า default ของแต่ละ widget (hex ไม่มี #)
 export const WIDGET_DEFAULTS = {
   alert:       { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16 },
-  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12 },
-  pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12 },
+  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0 },
+  pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0 },
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
@@ -30,10 +30,19 @@ export function addHash(hex) {
 }
 
 /**
+ * สร้าง CSS transform string จาก rx/ry/rz
+ * perspective 800px = ค่า default ที่ให้ความลึก 3D สมดุล
+ */
+export function make3DTransform(rx = 0, ry = 0, rz = 0) {
+  if (!rx && !ry && !rz) return 'none';
+  return `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)`;
+}
+
+/**
  * อ่าน style params จาก URLSearchParams แล้วคืน object พร้อมใช้
  * @param {URLSearchParams} params
  * @param {string} widgetId
- * @returns {{ bgRgba, tc, ac, fs, br, raw }}
+ * @returns {{ bgRgba, tc, ac, fs, br, rx, ry, rz, transform3D, raw }}
  */
 export function parseWidgetStyles(params, widgetId) {
   const d = WIDGET_DEFAULTS[widgetId] || WIDGET_DEFAULTS.chat;
@@ -49,15 +58,22 @@ export function parseWidgetStyles(params, widgetId) {
   const dir = ['up', 'down'].includes(params.get('dir') || '') ? params.get('dir') : (d.dir || 'down');
   const max = clamp(parseInt(params.get('max') ?? (d.max ?? 12)), 3, 50);
 
+  // 3D transform params (chat + pinchat เท่านั้น)
+  const rx = clamp(parseInt(params.get('rx') ?? (d.rx ?? 0)), -60, 60);
+  const ry = clamp(parseInt(params.get('ry') ?? (d.ry ?? 0)), -60, 60);
+  const rz = clamp(parseInt(params.get('rz') ?? (d.rz ?? 0)), -30, 30);
+
   return {
-    bgRgba: hexAlphaToRgba(bg, bga),
-    tc:     '#' + tc,
-    ac:     '#' + ac,
+    bgRgba:      hexAlphaToRgba(bg, bga),
+    tc:          '#' + tc,
+    ac:          '#' + ac,
     fs,
     br,
     dir,
     max,
-    raw:    { bg, bga, tc, ac, fs, br, dir, max },
+    rx, ry, rz,
+    transform3D: make3DTransform(rx, ry, rz),
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz },
   };
 }
 
@@ -68,15 +84,19 @@ export function styleToParams(style, widgetId) {
   const d = WIDGET_DEFAULTS[widgetId] || WIDGET_DEFAULTS.chat;
   const p = new URLSearchParams();
   // encode เฉพาะค่าที่ต่างจาก default เพื่อให้ URL สั้น
-  if (style.bg  !== d.bg)                  p.set('bg',  style.bg);
-  if (style.bga !== d.bga)                 p.set('bga', style.bga);
-  if (style.tc  !== d.tc)                  p.set('tc',  style.tc);
-  if (style.ac  !== d.ac)                  p.set('ac',  style.ac);
-  if (style.fs  !== d.fs)                  p.set('fs',  style.fs);
-  if (style.br  !== d.br)                  p.set('br',  style.br);
+  if (style.bg  !== d.bg)  p.set('bg',  style.bg);
+  if (style.bga !== d.bga) p.set('bga', style.bga);
+  if (style.tc  !== d.tc)  p.set('tc',  style.tc);
+  if (style.ac  !== d.ac)  p.set('ac',  style.ac);
+  if (style.fs  !== d.fs)  p.set('fs',  style.fs);
+  if (style.br  !== d.br)  p.set('br',  style.br);
   // chat-specific
   if (d.dir !== undefined && style.dir !== d.dir) p.set('dir', style.dir);
   if (d.max !== undefined && style.max !== d.max) p.set('max', style.max);
+  // 3D transform (chat + pinchat)
+  if (d.rx !== undefined && style.rx !== d.rx) p.set('rx', style.rx);
+  if (d.ry !== undefined && style.ry !== d.ry) p.set('ry', style.ry);
+  if (d.rz !== undefined && style.rz !== d.rz) p.set('rz', style.rz);
   return p.toString();
 }
 
@@ -99,11 +119,16 @@ export function rawToStyle(raw = {}, widgetId) {
   const br  = clamp(parseInt(raw.br   ?? d.br),  0,  48);
   const dir = ['up', 'down'].includes(raw.dir || '') ? raw.dir : (d.dir || 'down');
   const max = clamp(parseInt(raw.max  ?? (d.max ?? 12)), 3, 50);
+  const rx  = clamp(parseInt(raw.rx   ?? (d.rx ?? 0)), -60, 60);
+  const ry  = clamp(parseInt(raw.ry   ?? (d.ry ?? 0)), -60, 60);
+  const rz  = clamp(parseInt(raw.rz   ?? (d.rz ?? 0)), -30, 30);
   return {
-    bgRgba: hexAlphaToRgba(bg, bga),
-    tc:     '#' + tc,
-    ac:     '#' + ac,
+    bgRgba:      hexAlphaToRgba(bg, bga),
+    tc:          '#' + tc,
+    ac:          '#' + ac,
     fs, br, dir, max,
-    raw:    { bg, bga, tc, ac, fs, br, dir, max },
+    rx, ry, rz,
+    transform3D: make3DTransform(rx, ry, rz),
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz },
   };
 }

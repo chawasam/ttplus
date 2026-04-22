@@ -109,16 +109,19 @@ export default function ChatWidget() {
   return (
     <div
       style={{
-        background:     'transparent',
-        padding:        10,
-        maxWidth:       400,
-        height:         '100vh',
-        overflowY:      'auto',
-        display:        'flex',
-        flexDirection:  flexDir,
-        gap:            5,
-        boxSizing:      'border-box',
-        scrollbarWidth: 'none',
+        background:      'transparent',
+        padding:         10,
+        maxWidth:        400,
+        height:          '100vh',
+        overflowY:       'auto',
+        display:         'flex',
+        flexDirection:   flexDir,
+        gap:             5,
+        boxSizing:       'border-box',
+        scrollbarWidth:  'none',
+        transform:       styles.transform3D,
+        transformOrigin: 'center center',
+        transformStyle:  'preserve-3d',
       }}
     >
       {displayMsgs.map((msg) => (
