@@ -7,7 +7,7 @@
 
 // ── Gemini TTS model names ──────────────────────────────────────────────────
 // อัปเดตตรงนี้ถ้า Google เปลี่ยนชื่อ model
-export const GEMINI_31_MODEL = 'gemini-3.1-flash-preview-tts';
+export const GEMINI_31_MODEL = 'gemini-3.1-flash-tts-preview';
 export const GEMINI_25_MODEL = 'gemini-2.5-flash-preview-tts';
 
 const MAX_QUEUE = 8;
