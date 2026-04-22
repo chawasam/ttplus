@@ -8,7 +8,7 @@ export const WIDGET_DEFAULTS = {
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
-  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20 },
+  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150 },
 };
 
 /** hex (6 chars no #) + alpha (0-100) -> rgba(r,g,b,a) */
@@ -63,6 +63,10 @@ export function parseWidgetStyles(params, widgetId) {
   const ry = clamp(parseInt(params.get('ry') ?? (d.ry ?? 0)), -60, 60);
   const rz = clamp(parseInt(params.get('rz') ?? (d.rz ?? 0)), -30, 30);
 
+  // coinjar-specific params
+  const jx = clamp(parseInt(params.get('jx') ?? (d.jx ?? 0)), -200, 200);
+  const mi = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 300);
+
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -72,8 +76,9 @@ export function parseWidgetStyles(params, widgetId) {
     dir,
     max,
     rx, ry, rz,
+    jx, mi,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi },
   };
 }
 
@@ -97,6 +102,9 @@ export function styleToParams(style, widgetId) {
   if (d.rx !== undefined && style.rx !== d.rx) p.set('rx', style.rx);
   if (d.ry !== undefined && style.ry !== d.ry) p.set('ry', style.ry);
   if (d.rz !== undefined && style.rz !== d.rz) p.set('rz', style.rz);
+  // coinjar-specific
+  if (d.jx !== undefined && style.jx !== d.jx) p.set('jx', style.jx);
+  if (d.mi !== undefined && style.mi !== d.mi) p.set('mi', style.mi);
   return p.toString();
 }
 
@@ -122,13 +130,16 @@ export function rawToStyle(raw = {}, widgetId) {
   const rx  = clamp(parseInt(raw.rx   ?? (d.rx ?? 0)), -60, 60);
   const ry  = clamp(parseInt(raw.ry   ?? (d.ry ?? 0)), -60, 60);
   const rz  = clamp(parseInt(raw.rz   ?? (d.rz ?? 0)), -30, 30);
+  const jx  = clamp(parseInt(raw.jx   ?? (d.jx ?? 0)), -200, 200);
+  const mi  = clamp(parseInt(raw.mi   ?? (d.mi ?? 150)), 10, 300);
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
     ac:          '#' + ac,
     fs, br, dir, max,
     rx, ry, rz,
+    jx, mi,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi },
   };
 }

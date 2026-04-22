@@ -15,8 +15,7 @@ const H = 600;
 // รัศมี gift item (px)
 const ITEM_R = 22;
 
-// จำนวน item สูงสุด (มากพอให้ล้นออกนอกโถได้)
-const MAX_ITEMS = 150;
+// จำนวน item สูงสุด default (อ่านจาก ?mi= ที่ runtime)
 
 // พื้น ground สำหรับ overflow — ของที่ล้นออกมากองที่นี่
 const GROUND_Y = H - 30;
@@ -141,7 +140,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -170,6 +169,14 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer }) {
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
   });
 
+  // real-time style update — อัปเดตเฉพาะ mi (jx ต้องการ reinit physics จึงไม่รองรับ real-time)
+  socket.on('style_update', ({ widgetId, style }) => {
+    if (widgetId !== 'coinjar') return;
+    if (style?.mi !== undefined) {
+      maxItemsRef.current = Math.max(10, Math.min(300, parseInt(style.mi) || 150));
+    }
+  });
+
   socket.on('widget_error', () => socket.disconnect());
   return socket;
 }
@@ -188,6 +195,7 @@ export default function CoinJarWidget() {
   const animRef     = useRef(null);
   const popupTimer  = useRef(null);
   const spawnTimers = useRef([]);
+  const maxItemsRef = useRef(150); // อ่านจาก ?mi= ใน useEffect
 
   // ===== spawn gift item =====
   const spawnItem = useCallback((imgUrl, emoji, count = 1) => {
@@ -222,10 +230,10 @@ export default function CoinJarWidget() {
 
         Composite.add(engineRef.current.world, body);
 
-        // ตัด item เก่าทิ้งถ้าเกิน MAX
+        // ตัด item เก่าทิ้งถ้าเกิน maxItems (อ่านจาก ref เพื่อให้ real-time)
         const all = Composite.allBodies(engineRef.current.world)
           .filter(b => b.label === 'gift');
-        if (all.length > MAX_ITEMS) {
+        if (all.length > maxItemsRef.current) {
           Composite.remove(engineRef.current.world, all[0]);
         }
       }, i * 160);
@@ -240,8 +248,11 @@ export default function CoinJarWidget() {
     const isPreview = params.get('preview') === '1';
     setStyles(parseWidgetStyles(params, 'coinjar'));
 
-    // อ่าน jar offset จาก ?jx= (clamp -150 ถึง +150)
-    const ox = Math.max(-150, Math.min(150, parseInt(params.get('jx') || '0') || 0));
+    // อ่าน jar offset จาก ?jx= (clamp -200 ถึง +200)
+    const ox = Math.max(-200, Math.min(200, parseInt(params.get('jx') || '0') || 0));
+
+    // อ่านจำนวน item สูงสุดจาก ?mi= (clamp 10-300, default 150)
+    maxItemsRef.current = Math.max(10, Math.min(300, parseInt(params.get('mi') || '150') || 150));
     J = getJ(ox);
     setJarOffset(ox);
 
@@ -278,7 +289,7 @@ export default function CoinJarWidget() {
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)

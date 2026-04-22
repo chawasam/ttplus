@@ -194,6 +194,58 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
         </>
       )}
 
+      {/* ── Coinjar: ตำแหน่งโถ + ของขวัญสูงสุด ── */}
+      {widgetId === 'coinjar' && (
+        <div className="space-y-3 pt-1">
+          <span className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-amber-400' : 'text-amber-600')}>
+            🫙 ตั้งค่าขวดโหล
+          </span>
+
+          {/* Jar X offset */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>↔ ตำแหน่งซ้าย-ขวา</span>
+              <div className="flex items-center gap-1.5">
+                <span className={clsx('text-xs font-mono font-bold', (style.jx ?? 0) !== 0 ? 'text-amber-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                  {(style.jx ?? 0) > 0 ? '+' : ''}{style.jx ?? 0}px
+                </span>
+                {(style.jx ?? 0) !== 0 && (
+                  <button onClick={() => set('jx', 0)} className="text-xs text-gray-500 hover:text-brand-400 transition" title="รีเซ็ต">↩</button>
+                )}
+              </div>
+            </div>
+            <input
+              type="range" min="-200" max="200" step="5"
+              value={style.jx ?? 0}
+              onChange={e => set('jx', +e.target.value)}
+              className="w-full accent-amber-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>← ซ้าย</span><span>กลาง</span><span>ขวา →</span>
+            </div>
+          </div>
+
+          {/* Max items */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>🎁 ของขวัญสูงสุดใน Widget</span>
+              <span className={clsx('text-xs font-mono font-bold', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
+                {style.mi ?? 150} ชิ้น
+              </span>
+            </div>
+            <input
+              type="range" min="10" max="300" step="10"
+              value={style.mi ?? 150}
+              onChange={e => set('mi', +e.target.value)}
+              className="w-full accent-amber-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>น้อย (10)</span><span>150</span><span>เยอะ (300)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 3D Transform (chat + pinchat เท่านั้น) ── */}
       {(widgetId === 'chat' || widgetId === 'pinchat') && (
         <div className="space-y-3 pt-1">
