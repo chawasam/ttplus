@@ -12,10 +12,10 @@ import WidgetStyleEditor from '../components/WidgetStyleEditor';
 import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const WIDGETS = [
+  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',      desc: 'ขวดโหลของขวัญ',                        size: '400 × 600' },
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',  desc: 'แสดง comment บนจอ — คลิกเพื่อ Pin',    size: '400 × 600' },
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',      desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',  size: '500 × 100' },
   { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',   desc: 'อันดับผู้ส่งของขวัญ',                  size: '300 × 400' },
-  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',      desc: 'โถฟิสิกส์ — ของขวัญตกลงมา · 🌹💎 leaderboard', size: '400 × 600' },
 ];
 
 // user, authLoading มาจาก _app.js

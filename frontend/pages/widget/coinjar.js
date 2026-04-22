@@ -1,7 +1,8 @@
 // widget/coinjar.js — Gift Jar Physics Widget สำหรับ OBS / TikTok Studio
 // OBS Size แนะนำ: 400 × 600
 // เมื่อมีคนส่ง gift ใน TikTok Live → รูป gift ตกลงมาในโถพร้อม physics จริง
-// แสดง: 🌹 rose count | 💎 diamond total | leaderboard top 3
+// ของขวัญล้นออกนอกโถได้ — กองบนพื้นข้างขวดโหล
+// URL params: ?wt=TOKEN&jx=OFFSET(-150~150)&cat=left|right|behind&preview=1
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
@@ -14,18 +15,35 @@ const H = 600;
 // รัศมี gift item (px)
 const ITEM_R = 22;
 
-// จำนวน item สูงสุดในโถ
-const MAX_ITEMS = 70;
+// จำนวน item สูงสุด (มากพอให้ล้นออกนอกโถได้)
+const MAX_ITEMS = 150;
 
-// พิกัดโถ (สำหรับ physics walls)
-// neck = ปากโถ (แคบ), body = ตัวโถ (กว้าง)
-const J = {
-  nL: 128, nR: 272,   // neck left / right (inner)
-  nT: 62,  nB: 158,   // neck top / bottom
-  bL: 68,  bR: 332,   // body left / right (inner)
-  bB: 516,            // body bottom
-  floor: 522,         // ก้นโถ
+// พื้น ground สำหรับ overflow — ของที่ล้นออกมากองที่นี่
+const GROUND_Y = H - 30;
+
+// พิกัดโถ base (offset = 0 → กลาง canvas)
+// ปรับ jarOffset จาก URL param ?jx=... (-150 ถึง +150)
+const JAR_BASE = {
+  nL: 128, nR: 272,
+  nT: 62,  nB: 158,
+  bL: 68,  bR: 332,
+  bB: 516,
+  floor: 522,
 };
+
+// คำนวณพิกัดโถพร้อม horizontal offset
+function getJ(ox = 0) {
+  return {
+    nL: JAR_BASE.nL + ox, nR: JAR_BASE.nR + ox,
+    nT: JAR_BASE.nT,      nB: JAR_BASE.nB,
+    bL: JAR_BASE.bL + ox, bR: JAR_BASE.bR + ox,
+    bB: JAR_BASE.bB,
+    floor: JAR_BASE.floor,
+  };
+}
+
+// J global — อัปเดตจาก URL param ก่อน init physics
+let J = getJ(0);
 
 // ===================== Emoji fallback =====================
 const EMOJI_MAP = {
@@ -55,11 +73,12 @@ function isRose(name = '') {
 
 // ===================== Physics Helper Functions =====================
 
-/** สร้าง Matter.js engine + เพิ่ม walls */
-function setupEngine(M) {
+/** สร้าง Matter.js engine + เพิ่ม walls
+ *  ox = horizontal offset ของโถ (จาก ?jx=) */
+function setupEngine(M, ox = 0) {
   const { Engine, Composite } = M;
   const engine = Engine.create({ gravity: { y: 2.2 } });
-  Composite.add(engine.world, buildJarWalls(M.Bodies));
+  Composite.add(engine.world, buildJarWalls(M.Bodies, ox));
   return engine;
 }
 
@@ -130,14 +149,11 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer }) {
   socket.on('gift', (data) => {
     const safe   = sanitizeEvent(data);
     const emoji  = getEmoji(safe.giftName || '');
-    // รูป gift จริงจาก TikTok — ถ้าไม่มีใช้ emoji fallback
     const imgUrl = safeTikTokImageUrl(safe.giftPictureUrl) || null;
     const repeat = safe.repeatCount || 1;
 
-    // spawn รูป gift ลงโถตามจำนวน
     spawnItem(imgUrl, emoji, Math.min(repeat, 8));
 
-    // popup แจ้งชื่อผู้ส่ง
     if (popupTimer.current) clearTimeout(popupTimer.current);
     setPopup({
       user:   safe.nickname || safe.uniqueId || 'ผู้ใช้',
@@ -154,9 +170,11 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer }) {
 
 // ===================== Main Widget =====================
 export default function CoinJarWidget() {
-  const [items, setItems]   = useState([]);
-  const [popup, setPopup]   = useState(null);
-  const [styles, setStyles] = useState(null);
+  const [items, setItems]         = useState([]);
+  const [popup, setPopup]         = useState(null);
+  const [styles, setStyles]       = useState(null);
+  const [jarOffset, setJarOffset] = useState(0);
+  const [catPos, setCatPos]       = useState(null); // 'left' | 'right' | 'behind' | null
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -188,7 +206,6 @@ export default function CoinJarWidget() {
           density:     0.002,
           label:       'gift',
         });
-        // เก็บข้อมูล render บน body
         body._img   = imgUrl;
         body._emoji = emoji;
 
@@ -217,8 +234,17 @@ export default function CoinJarWidget() {
     const isPreview = params.get('preview') === '1';
     setStyles(parseWidgetStyles(params, 'coinjar'));
 
+    // อ่าน jar offset จาก ?jx= (clamp -150 ถึง +150)
+    const ox = Math.max(-150, Math.min(150, parseInt(params.get('jx') || '0') || 0));
+    J = getJ(ox);
+    setJarOffset(ox);
+
+    // อ่าน cat position จาก ?cat=
+    const catParam = params.get('cat');
+    if (['left', 'right', 'behind'].includes(catParam)) setCatPos(catParam);
+
     let socket;
-    let mounted = true; // flag ป้องกัน race condition เมื่อ unmount ก่อน script โหลดเสร็จ
+    let mounted = true;
 
     const initPhysics = () => {
       if (!mounted) return;
@@ -226,12 +252,11 @@ export default function CoinJarWidget() {
       const M = window.Matter;
       if (!M) return;
 
-      // เก็บ Matter refs สำหรับ cleanup
-      // เก็บครบ — spawnItem ต้องใช้ Bodies + Body + Composite
+      // เก็บ Matter refs สำหรับ cleanup — spawnItem ต้องใช้ Bodies+Body+Composite
       mRef.current = { Runner: M.Runner, Composite: M.Composite, Bodies: M.Bodies, Body: M.Body };
 
-      // 1. Engine + walls
-      const engine = setupEngine(M);
+      // 1. Engine + walls (ส่ง offset ให้สร้าง walls ตำแหน่งที่ถูกต้อง)
+      const engine = setupEngine(M, ox);
       engineRef.current = engine;
 
       // 2. Runner
@@ -258,7 +283,7 @@ export default function CoinJarWidget() {
       script.src      = 'https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js';
       script.async    = true;
       script.onload   = initPhysics;
-      script.onerror  = () => console.error('[CoinJar] ไม่สามารถโหลด Matter.js ได้');
+      script.onerror  = () => { if (process.env.NODE_ENV !== 'production') console.error('[CoinJar] ไม่สามารถโหลด Matter.js ได้'); };
       document.head.appendChild(script);
     }
 
@@ -275,10 +300,7 @@ export default function CoinJarWidget() {
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
-  // พื้นหลัง (bga=0 = โปร่งใส 100% → ใช้ transparent)
-  const bgStyle = styles.raw.bga === 0
-    ? 'transparent'
-    : styles.bgRgba;
+  const bgStyle = styles.raw.bga === 0 ? 'transparent' : styles.bgRgba;
 
   return (
     <div style={{
@@ -322,6 +344,9 @@ export default function CoinJarWidget() {
         </div>
       )}
 
+      {/* ===== แมวน่ารัก (behind = ด้านหลัง, z-index ต่ำกว่า jar) ===== */}
+      {catPos === 'behind' && <CatMascot position="behind" jarOffset={jarOffset} />}
+
       {/* ===== Physics items layer (DOM, z-index ต่ำกว่า jar overlay) ===== */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
         {items.map(item => (
@@ -360,7 +385,12 @@ export default function CoinJarWidget() {
       </div>
 
       {/* ===== Jar SVG overlay (glass visual, z-index สูงกว่า items) ===== */}
-      <JarSVG acColor={styles.ac} />
+      <JarSVG acColor={styles.ac} offset={jarOffset} />
+
+      {/* ===== แมวน่ารัก (left / right = ด้านข้าง, z-index สูงกว่า jar) ===== */}
+      {(catPos === 'left' || catPos === 'right') && (
+        <CatMascot position={catPos} jarOffset={jarOffset} />
+      )}
 
       {/* CSS animations */}
       <style>{`
@@ -368,65 +398,97 @@ export default function CoinJarWidget() {
           from { opacity: 0; transform: translateX(-18px) scale(0.95); }
           to   { opacity: 1; transform: translateX(0)     scale(1);    }
         }
+        @keyframes catBlink {
+          0%, 92%, 100% { transform: scaleY(1); }
+          96% { transform: scaleY(0.1); }
+        }
       `}</style>
     </div>
   );
 }
 
 // ===================== Physics walls =====================
-function buildJarWalls(Bodies) {
-  const T = 12; // wall thickness
+/**
+ * สร้าง walls สำหรับโถ + ground + canvas sides
+ * ox = horizontal offset (จาก ?jx=)
+ */
+function buildJarWalls(Bodies, ox = 0) {
+  const T  = 12;
+  const Jx = getJ(ox);
+  // center x ของ shoulder แต่ละข้าง
+  const shL = (Jx.nL + Jx.bL) / 2;
+  const shR = (Jx.nR + Jx.bR) / 2;
+
   return [
-    // ก้น
+    // ── ก้นโถ ──
     Bodies.rectangle(
-      (J.bL + J.bR) / 2, J.floor + T / 2,
-      J.bR - J.bL + T, T,
+      (Jx.bL + Jx.bR) / 2, Jx.floor + T / 2,
+      Jx.bR - Jx.bL + T, T,
       { isStatic: true, friction: 0.7, label: 'wall' }
     ),
-    // ผนังซ้าย body
+    // ── ผนังซ้าย body ──
     Bodies.rectangle(
-      J.bL - T / 2, (J.nB + J.bB) / 2,
-      T, J.bB - J.nB,
+      Jx.bL - T / 2, (Jx.nB + Jx.bB) / 2,
+      T, Jx.bB - Jx.nB,
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
-    // ผนังขวา body
+    // ── ผนังขวา body ──
     Bodies.rectangle(
-      J.bR + T / 2, (J.nB + J.bB) / 2,
-      T, J.bB - J.nB,
+      Jx.bR + T / 2, (Jx.nB + Jx.bB) / 2,
+      T, Jx.bB - Jx.nB,
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
-    // ผนังซ้าย neck
+    // ── ผนังซ้าย neck ──
     Bodies.rectangle(
-      J.nL - T / 2, (J.nT + J.nB) / 2,
-      T, J.nB - J.nT,
+      Jx.nL - T / 2, (Jx.nT + Jx.nB) / 2,
+      T, Jx.nB - Jx.nT,
       { isStatic: true, label: 'wall' }
     ),
-    // ผนังขวา neck
+    // ── ผนังขวา neck ──
     Bodies.rectangle(
-      J.nR + T / 2, (J.nT + J.nB) / 2,
-      T, J.nB - J.nT,
+      Jx.nR + T / 2, (Jx.nT + Jx.nB) / 2,
+      T, Jx.nB - Jx.nT,
       { isStatic: true, label: 'wall' }
     ),
-    // shoulder ซ้าย (แนวเฉียง จาก neck ลงมา body)
-    // จาก (128,158) → (68,186): center=(98,172), length≈66, angle=+0.44rad
-    Bodies.rectangle(98, 172, 68, T, {
+    // ── shoulder ซ้าย (เฉียง: neck → body) ──
+    Bodies.rectangle(shL, 172, 68, T, {
       isStatic: true, angle: 0.44, friction: 0.45, label: 'wall',
     }),
-    // shoulder ขวา
-    Bodies.rectangle(302, 172, 68, T, {
+    // ── shoulder ขวา ──
+    Bodies.rectangle(shR, 172, 68, T, {
       isStatic: true, angle: -0.44, friction: 0.45, label: 'wall',
     }),
+
+    // ── พื้นนอกโถ (transparent ground) — ของที่ล้นออกมากองที่นี่ ──
+    Bodies.rectangle(
+      W / 2, GROUND_Y + T / 2,
+      W + T * 2, T,
+      { isStatic: true, friction: 0.8, label: 'ground' }
+    ),
+    // ── ผนังซ้าย canvas ──
+    Bodies.rectangle(
+      -T / 2, H / 2,
+      T, H * 2,
+      { isStatic: true, friction: 0.3, label: 'wall' }
+    ),
+    // ── ผนังขวา canvas ──
+    Bodies.rectangle(
+      W + T / 2, H / 2,
+      T, H * 2,
+      { isStatic: true, friction: 0.3, label: 'wall' }
+    ),
   ];
 }
 
 // ===================== Jar SVG Visual =====================
-function JarSVG({ acColor }) {
-  // พิกัด SVG ต้องตรงกับ physics walls ด้านบน
-  const NECK_L = J.nL, NECK_R = J.nR;
-  const NECK_T = J.nT, NECK_B = J.nB;
-  const BODY_L = J.bL, BODY_R = J.bR;
-  const BODY_B = J.bB;
-  const FLOOR  = J.floor;
+function JarSVG({ acColor, offset = 0 }) {
+  const Jv    = getJ(offset);
+  const NECK_L = Jv.nL, NECK_R = Jv.nR;
+  const NECK_T = Jv.nT, NECK_B = Jv.nB;
+  const BODY_L = Jv.bL, BODY_R = Jv.bR;
+  const BODY_B = Jv.bB;
+  const FLOOR  = Jv.floor;
+  const CX     = (BODY_L + BODY_R) / 2; // center x ของโถ
 
   return (
     <svg
@@ -522,7 +584,6 @@ function JarSVG({ acColor }) {
       />
 
       {/* ===== Glass reflections ===== */}
-      {/* แถบใหญ่ซ้าย */}
       <line
         x1={BODY_L + 12} y1={NECK_B + 55}
         x2={BODY_L + 12} y2={BODY_B - 50}
@@ -531,7 +592,6 @@ function JarSVG({ acColor }) {
         strokeLinecap="round"
         filter="url(#glow)"
       />
-      {/* แถบเล็กซ้าย */}
       <line
         x1={BODY_L + 22} y1={NECK_B + 90}
         x2={BODY_L + 22} y2={NECK_B + 180}
@@ -539,7 +599,6 @@ function JarSVG({ acColor }) {
         strokeWidth="3"
         strokeLinecap="round"
       />
-      {/* แถบขวาเล็ก */}
       <line
         x1={BODY_R - 14} y1={NECK_B + 60}
         x2={BODY_R - 14} y2={NECK_B + 130}
@@ -550,7 +609,7 @@ function JarSVG({ acColor }) {
 
       {/* ===== Rim วงรีบน neck ===== */}
       <ellipse
-        cx={W / 2}
+        cx={CX}
         cy={NECK_T + 21}
         rx={(NECK_R - NECK_L) / 2 + 3}
         ry={4}
@@ -561,7 +620,7 @@ function JarSVG({ acColor }) {
 
       {/* ===== ก้นโถ (วงรีเล็ก) ===== */}
       <ellipse
-        cx={W / 2}
+        cx={CX}
         cy={FLOOR - 2}
         rx={(BODY_R - BODY_L) / 2 - 12}
         ry={6}
@@ -569,6 +628,100 @@ function JarSVG({ acColor }) {
         stroke="rgba(190,220,255,0.25)"
         strokeWidth="1"
       />
+    </svg>
+  );
+}
+
+// ===================== Cat Mascot =====================
+/**
+ * แมวน่ารักนั่งข้างขวดโหล
+ * position: 'left' | 'right' | 'behind'
+ * jarOffset: horizontal offset เดียวกับโถ
+ */
+function CatMascot({ position, jarOffset = 0 }) {
+  const Jc = getJ(jarOffset);
+
+  // คำนวณตำแหน่งแมว
+  let left, zIndex;
+  if (position === 'left') {
+    left   = Jc.bL - 86;
+    zIndex = 4; // หน้า jar
+  } else if (position === 'right') {
+    left   = Jc.bR + 6;
+    zIndex = 4;
+  } else {
+    // behind — อยู่ด้านหลัง items และ jar
+    left   = (Jc.bL + Jc.bR) / 2 - 38;
+    zIndex = 1;
+  }
+
+  const top = GROUND_Y - 95; // นั่งบนพื้น ground
+
+  return (
+    <svg
+      width={80} height={100}
+      viewBox="0 0 80 100"
+      style={{ position: 'absolute', left, top, zIndex, pointerEvents: 'none' }}
+    >
+      {/* หาง */}
+      <path
+        d="M 52 88 Q 74 74 72 56 Q 70 42 60 38"
+        stroke="#f59e0b" strokeWidth="8" fill="none" strokeLinecap="round"
+      />
+      <path
+        d="M 52 88 Q 74 74 72 56 Q 70 42 60 38"
+        stroke="#fcd34d" strokeWidth="4" fill="none" strokeLinecap="round"
+      />
+
+      {/* ตัว */}
+      <ellipse cx="34" cy="72" rx="24" ry="21" fill="#fbbf24" />
+
+      {/* ลายตัว */}
+      <path d="M 18 65 Q 34 70 50 65" stroke="#d97706" strokeWidth="2.5" fill="none" />
+      <path d="M 16 73 Q 34 79 52 73" stroke="#d97706" strokeWidth="2" fill="none" />
+
+      {/* หัว */}
+      <circle cx="34" cy="42" r="22" fill="#fbbf24" />
+
+      {/* หูซ้าย */}
+      <polygon points="15,27 9,8 28,21" fill="#fbbf24" />
+      <polygon points="17,25 13,12 26,20" fill="#f9a8d4" />
+
+      {/* หูขวา */}
+      <polygon points="53,27 59,8 40,21" fill="#fbbf24" />
+      <polygon points="51,25 55,12 42,20" fill="#f9a8d4" />
+
+      {/* ตาซ้าย */}
+      <ellipse cx="26" cy="40" rx="5" ry="6" fill="#1c1c3a" />
+      <circle cx="28" cy="38" r="2" fill="white" />
+
+      {/* ตาขวา */}
+      <ellipse cx="42" cy="40" rx="5" ry="6" fill="#1c1c3a"
+        style={{ transformOrigin: '42px 40px', animation: 'catBlink 4s ease infinite' }} />
+      <circle cx="44" cy="38" r="2" fill="white" />
+
+      {/* จมูก */}
+      <ellipse cx="34" cy="47" rx="3.5" ry="2.5" fill="#f9a8d4" />
+
+      {/* ปาก */}
+      <path d="M 30.5 50 Q 34 54 37.5 50"
+        stroke="#c2410c" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+
+      {/* หนวดซ้าย */}
+      <line x1="6"  y1="44" x2="27" y2="47" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
+      <line x1="6"  y1="49" x2="27" y2="50" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
+
+      {/* หนวดขวา */}
+      <line x1="41" y1="47" x2="62" y2="44" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
+      <line x1="41" y1="50" x2="62" y2="49" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
+
+      {/* เท้าหน้าซ้าย */}
+      <ellipse cx="19" cy="91" rx="11" ry="7" fill="#fbbf24" />
+      <ellipse cx="19" cy="90" rx="9"  ry="5" fill="#f59e0b" />
+
+      {/* เท้าหน้าขวา */}
+      <ellipse cx="49" cy="91" rx="11" ry="7" fill="#fbbf24" />
+      <ellipse cx="49" cy="90" rx="9"  ry="5" fill="#f59e0b" />
     </svg>
   );
 }

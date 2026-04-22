@@ -190,8 +190,10 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     setSimpleMode(toSimple);
   }, []);
 
-  const isDark = theme === 'dark';
-  const card   = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
+  const isDark   = theme === 'dark';
+  const card     = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
+  // การ์ด paid engine (Gemini 3.1 / 2.5 / Google Cloud) — ไฮไลสีชมพูจางๆ
+  const paidCard = isDark ? 'bg-pink-950/25 border-pink-900/50' : 'bg-rose-50 border-rose-100 shadow-sm';
   const inputCls = clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition',
     isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900');
 
@@ -293,12 +295,13 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                     {engine === 'auto' && <span className="text-base">✓</span>}
                   </button>
 
-                  {/* 4 engines — 2×2 grid */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {engBtn('gemini31', '✨', 'Gemini 3.1', '300 combo (key ต้องการ)', 'bg-purple-600 border-purple-600')}
-                    {engBtn('gemini25', '🌟', 'Gemini 2.5', '300 combo (key ต้องการ)', 'bg-violet-600 border-violet-600')}
-                    {engBtn('google',   '🔑', 'Google Cloud', 'Neural Thai (key ต้องการ)', 'bg-green-600 border-green-600')}
-                    {engBtn('web',      '🔈', 'Web Speech', 'ฟรี ไม่ต้อง key', 'bg-brand-500 border-brand-500')}
+                  {/* Web Speech — free, ขึ้นก่อน */}
+                  {engBtn('web', '🔈', 'Web Speech (ฟรี)', 'ไม่ต้อง key — พร้อมใช้เลย', 'bg-brand-500 border-brand-500')}
+                  {/* 3 paid engines — 3 cols */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {engBtn('gemini31', '✨', 'Gemini 3.1', '300 combo', 'bg-purple-600 border-purple-600')}
+                    {engBtn('gemini25', '🌟', 'Gemini 2.5', '300 combo', 'bg-violet-600 border-violet-600')}
+                    {engBtn('google',   '🔑', 'Google Cloud', 'Neural Thai', 'bg-green-600 border-green-600')}
                   </div>
                 </div>
               );
@@ -322,7 +325,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           {showGoogleSection && (<>
 
           {/* ─── Gemini 3.1 TTS ─── */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
+          <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 ✨ Gemini 3.1 TTS
@@ -490,7 +493,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
 
           {/* ─── Gemini 2.5 TTS ─── */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
+          <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 🌟 Gemini 2.5 TTS
@@ -552,7 +555,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
 
           {/* ─── Google Cloud TTS ─── */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
+          <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 🔑 Google Cloud TTS <span className="text-xs font-normal text-green-400 ml-1">(เสียงดีกว่ามาก)</span>
