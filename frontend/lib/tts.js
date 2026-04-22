@@ -374,7 +374,7 @@ export const GEMINI_VOICES = [
 
 // ===== Gemini personas (speaking styles) =====
 export const GEMINI_PERSONAS = [
-  { id: '',           label: '😐 ปกติ',              instruction: '' },
+  { id: 'mouth',      label: '🍬 อมของอยู่ในปาก',    instruction: '[muffled] Speak as if you have something large in your mouth — muffled, slurred, lips barely moving, words come out unclear and garbled.' },
   { id: 'sleepy',     label: '😴 เพิ่งตื่นนอน',      instruction: 'Speak as if you just woke up and are very groggy and half-asleep. Slur your words slightly, speak slowly, sound exhausted.' },
   { id: 'lazy',       label: '🛋️ ขี้เกียจ',          instruction: 'Speak in the most lazy, unenthusiastic, monotone way possible, as if you cannot be bothered to care about anything.' },
   { id: 'annoyed',    label: '😒 กวนตีน',             instruction: 'Speak in a slightly snarky, mischievous, and teasing tone, like you are casually trolling someone.' },
@@ -382,7 +382,7 @@ export const GEMINI_PERSONAS = [
   { id: 'hungry',     label: '🍜 หิวข้าว',            instruction: 'Speak as if you are very hungry and distracted, occasionally sounding like you are thinking about food.' },
   { id: 'dramatic',   label: '🎭 ดราม่า',              instruction: 'Speak dramatically with extreme emotion and expression, as if everything is a life-or-death situation.' },
   { id: 'excited',    label: '🎉 ตื่นเต้น',           instruction: 'Speak with very high energy and excitement, like you just won the lottery.' },
-  { id: 'news',       label: '📰 ผู้ประกาศข่าว',      instruction: 'Speak like a serious Thai news anchor — clear, authoritative, and very formal.' },
+  { id: 'oldman',     label: '👴 คนแก่เคี้ยวหมาก',   instruction: 'Speak like a very old Thai person slowly chewing betel nut — gravelly raspy voice, slow mumbling pace, pausing mid-sentence, teeth sound missing, warm but very aged.' },
   { id: 'cute',       label: '🐱 น่ารักมาก',          instruction: 'Speak in an extremely cute, bubbly, and sweet tone, like an anime character.' },
 ];
 
