@@ -298,6 +298,22 @@ export const GOOGLE_THAI_VOICES = [
 // ===== localStorage helpers (key ไม่ผ่าน server) =====
 export function loadGoogleApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_google_tts_key')  || '' : ''; }
 export function saveGoogleApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_google_tts_key', k)  : localStorage.removeItem('ttplus_google_tts_key'); }
+/**
+ * ทดสอบ engine โดยตรง — ไม่ผ่าน queue ได้ error จริง
+ * engine: 'gemini' | 'google' | 'web'
+ */
+export async function speakDirect(engine, text) {
+  if (typeof window === 'undefined') return;
+  const clean = _stripEmoji(text).slice(0, 200);
+  if (!clean) throw new Error('ข้อความว่างเปล่า');
+  switch (engine) {
+    case 'gemini': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona);
+    case 'google': return _speakGoogle(clean);
+    case 'web':    return _speakWeb(clean);
+    default: throw new Error(`unknown engine: ${engine}`);
+  }
+}
+
 export function loadGeminiApiKey()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
 export function saveGeminiApiKey(k)    { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
 export function loadGeminiShuffle()    { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }

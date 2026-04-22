@@ -4,7 +4,7 @@ import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import {
-  configureTTS, speak, onVoicesReady,
+  configureTTS, speak, speakDirect, onVoicesReady,
   GOOGLE_THAI_VOICES, loadGoogleApiKey, saveGoogleApiKey,
   GEMINI_VOICES, GEMINI_PERSONAS, loadGeminiApiKey, saveGeminiApiKey,
   loadGeminiShuffle, saveGeminiShuffle, randomGeminiCombo,
@@ -381,26 +381,24 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 type="text"
                 value={testGeminiText}
                 onChange={e => setTestGeminiText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && geminiKey && testGeminiText.trim()) {
-                    setTestingGemini(true);
-                    configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false, enabled: true });
-                    speak(testGeminiText.trim(), null);
-                    setTimeout(() => setTestingGemini(false), 4000);
-                  }
-                }}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.nextSibling?.click(); }}
                 className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition',
                   isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500'
                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500')}
               />
               <button
                 disabled={!geminiKey || testingGemini || !testGeminiText.trim()}
-                onClick={() => {
-                  if (!geminiKey) return;
+                onClick={async () => {
+                  if (!geminiKey || !testGeminiText.trim()) return;
                   setTestingGemini(true);
-                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false, enabled: true });
-                  speak(testGeminiText.trim(), null);
-                  setTimeout(() => setTestingGemini(false), 4000);
+                  configureTTS({ geminiApiKey: geminiKey, geminiVoice, geminiPersona, geminiShuffle: false });
+                  try {
+                    await speakDirect('gemini', testGeminiText.trim());
+                  } catch (e) {
+                    toast.error(`Gemini: ${e.message}`);
+                  } finally {
+                    setTestingGemini(false);
+                  }
                 }}
                 className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20 flex-shrink-0">
                 {testingGemini ? '🔊' : '▶'}
@@ -494,29 +492,24 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 type="text"
                 value={testGoogleText}
                 onChange={e => setTestGoogleText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && googleKey && testGoogleText.trim()) {
-                    setTestingGoogle(true);
-                    configureTTS({ googleApiKey: googleKey, geminiApiKey: '', googleVoice, enabled: true });
-                    speak(testGoogleText.trim(), null);
-                    setTimeout(() => setTestingGoogle(false), 3000);
-                  }
-                }}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.nextSibling?.click(); }}
                 className={clsx('flex-1 px-3 py-2 rounded-lg text-xs outline-none border transition',
                   isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-green-500'
                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-green-500')}
               />
               <button
                 disabled={!googleKey || testingGoogle || !testGoogleText.trim()}
-                onClick={() => {
-                  if (!googleKey) return;
+                onClick={async () => {
+                  if (!googleKey || !testGoogleText.trim()) return;
                   setTestingGoogle(true);
-                  configureTTS({ googleApiKey: googleKey, geminiApiKey: '', googleVoice, enabled: true });
-                  speak(testGoogleText.trim(), null);
-                  setTimeout(() => {
+                  configureTTS({ googleApiKey: googleKey, googleVoice });
+                  try {
+                    await speakDirect('google', testGoogleText.trim());
+                  } catch (e) {
+                    toast.error(`Google TTS: ${e.message}`);
+                  } finally {
                     setTestingGoogle(false);
-                    configureTTS({ geminiApiKey: geminiKey }); // คืนค่า gemini key
-                  }, 3000);
+                  }
                 }}
                 className="px-3 py-2 rounded-lg text-xs font-semibold border transition disabled:opacity-40 disabled:cursor-not-allowed bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20 flex-shrink-0">
                 {testingGoogle ? '🔊' : '▶'}
@@ -689,23 +682,20 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 type="text"
                 value={testWebText}
                 onChange={e => setTestWebText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && testWebText.trim()) {
-                    configureTTS({ ...tts, geminiApiKey: '', googleApiKey: '', enabled: true });
-                    speak(testWebText.trim(), null);
-                    setTimeout(() => configureTTS({ geminiApiKey: geminiKey, googleApiKey: googleKey }), 3000);
-                  }
-                }}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.nextSibling?.click(); }}
                 className={clsx('flex-1 px-3 py-2 rounded-lg text-sm outline-none border transition',
                   isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-brand-500'
                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-brand-500')}
               />
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!testWebText.trim()) return;
-                  configureTTS({ ...tts, geminiApiKey: '', googleApiKey: '', enabled: true });
-                  speak(testWebText.trim(), null);
-                  setTimeout(() => configureTTS({ geminiApiKey: geminiKey, googleApiKey: googleKey }), 3000);
+                  configureTTS({ voice: tts.voice, rate: tts.rate, pitch: tts.pitch, volume: tts.volume });
+                  try {
+                    await speakDirect('web', testWebText.trim());
+                  } catch (e) {
+                    toast.error(`Web Speech: ${e.message}`);
+                  }
                 }}
                 disabled={!testWebText.trim()}
                 className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold transition">
