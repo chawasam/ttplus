@@ -162,7 +162,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
     }
 
     if (socketId) io.to(socketId).emit('connection_status', { status: 'error', message: userMessage });
-    throw err;
+    throw new Error(userMessage);
   }
 }
 

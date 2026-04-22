@@ -200,8 +200,10 @@ app.post('/api/connect', verifyToken, connectLimiter, async (req, res) => {
   try {
     await startConnection(req.user.uid, clean, io, socketId);
     res.json({ success: true, tiktokUsername: clean });
-  } catch {
-    res.status(400).json({ error: 'Could not connect. Please try again.' });
+  } catch (err) {
+    const msg = err?.message || 'Could not connect. Please try again.';
+    console.error('[API] /api/connect failed:', msg);
+    res.status(400).json({ error: msg });
   }
 });
 
