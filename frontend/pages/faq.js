@@ -1,0 +1,107 @@
+// pages/faq.js — คำถามที่พบบ่อย
+import clsx from 'clsx';
+import Sidebar from '../components/Sidebar';
+
+const FAQS = [
+  {
+    q: '[HTTP-400] No active connection. Please refresh.',
+    a: 'เกิดจาก connection ระหว่าง browser กับ server ขาดชั่วคราว (เช่น tab ทิ้งไว้นาน หรือ server restart) วิธีแก้: กด Ctrl+Shift+R เพื่อ refresh หน้าเว็บ รอ 5 วินาที แล้วกด Connect ใหม่ ถ้ายังขึ้นซ้ำให้ refresh อีกครั้ง ปัญหานี้จะหายเองและไม่ได้หมายความว่า account มีปัญหา',
+    tag: 'เชื่อมต่อ',
+  },
+  {
+    q: 'Login Google ไม่สำเร็จ / Login ไม่สำเร็จ กรุณาลองใหม่',
+    a: 'ลองใช้ browser อื่น (Chrome แนะนำ) หรือปิด extension ที่อาจบล็อก popup ก่อน ถ้า browser ถาม Allow Popup ให้กดอนุญาต แล้วลอง login ใหม่',
+    tag: 'Login',
+  },
+  {
+    q: 'Widget ไม่แสดงผลใน OBS',
+    a: 'เช็คว่า URL ที่ copy มาจากหน้า Widgets ถูกต้อง → วางใน OBS Browser Source → ตั้ง Width: 600, Height: 600 (สำหรับ Coin Jar) กด Refresh ใน OBS หลังวาง URL',
+    tag: 'Widget',
+  },
+  {
+    q: 'Widget แสดงอยู่ แต่ไม่อัปเดต real-time',
+    a: 'กด Refresh ใน OBS Browser Source และตรวจว่ากด Connect TikTok ใน Dashboard แล้ว สถานะจะแสดงเป็น "เชื่อมต่อสำเร็จ"',
+    tag: 'Widget',
+  },
+  {
+    q: 'TTS ไม่มีเสียง',
+    a: 'เข้าหน้า TTS → ตรวจว่าเลือก Engine แล้ว → กดปุ่ม Test ฟังเสียงก่อน ถ้าใช้ Gemini ให้ตรวจว่าใส่ API Key ถูกต้องในหน้า Settings',
+    tag: 'TTS',
+  },
+  {
+    q: 'ต้อง refresh ทุกครั้งที่เปิด browser ใหม่ไหม?',
+    a: 'ไม่ต้อง — แค่เปิดหน้าเว็บแล้วกด Connect TikTok ใหม่ทุกครั้งที่จะเริ่ม Live เพราะ TikTok session จะ reset เมื่อปิด browser',
+    tag: 'ทั่วไป',
+  },
+  {
+    q: 'เชื่อมต่อได้แล้ว แต่ไม่มี event เข้า',
+    a: 'ต้อง Live จริงใน TikTok ถึงจะมี event เข้า ถ้าไม่ได้ Live อยู่จะไม่มีข้อมูล gift/chat/follow ส่งมา',
+    tag: 'ทั่วไป',
+  },
+];
+
+const TAG_COLORS = {
+  'เชื่อมต่อ': 'bg-red-500/20 text-red-400',
+  'Login':     'bg-blue-500/20 text-blue-400',
+  'Widget':    'bg-purple-500/20 text-purple-400',
+  'TTS':       'bg-green-500/20 text-green-400',
+  'ทั่วไป':   'bg-gray-500/20 text-gray-400',
+};
+
+export default function FaqPage({ theme, user, activePage, setActivePage }) {
+  const isDark = theme === 'dark';
+
+  return (
+    <div className={clsx('flex min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900')}>
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
+
+      <main className="flex-1 ml-16 md:ml-56 p-4 md:p-8 max-w-3xl">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className={clsx('text-2xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>
+            ❓ คำถามที่พบบ่อย
+          </h1>
+          <p className={clsx('mt-1 text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>
+            ปัญหาที่เจอบ่อยและวิธีแก้ไข
+          </p>
+        </div>
+
+        {/* FAQ list */}
+        <div className="space-y-3">
+          {FAQS.map((item, i) => (
+            <div
+              key={i}
+              className={clsx(
+                'rounded-xl border p-4 md:p-5',
+                isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm'
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <span className={clsx('mt-0.5 text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0', TAG_COLORS[item.tag] || TAG_COLORS['ทั่วไป'])}>
+                  {item.tag}
+                </span>
+                <div className="min-w-0">
+                  <p className={clsx('font-semibold text-sm mb-2', isDark ? 'text-white' : 'text-gray-900')}>
+                    {item.q}
+                  </p>
+                  <p className={clsx('text-sm leading-relaxed', isDark ? 'text-gray-400' : 'text-gray-600')}>
+                    {item.a}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer note */}
+        <p className={clsx('mt-8 text-xs text-center', isDark ? 'text-gray-600' : 'text-gray-400')}>
+          ถ้าปัญหายังไม่หาย ติดต่อได้ที่{' '}
+          <a href="https://www.tiktok.com/@samsoundcard" target="_blank" rel="noreferrer"
+            className="text-brand-400 hover:underline">
+            @samsoundcard
+          </a>
+        </p>
+      </main>
+    </div>
+  );
+}

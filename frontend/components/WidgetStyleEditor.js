@@ -270,6 +270,32 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
 
+          {/* Cat gap — แสดงเฉพาะ left/right */}
+          {(style.cat === 'left' || style.cat === 'right') && (
+            <div className="space-y-1">
+              <div className={row}>
+                <span className={label}>↔ ระยะห่างจากขวด</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={clsx('text-xs font-mono font-bold', (style.cg ?? 0) !== 0 ? 'text-amber-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                    {(style.cg ?? 0) > 0 ? '+' : ''}{style.cg ?? 0}px
+                  </span>
+                  {(style.cg ?? 0) !== 0 && (
+                    <button onClick={() => set('cg', 0)} className="text-xs text-gray-500 hover:text-brand-400 transition" title="รีเซ็ต">↩</button>
+                  )}
+                </div>
+              </div>
+              <input
+                type="range" min="-30" max="150" step="5"
+                value={style.cg ?? 0}
+                onChange={e => set('cg', +e.target.value)}
+                className="w-full accent-amber-500"
+              />
+              <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+                <span>ชิดขวด</span><span>ห่างออก →</span>
+              </div>
+            </div>
+          )}
+
           {/* Cat size — แสดงเฉพาะเมื่อมีแมว */}
           {(style.cat ?? 'none') !== 'none' && (
             <div className="space-y-1">

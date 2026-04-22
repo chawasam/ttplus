@@ -11,13 +11,15 @@ import TtsPage    from './tts';
 import WidgetsPage from './widgets';
 import SettingsPage from './settings';
 import DonatePage  from './donate';
+import FaqPage     from './faq';
 
 const PAGES = [
-  { id: 'dashboard', Component: Dashboard  },
-  { id: 'tts',       Component: TtsPage    },
+  { id: 'dashboard', Component: Dashboard   },
+  { id: 'tts',       Component: TtsPage     },
   { id: 'widgets',   Component: WidgetsPage },
   { id: 'settings',  Component: SettingsPage },
   { id: 'donate',    Component: DonatePage  },
+  { id: 'faq',       Component: FaqPage     },
 ];
 
 const PATH_TO_ID = {
@@ -27,6 +29,7 @@ const PATH_TO_ID = {
   '/widgets':   'widgets',
   '/settings':  'settings',
   '/donate':    'donate',
+  '/faq':       'faq',
 };
 
 function applyTheme(t) {

@@ -140,7 +140,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -205,6 +205,11 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, eng
     if (style?.cs !== undefined) {
       setCatScale(Math.max(50, Math.min(200, parseInt(style.cs) || 100)));
     }
+
+    // cg — ระยะห่างแมวจากขวด
+    if (style?.cg !== undefined) {
+      setCatGap(Math.max(-30, Math.min(150, parseInt(style.cg) || 0)));
+    }
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -219,6 +224,7 @@ export default function CoinJarWidget() {
   const [jarOffset, setJarOffset] = useState(0);
   const [catPos, setCatPos]       = useState(null);   // 'left' | 'right' | 'behind' | null
   const [catScale, setCatScale]   = useState(100);    // 50–200 %
+  const [catGap, setCatGap]       = useState(0);      // -30–150 px ระยะห่างจากขวด
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -290,6 +296,7 @@ export default function CoinJarWidget() {
     // init cat mascot จาก parsed style
     if (['left', 'right', 'behind'].includes(s.cat)) setCatPos(s.cat);
     setCatScale(s.cs ?? 100);
+    setCatGap(s.cg ?? 0);
 
     let socket;
     let mounted = true;
@@ -320,7 +327,7 @@ export default function CoinJarWidget() {
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -393,7 +400,7 @@ export default function CoinJarWidget() {
       )}
 
       {/* ===== แมวน่ารัก (behind = ด้านหลัง, z-index ต่ำกว่า jar) ===== */}
-      {catPos === 'behind' && <CatMascot position="behind" jarOffset={jarOffset} scale={catScale} />}
+      {catPos === 'behind' && <CatMascot position="behind" jarOffset={jarOffset} scale={catScale} catGap={catGap} />}
 
       {/* ===== Physics items layer (DOM, z-index ต่ำกว่า jar overlay) ===== */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
@@ -437,7 +444,7 @@ export default function CoinJarWidget() {
 
       {/* ===== แมวน่ารัก (left / right = ด้านข้าง, z-index สูงกว่า jar) ===== */}
       {(catPos === 'left' || catPos === 'right') && (
-        <CatMascot position={catPos} jarOffset={jarOffset} scale={catScale} />
+        <CatMascot position={catPos} jarOffset={jarOffset} scale={catScale} catGap={catGap} />
       )}
 
       {/* CSS animations */}
@@ -697,7 +704,7 @@ function JarSVG({ acColor, offset = 0 }) {
  * position: 'left' | 'right' | 'behind'
  * ขาหน้าขวา animation ชี้ขวด (catPawPoint) ทุก 5 วิ
  */
-function CatMascot({ position, jarOffset = 0, scale = 100 }) {
+function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
   const Jc = getJ(jarOffset);
 
   // viewBox 140×300 — ทุก element อยู่ใน 0-140 ไม่ crop
@@ -709,11 +716,11 @@ function CatMascot({ position, jarOffset = 0, scale = 100 }) {
 
   let left, zIndex, flip;
   if (position === 'left') {
-    left   = Math.round(Jc.bL - (75 / 140) * CAT_W - 10);
+    left   = Math.round(Jc.bL - (75 / 140) * CAT_W - 10 - catGap);
     zIndex = 4;
     flip   = false;
   } else if (position === 'right') {
-    left   = Math.round(Jc.bR + 10 - (65 / 140) * CAT_W);
+    left   = Math.round(Jc.bR + 10 + catGap - (65 / 140) * CAT_W);
     zIndex = 4;
     flip   = true;
   } else {
@@ -800,6 +807,9 @@ function CatMascot({ position, jarOffset = 0, scale = 100 }) {
             <path d="M 92 267 Q 96 263 100 267" stroke="#d97706" strokeWidth="1.6" fill="none" />
             <path d="M 99 268 Q 103 264 107 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
           </g>
+
+          {/* ── คอ (เชื่อมหัวกับลำตัว) ── */}
+          <ellipse cx="75" cy="143" rx="15" ry="20" fill="#fbbf24" />
 
           {/* ── หัว ── */}
           <circle cx="75" cy="88" r="38" fill="#fbbf24" />

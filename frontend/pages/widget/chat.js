@@ -39,6 +39,18 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
   const [styles, setStyles]     = useState(null);
   const stylesRef               = useRef(null);
+  const bottomRef               = useRef(null); // anchor สำหรับ scroll to bottom
+  const topRef                  = useRef(null); // anchor สำหรับ scroll to top (dir=up)
+
+  // scroll ไปหา anchor เมื่อ messages เปลี่ยน
+  useEffect(() => {
+    const dir = stylesRef.current?.dir ?? 'down';
+    if (dir === 'up') {
+      topRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   useEffect(() => {
     const params      = new URLSearchParams(window.location.search);
@@ -49,7 +61,6 @@ export default function ChatWidget() {
     stylesRef.current = s;
 
     // addMsg: เพิ่มข้อความใหม่เข้า array (newest always at end)
-    // column-reverse จะแสดงตัวล่างสุดของ array ไว้ล่างสุดของจอเสมอโดยไม่ต้อง scroll
     const addMsg = (msg, currentMax) => {
       setMessages(prev => [...prev.slice(-(currentMax - 1)), msg]);
     };
@@ -99,12 +110,11 @@ export default function ChatWidget() {
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
-  // dir === 'down' (default): column-reverse → newest อยู่ล่างสุด browser anchor เองไม่กระพริบ
-  // dir === 'up': column ปกติ → newest อยู่บน (reverse messages array)
-  const isUp          = styles.dir === 'up';
-  const flexDir       = isUp ? 'column' : 'column-reverse';
-  const displayMsgs   = isUp ? [...messages].reverse() : messages;
-  const animName      = isUp ? 'slideDown' : 'slideUp';
+  // dir === 'down' (default): column ปกติ → newest อยู่ล่างสุด scroll to bottom
+  // dir === 'up': column ปกติ → newest อยู่บนสุด (reverse array) scroll to top
+  const isUp        = styles.dir === 'up';
+  const displayMsgs = isUp ? [...messages].reverse() : messages;
+  const animName    = isUp ? 'slideDown' : 'slideUp';
 
   return (
     <div
@@ -115,7 +125,8 @@ export default function ChatWidget() {
         height:          '100vh',
         overflowY:       'auto',
         display:         'flex',
-        flexDirection:   flexDir,
+        flexDirection:   'column',
+        justifyContent:  isUp ? 'flex-start' : 'flex-end',
         gap:             5,
         boxSizing:       'border-box',
         scrollbarWidth:  'none',
@@ -124,6 +135,9 @@ export default function ChatWidget() {
         transformStyle:  'preserve-3d',
       }}
     >
+      {/* anchor บนสุด (สำหรับ dir=up) */}
+      <div ref={topRef} style={{ flexShrink: 0 }} />
+
       {displayMsgs.map((msg) => (
         <div
           key={msg._key}
@@ -133,7 +147,7 @@ export default function ChatWidget() {
             display:      'flex',
             alignItems:   'flex-start',
             gap:          8,
-            animation:    `${animName} 0.25s ease-out both`,
+            animation:    `${animName} 0.3s ease-out both`,
             background:   styles.bgRgba,
             borderRadius: styles.br,
             padding:      '6px 10px',
@@ -153,10 +167,20 @@ export default function ChatWidget() {
           </div>
         </div>
       ))}
+
+      {/* anchor ล่างสุด (สำหรับ dir=down) */}
+      <div ref={bottomRef} style={{ flexShrink: 0 }} />
+
       <style>{`
         div::-webkit-scrollbar { display: none; }
-        @keyframes slideUp   { from { opacity:0; } to { opacity:1; } }
-        @keyframes slideDown { from { opacity:0; } to { opacity:1; } }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
     </div>
   );

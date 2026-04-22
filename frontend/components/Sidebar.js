@@ -7,6 +7,7 @@ const navItems = [
   { id: 'widgets',   icon: '🎛️', label: 'Widgets'     },
   { id: 'settings',  icon: '⚙️', label: 'Settings'    },
   { id: 'donate',    icon: '❤️', label: 'Donate'      },
+  { id: 'faq',       icon: '❓',  label: 'FAQ'         },
 ];
 
 export default function Sidebar({ theme, user, activePage, setActivePage }) {
