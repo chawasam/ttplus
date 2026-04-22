@@ -19,7 +19,7 @@ export default function PinChatWidget() {
     setStyles(s);
 
     if (isPreview) {
-      setPinned({ nickname: 'TTplusFan', comment: 'ข้อความที่ถูก Pin จะแสดงตรงนี้ 📌', color: '#ff2d62' });
+      setPinned({ nickname: 'TTsamFan', comment: 'ข้อความที่ถูก Pin จะแสดงตรงนี้ 📌', color: '#ff2d62' });
       setVisible(true);
       return;
     }

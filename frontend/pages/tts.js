@@ -408,7 +408,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { text: 'สวัสดีครับ ผม TTplus', label: '👋 ทักทาย' },
+                  { text: 'สวัสดีครับ ผม TTsam', label: '👋 ทักทาย' },
                   { text: 'มีคนส่งของขวัญ 10 ชิ้น', label: '🎁 Gift' },
                   { text: 'มีคนใหม่ติดตามแล้ว', label: '➕ Follow' },
                 ].map(({ text, label }) => (

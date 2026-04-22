@@ -1,7 +1,7 @@
 {
-  "name": "ttplus-backend",
+  "name": "ttsam-backend",
   "version": "1.0.0",
-  "description": "TTplus - Backend Server",
+  "description": "TTsam - Backend Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -24,7 +24,7 @@ export default function AlertWidget() {
     setStyles(s);
 
     if (isPreview) {
-      showAlert({ nickname: 'TTplusUser', giftName: 'Rose', repeatCount: 5, diamondCount: 1, profilePictureUrl: '', alertType: 'gift' });
+      showAlert({ nickname: 'TTsamUser', giftName: 'Rose', repeatCount: 5, diamondCount: 1, profilePictureUrl: '', alertType: 'gift' });
       return;
     }
 

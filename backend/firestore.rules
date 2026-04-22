@@ -1,5 +1,5 @@
 rules_version = '2';
-// Firestore Security Rules — TTplus
+// Firestore Security Rules — TTsam
 // Deploy ด้วย: firebase deploy --only firestore:rules
 
 service cloud.firestore {

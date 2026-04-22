@@ -82,7 +82,7 @@ async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI
 
   const mime = (part.mimeType || '').toLowerCase();
   if (process.env.NODE_ENV !== 'production') {
-    console.info('[TTplus Gemini] mimeType:', part.mimeType, 'bytes(b64):', part.data.length);
+    console.info('[TTsam Gemini] mimeType:', part.mimeType, 'bytes(b64):', part.data.length);
   }
 
   // decode base64 → Uint8Array
@@ -136,7 +136,7 @@ async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI
       audioBuffer = _audioCtx.createBuffer(1, f32.length, sampleRate);
       audioBuffer.getChannelData(0).set(f32);
     } catch (e) {
-      console.error('[TTplus Gemini] all strategies failed, mime:', part.mimeType, e);
+      console.error('[TTsam Gemini] all strategies failed, mime:', part.mimeType, e);
       throw new Error(`Gemini: เล่นเสียงไม่ได้ (${part.mimeType})`);
     }
   }

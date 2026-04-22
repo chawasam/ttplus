@@ -16,7 +16,7 @@ export default function DonatePage({ theme, setTheme, user, activePage, setActiv
           <div>
             <h1 className={clsx('text-xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>❤️ สนับสนุน</h1>
             <p className={clsx('text-sm mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>
-              TTplus ฟรี ถ้าชอบช่วยสนับสนุนได้นะครับ 🙏
+              TTsam ฟรี ถ้าชอบช่วยสนับสนุนได้นะครับ 🙏
             </p>
           </div>
           <button onClick={() => setTheme(isDark ? 'light' : 'dark')}

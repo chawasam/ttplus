@@ -25,7 +25,7 @@ export default function Sidebar({ theme, user, activePage, setActivePage }) {
           </svg>
         </div>
         <span className={clsx('hidden md:block font-bold text-sm', theme === 'dark' ? 'text-white' : 'text-gray-900')}>
-          TTplus
+          TTsam
         </span>
       </div>
 

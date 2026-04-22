@@ -57,7 +57,7 @@ export default function ChatWidget() {
     if (isPreview) {
       const preview = [
         { _key: ++_msgSeq, uniqueId: 'u1', nickname: 'น้องแมว',    comment: 'สวัสดีครับ! 🐱',    ts: Date.now() - 5000 },
-        { _key: ++_msgSeq, uniqueId: 'u2', nickname: 'TTplusFan',   comment: 'ไลฟ์สนุกมากเลย 🎉', ts: Date.now() - 3000 },
+        { _key: ++_msgSeq, uniqueId: 'u2', nickname: 'TTsamFan',   comment: 'ไลฟ์สนุกมากเลย 🎉', ts: Date.now() - 3000 },
         { _key: ++_msgSeq, uniqueId: 'u3', nickname: 'Hello_World', comment: '555555 ขำมากก',      ts: Date.now() - 1000 },
       ];
       setMessages(preview);

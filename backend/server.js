@@ -1,4 +1,4 @@
-// server.js — TTplus Backend Server
+// server.js — TTsam Backend Server
 require('dotenv').config();
 
 // ===== Error Handlers ต้อง register ก่อนทุกอย่าง =====
@@ -347,7 +347,7 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 // ===== Start =====
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 TTplus Backend running on 0.0.0.0:${PORT} [${isProd ? 'production' : 'development'}]`);
+  console.log(`\n🚀 TTsam Backend running on 0.0.0.0:${PORT} [${isProd ? 'production' : 'development'}]`);
   console.log(`🌐 Frontend: ${process.env.FRONTEND_URL}`);
   console.log(`[Server] PORT=${PORT} NODE_ENV=${process.env.NODE_ENV}`);
 
