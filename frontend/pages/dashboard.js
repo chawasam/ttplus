@@ -7,7 +7,7 @@ import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { showError } from '../lib/errorHandler';
 import { sanitizeEvent } from '../lib/sanitize';
-import { configureTTS, speak, clearTTSQueue, onTtsStatus } from '../lib/tts';
+import { configureTTS, speak, clearTTSQueue, onTtsStatus, onTtsFallback } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
@@ -126,24 +126,30 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         socketRef.current = socket;
         setupSocketListeners(socket);
 
-        // ส่ง TTS status ไปยัง widget ttsmonitor ผ่าน socket
+        // ส่ง TTS status ไปยัง widget ttsmonitor ผ่าน socket (ไม่แสดง toast บนเว็บ)
         onTtsStatus((status) => {
           if (socketRef.current?.connected) {
             socketRef.current.emit('tts_status', status);
           }
-          // แสดง toast บนหน้าเว็บด้วย (เห็นแค่ผู้ใช้)
-          const engineLabel = {
-            gemini31: '✨ Gemini 3.1', gemini25: '🌟 Gemini 2.5',
-            google: '🔑 Google Cloud', web: '🔈 Web Speech',
-          }[status.engine] || status.engine;
-          const parts = [engineLabel];
-          if (status.voice)    parts.push(status.voice);
-          if (status.personaLabel) parts.push(status.personaLabel);
-          toast(parts.join(' · '), {
-            duration: 2500,
-            style: { background: '#1f2937', color: '#e5e7eb', fontSize: '12px', padding: '6px 12px', borderRadius: '10px' },
-            icon: '🔊',
-          });
+        });
+
+        // แสดง toast บนเว็บเฉพาะตอน engine ล้มเหลว / fallback
+        const ENGINE_LABEL = {
+          gemini31: 'Gemini 3.1', gemini25: 'Gemini 2.5',
+          google: 'Google Cloud', web: 'Web Speech',
+        };
+        onTtsFallback(({ type, from, to }) => {
+          if (type === 'all_failed') {
+            toast.error('⚠️ TTS ทุก engine ล้มเหลว — ตรวจสอบ key หรือการเชื่อมต่อ', { duration: 5000 });
+          } else if (type === 'fallback') {
+            const fromLabel = ENGINE_LABEL[from] || from;
+            const toLabel   = ENGINE_LABEL[to]   || to;
+            toast(`⚠️ ${fromLabel} ล้มเหลว → ใช้ ${toLabel} แทน`, {
+              duration: 4000,
+              style: { background: '#422006', color: '#fed7aa', fontSize: '12px', padding: '6px 12px', borderRadius: '10px' },
+              icon: '🔄',
+            });
+          }
         });
       });
 

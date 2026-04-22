@@ -230,10 +230,20 @@ function _speakWeb(text) {
   });
 }
 
-// ===== Status callback (สำหรับ widget ttsmonitor + toast บนหน้าเว็บ) =====
+// ===== Status callback (สำหรับ widget ttsmonitor) =====
 let _statusCallback = null;
-/** ลงทะเบียน callback ที่จะถูกเรียกทุกครั้งที่ TTS เริ่มพูด */
+/** ลงทะเบียน callback ที่จะถูกเรียกทุกครั้งที่ TTS เริ่มพูด (ใช้กับ widget overlay) */
 export function onTtsStatus(fn) { _statusCallback = typeof fn === 'function' ? fn : null; }
+
+// ===== Fallback/Error callback (สำหรับ toast แจ้งปัญหาบนหน้าเว็บ) =====
+let _fallbackCallback = null;
+/**
+ * ลงทะเบียน callback ที่จะถูกเรียกเมื่อ:
+ *   - engine หลักล้มเหลว แล้วตกไปใช้ engine สำรอง (fallback)
+ *   - ทุก engine ล้มเหลวหมด (all_failed)
+ * data: { type: 'fallback'|'all_failed', from?, to?, engine? }
+ */
+export function onTtsFallback(fn) { _fallbackCallback = typeof fn === 'function' ? fn : null; }
 
 function _emitStatus(engine, voice, personaInstruction) {
   if (!_statusCallback) return;
@@ -295,22 +305,45 @@ async function _next() {
   }
 
   // ลอง engine ตามลำดับ — emit status ก่อนพูด ถ้าล้มเหลวข้ามถัดไป
+  let spokenBy  = null;  // engine ที่พูดสำเร็จ
+  let firstTried = null; // engine แรกที่ลอง (เพื่อตรวจ fallback)
+
   for (const eng of ordered) {
+    // skip ถ้าไม่มี key ที่ต้องใช้
+    if (eng === 'gemini31' && !_cfg.geminiApiKey) continue;
+    if (eng === 'gemini25' && !_cfg.geminiApiKey) continue;
+    if (eng === 'google'   && !_cfg.googleApiKey) continue;
+
+    if (!firstTried) firstTried = eng;
+
     try {
-      if (eng === 'gemini31' && _cfg.geminiApiKey) {
+      if (eng === 'gemini31') {
         _emitStatus('gemini31', gVoice, gPersona);
-        await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL); break;
-      } else if (eng === 'gemini25' && _cfg.geminiApiKey) {
+        await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
+      } else if (eng === 'gemini25') {
         _emitStatus('gemini25', gVoice, gPersona);
-        await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL); break;
-      } else if (eng === 'google' && _cfg.googleApiKey) {
+        await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL);
+      } else if (eng === 'google') {
         _emitStatus('google', _cfg.googleVoice, null);
-        await _speakGoogle(text); break;
+        await _speakGoogle(text);
       } else if (eng === 'web') {
         _emitStatus('web', _cfg.voice, null);
-        await _speakWeb(text); break;
+        await _speakWeb(text);
       }
+      spokenBy = eng;
+      break; // สำเร็จ
     } catch { /* cascade → ถัดไป */ }
+  }
+
+  // แจ้ง fallback ถ้าไม่ได้ใช้ engine แรกที่ตั้งใจ
+  if (_fallbackCallback) {
+    try {
+      if (!spokenBy) {
+        _fallbackCallback({ type: 'all_failed' });
+      } else if (spokenBy !== firstTried) {
+        _fallbackCallback({ type: 'fallback', from: firstTried, to: spokenBy });
+      }
+    } catch { /* ไม่ให้ error ใน callback ทำให้ TTS หยุด */ }
   }
 
   _busy = false;
