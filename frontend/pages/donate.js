@@ -33,9 +33,32 @@ export default function DonatePage({ theme, setTheme, user, activePage, setActiv
                 💳
               </div>
               <div>
-                <p className={clsx('text-sm font-bold', isDark ? 'text-white' : 'text-gray-900')}>PromptPay</p>
-                <p className="text-base font-bold text-brand-400">0XX-XXX-XXXX</p>
+                <p className={clsx('text-sm font-bold', isDark ? 'text-white' : 'text-gray-900')}>PromptPay · KBank</p>
+                <p className="text-base font-bold text-brand-400">149-3-90921-1</p>
+                <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>ชวลิต คำจันทร์</p>
               </div>
+            </div>
+          </div>
+
+          {/* PayPal */}
+          <div className={clsx('rounded-2xl p-4 border', card)}>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #003087 0%, #009cde 100%)' }}>
+                🅿️
+              </div>
+              <div className="flex-1">
+                <p className={clsx('text-sm font-bold', isDark ? 'text-white' : 'text-gray-900')}>PayPal</p>
+                <p className="text-sm font-bold text-blue-400">cksamg@gmail.com</p>
+              </div>
+              <a
+                href="https://paypal.me/cksamg"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition"
+                style={{ background: '#009cde' }}>
+                Send
+              </a>
             </div>
           </div>
 

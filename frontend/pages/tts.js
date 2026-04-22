@@ -677,6 +677,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 🌟 Gemini 2.5 TTS
                 <span className="text-xs font-normal text-violet-400 ml-2">สำรอง · 300 combo</span>
+                <span className="text-xs font-normal text-yellow-500 ml-1">(ยังไม่ได้ทดสอบ)</span>
               </h2>
               {geminiKey
                 ? <span className="text-xs text-violet-400 font-semibold">✓ เปิดใช้งาน</span>
@@ -737,7 +738,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
-                🔑 Google Cloud TTS <span className="text-xs font-normal text-green-400 ml-1">(เสียงดีกว่ามาก)</span>
+                🔑 Google Cloud TTS
+                <span className="text-xs font-normal text-green-400 ml-1">(เสียงดีกว่ามาก)</span>
+                <span className="text-xs font-normal text-yellow-500 ml-1">(ยังไม่ได้ทดสอบ)</span>
               </h2>
               {googleKey && (
                 <span className="text-xs text-green-400 font-semibold">✓ เปิดใช้งาน</span>
