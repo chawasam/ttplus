@@ -151,14 +151,19 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
     console.error(`[TikTok] Failed to connect @${tiktokUsername}:`, err.message);
     await logError(userId, tiktokUsername, err.message);
 
-    // ส่งข้อความที่ user-friendly และไม่รั่ว internal details
-    let userMessage = 'ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่';
-    if (err.message?.toLowerCase().includes('offline')) {
+    // ส่งข้อความที่ user-friendly
+    const raw = err.message || '';
+    let userMessage = `เชื่อมต่อไม่ได้: ${raw.slice(0, 120)}`;
+    if (raw.toLowerCase().includes('offline') || raw.toLowerCase().includes('is not live')) {
       userMessage = `@${tiktokUsername} ไม่ได้ไลฟ์อยู่ในขณะนี้`;
-    } else if (err.message?.includes('timed out')) {
+    } else if (raw.includes('timed out')) {
       userMessage = 'Connection timed out. Please try again.';
-    } else if (err.message?.includes('not found') || err.message?.includes('404')) {
+    } else if (raw.includes('not found') || raw.includes('404')) {
       userMessage = `ไม่พบ username @${tiktokUsername}`;
+    } else if (raw.toLowerCase().includes('rate limit') || raw.includes('429')) {
+      userMessage = 'TikTok rate limit — รอสักครู่แล้วลองใหม่';
+    } else if (raw.toLowerCase().includes('unauthorized') || raw.includes('403')) {
+      userMessage = 'TikTok ปฏิเสธการเชื่อมต่อ (403) — อาจต้องใส่ sessionId';
     }
 
     if (socketId) io.to(socketId).emit('connection_status', { status: 'error', message: userMessage });

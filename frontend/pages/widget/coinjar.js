@@ -808,53 +808,50 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
             <path d="M 99 268 Q 103 264 107 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
           </g>
 
-          {/* ── คอ (เชื่อมหัวกับลำตัว) ── */}
-          <ellipse cx="75" cy="143" rx="15" ry="20" fill="#fbbf24" />
-
-          {/* ── หัว ── */}
-          <circle cx="75" cy="88" r="38" fill="#fbbf24" />
-          <path d="M 48 56 Q 57 46 65 56"  stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
-          <path d="M 65 51 Q 73 40 81 51"  stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
-          <path d="M 83 56 Q 92 46 100 56" stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
+          {/* ── หัว (เลื่อนลง 35px — cy 88→123 ก้นหัวชนลำตัว y=161) ── */}
+          <circle cx="75" cy="123" r="38" fill="#fbbf24" />
+          <path d="M 48 91 Q 57 81 65 91"  stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
+          <path d="M 65 86 Q 73 75 81 86"  stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
+          <path d="M 83 91 Q 92 81 100 91" stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
 
           {/* ── หูซ้าย ── */}
-          <polygon points="44,66 36,20 64,54" fill="#fbbf24" />
-          <polygon points="47,62 42,28 60,51" fill="#f9a8d4" />
+          <polygon points="44,101 36,55 64,89" fill="#fbbf24" />
+          <polygon points="47,97 42,63 60,86" fill="#f9a8d4" />
 
           {/* ── หูขวา ── */}
-          <polygon points="106,66 116,20 88,54" fill="#fbbf24" />
-          <polygon points="103,62 110,28 92,51" fill="#f9a8d4" />
+          <polygon points="106,101 116,55 88,89" fill="#fbbf24" />
+          <polygon points="103,97 110,63 92,86" fill="#f9a8d4" />
 
           {/* ── ตาซ้าย ── */}
-          <ellipse cx="60" cy="85" rx="8" ry="9" fill="#1c1c3a" />
-          <ellipse cx="60" cy="85" rx="4.5" ry="5.5" fill="#3b82f6" />
-          <circle  cx="63" cy="82" r="3"   fill="white" />
-          <circle  cx="62" cy="81" r="1.2" fill="rgba(255,255,255,0.7)" />
+          <ellipse cx="60" cy="120" rx="8" ry="9" fill="#1c1c3a" />
+          <ellipse cx="60" cy="120" rx="4.5" ry="5.5" fill="#3b82f6" />
+          <circle  cx="63" cy="117" r="3"   fill="white" />
+          <circle  cx="62" cy="116" r="1.2" fill="rgba(255,255,255,0.7)" />
 
           {/* ── ตาขวา (กะพริบ) ── */}
           <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'catBlink 4.5s ease infinite' }}>
-            <ellipse cx="90" cy="85" rx="8" ry="9" fill="#1c1c3a" />
-            <ellipse cx="90" cy="85" rx="4.5" ry="5.5" fill="#3b82f6" />
-            <circle  cx="93" cy="82" r="3"   fill="white" />
-            <circle  cx="92" cy="81" r="1.2" fill="rgba(255,255,255,0.7)" />
+            <ellipse cx="90" cy="120" rx="8" ry="9" fill="#1c1c3a" />
+            <ellipse cx="90" cy="120" rx="4.5" ry="5.5" fill="#3b82f6" />
+            <circle  cx="93" cy="117" r="3"   fill="white" />
+            <circle  cx="92" cy="116" r="1.2" fill="rgba(255,255,255,0.7)" />
           </g>
 
           {/* ── จมูก ── */}
-          <ellipse cx="74" cy="101" rx="4.5" ry="3.5" fill="#f9a8d4" />
-          <path d="M 74 97 L 74 101" stroke="#d97706" strokeWidth="1.4" />
+          <ellipse cx="74" cy="136" rx="4.5" ry="3.5" fill="#f9a8d4" />
+          <path d="M 74 132 L 74 136" stroke="#d97706" strokeWidth="1.4" />
 
           {/* ── ปาก ── */}
-          <path d="M 69 106 Q 74 112 79 106" stroke="#c2410c" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+          <path d="M 69 141 Q 74 147 79 141" stroke="#c2410c" strokeWidth="1.8" fill="none" strokeLinecap="round" />
 
           {/* ── หนวดซ้าย (x=15~62) ── */}
-          <line x1="15" y1="97"  x2="62" y2="101" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="14" y1="104" x2="62" y2="105" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="17" y1="112" x2="62" y2="110" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
+          <line x1="15" y1="132" x2="62" y2="136" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
+          <line x1="14" y1="139" x2="62" y2="140" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
+          <line x1="17" y1="147" x2="62" y2="145" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
 
           {/* ── หนวดขวา (x=86~132) ── */}
-          <line x1="86" y1="101" x2="131" y2="97"  stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="86" y1="105" x2="132" y2="104" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="86" y1="110" x2="129" y2="112" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
+          <line x1="86" y1="136" x2="131" y2="132" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
+          <line x1="86" y1="140" x2="132" y2="139" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
+          <line x1="86" y1="145" x2="129" y2="147" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
         </svg>
       </div>
     </div>

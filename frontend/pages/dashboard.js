@@ -191,18 +191,25 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
     } catch (err) {
-      // ถ้า socket ยังไม่ register ทัน (เช่น หลัง Railway TCP timeout) — รอ 1.5 วิ แล้ว retry 1 ครั้ง
-      const isSocketNotReady = err?.response?.data?.error?.includes('No active connection');
-      if (isSocketNotReady) {
-        await new Promise(r => setTimeout(r, 1500));
-        try {
-          await api.post('/api/connect', { tiktokUsername: cleanUsername });
-          return; // retry สำเร็จ ไม่ต้อง setConnecting(false) — รอ connection_status จาก socket
-        } catch (retryErr) {
-          showError(retryErr, 'ไม่สามารถเชื่อมต่อได้ กรุณา refresh หน้าเว็บ');
-        }
-      } else {
-        showError(err, 'ไม่สามารถเชื่อมต่อได้');
+      const errMsg = err?.response?.data?.error || '';
+      // ข้ามถ้าเป็น error ที่ retry ไม่มีประโยชน์
+      const noRetry = errMsg.includes('ไม่ได้ไลฟ์') || errMsg.includes('ไม่พบ username') || errMsg.includes('rate limit');
+      if (noRetry) {
+        showError(err, errMsg || 'ไม่สามารถเชื่อมต่อได้');
+        setConnecting(false);
+        return;
+      }
+      // retry 1 ครั้ง หลังรอ 2 วิ (ครอบคลุม cold start / socket ยังไม่ ready / network hiccup)
+      toast.loading('เชื่อมต่อไม่สำเร็จ — กำลัง retry...', { id: 'retry', duration: 2000 });
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        await api.post('/api/connect', { tiktokUsername: cleanUsername });
+        toast.dismiss('retry');
+        return; // retry สำเร็จ — รอ connection_status จาก socket
+      } catch (retryErr) {
+        toast.dismiss('retry');
+        const retryMsg = retryErr?.response?.data?.error || '';
+        showError(retryErr, retryMsg || 'เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่หรือ refresh หน้าเว็บ');
       }
       setConnecting(false);
     }
