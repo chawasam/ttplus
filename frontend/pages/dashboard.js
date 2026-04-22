@@ -191,7 +191,19 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
     } catch (err) {
-      showError(err, 'ไม่สามารถเชื่อมต่อได้');
+      // ถ้า socket ยังไม่ register ทัน (เช่น หลัง Railway TCP timeout) — รอ 1.5 วิ แล้ว retry 1 ครั้ง
+      const isSocketNotReady = err?.response?.data?.error?.includes('No active connection');
+      if (isSocketNotReady) {
+        await new Promise(r => setTimeout(r, 1500));
+        try {
+          await api.post('/api/connect', { tiktokUsername: cleanUsername });
+          return; // retry สำเร็จ ไม่ต้อง setConnecting(false) — รอ connection_status จาก socket
+        } catch (retryErr) {
+          showError(retryErr, 'ไม่สามารถเชื่อมต่อได้ กรุณา refresh หน้าเว็บ');
+        }
+      } else {
+        showError(err, 'ไม่สามารถเชื่อมต่อได้');
+      }
       setConnecting(false);
     }
   }, [user, tiktokUsername]);
