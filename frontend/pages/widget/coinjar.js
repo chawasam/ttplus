@@ -101,33 +101,22 @@ function startAnimationLoop(engine, M, setItems) {
 }
 
 /** Preview mode: spawn test gifts */
-function runPreviewMode(spawnItem, setTotal, setRoses, setLb) {
+function runPreviewMode(spawnItem) {
   const testGifts = [
-    { emoji: '🌹', count: 3, rose: true  },
-    { emoji: '🦁', count: 2 },
-    { emoji: '💎', count: 1 },
-    { emoji: '❤️', count: 4 },
-    { emoji: '🌹', count: 2, rose: true  },
-    { emoji: '🎁', count: 1 },
-    { emoji: '🔥', count: 3 },
-    { emoji: '🐼', count: 2 },
+    { emoji: '🌹', count: 3 }, { emoji: '🦁', count: 2 },
+    { emoji: '💎', count: 1 }, { emoji: '❤️', count: 4 },
+    { emoji: '🌹', count: 2 }, { emoji: '🎁', count: 1 },
+    { emoji: '🔥', count: 3 }, { emoji: '🐼', count: 2 },
   ];
   let delay = 0;
   testGifts.forEach(g => {
     setTimeout(() => spawnItem(null, g.emoji, g.count), delay);
     delay += 700;
   });
-  setTotal(312);
-  setRoses(16);
-  setLb([
-    { name: 'RoseLover',  roses: 8, diamonds: 144 },
-    { name: 'TikTokUser', roses: 5, diamonds: 90  },
-    { name: 'น้องแมว',    roses: 3, diamonds: 78  },
-  ]);
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, setRoses, setLb, lbMap }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -139,46 +128,24 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, setRos
   socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
 
   socket.on('gift', (data) => {
-    const safe     = sanitizeEvent(data);
-    const emoji    = getEmoji(safe.giftName || '');
-    // ใช้รูป gift จริงจาก TikTok ถ้ามี ถ้าไม่มีใช้ emoji
-    const imgUrl   = safeTikTokImageUrl(safe.giftPictureUrl) || null;
-    const rose     = isRose(safe.giftName || '');
-    const repeat   = safe.repeatCount || 1;
-    const diamonds = Math.round((safe.diamondCount || 0) * repeat);
+    const safe   = sanitizeEvent(data);
+    const emoji  = getEmoji(safe.giftName || '');
+    // รูป gift จริงจาก TikTok — ถ้าไม่มีใช้ emoji fallback
+    const imgUrl = safeTikTokImageUrl(safe.giftPictureUrl) || null;
+    const repeat = safe.repeatCount || 1;
 
-    // spawn items ลงโถ (รูปตรงกับของขวัญที่ส่ง)
+    // spawn รูป gift ลงโถตามจำนวน
     spawnItem(imgUrl, emoji, Math.min(repeat, 8));
 
-    // popup
+    // popup แจ้งชื่อผู้ส่ง
     if (popupTimer.current) clearTimeout(popupTimer.current);
     setPopup({
-      user: safe.nickname || safe.uniqueId || 'ผู้ใช้',
-      gift: safe.giftName || 'Gift',
-      emoji, diamonds, imgUrl, rose,
+      user:   safe.nickname || safe.uniqueId || 'ผู้ใช้',
+      gift:   safe.giftName || 'Gift',
+      emoji,  imgUrl,
+      rose:   isRose(safe.giftName || ''),
     });
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
-
-    // counters
-    setTotal(c => c + diamonds);
-    if (rose) setRoses(c => c + repeat);
-
-    // leaderboard
-    const uid  = safe.uniqueId || 'unknown';
-    const prev = lbMap.current.get(uid) || { name: safe.nickname || uid, roses: 0, diamonds: 0 };
-    lbMap.current.set(uid, {
-      name:     prev.name,
-      roses:    prev.roses    + (rose ? repeat : 0),
-      diamonds: prev.diamonds + diamonds,
-    });
-    if (lbMap.current.size > 300) {
-      lbMap.current = new Map(
-        [...lbMap.current.entries()]
-          .sort((a, b) => b[1].diamonds - a[1].diamonds)
-          .slice(0, 150)
-      );
-    }
-    setLb([...lbMap.current.values()].sort((a, b) => b.diamonds - a.diamonds).slice(0, 3));
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -190,9 +157,6 @@ export default function CoinJarWidget() {
   const [items, setItems]   = useState([]);
   const [popup, setPopup]   = useState(null);
   const [styles, setStyles] = useState(null);
-  const [roses, setRoses]   = useState(0);
-  const [total, setTotal]   = useState(0);    // diamond total
-  const [lb, setLb]         = useState([]);   // leaderboard top 3
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -200,7 +164,6 @@ export default function CoinJarWidget() {
   const animRef     = useRef(null);
   const popupTimer  = useRef(null);
   const spawnTimers = useRef([]);
-  const lbMap       = useRef(new Map());
 
   // ===== spawn gift item =====
   const spawnItem = useCallback((imgUrl, emoji, count = 1) => {
@@ -264,7 +227,8 @@ export default function CoinJarWidget() {
       if (!M) return;
 
       // เก็บ Matter refs สำหรับ cleanup
-      mRef.current = { Runner: M.Runner, Composite: M.Composite };
+      // เก็บครบ — spawnItem ต้องใช้ Bodies + Body + Composite
+      mRef.current = { Runner: M.Runner, Composite: M.Composite, Bodies: M.Bodies, Body: M.Body };
 
       // 1. Engine + walls
       const engine = setupEngine(M);
@@ -279,11 +243,11 @@ export default function CoinJarWidget() {
 
       // 4. Preview หรือ Live mode
       if (isPreview) {
-        runPreviewMode(spawnItem, setTotal, setRoses, setLb);
+        runPreviewMode(spawnItem);
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, setRoses, setLb, lbMap });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -352,7 +316,7 @@ export default function CoinJarWidget() {
               {popup.user}
             </p>
             <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: styles.fs - 2, margin: 0, lineHeight: 1.3 }}>
-              {popup.gift} +{popup.diamonds} 💎
+              {popup.gift}
             </p>
           </div>
         </div>
@@ -397,31 +361,6 @@ export default function CoinJarWidget() {
 
       {/* ===== Jar SVG overlay (glass visual, z-index สูงกว่า items) ===== */}
       <JarSVG acColor={styles.ac} />
-
-      {/* ===== Stats + Leaderboard ===== */}
-      <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, zIndex: 5 }}>
-        {/* Rose + diamond counters */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ background: 'rgba(28,0,14,0.74)', borderRadius: 24, padding: '4px 14px', display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid rgba(255,120,160,0.38)' }}>
-            <span style={{ fontSize: 16 }}>🌹</span>
-            <span style={{ color: '#ff8fa3', fontWeight: 800, fontSize: styles.fs + 3 }}>{roses.toLocaleString()}</span>
-          </div>
-          <div style={{ background: 'rgba(0,10,28,0.74)', borderRadius: 24, padding: '4px 14px', display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid rgba(100,150,255,0.38)' }}>
-            <span style={{ fontSize: 16 }}>💎</span>
-            <span style={{ color: '#93c5fd', fontWeight: 800, fontSize: styles.fs + 3 }}>{total.toLocaleString()}</span>
-          </div>
-        </div>
-
-        {/* Leaderboard top 3 */}
-        {lb.map((entry, i) => (
-          <div key={entry.name} style={{ background: 'rgba(20,0,12,0.62)', borderRadius: 20, padding: '3px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: styles.fs - 2, minWidth: 210 }}>
-            <span>{['🥇','🥈','🥉'][i]}</span>
-            <span style={{ color: styles.tc, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</span>
-            <span style={{ color: '#ff8fa3', fontWeight: 700, flexShrink: 0 }}>🌹 {entry.roses}</span>
-            <span style={{ color: '#93c5fd', fontWeight: 600, flexShrink: 0, fontSize: styles.fs - 3 }}>💎{entry.diamonds}</span>
-          </div>
-        ))}
-      </div>
 
       {/* CSS animations */}
       <style>{`
