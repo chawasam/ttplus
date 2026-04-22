@@ -17,8 +17,7 @@ let _toastId = 0;
 
 export default function TtsMonitorWidget() {
   const router  = useRouter();
-  const { cid, wt } = router.query;
-  const cidOrToken  = cid ?? wt; // cid ใหม่ หรือ wt เก่า
+  const { wt }  = router.query;
   const [toasts, setToasts] = useState([]);
   const mountedRef = useRef(true);
 
@@ -59,13 +58,13 @@ export default function TtsMonitorWidget() {
 
   // เชื่อม socket
   useEffect(() => {
-    if (!cidOrToken) return;
-    const socket = createWidgetSocket(cidOrToken, {
+    if (!wt) return;
+    const socket = createWidgetSocket(wt, {
       tts_status: (data) => addToast(data),
     });
     if (!socket) return;
     return () => socket.disconnect();
-  }, [cidOrToken]);
+  }, [wt]);
 
   return (
     <>

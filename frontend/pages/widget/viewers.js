@@ -10,7 +10,7 @@ export default function ViewersWidget() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const wt        = params.get('cid') ?? params.get('wt');
+    const wt        = params.get('wt');
     const isPreview = params.get('preview') === '1';
     const s = parseWidgetStyles(params, 'viewers');
     setStyles(s);

@@ -21,10 +21,7 @@ const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection, hasConnection, getActiveConnectionCount } = require('./handlers/tiktok');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
-const {
-  assignCid, registerCid, getUidForCid, getCidForUid,
-  generateToken, registerToken, verifyTokenFromMemory, getTokenForUid,
-} = require('./utils/widgetToken');
+const { generateToken, registerToken, verifyTokenFromMemory, getTokenForUid } = require('./utils/widgetToken');
 
 // ===== Firebase Admin — wrapped in try-catch =====
 try {
@@ -123,22 +120,44 @@ app.get('/api/csrf-token', verifyToken, (_req, res) => {
 
 app.post('/api/widget-token', verifyToken, tokenLimiter, async (req, res) => {
   const uid = req.user.uid;
-  const db  = admin.firestore();
 
-  // Fast path: cid อยู่ใน memory cache แล้ว
-  const cachedCid = getCidForUid(uid);
-  if (cachedCid) return res.json({ cid: cachedCid });
+  // Fast path: token อยู่ใน memory cache แล้ว (ไม่ต้องไป Firestore)
+  const cached = getTokenForUid(uid);
+  if (cached) return res.json({ token: cached });
 
+  let token = null;
   try {
-    const cid = await assignCid(uid, db);
-    return res.json({ cid });
+    // 1. ดึง token ที่มีอยู่แล้วจาก Firestore (permanent token ไม่เปลี่ยน)
+    const userDoc = await admin.firestore().collection('user_settings').doc(uid).get();
+    if (userDoc.exists) {
+      const existing = userDoc.data()?.widgetToken;
+      if (existing && /^[a-f0-9]{64}$/i.test(existing)) {
+        registerToken(existing, uid);
+        return res.json({ token: existing });
+      }
+    }
+
+    // 2. สร้าง token ใหม่ (ครั้งแรกเท่านั้น)
+    token = generateToken();
+
+    // 3. บันทึกลง Firestore — 2 collections
+    const db = admin.firestore();
+    const batch = db.batch();
+    batch.set(db.collection('user_settings').doc(uid),   { widgetToken: token }, { merge: true });
+    batch.set(db.collection('widget_tokens').doc(token), { uid, createdAt: Date.now() });
+    await batch.commit();
+
+    registerToken(token, uid);
+    return res.json({ token });
+
   } catch (err) {
-    console.error('[API] widget-token (cid) Firestore error:', err.message);
-    // Fallback: session-only cid — ไม่ persist แต่ยังใช้งานได้จนกว่า server restart
-    const fallbackCid = String(90000 + Math.floor(Math.random() * 9999));
-    registerCid(fallbackCid, uid);
-    console.warn('[API] widget-token: session-only cid for uid:', uid);
-    return res.json({ cid: fallbackCid });
+    console.error('[API] widget-token Firestore error:', err.message);
+    // Fallback: session-only token — ใช้งานได้จนกว่า server จะ restart
+    // (เกิดขึ้นถ้า Firestore ยังไม่ได้ enable หรือ network issue ชั่วคราว)
+    if (!token) token = generateToken();
+    registerToken(token, uid);
+    console.warn('[API] widget-token: using memory-only token for uid:', uid);
+    return res.json({ token });
   }
 });
 
@@ -193,38 +212,17 @@ app.post('/api/disconnect', verifyToken, async (req, res) => {
   res.json({ success: true });
 });
 
-// ===== Widget styles — public endpoint (widget โหลด style จาก cid หรือ token เก่า) =====
+// ===== Widget styles — public endpoint (widget โหลด style จาก token) =====
 app.get('/api/widget-styles', async (req, res) => {
-  const { cid, wt } = req.query;
-  const db = admin.firestore();
-
+  const { wt } = req.query;
+  if (!wt || !/^[a-f0-9]{64}$/i.test(wt)) {
+    return res.status(400).json({ error: 'invalid token' });
+  }
   try {
-    let uid = null;
-
-    if (cid && /^\d{4,8}$/.test(cid)) {
-      // Format ใหม่: cid ตัวเลข
-      uid = getUidForCid(cid);
-      if (!uid) {
-        const cidDoc = await db.collection('widget_cids').doc(cid).get();
-        if (cidDoc.exists) {
-          uid = cidDoc.data().uid;
-          registerCid(cid, uid);
-        }
-      }
-    } else if (wt && /^[a-zA-Z0-9_-]{20,66}$/.test(wt)) {
-      // Format เก่า: wt token (backward compat)
-      uid = verifyTokenFromMemory(wt);
-      if (!uid) {
-        const tokenDoc = await db.collection('widget_tokens').doc(wt).get();
-        if (tokenDoc.exists) {
-          uid = tokenDoc.data().uid;
-          registerToken(wt, uid);
-        }
-      }
-    }
-
-    if (!uid) return res.status(400).json({ error: 'invalid cid or token' });
-
+    const db = admin.firestore();
+    const tokenDoc = await db.collection('widget_tokens').doc(wt).get();
+    if (!tokenDoc.exists) return res.status(404).json({ error: 'not found' });
+    const uid = tokenDoc.data().uid;
     const userDoc = await db.collection('user_settings').doc(uid).get();
     const styles = userDoc.exists ? (userDoc.data()?.widgetStyles || {}) : {};
     res.json({ styles });
@@ -320,7 +318,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const { cid, widgetToken } = data || {};
+    const { widgetToken } = data || {};
+    if (!widgetToken || !/^[a-f0-9]{64}$/i.test(widgetToken)) {
+      socket.emit('widget_error', { error: 'Invalid token' });
+      return;
+    }
 
     const widgetRooms = [...socket.rooms].filter(r => r.startsWith('widget_'));
     if (widgetRooms.length > 0) {
@@ -328,40 +330,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    let userId = null;
+    // Fast path: ตรวจจาก memory cache
+    let userId = verifyTokenFromMemory(widgetToken);
 
-    if (cid && /^\d{4,8}$/.test(String(cid))) {
-      // Format ใหม่: cid ตัวเลข
-      userId = getUidForCid(String(cid));
-      if (!userId) {
-        try {
-          const doc = await admin.firestore().collection('widget_cids').doc(String(cid)).get();
-          if (doc.exists) {
-            userId = doc.data().uid;
-            registerCid(String(cid), userId);
-          }
-        } catch (e) {
-          console.error('[Socket] cid lookup:', e.message);
+    // Fallback: อ่านจาก Firestore (หลัง server restart token หายจาก memory)
+    if (!userId) {
+      try {
+        const doc = await admin.firestore().collection('widget_tokens').doc(widgetToken).get();
+        if (doc.exists) {
+          userId = doc.data().uid;
+          registerToken(widgetToken, userId); // cache ไว้สำหรับ request ต่อไป
         }
-      }
-    } else if (widgetToken && /^[a-zA-Z0-9_-]{20,66}$/.test(widgetToken)) {
-      // Format เก่า: token (backward compat)
-      userId = verifyTokenFromMemory(widgetToken);
-      if (!userId) {
-        try {
-          const doc = await admin.firestore().collection('widget_tokens').doc(widgetToken).get();
-          if (doc.exists) {
-            userId = doc.data().uid;
-            registerToken(widgetToken, userId);
-          }
-        } catch (e) {
-          console.error('[Socket] widget token lookup:', e.message);
-        }
+      } catch (e) {
+        console.error('[Socket] widget token lookup:', e.message);
       }
     }
 
     if (!userId) {
-      socket.emit('widget_error', { error: 'Invalid cid or token.' });
+      socket.emit('widget_error', { error: 'Invalid token.' });
       return;
     }
 

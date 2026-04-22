@@ -13,7 +13,8 @@ const W = 600;
 const H = 600;
 
 // รัศมี gift item base (px) — ปรับได้ผ่าน gs param (50-200%)
-const ITEM_R = 22;
+// ITEM_R=24 → tier ถูก (×0.5) = 12px radius → เต็มขวดที่ ~100 ชิ้น
+const ITEM_R = 24;
 
 // คำนวณ radius ตาม diamond tier + base scale
 function getItemR(diamonds = 0, giftScale = 100) {
@@ -284,9 +285,10 @@ export default function CoinJarWidget() {
           density:     0.002,
           label:       'gift',
         });
-        body._img   = imgUrl;
-        body._emoji = emoji;
-        body._r     = itemR;
+        body._img      = imgUrl;
+        body._emoji    = emoji;
+        body._r        = itemR;
+        body._diamonds = diamonds; // เก็บราคาไว้สำหรับ evict ถูกสุดก่อน
 
         Body.setVelocity(body, {
           x: (Math.random() - 0.5) * 3.5,
@@ -295,10 +297,12 @@ export default function CoinJarWidget() {
 
         Composite.add(engineRef.current.world, body);
 
-        // ตัด item เก่าทิ้งถ้าเกิน maxItems (อ่านจาก ref เพื่อให้ real-time)
+        // ตัด item ทิ้งถ้าเกิน maxItems — ลบอันที่ราคาถูกสุดก่อน (diamonds ต่ำสุด)
         const all = Composite.allBodies(engineRef.current.world)
           .filter(b => b.label === 'gift');
         if (all.length > maxItemsRef.current) {
+          // sort ascending by diamonds → [0] = ถูกสุด
+          all.sort((a, b) => (a._diamonds ?? 0) - (b._diamonds ?? 0));
           Composite.remove(engineRef.current.world, all[0]);
         }
       }, i * 160);
