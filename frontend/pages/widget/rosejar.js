@@ -11,11 +11,17 @@ const H = 600;
 const ITEM_R    = 20;   // รัศมี item (px)
 const MAX_ITEMS = 80;   // สูงสุดในโถ
 
-// พิกัดโถ (wide-mouth vase — ไม่มี neck/ฝา)
+// พิกัดโถ (mason jar — มีคอและฝาเกลียว)
 const J = {
-  L: 82, R: 318,    // ผนังซ้าย/ขวา inner
-  jarTop: 90,       // ปากโถ (items ตกจากเหนือนี้)
-  floor: 535,       // ก้นโถ inner
+  // ตัวโถ (body) — กว้าง
+  L: 72, R: 328,
+  // คอโถ (neck) — แคบกว่า
+  neckL: 100, neckR: 300,
+  neckTop: 128,    // ปลายบนคอโถ (items เริ่มตกจากนี้)
+  bodyTop: 165,    // จุดที่คอขยายออกเป็น body
+  floor: 528,      // ก้นโถ inner
+  // alias ใช้กับ spawnItem
+  get jarTop() { return this.neckTop; },
 };
 
 // ===== Emoji map =====
@@ -128,8 +134,9 @@ export default function RoseJarWidget() {
     for (let i = 0; i < n; i++) {
       setTimeout(() => {
         if (!engineRef.current) return;
-        const x = J.L + ITEM_R + 4 + Math.random() * (J.R - J.L - (ITEM_R + 4) * 2);
-        const y = J.jarTop - 20;
+        // spawn ภายใน opening ของคอโถ
+        const x = J.neckL + ITEM_R + 4 + Math.random() * (J.neckR - J.neckL - (ITEM_R + 4) * 2);
+        const y = J.neckTop - 20;
 
         const body = Bodies.circle(x, y, ITEM_R, {
           restitution: 0.30,
@@ -162,7 +169,7 @@ export default function RoseJarWidget() {
       const M = window.Matter;
       if (!M) return;
 
-      mRef.current    = { Runner: M.Runner, Composite: M.Composite };
+      mRef.current    = { Runner: M.Runner, Composite: M.Composite, Bodies: M.Bodies };
       engineRef.current = setupEngine(M);
       runnerRef.current = setupRunner(engineRef.current, M);
       animRef.current   = startAnimationLoop(engineRef.current, M, setItems);
@@ -313,114 +320,186 @@ export default function RoseJarWidget() {
   );
 }
 
-// ===== Physics walls: wide-mouth vase (ไม่มี neck) =====
+// ===== Physics walls: mason jar (คอโถ + ตัวโถ) =====
 function buildVaseWalls(Bodies) {
   const T = 12;
+  const cx = (J.L + J.R) / 2;
   return [
     // ก้นโถ
+    Bodies.rectangle(cx, J.floor + T / 2, J.R - J.L + T, T,
+      { isStatic: true, friction: 0.8, label: 'wall' }),
+    // ผนังซ้าย body
+    Bodies.rectangle(J.L - T / 2, (J.bodyTop + J.floor) / 2,
+      T, J.floor - J.bodyTop,
+      { isStatic: true, friction: 0.3, label: 'wall' }),
+    // ผนังขวา body
+    Bodies.rectangle(J.R + T / 2, (J.bodyTop + J.floor) / 2,
+      T, J.floor - J.bodyTop,
+      { isStatic: true, friction: 0.3, label: 'wall' }),
+    // ผนังซ้าย neck
+    Bodies.rectangle(J.neckL - T / 2, (J.neckTop + J.bodyTop) / 2,
+      T, J.bodyTop - J.neckTop,
+      { isStatic: true, friction: 0.3, label: 'wall' }),
+    // ผนังขวา neck
+    Bodies.rectangle(J.neckR + T / 2, (J.neckTop + J.bodyTop) / 2,
+      T, J.bodyTop - J.neckTop,
+      { isStatic: true, friction: 0.3, label: 'wall' }),
+    // ไหล่ซ้าย (neck → body angled shoulder)
     Bodies.rectangle(
-      (J.L + J.R) / 2, J.floor + T / 2,
-      J.R - J.L + T, T,
-      { isStatic: true, friction: 0.7, label: 'wall' }
-    ),
-    // ผนังซ้าย
+      (J.neckL + J.L) / 2 - T / 2, J.bodyTop,
+      (J.neckL - J.L) + T, T,
+      { isStatic: true, friction: 0.4, label: 'wall' }),
+    // ไหล่ขวา
     Bodies.rectangle(
-      J.L - T / 2, (J.jarTop + J.floor) / 2,
-      T, J.floor - J.jarTop,
-      { isStatic: true, friction: 0.3, label: 'wall' }
-    ),
-    // ผนังขวา
-    Bodies.rectangle(
-      J.R + T / 2, (J.jarTop + J.floor) / 2,
-      T, J.floor - J.jarTop,
-      { isStatic: true, friction: 0.3, label: 'wall' }
-    ),
+      (J.neckR + J.R) / 2 + T / 2, J.bodyTop,
+      (J.R - J.neckR) + T, T,
+      { isStatic: true, friction: 0.4, label: 'wall' }),
   ];
 }
 
-// ===== Glass vase SVG visual =====
+// ===== Glass mason jar SVG visual =====
 function VaseSVG() {
-  const L    = J.L, R = J.R;
-  const TOP  = J.jarTop, FLOOR = J.floor;
-  const RIM  = 18;   // ปีกขอบโถ extra width
+  const cx = W / 2;
+  // body
+  const bL = J.L, bR = J.R;
+  const bTop = J.bodyTop, bBot = J.floor;
+  // neck
+  const nL = J.neckL, nR = J.neckR;
+  const nTop = J.neckTop, nBot = J.bodyTop;
+  // lid
+  const lidPad = 10;
+  const lidL = nL - lidPad, lidR = nR + lidPad;
+  const lidTop = nTop - 62, lidBot = nTop - 2;
+  const lidH = lidBot - lidTop;
 
   return (
-    <svg
-      width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-      style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}
-    >
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}
+      style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
       <defs>
-        {/* Rose-tinted glass: left edge highlight → transparent center → right edge highlight */}
+        {/* Glass body gradient: edges highlight, center transparent */}
         <linearGradient id="rjGlass" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor="#f0c0d8" stopOpacity="0.32" />
-          <stop offset="7%"   stopColor="#fce4f0" stopOpacity="0.58" />
-          <stop offset="45%"  stopColor="#e8b0c8" stopOpacity="0.07" />
-          <stop offset="93%"  stopColor="#fce4f0" stopOpacity="0.48" />
-          <stop offset="100%" stopColor="#f0c0d8" stopOpacity="0.24" />
+          <stop offset="0%"   stopColor="#d8c8e8" stopOpacity="0.55" />
+          <stop offset="6%"   stopColor="#ede0f8" stopOpacity="0.50" />
+          <stop offset="42%"  stopColor="#c8b8d8" stopOpacity="0.04" />
+          <stop offset="94%"  stopColor="#ede0f8" stopOpacity="0.42" />
+          <stop offset="100%" stopColor="#d8c8e8" stopOpacity="0.48" />
         </linearGradient>
 
-        {/* Rim gradient */}
-        <linearGradient id="rjRim" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stopColor="#fda4c0" stopOpacity="0.88" />
-          <stop offset="100%" stopColor="#be185d" stopOpacity="0.78" />
+        {/* Lid metallic gradient */}
+        <linearGradient id="rjLid" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stopColor="#b8b8cc" stopOpacity="0.92" />
+          <stop offset="25%"  stopColor="#d8d8f0" stopOpacity="0.90" />
+          <stop offset="55%"  stopColor="#9898b0" stopOpacity="0.88" />
+          <stop offset="100%" stopColor="#707080" stopOpacity="0.85" />
         </linearGradient>
 
-        {/* Glow สำหรับ reflection */}
+        {/* Lid side shine */}
+        <linearGradient id="rjLidShine" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.18" />
+          <stop offset="30%"  stopColor="#ffffff" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0.08" />
+        </linearGradient>
+
         <filter id="rjGlow">
-          <feGaussianBlur stdDeviation="2.5" result="b" />
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="rjSoft">
+          <feGaussianBlur stdDeviation="1.5" result="b" />
           <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
 
-      {/* ── ตัวโถ ── */}
-      <path
-        d={`
-          M ${L} ${TOP + 16}
-          L ${L} ${FLOOR - 22}
-          Q ${L} ${FLOOR + 9} ${L + 22} ${FLOOR + 9}
-          L ${R - 22} ${FLOOR + 9}
-          Q ${R} ${FLOOR + 9} ${R} ${FLOOR - 22}
-          L ${R} ${TOP + 16}
-          Z
-        `}
+      {/* ── ตัวโถ (body) — ทรงกระบอกมน ── */}
+      <path d={`
+        M ${bL} ${bTop}
+        L ${bL} ${bBot - 24}
+        Q ${bL} ${bBot + 10} ${bL + 24} ${bBot + 10}
+        L ${bR - 24} ${bBot + 10}
+        Q ${bR} ${bBot + 10} ${bR} ${bBot - 24}
+        L ${bR} ${bTop}
+        Z
+      `}
         fill="url(#rjGlass)"
-        stroke="rgba(249,168,196,0.42)"
+        stroke="rgba(180,160,210,0.45)"
+        strokeWidth="2.5"
+      />
+
+      {/* ── ไหล่โถ (shoulder): บอดี้ขยายจากคอ ── */}
+      <path d={`
+        M ${nL} ${nBot}
+        L ${bL} ${bTop}
+        L ${bR} ${bTop}
+        L ${nR} ${nBot}
+        Z
+      `}
+        fill="url(#rjGlass)"
+        stroke="rgba(180,160,210,0.38)"
+        strokeWidth="1.5"
+      />
+
+      {/* ── คอโถ (neck) ── */}
+      <rect x={nL} y={nTop} width={nR - nL} height={nBot - nTop}
+        fill="url(#rjGlass)"
+        stroke="rgba(180,160,210,0.42)"
         strokeWidth="2"
       />
 
-      {/* ── Rim (ขอบปากโถ) ── */}
-      <rect
-        x={L - RIM} y={TOP - 5}
-        width={R - L + RIM * 2} height={20}
-        fill="url(#rjRim)" rx="7"
-        stroke="rgba(244,114,182,0.58)" strokeWidth="1.5"
+      {/* ── เส้นคั่นคอกับฝา ── */}
+      <rect x={nL - 4} y={nTop - 4} width={nR - nL + 8} height={8}
+        fill="rgba(160,150,190,0.60)" rx="3"
+        stroke="rgba(200,190,220,0.50)" strokeWidth="1"
       />
 
-      {/* ── Rim top ellipse ── */}
-      <ellipse
-        cx={W / 2} cy={TOP + 6}
-        rx={(R - L) / 2 + RIM - 2} ry={6}
+      {/* ── ฝาเกลียว (screw lid) ── */}
+      <rect x={lidL} y={lidTop} width={lidR - lidL} height={lidH}
+        fill="url(#rjLid)" rx="7"
+        stroke="rgba(150,150,175,0.65)" strokeWidth="2"
+      />
+      {/* lid shine overlay */}
+      <rect x={lidL} y={lidTop} width={lidR - lidL} height={lidH}
+        fill="url(#rjLidShine)" rx="7" />
+      {/* screw thread lines */}
+      {[0.22, 0.42, 0.62, 0.80].map((t, i) => (
+        <line key={i}
+          x1={lidL + 6} y1={lidTop + lidH * t}
+          x2={lidR - 6} y2={lidTop + lidH * t}
+          stroke="rgba(120,120,145,0.28)" strokeWidth="1.2"
+        />
+      ))}
+      {/* lid top ellipse */}
+      <ellipse cx={cx} cy={lidTop + 5}
+        rx={(lidR - lidL) / 2 - 2} ry={5}
+        fill="rgba(220,220,240,0.35)"
+        stroke="rgba(230,230,250,0.55)" strokeWidth="1.5"
+      />
+      {/* lid bottom ellipse */}
+      <ellipse cx={cx} cy={lidBot - 1}
+        rx={(lidR - lidL) / 2 - 3} ry={4}
         fill="none"
-        stroke="rgba(253,200,224,0.60)" strokeWidth="2"
+        stroke="rgba(120,120,145,0.35)" strokeWidth="1"
       />
 
-      {/* ── Reflections ── */}
-      <line x1={L + 14} y1={TOP + 22} x2={L + 14} y2={FLOOR - 55}
-        stroke="rgba(255,255,255,0.42)" strokeWidth="7"
+      {/* ── Reflections บน body ── */}
+      <line x1={bL + 18} y1={bTop + 12} x2={bL + 18} y2={bBot - 70}
+        stroke="rgba(255,255,255,0.40)" strokeWidth="9"
         strokeLinecap="round" filter="url(#rjGlow)" />
-      <line x1={L + 27} y1={TOP + 55} x2={L + 27} y2={TOP + 170}
-        stroke="rgba(255,255,255,0.22)" strokeWidth="3" strokeLinecap="round" />
-      <line x1={R - 16} y1={TOP + 28} x2={R - 16} y2={TOP + 120}
-        stroke="rgba(255,255,255,0.17)" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1={bL + 34} y1={bTop + 50} x2={bL + 34} y2={bTop + 190}
+        stroke="rgba(255,255,255,0.20)" strokeWidth="3.5" strokeLinecap="round" />
+      <line x1={bR - 18} y1={bTop + 28} x2={bR - 18} y2={bTop + 130}
+        stroke="rgba(255,255,255,0.14)" strokeWidth="2.5" strokeLinecap="round" />
+
+      {/* ── Reflection บน neck ── */}
+      <line x1={nL + 10} y1={nTop + 5} x2={nL + 10} y2={nBot - 8}
+        stroke="rgba(255,255,255,0.30)" strokeWidth="5"
+        strokeLinecap="round" filter="url(#rjSoft)" />
 
       {/* ── ก้นโถ glow ── */}
-      <ellipse
-        cx={W / 2} cy={FLOOR + 2}
-        rx={(R - L) / 2 - 12} ry={7}
-        fill="rgba(249,168,196,0.10)"
-        stroke="rgba(249,168,196,0.20)" strokeWidth="1"
+      <ellipse cx={cx} cy={bBot + 2}
+        rx={(bR - bL) / 2 - 20} ry={7}
+        fill="rgba(180,160,220,0.12)"
+        stroke="rgba(180,160,220,0.22)" strokeWidth="1"
       />
-
     </svg>
   );
 }
