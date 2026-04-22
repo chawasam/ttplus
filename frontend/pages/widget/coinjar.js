@@ -94,8 +94,8 @@ function startAnimationLoop(engine, M, setItems) {
   return { cancel: () => cancelAnimationFrame(rafId) };
 }
 
-/** Preview mode: spawn test gifts + set demo data */
-function runPreviewMode(spawnItem, setTotal, setLb) {
+/** Preview mode: spawn test gifts */
+function runPreviewMode(spawnItem) {
   const testGifts = [
     { emoji: '🌹', count: 3 }, { emoji: '🦁', count: 2 },
     { emoji: '💎', count: 1 }, { emoji: '❤️', count: 4 },
@@ -107,16 +107,10 @@ function runPreviewMode(spawnItem, setTotal, setLb) {
     setTimeout(() => spawnItem(null, g.emoji, g.count), delay);
     delay += 700;
   });
-  setTotal(156);
-  setLb([
-    { name: 'TikTokUser1', coins: 100 },
-    { name: 'TikTokUser2', coins: 56  },
-    { name: 'ผู้ใช้3',     coins: 20  },
-  ]);
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap, setLb }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -129,7 +123,6 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap,
 
   socket.on('gift', (data) => {
     const safe   = sanitizeEvent(data);
-    const coins  = Math.round(safe.diamondCount * safe.repeatCount);
     const emoji  = getEmoji(safe.giftName || '');
     const imgUrl = safeTikTokImageUrl(safe.giftPictureUrl) || null;
 
@@ -140,25 +133,10 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap,
       user:   safe.nickname || safe.uniqueId || 'ผู้ใช้',
       gift:   safe.giftName || 'Gift',
       emoji,
-      coins,
+      coins:  Math.round(safe.diamondCount * safe.repeatCount),
       imgUrl,
     });
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
-
-    setTotal(c => c + coins);
-
-    let map = lbMap.current;
-    const prev = map.get(safe.uniqueId) || { name: safe.nickname || safe.uniqueId || '?', coins: 0 };
-    map.set(safe.uniqueId, { name: prev.name, coins: prev.coins + coins });
-
-    if (map.size > 300) {
-      lbMap.current = new Map(
-        [...map.entries()].sort((a, b) => b[1].coins - a[1].coins).slice(0, 150)
-      );
-      map = lbMap.current;
-    }
-
-    setLb([...map.values()].sort((a, b) => b.coins - a.coins).slice(0, 3));
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -167,18 +145,15 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap,
 
 // ===================== Main Widget =====================
 export default function CoinJarWidget() {
-  const [items, setItems]         = useState([]);
-  const [popup, setPopup]         = useState(null);
-  const [leaderboard, setLb]      = useState([]);
-  const [total, setTotal]         = useState(0);
-  const [styles, setStyles]       = useState(null);
+  const [items, setItems]   = useState([]);
+  const [popup, setPopup]   = useState(null);
+  const [styles, setStyles] = useState(null);
 
-  const engineRef   = useRef(null);
-  const mRef        = useRef(null);   // Matter.js refs
-  const runnerRef   = useRef(null);
-  const animRef     = useRef(null);
-  const popupTimer  = useRef(null);
-  const lbMap       = useRef(new Map());
+  const engineRef  = useRef(null);
+  const mRef       = useRef(null);
+  const runnerRef  = useRef(null);
+  const animRef    = useRef(null);
+  const popupTimer = useRef(null);
 
   // ===== spawn gift item =====
   const spawnItem = useCallback((imgUrl, emoji, count = 1) => {
@@ -255,11 +230,11 @@ export default function CoinJarWidget() {
 
       // 4. Preview หรือ Live mode
       if (isPreview) {
-        runPreviewMode(spawnItem, setTotal, setLb);
+        runPreviewMode(spawnItem);
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, setTotal, lbMap, setLb });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -372,60 +347,6 @@ export default function CoinJarWidget() {
 
       {/* ===== Jar SVG overlay (glass visual, z-index สูงกว่า items) ===== */}
       <JarSVG acColor={styles.ac} />
-
-      {/* ===== Bottom: total + leaderboard ===== */}
-      <div style={{
-        position:       'absolute',
-        bottom:         10,
-        left:           0,
-        right:          0,
-        display:        'flex',
-        flexDirection:  'column',
-        alignItems:     'center',
-        gap:            5,
-        zIndex:         5,
-      }}>
-        {/* Total coins */}
-        <div style={{
-          background:     'rgba(0,0,0,0.65)',
-          borderRadius:   24,
-          padding:        '5px 20px',
-          display:        'inline-flex',
-          alignItems:     'center',
-          gap:            8,
-          border:         '1px solid rgba(251,191,36,0.35)',
-        }}>
-          <span style={{ fontSize: 20 }}>🪙</span>
-          <span style={{ color: '#fbbf24', fontWeight: 800, fontSize: styles.fs + 5, letterSpacing: 0.5 }}>
-            {total.toLocaleString()}
-          </span>
-        </div>
-
-        {/* Leaderboard top 3 */}
-        {leaderboard.map((item, i) => (
-          <div
-            key={item.name}
-            style={{
-              background:   'rgba(0,0,0,0.58)',
-              borderRadius: 20,
-              padding:      '3px 14px',
-              display:      'flex',
-              alignItems:   'center',
-              gap:          8,
-              fontSize:     styles.fs - 2,
-              minWidth:     170,
-            }}
-          >
-            <span>{['🥇','🥈','🥉'][i]}</span>
-            <span style={{ color: styles.tc, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {item.name}
-            </span>
-            <span style={{ color: '#fbbf24', fontWeight: 700, flexShrink: 0 }}>
-              🪙 {item.coins}
-            </span>
-          </div>
-        ))}
-      </div>
 
       {/* CSS animations */}
       <style>{`

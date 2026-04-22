@@ -421,10 +421,6 @@ function VaseSVG() {
         stroke="rgba(249,168,196,0.20)" strokeWidth="1"
       />
 
-      {/* ── ลายดอกกุหลาบบนโถ (ซีด) ── */}
-      <text x={L + 10}  y={TOP + 200} fontSize="22" opacity="0.12" transform={`rotate(-15,${L + 10},${TOP + 200})`}>🌹</text>
-      <text x={R - 36}  y={TOP + 280} fontSize="18" opacity="0.10" transform={`rotate(12,${R - 36},${TOP + 280})`}>🌹</text>
-      <text x={W / 2 - 12} y={TOP + 380} fontSize="16" opacity="0.08">🌹</text>
     </svg>
   );
 }

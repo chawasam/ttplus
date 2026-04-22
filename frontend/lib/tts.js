@@ -75,48 +75,60 @@ async function _speakGemini(text, voiceOverride, personaOverride) {
   if (!part?.data) throw new Error('Gemini: ไม่มี audio ในผลลัพธ์');
 
   const mime = (part.mimeType || '').toLowerCase();
-  console.log('[TTplus Gemini] mimeType:', part.mimeType);
+  console.log('[TTplus Gemini] mimeType:', part.mimeType, 'bytes(b64):', part.data.length);
 
-  // decode base64 → Uint8Array (เก็บไว้ใช้ซ้ำได้ เพราะ decodeAudioData detach buffer)
+  // decode base64 → Uint8Array
   const binaryStr = atob(part.data);
   const bytes     = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
-  // reuse shared AudioContext
+  const rateMatch  = mime.match(/rate=(\d+)/);
+  const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+
+  // ── Strategy 1: Blob URL + Audio element ──────────────────────────────────
+  // ดีกว่า data URI เพราะ browser จัดการ format detection เองได้ดีกว่า
+  const blob      = new Blob([bytes], { type: part.mimeType || 'audio/wav' });
+  const objectUrl = URL.createObjectURL(blob);
+
+  const blobPlayOk = await new Promise((resolve) => {
+    const audio   = new Audio(objectUrl);
+    audio.volume  = Math.max(0, Math.min(1, _cfg.volume));
+    audio.oncanplaythrough = () => { /* ready */ };
+    audio.onended  = () => resolve(true);
+    audio.onerror  = () => resolve(false);
+    audio.play().catch(() => resolve(false));
+  });
+
+  URL.revokeObjectURL(objectUrl);
+  if (blobPlayOk) return;
+
+  // ── Strategy 2–4: AudioContext fallback ──────────────────────────────────
   if (!_audioCtx || _audioCtx.state === 'closed') {
     _audioCtx = new AudioContext();
   }
   if (_audioCtx.state === 'suspended') await _audioCtx.resume();
 
-  const rateMatch  = mime.match(/rate=(\d+)/);
-  const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
-
   let audioBuffer = null;
 
-  // ── Strategy 1: decodeAudioData โดยตรง (รองรับ WAV/OGG/MP3 ที่มี header) ──
-  try {
-    audioBuffer = await _audioCtx.decodeAudioData(bytes.buffer.slice(0));
-  } catch { /* ลองต่อ */ }
+  // 2: decodeAudioData โดยตรง
+  try { audioBuffer = await _audioCtx.decodeAudioData(bytes.buffer.slice(0)); } catch { /* ต่อ */ }
 
-  // ── Strategy 2: ครอบ WAV header แล้วลอง decodeAudioData อีกครั้ง (สำหรับ raw L16 PCM) ──
+  // 3: ครอบ WAV header (สำหรับ raw L16 PCM)
   if (!audioBuffer) {
-    try {
-      audioBuffer = await _audioCtx.decodeAudioData(_pcmToWav(bytes.buffer, sampleRate));
-    } catch { /* ลองต่อ */ }
+    try { audioBuffer = await _audioCtx.decodeAudioData(_pcmToWav(bytes.buffer, sampleRate)); } catch { /* ต่อ */ }
   }
 
-  // ── Strategy 3: แปลง INT16 → Float32 มือ (ultimate fallback — ไม่ต้องง้อ decodeAudioData) ──
+  // 4: แปลง INT16 → Float32 มือ (ultimate fallback)
   if (!audioBuffer) {
     try {
-      // ข้ามข้ามข้าม WAV header (44 bytes) ถ้ามี — ตรวจจาก magic bytes "RIFF"
-      const off     = (bytes[0] === 0x52 && bytes[1] === 0x49) ? 44 : 0;
-      const int16   = new Int16Array(bytes.buffer, off);
-      const float32 = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0;
-      audioBuffer   = _audioCtx.createBuffer(1, float32.length, sampleRate);
-      audioBuffer.getChannelData(0).set(float32);
-    } catch (e3) {
-      console.error('[TTplus Gemini] all 3 decode strategies failed, mime:', part.mimeType, e3);
+      const off   = (bytes[0] === 0x52 && bytes[1] === 0x49) ? 44 : 0;  // ข้าม RIFF header
+      const i16   = new Int16Array(bytes.buffer, off);
+      const f32   = new Float32Array(i16.length);
+      for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768.0;
+      audioBuffer = _audioCtx.createBuffer(1, f32.length, sampleRate);
+      audioBuffer.getChannelData(0).set(f32);
+    } catch (e) {
+      console.error('[TTplus Gemini] all strategies failed, mime:', part.mimeType, e);
       throw new Error(`Gemini: เล่นเสียงไม่ได้ (${part.mimeType})`);
     }
   }
