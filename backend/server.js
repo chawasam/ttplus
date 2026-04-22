@@ -127,13 +127,27 @@ app.post('/api/widget-token', verifyToken, tokenLimiter, async (req, res) => {
 
   let token = null;
   try {
-    // 1. ดึง token ที่มีอยู่แล้วจาก Firestore (permanent token ไม่เปลี่ยน)
-    const userDoc = await admin.firestore().collection('user_settings').doc(uid).get();
+    const db = admin.firestore();
+    // 1. ดึง token ที่มีอยู่แล้วจาก Firestore
+    const userDoc = await db.collection('user_settings').doc(uid).get();
     if (userDoc.exists) {
       const existing = userDoc.data()?.widgetToken;
-      if (existing && /^[a-f0-9]{64}$/i.test(existing)) {
-        registerToken(existing, uid);
-        return res.json({ token: existing });
+      if (existing && /^[a-zA-Z0-9_-]{20,66}$/.test(existing)) {
+        // ถ้าเป็น format ใหม่ (short) — คืนเลย
+        if (existing.length <= 30) {
+          registerToken(existing, uid);
+          return res.json({ token: existing });
+        }
+        // ถ้าเป็น format เก่า (hex 64 chars) — migrate ไป short token
+        // ลบ token เก่าออกจาก widget_tokens collection แล้วสร้างใหม่
+        const newToken = generateToken();
+        const batch = db.batch();
+        batch.set(db.collection('user_settings').doc(uid),      { widgetToken: newToken }, { merge: true });
+        batch.set(db.collection('widget_tokens').doc(newToken),  { uid, createdAt: Date.now() });
+        batch.delete(db.collection('widget_tokens').doc(existing));
+        await batch.commit();
+        registerToken(newToken, uid);
+        return res.json({ token: newToken });
       }
     }
 
@@ -141,7 +155,6 @@ app.post('/api/widget-token', verifyToken, tokenLimiter, async (req, res) => {
     token = generateToken();
 
     // 3. บันทึกลง Firestore — 2 collections
-    const db = admin.firestore();
     const batch = db.batch();
     batch.set(db.collection('user_settings').doc(uid),   { widgetToken: token }, { merge: true });
     batch.set(db.collection('widget_tokens').doc(token), { uid, createdAt: Date.now() });
@@ -215,7 +228,7 @@ app.post('/api/disconnect', verifyToken, async (req, res) => {
 // ===== Widget styles — public endpoint (widget โหลด style จาก token) =====
 app.get('/api/widget-styles', async (req, res) => {
   const { wt } = req.query;
-  if (!wt || !/^[a-f0-9]{64}$/i.test(wt)) {
+  if (!wt || !/^[a-zA-Z0-9_-]{20,66}$/.test(wt)) {
     return res.status(400).json({ error: 'invalid token' });
   }
   try {
@@ -319,7 +332,7 @@ io.on('connection', (socket) => {
     }
 
     const { widgetToken } = data || {};
-    if (!widgetToken || !/^[a-f0-9]{64}$/i.test(widgetToken)) {
+    if (!widgetToken || !/^[a-zA-Z0-9_-]{20,66}$/.test(widgetToken)) {
       socket.emit('widget_error', { error: 'Invalid token' });
       return;
     }

@@ -634,26 +634,6 @@ function JarSVG({ acColor, offset = 0 }) {
         </filter>
       </defs>
 
-      {/* ===== Jar body — outline ด้านหลัง (เงา/ความลึก) ===== */}
-      <path
-        d={`
-          M ${NECK_L} ${NECK_B}
-          L ${BODY_L + 2} ${NECK_B + 30}
-          L ${BODY_L} ${NECK_B + 50}
-          L ${BODY_L} ${BODY_B}
-          Q ${BODY_L} ${FLOOR} ${BODY_L + 18} ${FLOOR}
-          L ${BODY_R - 18} ${FLOOR}
-          Q ${BODY_R} ${FLOOR} ${BODY_R} ${BODY_B}
-          L ${BODY_R} ${NECK_B + 50}
-          L ${BODY_R - 2} ${NECK_B + 30}
-          L ${NECK_R} ${NECK_B}
-          Z
-        `}
-        fill="none"
-        stroke="rgba(0,0,0,0.25)"
-        strokeWidth="5"
-      />
-
       {/* ===== Jar body (ตัวโถ) ===== */}
       <path
         d={`
@@ -670,8 +650,8 @@ function JarSVG({ acColor, offset = 0 }) {
           Z
         `}
         fill="url(#jarGlass)"
-        stroke="rgba(255,255,255,0.72)"
-        strokeWidth="2.5"
+        stroke="rgba(255,255,255,0.28)"
+        strokeWidth="1.5"
       />
 
       {/* ===== Neck (ปากโถ) ===== */}
@@ -680,8 +660,8 @@ function JarSVG({ acColor, offset = 0 }) {
         width={NECK_R - NECK_L}
         height={NECK_B - NECK_T - 20}
         fill="rgba(255,255,255,0.04)"
-        stroke="rgba(255,255,255,0.72)"
-        strokeWidth="2.5"
+        stroke="rgba(255,255,255,0.28)"
+        strokeWidth="1.5"
         rx="3"
       />
 
@@ -856,16 +836,16 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
           <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
 
           {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (107,205) เพื่อหมุนแขนติดลำตัว */}
+          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (93,248) เพื่อหมุนแขนติดลำตัว */}
           <g style={{
             transformBox: 'view-box',
-            transformOrigin: '107px 205px',
+            transformOrigin: '93px 248px',
             animation: 'catPawPoint 5s ease-in-out infinite',
             animationDelay: '2s',
           }}>
             {/* ขาหน้า foreleg จากต้นแขน (ไหล่) ลงมาถึงเท้า */}
-            <line x1="107" y1="205" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-            <line x1="107" y1="205" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
+            <line x1="93" y1="248" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
+            <line x1="93" y1="248" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
             {/* เท้า */}
             <ellipse cx="96" cy="271" rx="19" ry="12" fill="#fbbf24" />
             <ellipse cx="96" cy="269" rx="15" ry="9"  fill="#f59e0b" />

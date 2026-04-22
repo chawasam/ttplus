@@ -28,12 +28,9 @@ let _cfg = {
   googleApiKey:   '',               // Google Cloud TTS key
   googleVoice:    'th-TH-Neural2-C',
   geminiApiKey:   '',               // Google AI Studio / Gemini key (ใช้ได้ทั้ง 3.1 + 2.5)
-  geminiVoice:    'Aoede',          // Gemini 3.1 voice
-  geminiPersona:  '',               // Gemini 3.1 persona
-  geminiShuffle:  false,            // Gemini 3.1 shuffle
-  gemini25Voice:   'Aoede',         // Gemini 2.5 voice (แยกจาก 3.1)
-  gemini25Persona: '',              // Gemini 2.5 persona (แยกจาก 3.1)
-  gemini25Shuffle: false,           // Gemini 2.5 shuffle (แยกจาก 3.1)
+  geminiVoice:    'Aoede',
+  geminiPersona:  '',               // style instruction ฝังใน content text
+  geminiShuffle:  false,            // สุ่ม voice+persona ทุกแชท (ใช้กับทั้ง 3.1 + 2.5)
 };
 
 // ===== Internal: strip emoji + brackets =====
@@ -299,20 +296,12 @@ async function _next() {
   // เติม engine ที่ enabled แต่ไม่อยู่ใน customOrder (ป้องกัน missing)
   enabled.forEach(e => { if (!ordered.includes(e)) ordered.push(e); });
 
-  // สุ่ม voice+persona สำหรับ Gemini 3.1 ถ้า shuffle เปิด
+  // สุ่ม voice+persona สำหรับ Gemini ถ้า shuffle เปิด
   let gVoice   = _cfg.geminiVoice;
   let gPersona = _cfg.geminiPersona;
   if (_cfg.geminiShuffle && _cfg.geminiApiKey) {
     gVoice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
     gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
-  }
-
-  // สุ่ม voice+persona สำหรับ Gemini 2.5 (แยกอิสระจาก 3.1)
-  let g25Voice   = _cfg.gemini25Voice   || 'Aoede';
-  let g25Persona = _cfg.gemini25Persona || '';
-  if (_cfg.gemini25Shuffle && _cfg.geminiApiKey) {
-    g25Voice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
-    g25Persona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
   }
 
   // ลอง engine ตามลำดับ — emit status ก่อนพูด ถ้าล้มเหลวข้ามถัดไป
@@ -332,8 +321,8 @@ async function _next() {
         _emitStatus('gemini31', gVoice, gPersona);
         await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
       } else if (eng === 'gemini25') {
-        _emitStatus('gemini25', g25Voice, g25Persona);
-        await _speakGemini(text, g25Voice, g25Persona, GEMINI_25_MODEL);
+        _emitStatus('gemini25', gVoice, gPersona);
+        await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL);
       } else if (eng === 'google') {
         _emitStatus('google', _cfg.googleVoice, null);
         await _speakGoogle(text);
@@ -508,7 +497,7 @@ export async function speakDirect(engine, text) {
   if (!clean) throw new Error('ข้อความว่างเปล่า');
   switch (engine) {
     case 'gemini31': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL);
-    case 'gemini25': return _speakGemini(clean, _cfg.gemini25Voice || 'Aoede', _cfg.gemini25Persona || '', GEMINI_25_MODEL);
+    case 'gemini25': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_25_MODEL);
     case 'gemini':   return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL); // backward compat
     case 'google':   return _speakGoogle(clean);
     case 'web':      return _speakWeb(clean);
@@ -516,15 +505,7 @@ export async function speakDirect(engine, text) {
   }
 }
 
-export function loadGeminiApiKey()      { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
-export function saveGeminiApiKey(k)     { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
-export function loadGeminiShuffle()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }
-export function saveGeminiShuffle(on)   { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini_shuffle', '1') : localStorage.removeItem('ttplus_gemini_shuffle'); }
-
-// Gemini 2.5 — แยก storage จาก 3.1
-export function loadGemini25Voice()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_voice')   || 'Aoede' : 'Aoede'; }
-export function saveGemini25Voice(v)    { if (typeof window === 'undefined') return; v ? localStorage.setItem('ttplus_gemini25_voice', v) : localStorage.removeItem('ttplus_gemini25_voice'); }
-export function loadGemini25Persona()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_persona') || ''      : ''; }
-export function saveGemini25Persona(p)  { if (typeof window === 'undefined') return; p ? localStorage.setItem('ttplus_gemini25_persona', p) : localStorage.removeItem('ttplus_gemini25_persona'); }
-export function loadGemini25Shuffle()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_shuffle') === '1' : false; }
-export function saveGemini25Shuffle(on) { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini25_shuffle', '1') : localStorage.removeItem('ttplus_gemini25_shuffle'); }
+export function loadGeminiApiKey()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
+export function saveGeminiApiKey(k)    { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
+export function loadGeminiShuffle()    { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }
+export function saveGeminiShuffle(on)  { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini_shuffle', '1') : localStorage.removeItem('ttplus_gemini_shuffle'); }
