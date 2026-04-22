@@ -149,11 +149,12 @@ export default function CoinJarWidget() {
   const [popup, setPopup]   = useState(null);
   const [styles, setStyles] = useState(null);
 
-  const engineRef  = useRef(null);
-  const mRef       = useRef(null);
-  const runnerRef  = useRef(null);
-  const animRef    = useRef(null);
-  const popupTimer = useRef(null);
+  const engineRef   = useRef(null);
+  const mRef        = useRef(null);
+  const runnerRef   = useRef(null);
+  const animRef     = useRef(null);
+  const popupTimer  = useRef(null);
+  const spawnTimers = useRef([]);   // เก็บ setTimeout IDs เพื่อ cleanup
 
   // ===== spawn gift item =====
   const spawnItem = useCallback((imgUrl, emoji, count = 1) => {
@@ -163,7 +164,8 @@ export default function CoinJarWidget() {
     const n = Math.min(count, 8);
 
     for (let i = 0; i < n; i++) {
-      setTimeout(() => {
+      const tid = setTimeout(() => {
+        spawnTimers.current = spawnTimers.current.filter(id => id !== tid);
         if (!engineRef.current) return;
 
         // สุ่ม x ภายในปาก neck
@@ -195,6 +197,7 @@ export default function CoinJarWidget() {
           Composite.remove(engineRef.current.world, all[0]);
         }
       }, i * 160);
+      spawnTimers.current.push(tid);
     }
   }, []);
 
@@ -254,6 +257,8 @@ export default function CoinJarWidget() {
       if (animRef.current?.cancel)  animRef.current.cancel();
       if (runnerRef.current && mRef.current?.Runner) mRef.current.Runner.stop(runnerRef.current);
       if (popupTimer.current) clearTimeout(popupTimer.current);
+      spawnTimers.current.forEach(id => clearTimeout(id));
+      spawnTimers.current = [];
       if (socket) socket.disconnect();
     };
   }, [spawnItem]);

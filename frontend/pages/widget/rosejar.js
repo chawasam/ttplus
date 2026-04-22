@@ -118,12 +118,13 @@ export default function RoseJarWidget() {
   const [roses, setRoses]   = useState(0);
   const [styles, setStyles] = useState(null);
 
-  const engineRef  = useRef(null);
-  const mRef       = useRef(null);
-  const runnerRef  = useRef(null);
-  const animRef    = useRef(null);
-  const popupTimer = useRef(null);
-  const lbMap      = useRef(new Map());
+  const engineRef   = useRef(null);
+  const mRef        = useRef(null);
+  const runnerRef   = useRef(null);
+  const animRef     = useRef(null);
+  const popupTimer  = useRef(null);
+  const spawnTimers = useRef([]);   // เก็บ setTimeout IDs เพื่อ cleanup
+  const lbMap       = useRef(new Map());
 
   const spawnItem = useCallback((imgUrl, emoji, count = 1) => {
     const M = mRef.current;
@@ -132,7 +133,8 @@ export default function RoseJarWidget() {
     const n = Math.min(count, 8);
 
     for (let i = 0; i < n; i++) {
-      setTimeout(() => {
+      const tid = setTimeout(() => {
+        spawnTimers.current = spawnTimers.current.filter(id => id !== tid);
         if (!engineRef.current) return;
         // spawn ภายใน opening ของคอโถ
         const x = J.neckL + ITEM_R + 4 + Math.random() * (J.neckR - J.neckL - (ITEM_R + 4) * 2);
@@ -153,6 +155,7 @@ export default function RoseJarWidget() {
         const all = Composite.allBodies(engineRef.current.world).filter(b => b.label === 'gift');
         if (all.length > MAX_ITEMS) Composite.remove(engineRef.current.world, all[0]);
       }, i * 150);
+      spawnTimers.current.push(tid);
     }
   }, []);
 
@@ -227,6 +230,8 @@ export default function RoseJarWidget() {
       animRef.current?.cancel?.();
       if (runnerRef.current && mRef.current?.Runner) mRef.current.Runner.stop(runnerRef.current);
       if (popupTimer.current) clearTimeout(popupTimer.current);
+      spawnTimers.current.forEach(id => clearTimeout(id));
+      spawnTimers.current = [];
     };
   }, [spawnItem]);
 

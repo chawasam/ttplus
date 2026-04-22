@@ -81,7 +81,9 @@ async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI
   if (!part?.data) throw new Error('Gemini: ไม่มี audio ในผลลัพธ์');
 
   const mime = (part.mimeType || '').toLowerCase();
-  console.log('[TTplus Gemini] mimeType:', part.mimeType, 'bytes(b64):', part.data.length);
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[TTplus Gemini] mimeType:', part.mimeType, 'bytes(b64):', part.data.length);
+  }
 
   // decode base64 → Uint8Array
   const binaryStr = atob(part.data);
