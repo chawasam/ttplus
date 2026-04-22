@@ -212,6 +212,26 @@ app.post('/api/disconnect', verifyToken, async (req, res) => {
   res.json({ success: true });
 });
 
+// ===== Widget styles — public endpoint (widget โหลด style จาก token) =====
+app.get('/api/widget-styles', async (req, res) => {
+  const { wt } = req.query;
+  if (!wt || !/^[a-f0-9]{64}$/i.test(wt)) {
+    return res.status(400).json({ error: 'invalid token' });
+  }
+  try {
+    const db = admin.firestore();
+    const tokenDoc = await db.collection('widget_tokens').doc(wt).get();
+    if (!tokenDoc.exists) return res.status(404).json({ error: 'not found' });
+    const uid = tokenDoc.data().uid;
+    const userDoc = await db.collection('user_settings').doc(uid).get();
+    const styles = userDoc.exists ? (userDoc.data()?.widgetStyles || {}) : {};
+    res.json({ styles });
+  } catch (err) {
+    console.error('[API] widget-styles GET:', err.message);
+    res.status(500).json({ error: 'Failed to load styles' });
+  }
+});
+
 // ===== Stats (owner only) =====
 const OWNER_EMAIL = 'cksamg@gmail.com';
 app.get('/api/stats', verifyToken, async (req, res) => {

@@ -24,13 +24,13 @@ let _cfg = {
   pitch:          1.0,
   volume:         1.0,
   voice:          '',               // Web Speech voice name
-  engine:         'web',            // 'auto'|'gemini31'|'gemini25'|'google'|'web'
+  enabledEngines: ['web'],          // engine ที่เปิดใช้ — ลองตามลำดับ priority (3.1→2.5→google→web)
   googleApiKey:   '',               // Google Cloud TTS key
   googleVoice:    'th-TH-Neural2-C',
   geminiApiKey:   '',               // Google AI Studio / Gemini key (ใช้ได้ทั้ง 3.1 + 2.5)
   geminiVoice:    'Aoede',
   geminiPersona:  '',               // style instruction ฝังใน content text
-  geminiShuffle:  false,            // สุ่ม voice+persona ทุกแชท
+  geminiShuffle:  false,            // สุ่ม voice+persona ทุกแชท (ใช้กับทั้ง 3.1 + 2.5)
 };
 
 // ===== Internal: strip emoji + brackets =====
@@ -231,15 +231,21 @@ function _speakWeb(text) {
 }
 
 // ===== Internal: process queue =====
+// ลำดับ priority คงที่ — ใช้เฉพาะ engine ที่ user เปิด (enabledEngines)
+const ENGINE_PRIORITY = ['gemini31', 'gemini25', 'google', 'web'];
+
 async function _next() {
   if (_busy || _queue.length === 0) return;
   if (typeof window === 'undefined') return;
 
   _busy = true;
-  const text   = _queue.shift();
-  const engine = _cfg.engine || 'auto';
+  const text = _queue.shift();
 
-  // สุ่ม voice+persona ถ้า shuffleMode เปิด
+  // เรียง engine ตาม priority คงที่ กรองเฉพาะที่ user เปิด
+  const enabled = _cfg.enabledEngines?.length ? _cfg.enabledEngines : ['web'];
+  const ordered = ENGINE_PRIORITY.filter(e => enabled.includes(e));
+
+  // สุ่ม voice+persona สำหรับ Gemini ถ้า shuffle เปิด
   let gVoice   = _cfg.geminiVoice;
   let gPersona = _cfg.geminiPersona;
   if (_cfg.geminiShuffle && _cfg.geminiApiKey) {
@@ -247,43 +253,18 @@ async function _next() {
     gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
   }
 
-  try {
-    if (engine === 'auto') {
-      // ── Cascade: Gemini 3.1 → Gemini 2.5 → Google Cloud → Web Speech ──
-      // หลัก: ถ้า engine ใดล้มเหลว (ไม่ว่าสาเหตุ) → ลอง engine ถัดไปเสมอ
-      if (_cfg.geminiApiKey) {
-        try {
-          await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
-          _busy = false; _next(); return;
-        } catch { /* cascade → 2.5 */ }
-        try {
-          await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL);
-          _busy = false; _next(); return;
-        } catch { /* cascade → Google */ }
-      }
-      if (_cfg.googleApiKey) {
-        try {
-          await _speakGoogle(text);
-          _busy = false; _next(); return;
-        } catch { /* cascade → Web */ }
-      }
-      await _speakWeb(text);
-    } else {
-      // ── Manual: ใช้ engine ที่ user เลือก ──
-      switch (engine) {
-        case 'gemini31': await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL); break;
-        case 'gemini25': await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL); break;
-        case 'google':   await _speakGoogle(text); break;
-        case 'web':
-        default:         await _speakWeb(text);
-      }
-    }
-  } catch {
-    // ข้ามข้อความถ้า error ทุก engine
-  } finally {
-    _busy = false;
-    _next();
+  // ลอง engine ตามลำดับ — ถ้าล้มเหลวข้ามถัดไปอัตโนมัติ
+  for (const eng of ordered) {
+    try {
+      if      (eng === 'gemini31' && _cfg.geminiApiKey) { await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL); break; }
+      else if (eng === 'gemini25' && _cfg.geminiApiKey) { await _speakGemini(text, gVoice, gPersona, GEMINI_25_MODEL); break; }
+      else if (eng === 'google'   && _cfg.googleApiKey) { await _speakGoogle(text); break; }
+      else if (eng === 'web')                           { await _speakWeb(text);   break; }
+    } catch { /* cascade → ถัดไป */ }
   }
+
+  _busy = false;
+  _next();
 }
 
 // ===== Public API =====
@@ -400,8 +381,28 @@ export const GOOGLE_THAI_VOICES = [
 // ===== localStorage helpers (key ไม่ผ่าน server) =====
 export function loadGoogleApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_google_tts_key')  || '' : ''; }
 export function saveGoogleApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_google_tts_key', k)  : localStorage.removeItem('ttplus_google_tts_key'); }
-export function loadEngine()         { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_tts_engine') || 'web' : 'web'; }
-export function saveEngine(e)        { if (typeof window === 'undefined') return; e && e !== 'web' ? localStorage.setItem('ttplus_tts_engine', e) : localStorage.removeItem('ttplus_tts_engine'); }
+// โหลด engine list — backward compat กับ format เก่า (single string)
+export function loadEnabledEngines() {
+  if (typeof window === 'undefined') return ['web'];
+  try {
+    const saved = localStorage.getItem('ttplus_enabled_engines');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  // แปลง format เก่า (single engine string) → array
+  const old = localStorage.getItem('ttplus_tts_engine') || 'web';
+  if (old === 'auto') return ['gemini31', 'gemini25', 'google', 'web'];
+  if (old !== 'web') return [old, 'web'];
+  return ['web'];
+}
+export function saveEnabledEngines(engines) {
+  if (typeof window === 'undefined') return;
+  if (Array.isArray(engines) && engines.length > 0) {
+    localStorage.setItem('ttplus_enabled_engines', JSON.stringify(engines));
+  }
+}
 
 /**
  * ทดสอบ engine โดยตรง — ไม่ผ่าน queue ได้ error จริง

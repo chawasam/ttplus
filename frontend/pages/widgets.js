@@ -118,11 +118,9 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getWidgetUrl = useCallback((widgetId) => {
     if (!widgetToken || !baseUrl) return '';
-    const style  = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
-    const styleQ = styleToParams(style, widgetId);
-    const base   = `${baseUrl}/widget/${widgetId}?wt=${widgetToken}`;
-    return styleQ ? `${base}&${styleQ}` : base;
-  }, [widgetToken, baseUrl, styles]);
+    // Style ถูกบันทึกใน Firestore แล้ว — URL มีแค่ wt token
+    return `${baseUrl}/widget/${widgetId}?wt=${widgetToken}`;
+  }, [widgetToken, baseUrl]);
 
   const copyUrl = useCallback((widgetId) => {
     if (!user) { setShowLoginModal(true); return; }

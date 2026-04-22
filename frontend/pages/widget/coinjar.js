@@ -5,7 +5,7 @@
 // URL params: ?wt=TOKEN&jx=OFFSET(-150~150)&cat=left|right|behind&preview=1
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 
 // ขนาด canvas (กว้างขึ้น → พื้นที่รอบขวดโหลมากขึ้น)
@@ -307,68 +307,85 @@ export default function CoinJarWidget() {
     document.documentElement.style.backgroundColor = 'transparent';
     document.body.style.backgroundColor = 'transparent';
 
-    const params    = new URLSearchParams(window.location.search);
-    const wt        = params.get('wt');
-    const isPreview = params.get('preview') === '1';
-
-    // parseWidgetStyles รวม jx, mi, cat ทุกอย่างในก้อนเดียว
-    const s = parseWidgetStyles(params, 'coinjar');
-    setStyles(s);
-
-    const ox = s.jx ?? 0;
-    maxItemsRef.current  = s.mi ?? 150;
-    giftScaleRef.current = s.gs ?? 100;
-    J = getJ(ox);
-    setJarOffset(ox);
-
-    // init cat mascot จาก parsed style
-    if (['left', 'right', 'behind'].includes(s.cat)) setCatPos(s.cat);
-    setCatScale(s.cs ?? 100);
-    setCatGap(s.cg ?? 0);
-
     let socket;
     let mounted = true;
 
-    const initPhysics = () => {
-      if (!mounted) return;
+    const init = async () => {
+      const params    = new URLSearchParams(window.location.search);
+      const wt        = params.get('wt');
+      const isPreview = params.get('preview') === '1';
 
-      const M = window.Matter;
-      if (!M) return;
-
-      // เก็บ Matter refs สำหรับ cleanup — spawnItem ต้องใช้ Bodies+Body+Composite
-      mRef.current = { Runner: M.Runner, Composite: M.Composite, Bodies: M.Bodies, Body: M.Body };
-
-      // 1. Engine + walls (ส่ง offset ให้สร้าง walls ตำแหน่งที่ถูกต้อง)
-      const engine = setupEngine(M, ox);
-      engineRef.current = engine;
-
-      // 2. Runner
-      runnerRef.current = setupRunner(engine, M);
-
-      // 3. Animation loop
-      const anim = startAnimationLoop(engine, M, setItems);
-      animRef.current = { cancel: anim.cancel };
-
-      // 4. Preview หรือ Live mode
-      if (isPreview) {
-        runPreviewMode(spawnItem);
-        return;
+      // โหลด style: ถ้ามี wt และไม่ใช่ preview → ดึงจาก API (short URL)
+      // fallback → อ่านจาก URL params เหมือนเดิม
+      let s = parseWidgetStyles(params, 'coinjar');
+      if (wt && !isPreview) {
+        try {
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+          const res = await fetch(`${backendUrl}/api/widget-styles?wt=${encodeURIComponent(wt)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.styles?.coinjar) s = rawToStyle(data.styles.coinjar, 'coinjar');
+          }
+        } catch { /* ใช้ URL params แทน */ }
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
+      if (!mounted) return;
+      setStyles(s);
+
+      const ox = s.jx ?? 0;
+      maxItemsRef.current  = s.mi ?? 150;
+      giftScaleRef.current = s.gs ?? 100;
+      J = getJ(ox);
+      setJarOffset(ox);
+
+      // init cat mascot จาก parsed style
+      if (['left', 'right', 'behind'].includes(s.cat)) setCatPos(s.cat);
+      setCatScale(s.cs ?? 100);
+      setCatGap(s.cg ?? 0);
+
+      const initPhysics = () => {
+        if (!mounted) return;
+
+        const M = window.Matter;
+        if (!M) return;
+
+        // เก็บ Matter refs สำหรับ cleanup — spawnItem ต้องใช้ Bodies+Body+Composite
+        mRef.current = { Runner: M.Runner, Composite: M.Composite, Bodies: M.Bodies, Body: M.Body };
+
+        // 1. Engine + walls (ส่ง offset ให้สร้าง walls ตำแหน่งที่ถูกต้อง)
+        const engine = setupEngine(M, ox);
+        engineRef.current = engine;
+
+        // 2. Runner
+        runnerRef.current = setupRunner(engine, M);
+
+        // 3. Animation loop
+        const anim = startAnimationLoop(engine, M, setItems);
+        animRef.current = { cancel: anim.cancel };
+
+        // 4. Preview หรือ Live mode
+        if (isPreview) {
+          runPreviewMode(spawnItem);
+          return;
+        }
+
+        socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
+      };
+
+      // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
+      if (window.Matter) {
+        initPhysics();
+      } else {
+        const script    = document.createElement('script');
+        script.src      = 'https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js';
+        script.async    = true;
+        script.onload   = initPhysics;
+        script.onerror  = () => { if (process.env.NODE_ENV !== 'production') console.error('[CoinJar] ไม่สามารถโหลด Matter.js ได้'); };
+        document.head.appendChild(script);
+      }
     };
 
-    // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
-    if (window.Matter) {
-      initPhysics();
-    } else {
-      const script    = document.createElement('script');
-      script.src      = 'https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js';
-      script.async    = true;
-      script.onload   = initPhysics;
-      script.onerror  = () => { if (process.env.NODE_ENV !== 'production') console.error('[CoinJar] ไม่สามารถโหลด Matter.js ได้'); };
-      document.head.appendChild(script);
-    }
+    init();
 
     return () => {
       mounted = false;
@@ -491,8 +508,8 @@ export default function CoinJarWidget() {
           93%           { transform: scaleY(0.08); }
         }
         @keyframes catPawPoint {
-          0%,  5%,  48%, 100% { transform: translate(0px, 0px)    rotate(0deg);   }
-          20%, 34%            { transform: translate(28px, -68px)  rotate(-55deg); }
+          0%,  5%,  48%, 100% { transform: rotate(0deg);    }
+          20%, 34%            { transform: rotate(-130deg); }
         }
       `}</style>
     </div>
@@ -592,19 +609,19 @@ function JarSVG({ acColor, offset = 0 }) {
       style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}
     >
       <defs>
-        {/* Glass gradient (ซ้ายขวา) */}
+        {/* Glass gradient — ใส ไม่มีสี */}
         <linearGradient id="jarGlass" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor="#c0d8f0" stopOpacity="0.28" />
-          <stop offset="12%"  stopColor="#e4f2ff" stopOpacity="0.50" />
-          <stop offset="45%"  stopColor="#b8d0e8" stopOpacity="0.10" />
-          <stop offset="88%"  stopColor="#e4f2ff" stopOpacity="0.40" />
-          <stop offset="100%" stopColor="#c0d8f0" stopOpacity="0.20" />
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.06" />
+          <stop offset="12%"  stopColor="#ffffff" stopOpacity="0.10" />
+          <stop offset="45%"  stopColor="#ffffff" stopOpacity="0.02" />
+          <stop offset="88%"  stopColor="#ffffff" stopOpacity="0.08" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.04" />
         </linearGradient>
 
         {/* Lid gradient */}
         <linearGradient id="lidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stopColor="#9ca3af" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#4b5563" stopOpacity="0.95" />
+          <stop offset="0%"   stopColor="#9ca3af" stopOpacity="0.70" />
+          <stop offset="100%" stopColor="#4b5563" stopOpacity="0.80" />
         </linearGradient>
 
         {/* Glow filter สำหรับ reflection */}
@@ -633,8 +650,8 @@ function JarSVG({ acColor, offset = 0 }) {
           Z
         `}
         fill="url(#jarGlass)"
-        stroke="rgba(190,220,255,0.50)"
-        strokeWidth="2"
+        stroke="rgba(255,255,255,0.28)"
+        strokeWidth="1.5"
       />
 
       {/* ===== Neck (ปากโถ) ===== */}
@@ -642,8 +659,8 @@ function JarSVG({ acColor, offset = 0 }) {
         x={NECK_L} y={NECK_T + 20}
         width={NECK_R - NECK_L}
         height={NECK_B - NECK_T - 20}
-        fill="rgba(190,220,255,0.18)"
-        stroke="rgba(190,220,255,0.45)"
+        fill="rgba(255,255,255,0.04)"
+        stroke="rgba(255,255,255,0.28)"
         strokeWidth="1.5"
         rx="3"
       />
@@ -674,7 +691,7 @@ function JarSVG({ acColor, offset = 0 }) {
         x={NECK_L - 4} y={NECK_T + 20}
         width={NECK_R - NECK_L + 8}
         height={5}
-        fill="rgba(100,120,140,0.65)"
+        fill="rgba(100,120,140,0.35)"
         rx="2"
       />
 
@@ -682,23 +699,23 @@ function JarSVG({ acColor, offset = 0 }) {
       <line
         x1={BODY_L + 12} y1={NECK_B + 55}
         x2={BODY_L + 12} y2={BODY_B - 50}
-        stroke="rgba(255,255,255,0.38)"
-        strokeWidth="6"
+        stroke="rgba(255,255,255,0.14)"
+        strokeWidth="4"
         strokeLinecap="round"
         filter="url(#glow)"
       />
       <line
         x1={BODY_L + 22} y1={NECK_B + 90}
         x2={BODY_L + 22} y2={NECK_B + 180}
-        stroke="rgba(255,255,255,0.22)"
-        strokeWidth="3"
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth="2"
         strokeLinecap="round"
       />
       <line
         x1={BODY_R - 14} y1={NECK_B + 60}
         x2={BODY_R - 14} y2={NECK_B + 130}
-        stroke="rgba(255,255,255,0.18)"
-        strokeWidth="2.5"
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth="2"
         strokeLinecap="round"
       />
 
@@ -709,7 +726,7 @@ function JarSVG({ acColor, offset = 0 }) {
         rx={(NECK_R - NECK_L) / 2 + 3}
         ry={4}
         fill="none"
-        stroke="rgba(200,225,255,0.55)"
+        stroke="rgba(200,225,255,0.22)"
         strokeWidth="2"
       />
 
@@ -719,8 +736,8 @@ function JarSVG({ acColor, offset = 0 }) {
         cy={FLOOR - 2}
         rx={(BODY_R - BODY_L) / 2 - 12}
         ry={6}
-        fill="rgba(190,220,255,0.12)"
-        stroke="rgba(190,220,255,0.25)"
+        fill="rgba(255,255,255,0.04)"
+        stroke="rgba(255,255,255,0.12)"
         strokeWidth="1"
       />
     </svg>
@@ -819,10 +836,10 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
           <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
 
           {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* transformBox:fill-box + transformOrigin:top center = หมุนรอบไหล่/ต้นแขน */}
+          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (93,248) เพื่อหมุนแขนติดลำตัว */}
           <g style={{
-            transformBox: 'fill-box',
-            transformOrigin: 'top center',
+            transformBox: 'view-box',
+            transformOrigin: '93px 248px',
             animation: 'catPawPoint 5s ease-in-out infinite',
             animationDelay: '2s',
           }}>
