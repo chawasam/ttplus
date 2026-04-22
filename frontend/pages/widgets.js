@@ -105,8 +105,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     try {
       const res   = await api.post('/api/widget-token');
       const token = res.data?.token;
-      // รองรับ format ใหม่ (base64url ~22 chars) และเก่า (hex 64 chars)
-      if (typeof token === 'string' && /^[a-zA-Z0-9_-]{20,66}$/.test(token)) {
+      if (typeof token === 'string' && /^[a-f0-9]{64}$/.test(token)) {
         setWidgetToken(token);
       } else {
         toast.error('Widget Token ไม่ถูกต้อง กรุณาลองใหม่');
@@ -277,7 +276,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       title={tokenReady ? url : ''}
                       onClick={() => tokenReady && copyUrl(w.id)}>
                       {tokenReady
-                        ? (url.length > 68 ? url.slice(0, 68) + '…' : url)
+                        ? (url.length > 54 ? url.slice(0, 54) + '…' : url)
                         : (tokenLoading ? '⏳ กำลังโหลด...' : '— กด Refresh Token ก่อน —')}
                     </div>
                     <button onClick={() => copyUrl(w.id)} disabled={!tokenReady}
