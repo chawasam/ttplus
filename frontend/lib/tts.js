@@ -6,8 +6,9 @@
 
 const MAX_QUEUE = 8;
 
-let _queue = [];
-let _busy  = false;
+let _queue    = [];
+let _busy     = false;
+let _audioCtx = null;   // shared AudioContext สำหรับ Gemini TTS
 let _cfg = {
   enabled:        false,
   readChat:       true,
@@ -71,12 +72,35 @@ async function _speakGemini(text, voiceOverride, personaOverride) {
   const part      = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
   if (!part?.data) throw new Error('Gemini: ไม่มี audio ในผลลัพธ์');
 
-  return new Promise((resolve, reject) => {
-    const audio   = new Audio(`data:${part.mimeType};base64,${part.data}`);
-    audio.volume  = Math.max(0, Math.min(1, _cfg.volume));
-    audio.onended = resolve;
-    audio.onerror = () => reject(new Error('audio play error'));
-    audio.play().catch(reject);
+  // Gemini returns audio/wav with LINEAR16 PCM — use AudioContext instead of <Audio>
+  // because some browsers' <Audio> cannot handle this specific WAV variant
+  const binaryStr  = atob(part.data);
+  const bytes      = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  const arrayBuffer = bytes.buffer;
+
+  // reuse a shared AudioContext (avoid creating too many)
+  if (!_audioCtx || _audioCtx.state === 'closed') {
+    _audioCtx = new AudioContext();
+  }
+  if (_audioCtx.state === 'suspended') await _audioCtx.resume();
+
+  let audioBuffer;
+  try {
+    audioBuffer = await _audioCtx.decodeAudioData(arrayBuffer);
+  } catch {
+    throw new Error('Gemini: รูปแบบ audio ไม่รองรับ (decodeAudioData ล้มเหลว)');
+  }
+
+  return new Promise((resolve) => {
+    const source = _audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    // volume via GainNode
+    const gain = _audioCtx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, _cfg.volume));
+    source.connect(gain).connect(_audioCtx.destination);
+    source.onended = resolve;
+    source.start(0);
   });
 }
 
