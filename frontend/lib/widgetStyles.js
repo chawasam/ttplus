@@ -66,7 +66,7 @@ export function parseWidgetStyles(params, widgetId) {
   // coinjar-specific params
   const jx  = clamp(parseInt(params.get('jx') ?? (d.jx ?? 0)), -200, 200);
   const mi  = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 300);
-  const cat = ['left', 'right', 'behind'].includes(params.get('cat') || '') ? params.get('cat') : (d.cat || 'none');
+  const cat = ['left', 'right', 'behind', 'group'].includes(params.get('cat') || '') ? params.get('cat') : (d.cat || 'none');
   const cs  = clamp(parseInt(params.get('cs') ?? (d.cs ?? 100)), 50, 200);
 
   return {
@@ -136,7 +136,7 @@ export function rawToStyle(raw = {}, widgetId) {
   const rz  = clamp(parseInt(raw.rz   ?? (d.rz ?? 0)), -30, 30);
   const jx  = clamp(parseInt(raw.jx   ?? (d.jx ?? 0)), -200, 200);
   const mi  = clamp(parseInt(raw.mi   ?? (d.mi ?? 150)), 10, 300);
-  const cat = ['left', 'right', 'behind'].includes(raw.cat || '') ? raw.cat : (d.cat || 'none');
+  const cat = ['left', 'right', 'behind', 'group'].includes(raw.cat || '') ? raw.cat : (d.cat || 'none');
   const cs  = clamp(parseInt(raw.cs   ?? (d.cs ?? 100)), 50, 200);
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
