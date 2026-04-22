@@ -33,6 +33,12 @@ const PATH_TO_ID = {
 };
 
 function applyTheme(t) {
+  // Widget pages ต้องการพื้นหลังโปร่งใสสำหรับ OBS
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/widget/')) {
+    document.documentElement.style.backgroundColor = 'transparent';
+    document.body.style.backgroundColor            = 'transparent';
+    return;
+  }
   const isDark = t === 'dark';
   document.documentElement.classList.toggle('dark', isDark);
   document.documentElement.style.backgroundColor = isDark ? '#030712' : '#f9fafb';

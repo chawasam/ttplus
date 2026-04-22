@@ -153,7 +153,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -302,6 +302,11 @@ export default function CoinJarWidget() {
 
   // ===== init =====
   useEffect(() => {
+    // ทำให้ html/body โปร่งใสสำหรับ OBS
+    document.documentElement.classList.add('widget');
+    document.documentElement.style.backgroundColor = 'transparent';
+    document.body.style.backgroundColor = 'transparent';
+
     const params    = new URLSearchParams(window.location.search);
     const wt        = params.get('wt');
     const isPreview = params.get('preview') === '1';
@@ -350,7 +355,7 @@ export default function CoinJarWidget() {
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -367,6 +372,7 @@ export default function CoinJarWidget() {
 
     return () => {
       mounted = false;
+      document.documentElement.classList.remove('widget');
       if (animRef.current?.cancel)  animRef.current.cancel();
       if (runnerRef.current && mRef.current?.Runner) mRef.current.Runner.stop(runnerRef.current);
       if (popupTimer.current) clearTimeout(popupTimer.current);

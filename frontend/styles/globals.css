@@ -34,7 +34,9 @@ input, textarea, select, label, li, ul, ol, svg {
 .dark ::-webkit-scrollbar-thumb { background: #4b5563; }
 
 /* ===== Widget pages — transparent background for OBS ===== */
-.widget-page {
+.widget-page,
+html.widget, html.widget body {
+  background-color: transparent !important;
   background: transparent !important;
 }
 
