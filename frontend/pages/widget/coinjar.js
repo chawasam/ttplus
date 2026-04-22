@@ -140,7 +140,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos }) {
+function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale }) {
   if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
@@ -200,6 +200,11 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, eng
     if (style?.cat !== undefined) {
       setCatPos(['left', 'right', 'behind'].includes(style.cat) ? style.cat : null);
     }
+
+    // cs — ขนาดแมว
+    if (style?.cs !== undefined) {
+      setCatScale(Math.max(50, Math.min(200, parseInt(style.cs) || 100)));
+    }
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -212,7 +217,8 @@ export default function CoinJarWidget() {
   const [popup, setPopup]         = useState(null);
   const [styles, setStyles]       = useState(null);
   const [jarOffset, setJarOffset] = useState(0);
-  const [catPos, setCatPos]       = useState(null); // 'left' | 'right' | 'behind' | null
+  const [catPos, setCatPos]       = useState(null);   // 'left' | 'right' | 'behind' | null
+  const [catScale, setCatScale]   = useState(100);    // 50–200 %
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -283,6 +289,7 @@ export default function CoinJarWidget() {
 
     // init cat mascot จาก parsed style
     if (['left', 'right', 'behind'].includes(s.cat)) setCatPos(s.cat);
+    setCatScale(s.cs ?? 100);
 
     let socket;
     let mounted = true;
@@ -313,7 +320,7 @@ export default function CoinJarWidget() {
         return;
       }
 
-      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos });
+      socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale });
     };
 
     // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -386,7 +393,7 @@ export default function CoinJarWidget() {
       )}
 
       {/* ===== แมวน่ารัก (behind = ด้านหลัง, z-index ต่ำกว่า jar) ===== */}
-      {catPos === 'behind' && <CatMascot position="behind" jarOffset={jarOffset} />}
+      {catPos === 'behind' && <CatMascot position="behind" jarOffset={jarOffset} scale={catScale} />}
 
       {/* ===== Physics items layer (DOM, z-index ต่ำกว่า jar overlay) ===== */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
@@ -430,7 +437,7 @@ export default function CoinJarWidget() {
 
       {/* ===== แมวน่ารัก (left / right = ด้านข้าง, z-index สูงกว่า jar) ===== */}
       {(catPos === 'left' || catPos === 'right') && (
-        <CatMascot position={catPos} jarOffset={jarOffset} />
+        <CatMascot position={catPos} jarOffset={jarOffset} scale={catScale} />
       )}
 
       {/* CSS animations */}
@@ -439,9 +446,17 @@ export default function CoinJarWidget() {
           from { opacity: 0; transform: translateX(-18px) scale(0.95); }
           to   { opacity: 1; transform: translateX(0)     scale(1);    }
         }
+        @keyframes catBob {
+          0%, 100% { transform: translateY(0px); }
+          50%      { transform: translateY(-8px); }
+        }
         @keyframes catBlink {
-          0%, 92%, 100% { transform: scaleY(1); }
-          96% { transform: scaleY(0.1); }
+          0%, 88%, 100% { transform: scaleY(1); }
+          93%           { transform: scaleY(0.08); }
+        }
+        @keyframes catPawPoint {
+          0%,  5%,  48%, 100% { transform: translate(0px, 0px)   rotate(0deg);   }
+          20%, 34%            { transform: translate(18px, -96px) rotate(-38deg); }
         }
       `}</style>
     </div>
@@ -678,95 +693,150 @@ function JarSVG({ acColor, offset = 0 }) {
 
 // ===================== Cat Mascot =====================
 /**
- * แมวน่ารักนั่งข้างขวดโหล
+ * แมวน่ารัก ตัวใหญ่เท่าขวดโหล — นั่งข้าง/หลังขวด พร้อม animation
  * position: 'left' | 'right' | 'behind'
- * jarOffset: horizontal offset เดียวกับโถ
+ * jarOffset: ซิงค์กับ jx ของโถ — แมวเคลื่อนตามขวดทันที
  */
-function CatMascot({ position, jarOffset = 0 }) {
-  const Jc = getJ(jarOffset);
+function CatMascot({ position, jarOffset = 0, scale = 100 }) {
+  const Jc    = getJ(jarOffset);
+  // ขนาดฐาน (scale=100 = เท่าขวดโหลพอดี)
+  const CAT_W = Math.round(155 * scale / 100);
+  const CAT_H = Math.round(460 * scale / 100);
 
-  // คำนวณตำแหน่งแมว
-  let left, zIndex;
+  // เท้าอยู่ที่ y=291/300 ของ SVG → ยืนให้เสมอก้นขวด (JAR_BASE.floor)
+  const top = Math.round(JAR_BASE.floor - (291 / 300) * CAT_H);
+
+  let left, zIndex, flip;
   if (position === 'left') {
-    left   = Jc.bL - 86;
-    zIndex = 4; // หน้า jar
-  } else if (position === 'right') {
-    left   = Jc.bR + 6;
+    left   = Jc.bL - CAT_W + Math.round(CAT_W * 0.18);  // ทับขอบซ้ายนิดหน่อย
     zIndex = 4;
+    flip   = false;
+  } else if (position === 'right') {
+    left   = Jc.bR - Math.round(CAT_W * 0.18);           // ทับขอบขวานิดหน่อย
+    zIndex = 4;
+    flip   = true;
   } else {
-    // behind — อยู่ด้านหลัง items และ jar
-    left   = (Jc.bL + Jc.bR) / 2 - 38;
+    left   = (Jc.bL + Jc.bR) / 2 - CAT_W / 2;
     zIndex = 1;
+    flip   = false;
   }
 
-  const top = GROUND_Y - 95; // นั่งบนพื้น ground
-
   return (
-    <svg
-      width={80} height={100}
-      viewBox="0 0 80 100"
-      style={{ position: 'absolute', left, top, zIndex, pointerEvents: 'none' }}
-    >
-      {/* หาง */}
-      <path
-        d="M 52 88 Q 74 74 72 56 Q 70 42 60 38"
-        stroke="#f59e0b" strokeWidth="8" fill="none" strokeLinecap="round"
-      />
-      <path
-        d="M 52 88 Q 74 74 72 56 Q 70 42 60 38"
-        stroke="#fcd34d" strokeWidth="4" fill="none" strokeLinecap="round"
-      />
+    <div style={{
+      position:      'absolute',
+      left, top,
+      width:         CAT_W,
+      height:        CAT_H,
+      zIndex,
+      pointerEvents: 'none',
+      transform:     flip ? 'scaleX(-1)' : undefined,
+    }}>
+      {/* Bob animation wrapper แยกออกจาก flip เพื่อไม่ชน transform */}
+      <div style={{ width: '100%', height: '100%', animation: 'catBob 3.5s ease-in-out infinite' }}>
+        <svg width={CAT_W} height={CAT_H} viewBox="0 0 100 300">
 
-      {/* ตัว */}
-      <ellipse cx="34" cy="72" rx="24" ry="21" fill="#fbbf24" />
+          {/* ── หาง (SMIL animateTransform หมุนรอบโคนหาง) ── */}
+          <g>
+            <path
+              d="M 26 242 C 4 222 0 190 6 164 C 12 140 28 128 32 114 C 36 102 26 92 34 86"
+              stroke="#f59e0b" strokeWidth="13" fill="none" strokeLinecap="round"
+            />
+            <path
+              d="M 26 242 C 4 222 0 190 6 164 C 12 140 28 128 32 114 C 36 102 26 92 34 86"
+              stroke="#fde68a" strokeWidth="6" fill="none" strokeLinecap="round"
+            />
+            {/* ปลายหาง */}
+            <circle cx="36" cy="84" r="10" fill="#fde68a" />
+            <circle cx="36" cy="84" r="6"  fill="#fbbf24" />
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              values="0 26 242; 16 26 242; 0 26 242; -13 26 242; 0 26 242"
+              dur="2.4s"
+              repeatCount="indefinite"
+              calcMode="spline"
+              keySplines="0.4 0 0.6 1; 0.4 0 0.6 1; 0.4 0 0.6 1; 0.4 0 0.6 1"
+            />
+          </g>
 
-      {/* ลายตัว */}
-      <path d="M 18 65 Q 34 70 50 65" stroke="#d97706" strokeWidth="2.5" fill="none" />
-      <path d="M 16 73 Q 34 79 52 73" stroke="#d97706" strokeWidth="2" fill="none" />
+          {/* ── ตัว ── */}
+          <ellipse cx="57" cy="222" rx="40" ry="62" fill="#fbbf24" />
+          {/* ท้อง (สีอ่อนกว่า) */}
+          <ellipse cx="57" cy="234" rx="27" ry="44" fill="#fde68a" />
+          {/* ลายตัว */}
+          <path d="M 22 200 Q 57 210 90 200" stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.6" />
+          <path d="M 20 217 Q 57 229 92 217" stroke="#d97706" strokeWidth="2"   fill="none" strokeLinecap="round" opacity="0.5" />
+          <path d="M 22 236 Q 57 248 90 236" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.4" />
 
-      {/* หัว */}
-      <circle cx="34" cy="42" r="22" fill="#fbbf24" />
+          {/* ── เท้าหน้าซ้าย ── */}
+          <ellipse cx="35" cy="277" rx="22" ry="14" fill="#fbbf24" />
+          <ellipse cx="35" cy="275" rx="18" ry="10" fill="#f59e0b" />
+          <path d="M 22 275 Q 26 271 30 275" stroke="#d97706" strokeWidth="1.8" fill="none" />
+          <path d="M 30 272 Q 34 268 38 272" stroke="#d97706" strokeWidth="1.8" fill="none" />
+          <path d="M 38 273 Q 42 269 46 273" stroke="#d97706" strokeWidth="1.8" fill="none" />
 
-      {/* หูซ้าย */}
-      <polygon points="15,27 9,8 28,21" fill="#fbbf24" />
-      <polygon points="17,25 13,12 26,20" fill="#f9a8d4" />
+          {/* ── เท้าหน้าขวา (ชี้ปากขวดทุก 5 วิ) ── */}
+          <g style={{
+            transformBox:   'fill-box',
+            transformOrigin: 'top center',
+            animation:       'catPawPoint 5s ease-in-out infinite',
+            animationDelay:  '2s',
+          }}>
+            <ellipse cx="76" cy="277" rx="22" ry="14" fill="#fbbf24" />
+            <ellipse cx="76" cy="275" rx="18" ry="10" fill="#f59e0b" />
+            <path d="M 63 275 Q 67 271 71 275" stroke="#d97706" strokeWidth="1.8" fill="none" />
+            <path d="M 71 272 Q 75 268 79 272" stroke="#d97706" strokeWidth="1.8" fill="none" />
+            <path d="M 79 273 Q 83 269 87 273" stroke="#d97706" strokeWidth="1.8" fill="none" />
+          </g>
 
-      {/* หูขวา */}
-      <polygon points="53,27 59,8 40,21" fill="#fbbf24" />
-      <polygon points="51,25 55,12 42,20" fill="#f9a8d4" />
+          {/* ── หัว ── */}
+          <circle cx="58" cy="94" r="50" fill="#fbbf24" />
+          {/* ลายหัว */}
+          <path d="M 32 60 Q 42 50 50 60"  stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.65" />
+          <path d="M 50 55 Q 57 44 64 55"  stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.65" />
+          <path d="M 66 60 Q 76 50 84 60"  stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.65" />
 
-      {/* ตาซ้าย */}
-      <ellipse cx="26" cy="40" rx="5" ry="6" fill="#1c1c3a" />
-      <circle cx="28" cy="38" r="2" fill="white" />
+          {/* ── หูซ้าย ── */}
+          <polygon points="17,68 9,16 45,56"  fill="#fbbf24" />
+          <polygon points="20,64 16,26 41,53" fill="#f9a8d4" />
 
-      {/* ตาขวา */}
-      <ellipse cx="42" cy="40" rx="5" ry="6" fill="#1c1c3a"
-        style={{ transformOrigin: '42px 40px', animation: 'catBlink 4s ease infinite' }} />
-      <circle cx="44" cy="38" r="2" fill="white" />
+          {/* ── หูขวา ── */}
+          <polygon points="97,68 105,16 69,56"  fill="#fbbf24" />
+          <polygon points="94,64 98,26 73,53"   fill="#f9a8d4" />
 
-      {/* จมูก */}
-      <ellipse cx="34" cy="47" rx="3.5" ry="2.5" fill="#f9a8d4" />
+          {/* ── ตาซ้าย ── */}
+          <ellipse cx="40" cy="90" rx="9" ry="10.5" fill="#1c1c3a" />
+          <ellipse cx="40" cy="90" rx="5.5" ry="6.5" fill="#3b82f6" />
+          <circle  cx="43" cy="87" r="3.5" fill="white" />
+          <circle  cx="42" cy="86" r="1.5" fill="rgba(255,255,255,0.7)" />
 
-      {/* ปาก */}
-      <path d="M 30.5 50 Q 34 54 37.5 50"
-        stroke="#c2410c" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          {/* ── ตาขวา (กะพริบ) ── */}
+          <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'catBlink 4.5s ease infinite' }}>
+            <ellipse cx="75" cy="90" rx="9" ry="10.5" fill="#1c1c3a" />
+            <ellipse cx="75" cy="90" rx="5.5" ry="6.5" fill="#3b82f6" />
+            <circle  cx="78" cy="87" r="3.5"  fill="white" />
+            <circle  cx="77" cy="86" r="1.5"  fill="rgba(255,255,255,0.7)" />
+          </g>
 
-      {/* หนวดซ้าย */}
-      <line x1="6"  y1="44" x2="27" y2="47" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
-      <line x1="6"  y1="49" x2="27" y2="50" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
+          {/* ── จมูก ── */}
+          <ellipse cx="57" cy="108" rx="5.5" ry="4" fill="#f9a8d4" />
+          <path d="M 57 104 L 57 108" stroke="#d97706" strokeWidth="1.5" />
 
-      {/* หนวดขวา */}
-      <line x1="41" y1="47" x2="62" y2="44" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
-      <line x1="41" y1="50" x2="62" y2="49" stroke="rgba(255,255,255,0.88)" strokeWidth="1.4" />
+          {/* ── ปาก ── */}
+          <path d="M 52 113 Q 57 120 62 113" stroke="#c2410c" strokeWidth="2" fill="none" strokeLinecap="round" />
 
-      {/* เท้าหน้าซ้าย */}
-      <ellipse cx="19" cy="91" rx="11" ry="7" fill="#fbbf24" />
-      <ellipse cx="19" cy="90" rx="9"  ry="5" fill="#f59e0b" />
+          {/* ── หนวดซ้าย ── */}
+          <line x1="3"  y1="103" x2="48" y2="108" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" />
+          <line x1="2"  y1="111" x2="47" y2="112" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" />
+          <line x1="5"  y1="120" x2="47" y2="117" stroke="rgba(255,255,255,0.85)" strokeWidth="1.5" />
 
-      {/* เท้าหน้าขวา */}
-      <ellipse cx="49" cy="91" rx="11" ry="7" fill="#fbbf24" />
-      <ellipse cx="49" cy="90" rx="9"  ry="5" fill="#f59e0b" />
-    </svg>
+          {/* ── หนวดขวา ── */}
+          <line x1="67" y1="108" x2="113" y2="103" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" />
+          <line x1="67" y1="112" x2="114" y2="111" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" />
+          <line x1="67" y1="117" x2="111" y2="120" stroke="rgba(255,255,255,0.85)" strokeWidth="1.5" />
+        </svg>
+      </div>
+    </div>
   );
 }
 

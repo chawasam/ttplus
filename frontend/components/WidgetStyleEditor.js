@@ -269,6 +269,32 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
               ))}
             </div>
           </div>
+
+          {/* Cat size — แสดงเฉพาะเมื่อมีแมว */}
+          {(style.cat ?? 'none') !== 'none' && (
+            <div className="space-y-1">
+              <div className={row}>
+                <span className={label}>📐 ขนาดแมว</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={clsx('text-xs font-mono font-bold', (style.cs ?? 100) !== 100 ? 'text-amber-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                    {style.cs ?? 100}%
+                  </span>
+                  {(style.cs ?? 100) !== 100 && (
+                    <button onClick={() => set('cs', 100)} className="text-xs text-gray-500 hover:text-brand-400 transition" title="รีเซ็ต">↩</button>
+                  )}
+                </div>
+              </div>
+              <input
+                type="range" min="50" max="200" step="5"
+                value={style.cs ?? 100}
+                onChange={e => set('cs', +e.target.value)}
+                className="w-full accent-amber-500"
+              />
+              <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+                <span>เล็ก (50%)</span><span>เท่าขวด (100%)</span><span>ใหญ่ (200%)</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
