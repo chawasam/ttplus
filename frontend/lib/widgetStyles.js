@@ -65,11 +65,11 @@ export function parseWidgetStyles(params, widgetId) {
 
   // coinjar-specific params
   const jx  = clamp(parseInt(params.get('jx') ?? (d.jx ?? 0)), -200, 200);
-  const mi  = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 600);
+  const mi  = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 300);
   const cat = ['left', 'right', 'behind'].includes(params.get('cat') || '') ? params.get('cat') : (d.cat || 'none');
   const cs  = clamp(parseInt(params.get('cs') ?? (d.cs ?? 100)), 50, 200);
   const cg  = clamp(parseInt(params.get('cg') ?? (d.cg ?? 0)), -30, 150);
-  const gs  = clamp(parseInt(params.get('gs') ?? (d.gs ?? 100)), 50, 300);
+  const gs  = clamp(parseInt(params.get('gs') ?? (d.gs ?? 100)), 50, 200);
 
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
