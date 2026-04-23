@@ -348,7 +348,7 @@ export default function CoinJarWidget() {
       const isPreview = params.get('preview') === '1';
 
       // โหลด style: ถ้ามี cid/wt และไม่ใช่ preview → ดึงจาก API
-      // fallback → อ่านจาก URL params เหมือนเดิม
+      // URL params ที่ตั้งชัดเจน (cat, jx, gs, mi, cs, cg) ชนะ API เสมอ
       let s = parseWidgetStyles(params, 'coinjar');
       if (cidOrWt && !isPreview) {
         try {
@@ -358,7 +358,17 @@ export default function CoinJarWidget() {
           const res   = await fetch(`${backendUrl}/api/widget-styles?${qs}`);
           if (res.ok) {
             const data = await res.json();
-            if (data.styles?.coinjar) s = rawToStyle(data.styles.coinjar, 'coinjar');
+            if (data.styles?.coinjar) {
+              const apiStyle = rawToStyle(data.styles.coinjar, 'coinjar');
+              // Merge: API เป็น base, URL params ที่ตั้งชัดเจนชนะ
+              s = { ...apiStyle };
+              if (params.has('cat')) s.cat = parseWidgetStyles(params, 'coinjar').cat;
+              if (params.has('jx'))  s.jx  = parseWidgetStyles(params, 'coinjar').jx;
+              if (params.has('gs'))  s.gs  = parseWidgetStyles(params, 'coinjar').gs;
+              if (params.has('mi'))  s.mi  = parseWidgetStyles(params, 'coinjar').mi;
+              if (params.has('cs'))  s.cs  = parseWidgetStyles(params, 'coinjar').cs;
+              if (params.has('cg'))  s.cg  = parseWidgetStyles(params, 'coinjar').cg;
+            }
           }
         } catch { /* ใช้ URL params แทน */ }
       }
