@@ -522,102 +522,118 @@ const SKINS = {
     id: 'aurora', label: 'Aurora Borealis', emoji: '🌠', category: 'premium',
     preview: { from: '#000d18', to: '#00ffd0', ac: '#a855f7' },
     particleCount: 30, particleOrigin: 'bottom',
-    dur: 9, sizeMin: 3, sizeMax: 10, renderType: 'div',
+    dur: 9, sizeMin: 4, sizeMax: 12, renderType: 'div',
     extraPerParticle: (i) => ({
       color: [
-        'rgba(0,255,170,0.62)',
-        'rgba(0,200,255,0.55)',
-        'rgba(120,60,255,0.52)',
-        'rgba(0,255,220,0.58)',
-        'rgba(60,160,255,0.50)',
+        'rgba(0,255,170,0.70)',
+        'rgba(0,200,255,0.62)',
+        'rgba(140,70,255,0.58)',
+        'rgba(0,255,220,0.65)',
+        'rgba(60,160,255,0.56)',
       ][i % 5],
     }),
-    // Custom function — NOT using makeBubble — full glass-morphism control
+    // glass-morphism bubble — borderLeft บางมาก เพราะ ::before จะทำ animated edge แทน
     bubbleStyle: (_userColor, _ac, bga = 80) => ({
-      background:  `rgba(0,10,22,${((bga / 100) * 0.88).toFixed(2)})`,
-      borderLeft:  '2px solid rgba(0,240,185,0.68)',
-      borderTop:   '1px solid rgba(0,240,185,0.18)',
-      boxShadow:   [
-        '0 0 0 1px rgba(0,240,185,0.07)',
-        '0 0 22px rgba(0,240,185,0.18)',
-        '0 8px 32px rgba(0,0,0,0.62)',
-        'inset 0 0 24px rgba(0,240,185,0.04)',
+      position:   'relative',
+      overflow:   'hidden',
+      background: `rgba(0,8,20,${((bga / 100) * 0.90).toFixed(2)})`,
+      borderLeft: '2px solid rgba(0,255,185,0.10)',
+      borderTop:  '1px solid rgba(0,255,185,0.10)',
+      boxShadow:  [
+        '0 0 0 1px rgba(0,240,185,0.06)',
+        '0 0 20px rgba(0,240,185,0.15)',
+        '0 8px 36px rgba(0,0,0,0.65)',
+        'inset 0 0 28px rgba(0,240,185,0.03)',
       ].join(','),
     }),
-    // ชื่อผู้ใช้: ตัวขาวสว่าง + เรืองแสงสีของผู้ใช้แต่ละคน (ราวกับถูกส่องโดยแสงเหนือ)
+    // ชื่อ: สีขาวสะอาด + glow สีของผู้ใช้แต่ละคน ราวกับถูกแสงเหนือส่อง (4 ชั้น)
     nameStyle: (userColor) => ({
       color: '#ffffff',
-      textShadow: `0 0 8px ${userColor}, 0 0 20px rgba(0,255,185,0.45)`,
+      textShadow: [
+        `0 0 4px ${userColor}`,
+        `0 0 14px ${userColor}`,
+        '0 0 28px rgba(0,255,185,0.55)',
+        '0 0 50px rgba(0,200,255,0.25)',
+      ].join(', '),
     }),
-    textStyle: () => ({ color: '#d0fff8' }),
+    textStyle: () => ({ color: '#d8fff8' }),
     css: `
-      /* ───── Aurora background layers ───── */
+      /* ═══════════════════════════════════════════
+         AURORA BOREALIS — Full Power
+         ═══════════════════════════════════════════ */
+
+      /* ─── Background container ─── */
       .skin-aurora-bg {
         position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden;
       }
-      /* Band 1: green-teal aurora — หลัก */
+
+      /* ─── Band 1: green-teal (หลัก) + hue-rotate cycling ─── */
       .skin-aurora-band1 {
         position:absolute;
         top:8%; left:-12%; width:124%; height:32%;
         background:linear-gradient(180deg,
           transparent 0%,
-          rgba(0,255,150,0.14) 28%,
-          rgba(0,220,200,0.20) 52%,
-          rgba(0,255,150,0.12) 76%,
+          rgba(0,255,150,0.16) 26%,
+          rgba(0,220,200,0.22) 52%,
+          rgba(0,255,150,0.14) 78%,
           transparent 100%
         );
         border-radius:50%;
-        filter:blur(34px);
-        animation:auroraBand1 15s ease-in-out infinite;
+        animation:auroraBand1 15s ease-in-out infinite,
+                  auroraHue1  28s linear infinite;
       }
-      /* Band 2: purple-blue aurora — สีแดงม่วงลึก */
+
+      /* ─── Band 2: purple-blue + reverse hue ─── */
       .skin-aurora-band2 {
         position:absolute;
         top:33%; left:-18%; width:136%; height:28%;
         background:linear-gradient(180deg,
           transparent 0%,
-          rgba(90,40,255,0.11) 25%,
-          rgba(0,120,255,0.15) 52%,
-          rgba(100,0,240,0.10) 78%,
+          rgba(90,40,255,0.13) 25%,
+          rgba(0,120,255,0.17) 52%,
+          rgba(100,0,240,0.11) 78%,
           transparent 100%
         );
         border-radius:50%;
-        filter:blur(42px);
-        animation:auroraBand2 22s ease-in-out 5s infinite;
+        animation:auroraBand2 22s ease-in-out 5s infinite,
+                  auroraHue2  22s linear reverse infinite;
       }
-      /* Band 3: cyan accent — ชั้นบางที่ 3 เคลื่อนสวนทาง */
+
+      /* ─── Band 3: cyan accent เคลื่อนสวนทาง + hue offset ─── */
       .skin-aurora-band3 {
         position:absolute;
         top:55%; left:-8%; width:116%; height:20%;
         background:linear-gradient(180deg,
           transparent 0%,
-          rgba(0,255,220,0.10) 38%,
-          rgba(60,240,200,0.14) 56%,
+          rgba(0,255,220,0.11) 38%,
+          rgba(60,240,200,0.16) 56%,
           transparent 100%
         );
         border-radius:50%;
-        filter:blur(26px);
-        animation:auroraBand1 11s ease-in-out 8s infinite reverse;
+        animation:auroraBand1 11s ease-in-out 8s infinite reverse,
+                  auroraHue3  18s linear 4s infinite;
       }
-      /* Star field — 12 จุดกระจาย */
+
+      /* ─── Star field ─── */
       .skin-aurora-stars {
         position:absolute; inset:0;
         background-image:
-          radial-gradient(1px 1px at 8%  7%,  rgba(255,255,255,0.68) 0%, transparent 100%),
-          radial-gradient(1px 1px at 23% 12%, rgba(255,255,255,0.52) 0%, transparent 100%),
-          radial-gradient(1px 1px at 42% 5%,  rgba(200,248,255,0.60) 0%, transparent 100%),
-          radial-gradient(1px 1px at 64% 9%,  rgba(255,255,255,0.48) 0%, transparent 100%),
-          radial-gradient(1px 1px at 80% 4%,  rgba(255,255,255,0.62) 0%, transparent 100%),
-          radial-gradient(1px 1px at 92% 17%, rgba(200,255,240,0.54) 0%, transparent 100%),
-          radial-gradient(1px 1px at 14% 28%, rgba(255,255,255,0.40) 0%, transparent 100%),
-          radial-gradient(1px 1px at 36% 22%, rgba(255,255,255,0.44) 0%, transparent 100%),
+          radial-gradient(1px 1px at 8%  7%,  rgba(255,255,255,0.70) 0%, transparent 100%),
+          radial-gradient(1px 1px at 23% 12%, rgba(255,255,255,0.55) 0%, transparent 100%),
+          radial-gradient(1px 1px at 42% 5%,  rgba(200,248,255,0.62) 0%, transparent 100%),
+          radial-gradient(1px 1px at 64% 9%,  rgba(255,255,255,0.50) 0%, transparent 100%),
+          radial-gradient(1px 1px at 80% 4%,  rgba(255,255,255,0.65) 0%, transparent 100%),
+          radial-gradient(1px 1px at 92% 17%, rgba(200,255,240,0.56) 0%, transparent 100%),
+          radial-gradient(1px 1px at 14% 28%, rgba(255,255,255,0.42) 0%, transparent 100%),
+          radial-gradient(1px 1px at 36% 22%, rgba(255,255,255,0.46) 0%, transparent 100%),
           radial-gradient(1px 1px at 58% 31%, rgba(255,255,255,0.38) 0%, transparent 100%),
-          radial-gradient(1px 1px at 77% 26%, rgba(200,242,255,0.48) 0%, transparent 100%),
-          radial-gradient(2px 2px at 5%  20%, rgba(255,255,255,0.32) 0%, transparent 100%),
-          radial-gradient(1px 1px at 89% 36%, rgba(255,255,255,0.42) 0%, transparent 100%);
+          radial-gradient(1px 1px at 77% 26%, rgba(200,242,255,0.50) 0%, transparent 100%),
+          radial-gradient(2px 2px at 5%  20%, rgba(255,255,255,0.34) 0%, transparent 100%),
+          radial-gradient(1px 1px at 89% 36%, rgba(255,255,255,0.44) 0%, transparent 100%);
         animation:skinTwinkle 5s ease-in-out 1.5s infinite alternate;
       }
-      /* ───── Aurora wave keyframes ───── */
+
+      /* ─── Aurora wave motion ─── */
       @keyframes auroraBand1 {
         0%,100% { transform:skewX(-4deg) translateY(0)   scaleX(1.00); opacity:0.75; }
         22%     { transform:skewX( 7deg) translateY(-5%) scaleX(1.06); opacity:1.00; }
@@ -629,20 +645,77 @@ const SKINS = {
         30%     { transform:skewX(-7deg) translateY( 4%) scaleX(1.06); opacity:0.92; }
         62%     { transform:skewX( 9deg) translateY(-5%) scaleX(0.96); opacity:0.40; }
       }
-      /* ───── Orb particle ───── */
+
+      /* ─── Aurora color cycling ─── */
+      @keyframes auroraHue1 {
+        from { filter:blur(34px) hue-rotate(  0deg); }
+        to   { filter:blur(34px) hue-rotate(360deg); }
+      }
+      @keyframes auroraHue2 {
+        from { filter:blur(42px) hue-rotate(  0deg); }
+        to   { filter:blur(42px) hue-rotate(360deg); }
+      }
+      @keyframes auroraHue3 {
+        from { filter:blur(26px) hue-rotate(120deg); }
+        to   { filter:blur(26px) hue-rotate(480deg); }
+      }
+
+      /* ─── Bubble: animated rainbow left edge (::before) ─── */
+      .skin-aurora-bubble::before {
+        content:'';
+        position:absolute; left:0; top:0; bottom:0; width:2px;
+        background:linear-gradient(180deg,
+          #00ffb4 0%,
+          #00c8ff 25%,
+          #8040ff 50%,
+          #00c8ff 75%,
+          #00ffb4 100%
+        );
+        background-size:100% 300%;
+        animation:auroraEdgeFlow 3s linear infinite;
+        z-index:3;
+      }
+      @keyframes auroraEdgeFlow {
+        0%   { background-position:0% 0%;   }
+        100% { background-position:0% 300%; }
+      }
+
+      /* ─── Bubble: shimmer sweep (::after) ─── */
+      .skin-aurora-bubble::after {
+        content:'';
+        position:absolute;
+        top:0; left:-80%; width:60%; height:100%;
+        background:linear-gradient(
+          105deg,
+          transparent 0%,
+          rgba(120,255,220,0.14) 50%,
+          transparent 100%
+        );
+        animation:auroraShimmer 6s ease-in-out infinite;
+        pointer-events:none;
+        z-index:2;
+      }
+      @keyframes auroraShimmer {
+        0%   { transform:translateX(0);    opacity:0; }
+        15%  { opacity:1; }
+        85%  { opacity:1; }
+        100% { transform:translateX(300%); opacity:0; }
+      }
+
+      /* ─── Orb particles ─── */
       @keyframes skinAuroraOrb {
         0%   { transform:translateY(0)      translateX(0)    scale(1.00); opacity:0;    }
-        6%   { opacity:0.85; }
-        28%  { transform:translateY(-26vh)  translateX(7px)  scale(1.18); }
-        52%  { transform:translateY(-54vh)  translateX(-9px) scale(0.88); opacity:0.62; }
-        78%  { transform:translateY(-82vh)  translateX(6px)  scale(1.06); opacity:0.30; }
-        100% { transform:translateY(-112vh) translateX(0)    scale(0.65); opacity:0;    }
+        6%   { opacity:0.88; }
+        28%  { transform:translateY(-26vh)  translateX(8px)  scale(1.20); }
+        52%  { transform:translateY(-54vh)  translateX(-10px) scale(0.86); opacity:0.65; }
+        78%  { transform:translateY(-82vh)  translateX(7px)  scale(1.08); opacity:0.32; }
+        100% { transform:translateY(-112vh) translateX(0)    scale(0.62); opacity:0;    }
       }
       .skin-particle-aurora {
         position:fixed; pointer-events:none; z-index:1;
         border-radius:50%;
-        filter:blur(2px);
-        box-shadow:0 0 10px 3px currentColor;
+        filter:blur(2.5px);
+        box-shadow:0 0 12px 4px currentColor;
         animation:skinAuroraOrb var(--dur,9s) var(--delay,0s) ease-in infinite;
       }
     `,

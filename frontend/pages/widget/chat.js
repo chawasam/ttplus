@@ -166,6 +166,7 @@ export default function ChatWidget() {
               key={msg._key}
               onClick={() => pinMessage(msg)}
               title="คลิกเพื่อ Pin ข้อความ + ดูโปรไฟล์"
+              className={activeSkin ? `skin-${activeSkin.id}-bubble` : undefined}
               style={{
                 display:    'flex',
                 alignItems: 'flex-start',

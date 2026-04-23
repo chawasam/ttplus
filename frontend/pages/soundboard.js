@@ -170,7 +170,7 @@ function KeyboardLayout({
     return (
       <div className="inline-flex flex-row items-start" style={{ gap }}>
         {KB_ROWS.map((col, ci) => (
-          <div key={ci} className="flex flex-col" style={{ paddingTop: (KB_ROWS.length - 1 - ci) * stagger, gap }}>
+          <div key={ci} className="flex flex-col" style={{ paddingTop: ci * stagger, gap }}>
             {col.map(key => <SoundKey key={key} {...keyProps(key)} />)}
           </div>
         ))}
