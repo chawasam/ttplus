@@ -203,6 +203,16 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       : store
     : null;
 
+  // flashKey — ทำให้ปุ่มเรืองสีฟ้า 400ms ทุกครั้งที่กด (แม้เสียงสั้นมาก)
+  // ต้อง declare ก่อน useEffect keyboard ที่ใช้มัน (const ไม่ hoist)
+  const flashKey = useCallback((key) => {
+    setRecentlyPlayed(s => new Set([...s, key]));
+    clearTimeout(recentTimers.current[key]);
+    recentTimers.current[key] = setTimeout(() => {
+      setRecentlyPlayed(s => { const ns = new Set(s); ns.delete(key); return ns; });
+    }, 400);
+  }, []);
+
   // Keyboard: Q-M + Escape + Tab
   useEffect(() => {
     if (!store) return;
@@ -236,15 +246,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     window.addEventListener('keyup',   onUp);
     return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
   }, [store, editMode, effectiveStore, page, flashKey]);
-
-  // flashKey — ทำให้ปุ่มเรืองสีฟ้า 400ms ทุกครั้งที่กด (แม้เสียงสั้นมาก)
-  const flashKey = useCallback((key) => {
-    setRecentlyPlayed(s => new Set([...s, key]));
-    clearTimeout(recentTimers.current[key]);
-    recentTimers.current[key] = setTimeout(() => {
-      setRecentlyPlayed(s => { const ns = new Set(s); ns.delete(key); return ns; });
-    }, 400);
-  }, []);
 
   const patch = useCallback((update) => {
     setStore(prev => {
