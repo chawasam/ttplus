@@ -8,6 +8,7 @@ const WIDGET_LABELS = {
   alert:       '🔔 Gift Alert',
   chat:        '💬 Chat Overlay',
   pinchat:     '📌 Pin Chat',
+  pinprofile:  '👤 Pin Profile Card',
   leaderboard: '🏆 Leaderboard',
   goal:        '🎯 Goal Bar',
   viewers:     '👥 Viewer Count',
@@ -242,6 +243,32 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Pin Profile Card: เลือก layout แนวนอน / แนวตั้ง ── */}
+      {widgetId === 'pinprofile' && (
+        <div className="space-y-2">
+          <span className={label}>รูปแบบการ์ด</span>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { val: 'h', icon: '⬛', text: 'แนวนอน  (400×170)' },
+              { val: 'v', icon: '▬',  text: 'แนวตั้ง  (240×280)' },
+            ].map(opt => (
+              <button key={opt.val}
+                onClick={() => set('orient', opt.val)}
+                className={clsx(
+                  'py-2 px-3 rounded-lg text-xs font-semibold transition border',
+                  (style.orient ?? 'h') === opt.val
+                    ? 'bg-brand-500 border-brand-500 text-white'
+                    : theme === 'dark'
+                      ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                      : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                )}>
+                {opt.icon} {opt.text}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ── Coinjar: ตำแหน่งโถ + ของขวัญสูงสุด ── */}

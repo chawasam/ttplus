@@ -12,7 +12,7 @@ export const WIDGET_DEFAULTS = {
   alert:       { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16 },
   chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '', bw: 100, layout: 'inline' },
   pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0, skin: '' },
-  pinprofile:  { bg: '0a0a14', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 16, rx: 0, ry: 0, rz: 0, skin: '' },
+  pinprofile:  { bg: '0a0a14', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 16, rx: 0, ry: 0, rz: 0, skin: '', orient: 'h' },
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
@@ -93,6 +93,12 @@ export function parseWidgetStyles(params, widgetId) {
     ? (['inline','stack'].includes(layoutParam) ? layoutParam : (d.layout || 'inline'))
     : 'inline';
 
+  // orient — h | v (pinprofile เท่านั้น)
+  const orientParam = params.get('orient') ?? '';
+  const orient = d.orient !== undefined
+    ? (['h','v'].includes(orientParam) ? orientParam : (d.orient || 'h'))
+    : 'h';
+
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -103,9 +109,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout,
+    skin, bw, layout, orient,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient },
   };
 }
 
@@ -136,6 +142,7 @@ export function styleToParams(style, widgetId) {
   if (d.skin   !== undefined && style.skin   !== d.skin)   p.set('skin',   style.skin);
   if (d.bw     !== undefined && style.bw     !== d.bw)     p.set('bw',     style.bw);
   if (d.layout !== undefined && style.layout !== d.layout) p.set('layout', style.layout);
+  if (d.orient !== undefined && style.orient !== d.orient) p.set('orient', style.orient);
   return p.toString();
 }
 
@@ -175,6 +182,10 @@ export function rawToStyle(raw = {}, widgetId) {
   const layout = d.layout !== undefined
     ? (['inline','stack'].includes(rawLayout) ? rawLayout : (d.layout || 'inline'))
     : 'inline';
+  const rawOrient = raw.orient ?? '';
+  const orient = d.orient !== undefined
+    ? (['h','v'].includes(rawOrient) ? rawOrient : (d.orient || 'h'))
+    : 'h';
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -182,8 +193,8 @@ export function rawToStyle(raw = {}, widgetId) {
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout,
+    skin, bw, layout, orient,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient },
   };
 }
