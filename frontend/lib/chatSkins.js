@@ -111,12 +111,15 @@ export const SHARED_KEYFRAMES = `
 
 // ============================================================
 // ฟังก์ชัน helper สร้าง bubbleStyle ที่ใช้ bga ของ user
+// หมายเหตุ: ไม่ใส่ borderRadius ที่นี่ — user ควบคุมได้ผ่าน slider br เสมอ
 // ============================================================
 function makeBubble(bgHex, borderColor, extra = {}) {
+  // eslint-disable-next-line no-unused-vars
+  const { borderRadius: _ignored, ...safeExtra } = extra; // strip borderRadius ถ้าหลุดมา
   return (userColor, ac, bga = 80) => ({
-    background:   hexAlphaToRgba(bgHex, bga),
-    borderLeft:   `3px solid ${typeof borderColor === 'function' ? borderColor(userColor, ac) : borderColor}`,
-    ...extra,
+    background:  hexAlphaToRgba(bgHex, bga),
+    borderLeft:  `3px solid ${typeof borderColor === 'function' ? borderColor(userColor, ac) : borderColor}`,
+    ...safeExtra,
   });
 }
 

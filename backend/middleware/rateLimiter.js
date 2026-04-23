@@ -22,10 +22,10 @@ const connectLimiter = rateLimit({
 
 const settingsLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 30,
+  max: 120,   // 120 ครั้ง / 5 นาที — รองรับ customize + ทดสอบ skin หลายแบบ
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many settings updates.' },
+  message: { error: 'Too many settings updates. Please try again later.' },
 });
 
 const tokenLimiter = rateLimit({
