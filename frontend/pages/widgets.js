@@ -11,6 +11,9 @@ import Sidebar from '../components/Sidebar';
 import WidgetStyleEditor from '../components/WidgetStyleEditor';
 import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
+const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂'];
+const CREATURE_EMOJIS = ['🐉','🦋','🦄','🐣','🔥','🌟','👑','🐺'];
+
 const WIDGETS = [
   { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '600 × 600' },
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
@@ -18,6 +21,26 @@ const WIDGETS = [
   { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
   { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ ไม่ได้ปรับปรุง',  size: '300 × 400' },
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
+  {
+    id: 'bossbattle', icon: '👾', name: 'Boss Battle',
+    desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ชุมชนช่วยกันล้าง boss',
+    size: '400 × 350', noStyle: true,
+    configFields: [
+      { key: 'hp',       label: 'Boss HP',   type: 'number', default: 1000,         min: 10, max: 100000, step: 100 },
+      { key: 'bossname', label: 'ชื่อ Boss', type: 'text',   default: 'Dark Dragon', maxLen: 30 },
+      { key: 'emoji',    label: 'Boss',       type: 'emoji',  default: '🐉',         options: BOSS_EMOJIS },
+    ],
+  },
+  {
+    id: 'egghatch', icon: '🥚', name: 'Egg Hatch',
+    desc: 'ไข่ฟักออก — ส่งของขวัญครบ diamond goal เพื่อเปิดเผยสิ่งที่ซ่อนอยู่',
+    size: '300 × 420', noStyle: true,
+    configFields: [
+      { key: 'goal',     label: 'Diamond Goal',    type: 'number', default: 500,          min: 1, max: 100000, step: 50 },
+      { key: 'eggname',  label: 'ชื่อไข่',         type: 'text',   default: 'Mystery Egg', maxLen: 30 },
+      { key: 'creature', label: 'สิ่งที่ฟักออก',   type: 'emoji',  default: '🐉',          options: CREATURE_EMOJIS },
+    ],
+  },
 ];
 
 // user, authLoading มาจาก _app.js
@@ -33,6 +56,15 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const [expanded, setExpanded]       = useState({});
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
+  // config สำหรับ widget ที่มี configFields (bossbattle, egghatch ฯลฯ)
+  const [customConfigs, setCustomConfigs] = useState(() =>
+    Object.fromEntries(
+      WIDGETS.filter(w => w.configFields).map(w => [
+        w.id,
+        Object.fromEntries(w.configFields.map(f => [f.key, f.default])),
+      ])
+    )
+  );
 
   const socketRef = useRef(null);
 
@@ -118,14 +150,24 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     }
   }, [user]);
 
+  const buildCustomParams = useCallback((w) => {
+    const cfg = customConfigs[w.id] || {};
+    return w.configFields.map(f => {
+      const val = cfg[f.key] ?? f.default;
+      return `${f.key}=${encodeURIComponent(val)}`;
+    }).join('&');
+  }, [customConfigs]);
+
   const getWidgetUrl = useCallback((widgetId) => {
     if (!widgetCid || !baseUrl) return '';
-    const base  = `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
+    const base = `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
+    const w    = WIDGETS.find(ww => ww.id === widgetId);
+    if (w?.configFields) return `${base}&${buildCustomParams(w)}`;
     const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
-    if (!style) return base; // widget ที่ไม่มี style (เช่น ttsmonitor)
+    if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [widgetCid, baseUrl, styles]);
+  }, [widgetCid, baseUrl, styles, buildCustomParams]);
 
   const copyUrl = useCallback((widgetId) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -138,12 +180,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
-    const base  = `${baseUrl}/widget/${widgetId}?preview=1`;
+    const base = `${baseUrl}/widget/${widgetId}?preview=1`;
+    const w    = WIDGETS.find(ww => ww.id === widgetId);
+    if (w?.configFields) return `${base}&${buildCustomParams(w)}`;
     const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
-    if (!style) return base; // widget ที่ไม่มี style (เช่น ttsmonitor)
+    if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [baseUrl, styles]);
+  }, [baseUrl, styles, buildCustomParams]);
 
   const saveStyleForWidget = useCallback(async (widgetId, style) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -294,7 +338,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold text-center transition border', btn2nd)}>
                       ▶ Test
                     </a>
-                    {!w.noStyle && (
+                    {(!w.noStyle || w.configFields) && (
                       <button onClick={() => toggleExpand(w.id)}
                         className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold transition border',
                           isOpen ? 'bg-brand-500/10 border-brand-500/40 text-brand-400' : btn2nd)}>
@@ -304,6 +348,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                   </div>
                 </div>
 
+                {/* Standard style editor */}
                 {!w.noStyle && isOpen && (
                   <div className={clsx('border-t px-4 pb-4 pt-3', divider)}>
                     <WidgetStyleEditor
@@ -318,6 +363,81 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                     </button>
                   </div>
                 )}
+
+                {/* Custom config editor (bossbattle, egghatch ฯลฯ) */}
+                {w.configFields && isOpen && (() => {
+                  const cfg    = customConfigs[w.id] || {};
+                  const setKey = (k, v) => setCustomConfigs(prev => ({ ...prev, [w.id]: { ...prev[w.id], [k]: v } }));
+                  return (
+                    <div className={clsx('border-t px-4 pb-4 pt-3 space-y-4', divider)}>
+                      {w.configFields.map(f => {
+                        const val = cfg[f.key] ?? f.default;
+                        return (
+                          <div key={f.key}>
+                            <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                              {f.label}
+                            </p>
+                            {f.type === 'number' && (
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="range"
+                                  min={f.min} max={f.max} step={f.step || 1}
+                                  value={val}
+                                  onChange={e => setKey(f.key, Number(e.target.value))}
+                                  className="flex-1 accent-brand-500"
+                                />
+                                <input
+                                  type="number"
+                                  min={f.min} max={f.max} step={f.step || 1}
+                                  value={val}
+                                  onChange={e => setKey(f.key, Math.max(f.min, Math.min(f.max, Number(e.target.value))))}
+                                  className={clsx('w-24 px-2 py-1 rounded-lg text-sm text-center font-mono border',
+                                    isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
+                                />
+                              </div>
+                            )}
+                            {f.type === 'text' && (
+                              <input
+                                type="text"
+                                value={val}
+                                maxLength={f.maxLen || 40}
+                                onChange={e => setKey(f.key, e.target.value)}
+                                className={clsx('w-full px-3 py-2 rounded-lg text-sm border',
+                                  isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
+                              />
+                            )}
+                            {f.type === 'emoji' && (
+                              <div className="flex gap-2 flex-wrap">
+                                {f.options.map(em => (
+                                  <button
+                                    key={em}
+                                    onClick={() => setKey(f.key, em)}
+                                    className={clsx(
+                                      'w-10 h-10 rounded-xl text-xl flex items-center justify-center border-2 transition',
+                                      val === em
+                                        ? 'border-brand-500 bg-brand-500/15'
+                                        : isDark ? 'border-gray-700 hover:border-gray-500' : 'border-gray-200 hover:border-gray-400'
+                                    )}
+                                  >{em}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <div className={clsx('rounded-lg p-3 text-xs border mt-2',
+                        isDark ? 'bg-blue-500/10 border-blue-500/25 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700')}>
+                        💡 หลัง Copy URL แล้วกด Test เพื่อดูตัวอย่าง — กด <strong>R</strong> ในหน้า preview เพื่อ reset
+                      </div>
+                      <button
+                        onClick={() => copyUrl(w.id)}
+                        disabled={!tokenReady}
+                        className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
+                        📋 Copy URL พร้อม Config นี้
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
