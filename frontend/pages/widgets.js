@@ -26,9 +26,10 @@ const WIDGETS = [
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ชุมชนช่วยกันล้าง boss',
     size: '400 × 350', noStyle: true,
     configFields: [
-      { key: 'hp',       label: 'Boss HP',   type: 'number', default: 1000,         min: 10, max: 100000, step: 100 },
-      { key: 'bossname', label: 'ชื่อ Boss', type: 'text',   default: 'Dark Dragon', maxLen: 30 },
-      { key: 'emoji',    label: 'Boss',       type: 'emoji',  default: '🐉',         options: BOSS_EMOJIS },
+      { key: 'hp',       label: 'Boss HP (รอบแรก)', type: 'number',  default: 1000,         min: 10, max: 100000, step: 100 },
+      { key: 'bossname', label: 'ชื่อ Boss',         type: 'text',    default: 'Dark Dragon', maxLen: 30 },
+      { key: 'emoji',    label: 'Boss',               type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
+      { key: 'respawn',  label: 'Respawn Mode',       type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
     ],
   },
   {
@@ -422,6 +423,19 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                                 ))}
                               </div>
                             )}
+                            {f.type === 'toggle' && (
+                              <button
+                                onClick={() => setKey(f.key, val ? 0 : 1)}
+                                className={clsx(
+                                  'w-full py-2 rounded-lg text-sm font-semibold border transition',
+                                  val
+                                    ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
+                                    : isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-500'
+                                )}
+                              >
+                                {val ? `✅ ${f.onLabel}` : `⬜ ${f.offLabel}`}
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -429,12 +443,29 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                         isDark ? 'bg-blue-500/10 border-blue-500/25 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700')}>
                         💡 หลัง Copy URL แล้วกด Test เพื่อดูตัวอย่าง — กด <strong>R</strong> ในหน้า preview เพื่อ reset
                       </div>
-                      <button
-                        onClick={() => copyUrl(w.id)}
-                        disabled={!tokenReady}
-                        className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
-                        📋 Copy URL พร้อม Config นี้
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const socket = socketRef.current || getSocket();
+                            if (socket?.connected) {
+                              socket.emit('push_style_update', { widgetId: w.id, style: { _reset: true } });
+                              toast.success(`🔄 Reset ${w.name} แล้ว`);
+                            } else {
+                              toast.error('ต้อง Login และ Connect Socket ก่อน');
+                            }
+                          }}
+                          className={clsx('flex-1 py-2.5 rounded-xl text-sm font-semibold border transition',
+                            isDark ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100')}
+                        >
+                          🔄 Reset {w.name}
+                        </button>
+                        <button
+                          onClick={() => copyUrl(w.id)}
+                          disabled={!tokenReady}
+                          className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
+                          📋 Copy URL
+                        </button>
+                      </div>
                     </div>
                   );
                 })()}
