@@ -468,6 +468,37 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
                 </button>
               );
             })}
+
+            {/* หัวข้อ Premium */}
+            {SKIN_LIST.some(s => s.category === 'premium') && (
+              <div className={clsx('col-span-2 text-xs pt-0.5', theme === 'dark' ? 'text-yellow-600' : 'text-yellow-500')}>
+                ✨ Premium
+              </div>
+            )}
+
+            {SKIN_LIST.filter(s => s.category === 'premium').map(skin => {
+              const isActive = (style.skin || '') === skin.id;
+              return (
+                <button
+                  key={skin.id}
+                  onClick={() => set('skin', skin.id)}
+                  title={skin.label}
+                  className={clsx(
+                    'col-span-2 py-1.5 px-2 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 overflow-hidden',
+                    isActive
+                      ? 'border-yellow-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-yellow-700'
+                        : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-yellow-50 hover:border-yellow-300'
+                  )}
+                  style={isActive ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` } : {}}
+                >
+                  <span>{skin.emoji}</span>
+                  <span className="truncate">{skin.label}</span>
+                  {isActive && <span className="ml-auto flex-shrink-0 opacity-80">✓</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
