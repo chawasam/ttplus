@@ -107,12 +107,12 @@ function setupEngine(M, ox = 0) {
 }
 
 /** สร้าง Runner และเริ่มรัน
- *  60fps physics (delta=16.7ms) ป้องกัน tunneling — ของที่ตกเร็วจะไม่ทะลุก้นขวด
- *  (30fps เดิม: ของเคลื่อน ~40px/frame > ผนัง 16px → tunneling ได้)
+ *  30fps physics (delta=33ms) — เบากว่า 60fps ครึ่งนึง เหมาะกับ streaming PC
+ *  ป้องกัน tunneling ด้วยผนัง T=40 (floor หนา 120px) แทนการเพิ่ม fps
  */
 function setupRunner(engine, M) {
   const { Runner } = M;
-  const runner = Runner.create({ delta: 1000 / 60 }); // 60fps physics
+  const runner = Runner.create({ delta: 1000 / 30 }); // 30fps physics
   Runner.run(runner, engine);
   return runner;
 }
@@ -556,7 +556,7 @@ export default function CoinJarWidget() {
  * ox = horizontal offset (จาก ?jx=)
  */
 function buildJarWalls(Bodies, ox = 0) {
-  const T  = 16; // หนาขึ้น (เดิม 12) ป้องกัน tunneling
+  const T  = 40; // หนา 40px — รองรับ velocity ≤96px/frame ที่ 30fps (floor = T×3 = 120px)
   const Jx = getJ(ox);
   // center x ของ shoulder แต่ละข้าง
   const shL = (Jx.nL + Jx.bL) / 2;
