@@ -36,7 +36,9 @@ export function createWidgetSocket(cidOrToken, handlers = {}) {
   if (!parsed) return null;
 
   const socket = io(BACKEND_URL, {
-    transports: ['websocket'],
+    // เริ่มด้วย polling ก่อน (รองรับทุก environment รวม TikTok Studio)
+    // แล้ว upgrade เป็น websocket อัตโนมัติถ้าทำได้ (เร็วกว่า)
+    transports: ['polling', 'websocket'],
     reconnectionAttempts: 5,
     reconnectionDelay:    2000,
   });
