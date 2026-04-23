@@ -22,7 +22,7 @@ const WIDGETS = [
   { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ ไม่ได้ปรับปรุง',  size: '300 × 400' },
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
   {
-    id: 'bossbattle', icon: '👾', name: 'Boss Battle',
+    id: 'bossbattle', icon: '👾', name: 'Boss Battle (ยังไม่ได้ปรับปรุง)',
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ชุมชนช่วยกันล้าง boss',
     size: '400 × 350', noStyle: true,
     configFields: [
@@ -33,7 +33,7 @@ const WIDGETS = [
     ],
   },
   {
-    id: 'egghatch', icon: '🥚', name: 'Egg Hatch',
+    id: 'egghatch', icon: '🥚', name: 'Egg Hatch (ยังไม่ได้ปรับปรุง)',
     desc: 'ไข่ฟักออก — ส่งของขวัญครบ diamond goal เพื่อเปิดเผยสิ่งที่ซ่อนอยู่',
     size: '300 × 420', noStyle: true,
     configFields: [
