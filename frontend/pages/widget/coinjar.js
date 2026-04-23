@@ -890,25 +890,26 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
           <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
 
           {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* ไหล่อยู่ที่ (104, 183) — บน-ขวาของ body ellipse (cx=75,cy=215,rx=34,ry=54) */}
+          {/* ไหล่ที่ (106, 193) — บนขอบขวาของ body ellipse (cx=75,cy=215,rx=34,ry=54)
+              คำนวณ: x = 75 + 34*sqrt(1-((193-215)/54)²) = 106 */}
           <g style={{
             transformBox: 'view-box',
-            transformOrigin: '104px 183px',
+            transformOrigin: '106px 193px',
             animation: 'catPawPoint 5s ease-in-out infinite',
             animationDelay: '2s',
           }}>
             {/* จุดบอลไหล่ (shoulder joint) */}
-            <circle cx="104" cy="183" r="7" fill="#fbbf24" />
-            <circle cx="104" cy="183" r="4" fill="#f59e0b" />
+            <circle cx="106" cy="193" r="7" fill="#fbbf24" />
+            <circle cx="106" cy="193" r="4" fill="#f59e0b" />
             {/* แขน foreleg จากไหล่ลงมา */}
-            <line x1="104" y1="183" x2="93" y2="252" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-            <line x1="104" y1="183" x2="93" y2="252" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
+            <line x1="106" y1="193" x2="95" y2="262" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
+            <line x1="106" y1="193" x2="95" y2="262" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
             {/* เท้า */}
-            <ellipse cx="93" cy="257" rx="19" ry="12" fill="#fbbf24" />
-            <ellipse cx="93" cy="255" rx="15" ry="9"  fill="#f59e0b" />
-            <path d="M 81 255 Q 85 251 89 255" stroke="#d97706" strokeWidth="1.6" fill="none" />
-            <path d="M 89 253 Q 93 249 97 253" stroke="#d97706" strokeWidth="1.6" fill="none" />
-            <path d="M 96 254 Q 100 250 104 254" stroke="#d97706" strokeWidth="1.6" fill="none" />
+            <ellipse cx="95" cy="267" rx="19" ry="12" fill="#fbbf24" />
+            <ellipse cx="95" cy="265" rx="15" ry="9"  fill="#f59e0b" />
+            <path d="M 83 265 Q 87 261 91 265" stroke="#d97706" strokeWidth="1.6" fill="none" />
+            <path d="M 91 263 Q 95 259 99 263" stroke="#d97706" strokeWidth="1.6" fill="none" />
+            <path d="M 98 264 Q 102 260 106 264" stroke="#d97706" strokeWidth="1.6" fill="none" />
           </g>
 
           {/* ── หัว (เลื่อนลง 35px — cy 88→123 ก้นหัวชนลำตัว y=161) ── */}
