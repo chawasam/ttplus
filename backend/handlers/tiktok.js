@@ -132,7 +132,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         comment:           safe.comment,
-        bio:               sanitizeStr(String(data.bioDescription || data.userDescription || ''), 150),
+        bio:               sanitizeStr(String(data.userDetails?.bioDescription || data.bioDescription || ''), 150),
         followRole:        Number(data.followRole) || 0,
         timestamp:         Date.now(),
       });
