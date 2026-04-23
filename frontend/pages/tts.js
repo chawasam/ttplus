@@ -945,7 +945,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 🔑 Google Cloud TTS
-                <span className="text-xs font-normal text-green-400 ml-1">เสียงดีกว่ามาก</span>
+                <span className="text-xs font-normal text-green-400 ml-1">น่าจะเสียงดีกว่าตัวฟรี</span>
               </h2>
               {googleKey && (
                 <span className="text-xs text-green-400 font-semibold">✓ เปิดใช้งาน</span>
