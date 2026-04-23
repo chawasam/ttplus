@@ -455,10 +455,12 @@ export const GEMINI_PERSONAS = [
   { id: 'annoyed',    label: '😒 กวนตีน',             instruction: 'Speak in a slightly snarky, mischievous, and teasing tone, like you are casually trolling someone.' },
   { id: 'giggle',     label: '😂 คนเส้นตื้นหัวเราะง่าย', instruction: 'Speak with a very low threshold for laughter — giggle and chuckle frequently even at completely normal things, as if everything is somehow hilarious. Occasional snorts welcome.' },
   { id: 'cheerful',   label: '✨ สดใสน่ารัก',          instruction: 'Speak in an upbeat, warm, and genuinely cheerful tone — bright energy, friendly smile in your voice, like a sunshine person who makes everyone around them feel good.' },
-  { id: 'dramatic',   label: '🎭 ดราม่า',              instruction: 'Speak dramatically with extreme emotion and expression, as if everything is a life-or-death situation.' },
   { id: 'excited',    label: '🎉 ตื่นเต้น',           instruction: 'Speak with very high energy and excitement, like you just won the lottery.' },
-  { id: 'oldman',     label: '👴 คนแก่เคี้ยวหมาก',   instruction: 'Speak like a very old Thai person slowly chewing betel nut — gravelly raspy voice, slow mumbling pace, pausing mid-sentence, teeth sound missing, warm but very aged.' },
   { id: 'cute',       label: '🐱 น่ารักมาก',          instruction: 'Speak in an extremely cute, bubbly, and sweet tone, like an anime character.' },
+  { id: 'nuer',       label: '🗣️ สำเนียงเหน่อ',       instruction: 'Speak Thai with a distinct "เหน่อ" (central Thai regional) accent — slightly nasal, drawn-out vowels that rise and fall softly, gentle lilt, unhurried pace, warm and approachable tone typical of central plains Thai speakers.' },
+  { id: 'north',      label: '🏔️ สำเนียงภาคเหนือ',    instruction: 'Speak Thai with a Northern Thai (คำเมือง) influenced accent — melodic and musical tone, softer consonants, rising intonation at sentence endings, gentle and polite delivery. Sound like a friendly person from Chiang Mai or Chiang Rai.' },
+  { id: 'south',      label: '🌊 สำเนียงภาคใต้',      instruction: 'Speak Thai with a Southern Thai accent — clipped and fast-paced, punchy short vowels, strong falling tones, assertive and direct energy. Sound like a confident person from Surat Thani or Hat Yai.' },
+  { id: 'isaan',      label: '🌾 สำเนียงอีสาน',       instruction: 'Speak Thai with a Northeastern Thai (อีสาน) accent — warm and relaxed drawl, slightly flattened tones, friendly and easygoing delivery, occasional Lao-influenced vowel colouring. Sound like a cheerful person from Khon Kaen or Udon Thani.' },
 ];
 
 /**
