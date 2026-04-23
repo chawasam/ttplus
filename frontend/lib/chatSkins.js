@@ -1,7 +1,90 @@
 // chatSkins.js — 14 Premium chat overlay skins
 // ใช้ร่วมกับ widget/chat.js และ widget/pinchat.js
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { hexAlphaToRgba } from './widgetStyles';
+
+// ============================================================
+// AuroraCanvas — Real-time fluid aurora simulation (Canvas API)
+// 4 curtains × 3-harmonic sine waves @ 60 fps
+// ============================================================
+function AuroraCanvas() {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let raf;
+    let t = 0;
+
+    const resize = () => {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    // 4 aurora curtains — ต่างสี / ความเร็ว / ความถี่
+    const CURTAINS = [
+      { r:   0, g: 255, b: 150, yF: 0.22, amp: 0.11, fr: 0.014, sp: 0.50, al: 0.22 },
+      { r:   0, g: 140, b: 255, yF: 0.36, amp: 0.09, fr: 0.019, sp: 0.36, al: 0.17 },
+      { r: 110, g:   0, b: 255, yF: 0.44, amp: 0.08, fr: 0.012, sp: 0.44, al: 0.14 },
+      { r:   0, g: 255, b: 220, yF: 0.56, amp: 0.07, fr: 0.024, sp: 0.26, al: 0.12 },
+    ];
+    const STEP = 4; // render ทุก 4px — สมดุลคุณภาพกับ performance
+
+    const draw = () => {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const c of CURTAINS) {
+        const baseY = h * c.yF;
+        const amp   = h * c.amp;
+        const halfH = h * 0.20;
+
+        for (let x = 0; x <= w; x += STEP) {
+          // 3 harmonics — ทำให้เส้นไม่ regular เหมือนแสงเหนือจริง
+          const wave =
+            Math.sin(x * c.fr        + t * c.sp           ) * amp
+          + Math.sin(x * c.fr * 1.73 + t * c.sp * 0.7 + 1.2) * amp * 0.38
+          + Math.sin(x * c.fr * 2.41 + t * c.sp * 1.3 + 2.5) * amp * 0.16;
+
+          const midY = baseY + wave;
+          const top  = midY - halfH;
+          const bot  = midY + halfH;
+
+          const g = ctx.createLinearGradient(x, top, x, bot);
+          const a = c.al;
+          g.addColorStop(0,    `rgba(${c.r},${c.g},${c.b},0)`);
+          g.addColorStop(0.25, `rgba(${c.r},${c.g},${c.b},${+(a * 0.45).toFixed(3)})`);
+          g.addColorStop(0.50, `rgba(${c.r},${c.g},${c.b},${a})`);
+          g.addColorStop(0.75, `rgba(${c.r},${c.g},${c.b},${+(a * 0.38).toFixed(3)})`);
+          g.addColorStop(1,    `rgba(${c.r},${c.g},${c.b},0)`);
+
+          ctx.fillStyle = g;
+          ctx.fillRect(x, top, STEP, bot - top);
+        }
+      }
+
+      t += 0.016;
+      raf = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={ref}
+      style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:0, width:'100%', height:'100%' }}
+    />
+  );
+}
 
 // ============================================================
 // Skin ID list (sync กับ widgetStyles.js และ validate.js)
@@ -559,117 +642,35 @@ const SKINS = {
     textStyle: () => ({ color: '#d8fff8' }),
     css: `
       /* ═══════════════════════════════════════════
-         AURORA BOREALIS — Full Power
+         AURORA BOREALIS — Canvas Full Power
+         (aurora bands rendered by AuroraCanvas component)
          ═══════════════════════════════════════════ */
 
-      /* ─── Background container ─── */
-      .skin-aurora-bg {
-        position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden;
-      }
-
-      /* ─── Band 1: green-teal (หลัก) + hue-rotate cycling ─── */
-      .skin-aurora-band1 {
-        position:absolute;
-        top:8%; left:-12%; width:124%; height:32%;
-        background:linear-gradient(180deg,
-          transparent 0%,
-          rgba(0,255,150,0.16) 26%,
-          rgba(0,220,200,0.22) 52%,
-          rgba(0,255,150,0.14) 78%,
-          transparent 100%
-        );
-        border-radius:50%;
-        animation:auroraBand1 15s ease-in-out infinite,
-                  auroraHue1  28s linear infinite;
-      }
-
-      /* ─── Band 2: purple-blue + reverse hue ─── */
-      .skin-aurora-band2 {
-        position:absolute;
-        top:33%; left:-18%; width:136%; height:28%;
-        background:linear-gradient(180deg,
-          transparent 0%,
-          rgba(90,40,255,0.13) 25%,
-          rgba(0,120,255,0.17) 52%,
-          rgba(100,0,240,0.11) 78%,
-          transparent 100%
-        );
-        border-radius:50%;
-        animation:auroraBand2 22s ease-in-out 5s infinite,
-                  auroraHue2  22s linear reverse infinite;
-      }
-
-      /* ─── Band 3: cyan accent เคลื่อนสวนทาง + hue offset ─── */
-      .skin-aurora-band3 {
-        position:absolute;
-        top:55%; left:-8%; width:116%; height:20%;
-        background:linear-gradient(180deg,
-          transparent 0%,
-          rgba(0,255,220,0.11) 38%,
-          rgba(60,240,200,0.16) 56%,
-          transparent 100%
-        );
-        border-radius:50%;
-        animation:auroraBand1 11s ease-in-out 8s infinite reverse,
-                  auroraHue3  18s linear 4s infinite;
-      }
-
-      /* ─── Star field ─── */
+      /* ─── Star field (CSS twinkle) ─── */
       .skin-aurora-stars {
-        position:absolute; inset:0;
+        position:fixed; inset:0; pointer-events:none; z-index:1;
         background-image:
-          radial-gradient(1px 1px at 8%  7%,  rgba(255,255,255,0.70) 0%, transparent 100%),
-          radial-gradient(1px 1px at 23% 12%, rgba(255,255,255,0.55) 0%, transparent 100%),
-          radial-gradient(1px 1px at 42% 5%,  rgba(200,248,255,0.62) 0%, transparent 100%),
-          radial-gradient(1px 1px at 64% 9%,  rgba(255,255,255,0.50) 0%, transparent 100%),
-          radial-gradient(1px 1px at 80% 4%,  rgba(255,255,255,0.65) 0%, transparent 100%),
-          radial-gradient(1px 1px at 92% 17%, rgba(200,255,240,0.56) 0%, transparent 100%),
-          radial-gradient(1px 1px at 14% 28%, rgba(255,255,255,0.42) 0%, transparent 100%),
-          radial-gradient(1px 1px at 36% 22%, rgba(255,255,255,0.46) 0%, transparent 100%),
-          radial-gradient(1px 1px at 58% 31%, rgba(255,255,255,0.38) 0%, transparent 100%),
-          radial-gradient(1px 1px at 77% 26%, rgba(200,242,255,0.50) 0%, transparent 100%),
-          radial-gradient(2px 2px at 5%  20%, rgba(255,255,255,0.34) 0%, transparent 100%),
-          radial-gradient(1px 1px at 89% 36%, rgba(255,255,255,0.44) 0%, transparent 100%);
+          radial-gradient(1px 1px at 8%  7%,  rgba(255,255,255,0.72) 0%, transparent 100%),
+          radial-gradient(1px 1px at 23% 12%, rgba(255,255,255,0.56) 0%, transparent 100%),
+          radial-gradient(1px 1px at 42% 5%,  rgba(200,248,255,0.64) 0%, transparent 100%),
+          radial-gradient(1px 1px at 64% 9%,  rgba(255,255,255,0.52) 0%, transparent 100%),
+          radial-gradient(1px 1px at 80% 4%,  rgba(255,255,255,0.68) 0%, transparent 100%),
+          radial-gradient(1px 1px at 92% 17%, rgba(200,255,240,0.58) 0%, transparent 100%),
+          radial-gradient(1px 1px at 14% 28%, rgba(255,255,255,0.44) 0%, transparent 100%),
+          radial-gradient(1px 1px at 36% 22%, rgba(255,255,255,0.48) 0%, transparent 100%),
+          radial-gradient(1px 1px at 58% 31%, rgba(255,255,255,0.40) 0%, transparent 100%),
+          radial-gradient(1px 1px at 77% 26%, rgba(200,242,255,0.52) 0%, transparent 100%),
+          radial-gradient(2px 2px at 5%  20%, rgba(255,255,255,0.36) 0%, transparent 100%),
+          radial-gradient(1px 1px at 89% 36%, rgba(255,255,255,0.46) 0%, transparent 100%);
         animation:skinTwinkle 5s ease-in-out 1.5s infinite alternate;
       }
 
-      /* ─── Aurora wave motion ─── */
-      @keyframes auroraBand1 {
-        0%,100% { transform:skewX(-4deg) translateY(0)   scaleX(1.00); opacity:0.75; }
-        22%     { transform:skewX( 7deg) translateY(-5%) scaleX(1.06); opacity:1.00; }
-        48%     { transform:skewX(-2deg) translateY( 4%) scaleX(0.95); opacity:0.52; }
-        73%     { transform:skewX( 5deg) translateY(-2%) scaleX(1.04); opacity:0.88; }
-      }
-      @keyframes auroraBand2 {
-        0%,100% { transform:skewX( 3deg) translateY(0)   scaleX(1.00); opacity:0.60; }
-        30%     { transform:skewX(-7deg) translateY( 4%) scaleX(1.06); opacity:0.92; }
-        62%     { transform:skewX( 9deg) translateY(-5%) scaleX(0.96); opacity:0.40; }
-      }
-
-      /* ─── Aurora color cycling ─── */
-      @keyframes auroraHue1 {
-        from { filter:blur(34px) hue-rotate(  0deg); }
-        to   { filter:blur(34px) hue-rotate(360deg); }
-      }
-      @keyframes auroraHue2 {
-        from { filter:blur(42px) hue-rotate(  0deg); }
-        to   { filter:blur(42px) hue-rotate(360deg); }
-      }
-      @keyframes auroraHue3 {
-        from { filter:blur(26px) hue-rotate(120deg); }
-        to   { filter:blur(26px) hue-rotate(480deg); }
-      }
-
-      /* ─── Bubble: animated rainbow left edge (::before) ─── */
+      /* ─── Bubble: animated rainbow left edge ─── */
       .skin-aurora-bubble::before {
         content:'';
         position:absolute; left:0; top:0; bottom:0; width:2px;
         background:linear-gradient(180deg,
-          #00ffb4 0%,
-          #00c8ff 25%,
-          #8040ff 50%,
-          #00c8ff 75%,
-          #00ffb4 100%
+          #00ffb4 0%, #00c8ff 25%, #8040ff 50%, #00c8ff 75%, #00ffb4 100%
         );
         background-size:100% 300%;
         animation:auroraEdgeFlow 3s linear infinite;
@@ -680,7 +681,7 @@ const SKINS = {
         100% { background-position:0% 300%; }
       }
 
-      /* ─── Bubble: shimmer sweep (::after) ─── */
+      /* ─── Bubble: shimmer light sweep ─── */
       .skin-aurora-bubble::after {
         content:'';
         position:absolute;
@@ -702,20 +703,30 @@ const SKINS = {
         100% { transform:translateX(300%); opacity:0; }
       }
 
+      /* ─── Name: breathing aurora glow ─── */
+      .skin-aurora-name {
+        animation:auroraNamePulse 2.8s ease-in-out infinite;
+        display:inline;
+      }
+      @keyframes auroraNamePulse {
+        0%,100% { filter:brightness(1.0) drop-shadow(0 0 0px transparent); }
+        50%     { filter:brightness(1.5) drop-shadow(0 0 8px rgba(0,255,185,0.90)); }
+      }
+
       /* ─── Orb particles ─── */
       @keyframes skinAuroraOrb {
-        0%   { transform:translateY(0)      translateX(0)    scale(1.00); opacity:0;    }
-        6%   { opacity:0.88; }
-        28%  { transform:translateY(-26vh)  translateX(8px)  scale(1.20); }
-        52%  { transform:translateY(-54vh)  translateX(-10px) scale(0.86); opacity:0.65; }
-        78%  { transform:translateY(-82vh)  translateX(7px)  scale(1.08); opacity:0.32; }
-        100% { transform:translateY(-112vh) translateX(0)    scale(0.62); opacity:0;    }
+        0%   { transform:translateY(0)       translateX(0)     scale(1.00); opacity:0;    }
+        6%   { opacity:0.90; }
+        28%  { transform:translateY(-26vh)   translateX(8px)   scale(1.22); }
+        52%  { transform:translateY(-54vh)   translateX(-10px) scale(0.85); opacity:0.65; }
+        78%  { transform:translateY(-82vh)   translateX(7px)   scale(1.08); opacity:0.32; }
+        100% { transform:translateY(-112vh)  translateX(0)     scale(0.60); opacity:0;    }
       }
       .skin-particle-aurora {
-        position:fixed; pointer-events:none; z-index:1;
+        position:fixed; pointer-events:none; z-index:2;
         border-radius:50%;
         filter:blur(2.5px);
-        box-shadow:0 0 12px 4px currentColor;
+        box-shadow:0 0 14px 5px currentColor;
         animation:skinAuroraOrb var(--dur,9s) var(--delay,0s) ease-in infinite;
       }
     `,
@@ -800,12 +811,10 @@ export function SkinParticles({ skinId }) {
       {skinId === 'sakura'  && <div className="skin-sakura-bloom"/>}
       {skinId === 'witch'   && <div className="skin-witch-mist"/>}
       {skinId === 'aurora'  && (
-        <div className="skin-aurora-bg">
-          <div className="skin-aurora-band1" />
-          <div className="skin-aurora-band2" />
-          <div className="skin-aurora-band3" />
+        <>
+          <AuroraCanvas />
           <div className="skin-aurora-stars" />
-        </div>
+        </>
       )}
 
       {/* Particle elements */}

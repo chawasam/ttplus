@@ -188,12 +188,15 @@ export default function ChatWidget() {
               <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                 {isStack ? (
                   <>
-                    <div style={{
-                      color: userColor, fontWeight: 700,
-                      fontSize: styles.fs, fontFamily: 'sans-serif',
-                      lineHeight: 1.3,
-                      ...skinName,
-                    }}>
+                    <div
+                      className={activeSkin ? `skin-${activeSkin.id}-name` : undefined}
+                      style={{
+                        color: userColor, fontWeight: 700,
+                        fontSize: styles.fs, fontFamily: 'sans-serif',
+                        lineHeight: 1.3,
+                        ...skinName,
+                      }}
+                    >
                       {msg.nickname || msg.uniqueId}
                     </div>
                     <div style={{
@@ -207,11 +210,14 @@ export default function ChatWidget() {
                   </>
                 ) : (
                   <>
-                    <span style={{
-                      color: userColor, fontWeight: 700,
-                      fontSize: styles.fs, fontFamily: 'sans-serif',
-                      ...skinName,
-                    }}>
+                    <span
+                      className={activeSkin ? `skin-${activeSkin.id}-name` : undefined}
+                      style={{
+                        color: userColor, fontWeight: 700,
+                        fontSize: styles.fs, fontFamily: 'sans-serif',
+                        ...skinName,
+                      }}
+                    >
                       {msg.nickname || msg.uniqueId}
                     </span>
                     <span style={{
