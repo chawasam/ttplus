@@ -85,7 +85,6 @@ export default function PinChatWidget() {
             key={pinKey}  /* key เปลี่ยน → React unmount+remount → animation restart */
             style={{
               background:   styles.bgRgba,
-              borderRadius: styles.br,
               padding:      '10px 14px',
               borderLeft:   `4px solid ${pinColor}`,
               display:      'flex',
@@ -96,6 +95,8 @@ export default function PinChatWidget() {
               width:        '100%',
               boxSizing:    'border-box',
               ...skinBubble,
+              // br ต้องอยู่หลัง skinBubble เสมอ — ให้ user slider ชนะเสมอ
+              borderRadius: styles.br,
             }}
           >
             <span style={{ fontSize: 12, opacity: 0.75, flexShrink: 0, marginTop: 2, color: styles.ac, fontFamily: 'sans-serif' }}>
