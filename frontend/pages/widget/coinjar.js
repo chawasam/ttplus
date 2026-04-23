@@ -13,14 +13,24 @@ const W = 600;
 const H = 600;
 
 // รัศมี gift item base (px) — ปรับได้ผ่าน gs param (50-200%)
-const ITEM_R = 22;
+// ITEM_R=24 → tier 1 (×0.50) = 12px radius → เต็มขวดที่ ~100 ชิ้น
+const ITEM_R = 24;
 
-// คำนวณ radius ตาม diamond tier + base scale
+/**
+ * คำนวณ radius ตาม diamond tier + base scale (5 ระดับ)
+ * Tier 1  1–9:      ×0.50 → 12px   (~100 ชิ้นเต็มขวด)
+ * Tier 2  10–99:    ×0.67 → 16px
+ * Tier 3  100–999:  ×0.88 → 21px
+ * Tier 4  1k–9.9k:  ×1.21 → 29px
+ * Tier 5  10k+:     ×1.67 → 40px
+ */
 function getItemR(diamonds = 0, giftScale = 100) {
   const base = Math.round(ITEM_R * (giftScale / 100));
-  if (diamonds >= 9999) return Math.round(base * 1.5);
-  if (diamonds >= 999)  return Math.round(base * 0.75);
-  return Math.round(base * 0.5);
+  if (diamonds >= 10000) return Math.round(base * 1.67);
+  if (diamonds >= 1000)  return Math.round(base * 1.21);
+  if (diamonds >= 100)   return Math.round(base * 0.88);
+  if (diamonds >= 10)    return Math.round(base * 0.67);
+  return Math.round(base * 0.50); // 1–9 coins → 12px
 }
 
 // จำนวน item สูงสุด default (อ่านจาก ?mi= ที่ runtime)
@@ -85,33 +95,46 @@ function isRose(name = '') {
  *  ox = horizontal offset ของโถ (จาก ?jx=) */
 function setupEngine(M, ox = 0) {
   const { Engine, Composite } = M;
-  // เพิ่ม iterations ป้องกัน tunneling (ค่า default: position=6, velocity=4)
+  // เพิ่ม iterations + constraintIterations ป้องกัน tunneling
   const engine = Engine.create({
-    gravity: { y: 2.2 },
-    positionIterations: 10,
-    velocityIterations: 8,
+    gravity:              { y: 2.2 },
+    positionIterations:   12,
+    velocityIterations:   10,
+    constraintIterations: 4,
   });
   Composite.add(engine.world, buildJarWalls(M.Bodies, ox));
   return engine;
 }
 
-/** สร้าง Runner และเริ่มรัน */
+/** สร้าง Runner และเริ่มรัน
+ *  60fps physics (delta=16.7ms) ป้องกัน tunneling — ของที่ตกเร็วจะไม่ทะลุก้นขวด
+ *  (30fps เดิม: ของเคลื่อน ~40px/frame > ผนัง 16px → tunneling ได้)
+ */
 function setupRunner(engine, M) {
   const { Runner } = M;
-  const runner = Runner.create({ delta: 1000 / 30 }); // 30fps physics — เบากว่า 60fps ครึ่งนึง
+  const runner = Runner.create({ delta: 1000 / 60 }); // 60fps physics
   Runner.run(runner, engine);
   return runner;
 }
 
-/** เริ่ม animation loop (~30fps DOM update, 60fps physics)
+/** เริ่ม animation loop (DOM update ~20fps, physics 60fps)
  *  คืน requestAnimationFrame ID เพื่อ cancel ได้ */
 function startAnimationLoop(engine, M, setItems) {
   const { Composite } = M;
+  const KILL_Y = GROUND_Y + 80; // kill zone: ของที่หลุดใต้นี้ถือว่า tunneled
   let frameCount = 0;
   let rafId;
 
   const tick = () => {
     frameCount++;
+
+    // kill zone: safety net สำหรับของที่ tunneling ผ่านก้นขวดไปจริงๆ
+    if (frameCount % 10 === 0) { // ตรวจทุก 10 frames (~6 ครั้ง/วิ)
+      Composite.allBodies(engine.world)
+        .filter(b => b.label === 'gift' && b.position.y > KILL_Y)
+        .forEach(b => Composite.remove(engine.world, b));
+    }
+
     if (frameCount % 3 === 0) { // DOM update ~20fps — ลด reflow
       const bodies = Composite.allBodies(engine.world)
         .filter(b => b.label === 'gift')
@@ -153,8 +176,11 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
-  if (!wt || !/^[a-f0-9]{64}$/.test(wt)) return null;
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
+  // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
+  const isCid   = /^\d{4,8}$/.test(cidOrWt);
+  const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
+  if (!cidOrWt || (!isCid && !isToken)) return null;
 
   const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
     transports: ['websocket'],
@@ -162,7 +188,10 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, gif
     reconnectionDelay:    2000,
   });
 
-  socket.on('connect', () => socket.emit('join_widget', { widgetToken: wt }));
+  socket.on('connect', () => {
+    if (isCid) socket.emit('join_widget', { cid: cidOrWt });
+    else        socket.emit('join_widget', { widgetToken: cidOrWt });
+  });
 
   socket.on('gift', (data) => {
     const safe     = sanitizeEvent(data);
@@ -189,7 +218,7 @@ function setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, gif
 
     // mi — อัปเดต ref ทันที ไม่ต้อง rebuild
     if (style?.mi !== undefined) {
-      maxItemsRef.current = Math.max(10, Math.min(300, parseInt(style.mi) || 150));
+      maxItemsRef.current = Math.max(10, Math.min(600, parseInt(style.mi) || 150));
     }
 
     // jx — rebuild jar walls ใหม่ในตำแหน่งที่ถูกต้อง
@@ -278,9 +307,10 @@ export default function CoinJarWidget() {
           density:     0.002,
           label:       'gift',
         });
-        body._img   = imgUrl;
-        body._emoji = emoji;
-        body._r     = itemR;
+        body._img      = imgUrl;
+        body._emoji    = emoji;
+        body._r        = itemR;
+        body._diamonds = diamonds; // เก็บราคาไว้สำหรับ evict ถูกสุดก่อน
 
         Body.setVelocity(body, {
           x: (Math.random() - 0.5) * 3.5,
@@ -289,10 +319,12 @@ export default function CoinJarWidget() {
 
         Composite.add(engineRef.current.world, body);
 
-        // ตัด item เก่าทิ้งถ้าเกิน maxItems (อ่านจาก ref เพื่อให้ real-time)
+        // ตัด item ทิ้งถ้าเกิน maxItems — ลบอันที่ราคาถูกสุดก่อน (diamonds ต่ำสุด)
         const all = Composite.allBodies(engineRef.current.world)
           .filter(b => b.label === 'gift');
         if (all.length > maxItemsRef.current) {
+          // sort ascending by diamonds → [0] = ถูกสุด
+          all.sort((a, b) => (a._diamonds ?? 0) - (b._diamonds ?? 0));
           Composite.remove(engineRef.current.world, all[0]);
         }
       }, i * 160);
@@ -312,16 +344,18 @@ export default function CoinJarWidget() {
 
     const init = async () => {
       const params    = new URLSearchParams(window.location.search);
-      const wt        = params.get('wt');
+      const cidOrWt   = params.get('cid') ?? params.get('wt'); // cid ใหม่ หรือ wt เก่า
       const isPreview = params.get('preview') === '1';
 
-      // โหลด style: ถ้ามี wt และไม่ใช่ preview → ดึงจาก API (short URL)
+      // โหลด style: ถ้ามี cid/wt และไม่ใช่ preview → ดึงจาก API
       // fallback → อ่านจาก URL params เหมือนเดิม
       let s = parseWidgetStyles(params, 'coinjar');
-      if (wt && !isPreview) {
+      if (cidOrWt && !isPreview) {
         try {
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-          const res = await fetch(`${backendUrl}/api/widget-styles?wt=${encodeURIComponent(wt)}`);
+          const isCid = /^\d{4,8}$/.test(cidOrWt);
+          const qs    = isCid ? `cid=${encodeURIComponent(cidOrWt)}` : `wt=${encodeURIComponent(cidOrWt)}`;
+          const res   = await fetch(`${backendUrl}/api/widget-styles?${qs}`);
           if (res.ok) {
             const data = await res.json();
             if (data.styles?.coinjar) s = rawToStyle(data.styles.coinjar, 'coinjar');
@@ -369,7 +403,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(wt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -634,6 +668,26 @@ function JarSVG({ acColor, offset = 0 }) {
         </filter>
       </defs>
 
+      {/* ===== Jar body — outline ด้านหลัง (เงา/ความลึก) ===== */}
+      <path
+        d={`
+          M ${NECK_L} ${NECK_B}
+          L ${BODY_L + 2} ${NECK_B + 30}
+          L ${BODY_L} ${NECK_B + 50}
+          L ${BODY_L} ${BODY_B}
+          Q ${BODY_L} ${FLOOR} ${BODY_L + 18} ${FLOOR}
+          L ${BODY_R - 18} ${FLOOR}
+          Q ${BODY_R} ${FLOOR} ${BODY_R} ${BODY_B}
+          L ${BODY_R} ${NECK_B + 50}
+          L ${BODY_R - 2} ${NECK_B + 30}
+          L ${NECK_R} ${NECK_B}
+          Z
+        `}
+        fill="none"
+        stroke="rgba(0,0,0,0.25)"
+        strokeWidth="5"
+      />
+
       {/* ===== Jar body (ตัวโถ) ===== */}
       <path
         d={`
@@ -650,8 +704,8 @@ function JarSVG({ acColor, offset = 0 }) {
           Z
         `}
         fill="url(#jarGlass)"
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth="1.5"
+        stroke="rgba(255,255,255,0.72)"
+        strokeWidth="2.5"
       />
 
       {/* ===== Neck (ปากโถ) ===== */}
@@ -660,8 +714,8 @@ function JarSVG({ acColor, offset = 0 }) {
         width={NECK_R - NECK_L}
         height={NECK_B - NECK_T - 20}
         fill="rgba(255,255,255,0.04)"
-        stroke="rgba(255,255,255,0.28)"
-        strokeWidth="1.5"
+        stroke="rgba(255,255,255,0.72)"
+        strokeWidth="2.5"
         rx="3"
       />
 
@@ -836,16 +890,16 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
           <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
 
           {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (93,248) เพื่อหมุนแขนติดลำตัว */}
+          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (107,205) เพื่อหมุนแขนติดลำตัว */}
           <g style={{
             transformBox: 'view-box',
-            transformOrigin: '93px 248px',
+            transformOrigin: '107px 205px',
             animation: 'catPawPoint 5s ease-in-out infinite',
             animationDelay: '2s',
           }}>
             {/* ขาหน้า foreleg จากต้นแขน (ไหล่) ลงมาถึงเท้า */}
-            <line x1="93" y1="248" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-            <line x1="93" y1="248" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
+            <line x1="107" y1="205" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
+            <line x1="107" y1="205" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
             {/* เท้า */}
             <ellipse cx="96" cy="271" rx="19" ry="12" fill="#fbbf24" />
             <ellipse cx="96" cy="269" rx="15" ry="9"  fill="#f59e0b" />
