@@ -1,7 +1,7 @@
 // tiktok.js — จัดการ TikTok Live connection + auto-reconnect exponential backoff
 const { WebcastPushConnection } = require('tiktok-live-connector');
 const { logSession, logError } = require('../utils/logger');
-const { sanitizeTikTokEvent } = require('../utils/validate');
+const { sanitizeTikTokEvent, sanitizeStr } = require('../utils/validate');
 
 const activeConnections = new Map(); // userId -> { connection, tiktokUsername, connectedAt, manualDisconnect }
 const reconnectTimers   = new Map(); // userId -> timerId
@@ -132,6 +132,8 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         comment:           safe.comment,
+        bio:               sanitizeStr(String(data.bioDescription || data.userDescription || ''), 150),
+        followRole:        Number(data.followRole) || 0,
         timestamp:         Date.now(),
       });
     });
