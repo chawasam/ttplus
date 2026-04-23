@@ -13,11 +13,11 @@ import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const WIDGETS = [
   { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '600 × 600' },
-  { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดง comment — คลิกเพื่อ Pin ข้อความ + โปรไฟล์', size: '400 × 600' },
+  { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
   { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
-  { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ',                  size: '300 × 400' },
-  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้', size: '400 × 200', noStyle: true },
+  { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ ไม่ได้ปรับปรุง',  size: '300 × 400' },
+  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
 ];
 
 // user, authLoading มาจาก _app.js
@@ -239,7 +239,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
               { n: '1', t: 'Login ด้วย Google',    d: 'กดปุ่ม Login มุมขวาบน — URL ของคุณจะถูกสร้างอัตโนมัติและไม่เปลี่ยนแปลง' },
               { n: '2', t: 'Copy URL ของ Widget',   d: 'กด 📋 Copy URL → วางใน OBS หรือ TikTok Studio ครั้งเดียวพอ' },
               { n: '3', t: 'Customize ได้ตลอด',    d: 'กด ⚙️ Customize → ปรับสี → กด บันทึก → Widget update ทันที ไม่ต้อง copy URL ใหม่!' },
-              { n: '4', t: 'TikTok Studio',          d: 'Add Sources → Link → วาง URL' },
+              { n: '4', t: 'TikTok Studio',          d: 'Copy Link ในเว็บ → Add Sources → Link → วาง URL (Ctrl+V)' },
             ].map(s => (
               <div key={s.n} className="flex items-start gap-3">
                 <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 bg-blue-500 text-white">{s.n}</span>

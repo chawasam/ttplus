@@ -67,7 +67,8 @@ export const SYNTHS = {
     g.gain.linearRampToValueAtTime(0.001, t + 2);
     g.connect(ctx.destination);
     const lfo = mkOsc(ctx, 'sine', 7);
-    const lg  = ctx.createGain(); lg.gain.value = 0.28;
+    // scale LFO amplitude ตาม v — ป้องกัน LFO ดัง override gain เมื่อ volume ต่ำ
+    const lg  = ctx.createGain(); lg.gain.value = v * 0.28;
     lfo.connect(lg); lg.connect(g.gain);
     n.connect(f); f.connect(g);
     n.start(t); lfo.start(t); n.stop(t + 2); lfo.stop(t + 2);

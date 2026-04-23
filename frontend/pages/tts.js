@@ -507,8 +507,8 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
             {(() => {
               const ENGINE_CONFIGS = {
-                gemini31: { icon: '✨', label: 'Gemini 3.1 Flash TTS', sub: '30 เสียง × 10 persona = 300 combo', color: 'text-purple-400', needKey: 'gemini' },
-                gemini25: { icon: '🌟', label: 'Gemini 2.5 Flash TTS', sub: '30 เสียง × 10 persona = 300 combo', color: 'text-violet-400', needKey: 'gemini' },
+                gemini31: { icon: '✨', label: 'Gemini 3.1 Flash TTS', sub: '36 เสียง × 10 persona = 360 combo', color: 'text-purple-400', needKey: 'gemini' },
+                gemini25: { icon: '🌟', label: 'Gemini 2.5 Flash TTS', sub: '36 เสียง × 10 persona = 360 combo', color: 'text-violet-400', needKey: 'gemini' },
                 google:   { icon: '🔑', label: 'Google Cloud TTS',     sub: 'Neural Thai · เสียงดีมาก',         color: 'text-green-400',  needKey: 'google'  },
                 web:      { icon: '🔈', label: 'Web Speech',           sub: 'ฟรี · ไม่ต้อง key',               color: 'text-brand-400',  needKey: null      },
               };
@@ -653,15 +653,29 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 ✨ Gemini 3.1 TTS
-                <span className="text-xs font-normal text-purple-400 ml-2">ใหม่ล่าสุด · 300 combo</span>
+                <span className="text-xs font-normal text-purple-400 ml-2">ใหม่ล่าสุด · 360 combo</span>
               </h2>
               {geminiKey
                 ? <span className="text-xs text-purple-400 font-semibold">✓ เปิดใช้งาน</span>
                 : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
             </div>
-            <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              โมเดลใหม่ล่าสุดจาก Google — ใช้ Google AI Studio key (ฟรี) เก็บในเครื่องคุณ ไม่ส่ง server
+            <p className={clsx('text-xs mb-2', isDark ? 'text-gray-500' : 'text-gray-400')}>
+              โมเดลใหม่ล่าสุดจาก Google — ใช้ Google AI Studio key (ฟรี)
             </p>
+
+            {/* Trust notice */}
+            <div className={clsx('flex items-start gap-2 rounded-lg px-3 py-2 mb-3 text-xs border',
+              isDark ? 'bg-green-900/20 border-green-800/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
+              <span className="mt-0.5 flex-shrink-0">🔒</span>
+              <div>
+                <span className="font-semibold">Key เก็บในเครื่องคุณเท่านั้น</span>
+                {' '}— ไม่ส่งขึ้น server ของเรา ไม่มีใครเห็น key ของคุณได้{' '}
+                <a href="https://github.com/chawasam/ttplus" target="_blank" rel="noreferrer"
+                  className={clsx('underline font-medium', isDark ? 'text-green-300 hover:text-green-200' : 'text-green-600 hover:text-green-800')}>
+                  ตรวจสอบ source code ได้ที่นี่
+                </a>
+              </div>
+            </div>
 
             {/* Gemini API key */}
             <div className="flex gap-2 mb-3">
@@ -815,7 +829,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 className="text-purple-400 hover:underline">
                 aistudio.google.com/apikey
               </a>
-              {' '}— ฟรี ไม่ต้องใส่บัตรเครดิต
+              {' '}— อาจมีค่าใช้จ่าย
             </p>
           </div>
 
@@ -824,7 +838,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
             <div className="flex items-center justify-between mb-1">
               <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
                 🌟 Gemini 2.5 TTS
-                <span className="text-xs font-normal text-violet-400 ml-2">สำรอง · 300 combo</span>
+                <span className="text-xs font-normal text-violet-400 ml-2">สำรอง · 360 combo</span>
               </h2>
               {geminiKey
                 ? <span className="text-xs text-violet-400 font-semibold">✓ เปิดใช้งาน</span>
@@ -934,7 +948,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   : isDark ? 'bg-gray-800 border-gray-700'        : 'bg-gray-50 border-gray-200')}>
                 <div>
                   <p className={clsx('text-xs font-semibold', gemini25Shuffle ? 'text-violet-400' : isDark ? 'text-gray-300' : 'text-gray-700')}>
-                    🎲 สุ่ม 300 combo ทุกแชท
+                    🎲 สุ่ม 360 combo ทุกแชท
                   </p>
                   <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-500' : 'text-gray-400')}>
                     {gemini25Shuffle
@@ -1003,9 +1017,23 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 <span className="text-xs text-green-400 font-semibold">✓ เปิดใช้งาน</span>
               )}
             </div>
-            <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ใส่ API key ของคุณเองเพื่อใช้เสียง Neural ภาษาไทย ฟรี 1M chars/เดือน — key เก็บในเครื่องคุณเท่านั้น ไม่ส่ง server
+            <p className={clsx('text-xs mb-2', isDark ? 'text-gray-500' : 'text-gray-400')}>
+              ใส่ API key ของคุณเองเพื่อใช้เสียง Neural ภาษาไทย ฟรี 1M chars/เดือน
             </p>
+
+            {/* Trust notice */}
+            <div className={clsx('flex items-start gap-2 rounded-lg px-3 py-2 mb-3 text-xs border',
+              isDark ? 'bg-green-900/20 border-green-800/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
+              <span className="mt-0.5 flex-shrink-0">🔒</span>
+              <div>
+                <span className="font-semibold">Key เก็บในเครื่องคุณเท่านั้น</span>
+                {' '}— ไม่ส่งขึ้น server ของเรา ไม่มีใครเห็น key ของคุณได้{' '}
+                <a href="https://github.com/chawasam/ttplus" target="_blank" rel="noreferrer"
+                  className={clsx('underline font-medium', isDark ? 'text-green-300 hover:text-green-200' : 'text-green-600 hover:text-green-800')}>
+                  ตรวจสอบ source code ได้ที่นี่
+                </a>
+              </div>
+            </div>
 
             {/* API Key input */}
             <div className="flex gap-2 mb-3">
