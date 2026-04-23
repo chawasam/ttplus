@@ -71,6 +71,12 @@ export default function ChatWidget() {
         const safe = sanitizeEvent(data);
         const cur = stylesRef.current || s;
         addMsg({ ...safe, _key: ++_msgSeq, ts: Date.now() }, cur.max);
+        // ส่ง event ให้ AuroraCanvas สร้าง flash สีของผู้ส่งข้อความ
+        if (cur?.skin === 'aurora') {
+          window.dispatchEvent(new CustomEvent('aurora-msg', {
+            detail: { color: getUserColor(safe.uniqueId) },
+          }));
+        }
       },
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'chat') return;

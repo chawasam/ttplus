@@ -4,11 +4,11 @@ import { useMemo, useEffect, useRef } from 'react';
 import { hexAlphaToRgba } from './widgetStyles';
 
 // ============================================================
-// AuroraCanvas — Real-time fluid aurora simulation (Canvas API)
-// 4 curtains × 3-harmonic sine waves @ 60 fps
+// AuroraCanvas — Perlin FBM noise + vertical rays + chat-reactive flash
 // ============================================================
 function AuroraCanvas() {
-  const ref = useRef(null);
+  const ref       = useRef(null);
+  const flashesRef = useRef([]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -24,50 +24,227 @@ function AuroraCanvas() {
     resize();
     window.addEventListener('resize', resize);
 
-    // 4 aurora curtains — ต่างสี / ความเร็ว / ความถี่
+    // ── Perlin noise (Ken Perlin 2D) ──
+    const _P = Array.from({ length: 256 }, (_, i) => i).sort(() => Math.random() - 0.5);
+    const _T = [..._P, ..._P];
+    const _f = v => v * v * v * (v * (v * 6 - 15) + 10);
+    const _l = (a, b, t) => a + (b - a) * t;
+    const _g = (h, x, y) => (h & 1 ? -x : x) + (h & 2 ? -y : y);
+    function pnoise(x, y) {
+      const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+      const xf = x - Math.floor(x), yf = y - Math.floor(y);
+      const u = _f(xf), v = _f(yf);
+      const a = _T[X] + Y, b = _T[X + 1] + Y;
+      return _l(_l(_g(_T[a],     xf,     yf), _g(_T[b],     xf - 1, yf    ), u),
+                _l(_g(_T[a + 1], xf,     yf - 1), _g(_T[b + 1], xf - 1, yf - 1), u), v);
+    }
+    // 3-octave FBM → organic, non-repeating curtain shape
+    function fbm(x, y) {
+      return pnoise(x, y) * 0.500
+           + pnoise(x * 2.0, y * 2.0) * 0.250
+           + pnoise(x * 4.0, y * 4.0) * 0.125;
+    }
+
+    // ── 4 aurora curtains (Perlin-driven) ──
     const CURTAINS = [
-      { r:   0, g: 255, b: 150, yF: 0.22, amp: 0.11, fr: 0.014, sp: 0.50, al: 0.22 },
-      { r:   0, g: 140, b: 255, yF: 0.36, amp: 0.09, fr: 0.019, sp: 0.36, al: 0.17 },
-      { r: 110, g:   0, b: 255, yF: 0.44, amp: 0.08, fr: 0.012, sp: 0.44, al: 0.14 },
-      { r:   0, g: 255, b: 220, yF: 0.56, amp: 0.07, fr: 0.024, sp: 0.26, al: 0.12 },
+      { r:   0, g: 255, b: 150, yF: 0.22, amp: 0.14, sc: 0.008, al: 0.26 },
+      { r:   0, g: 140, b: 255, yF: 0.36, amp: 0.11, sc: 0.011, al: 0.20 },
+      { r: 110, g:   0, b: 255, yF: 0.44, amp: 0.09, sc: 0.007, al: 0.16 },
+      { r:   0, g: 255, b: 220, yF: 0.56, amp: 0.08, sc: 0.013, al: 0.13 },
     ];
-    const STEP = 4; // render ทุก 4px — สมดุลคุณภาพกับ performance
+    const STEP = 4;
+
+    // ── Vertical light rays ──
+    const rays = [];
+    const RAY_COLORS = [[0, 255, 170], [0, 200, 255], [110, 60, 255], [0, 255, 220]];
+    function spawnRay(w, h) {
+      const c = RAY_COLORS[Math.floor(Math.random() * RAY_COLORS.length)];
+      rays.push({
+        x: Math.random() * w,
+        width: 0.8 + Math.random() * 2.5,
+        yTop: Math.random() * h * 0.25,
+        height: h * (0.18 + Math.random() * 0.38),
+        r: c[0], g: c[1], b: c[2],
+        age: 0,
+        maxAge: 55 + Math.random() * 90,
+      });
+    }
+
+    // ── Chat-reactive aurora flash ──
+    const hexRgb = hex => {
+      const h = hex.replace('#', '');
+      return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+    };
+    const onMsg = (e) => {
+      const { r, g, b } = hexRgb(e.detail?.color || '#00ffd0');
+      flashesRef.current.push({
+        r, g, b,
+        xFrac:  0.20 + Math.random() * 0.60,
+        yFrac:  0.08 + Math.random() * 0.28,
+        age:    0,
+        maxAge: 55,
+      });
+    };
+    window.addEventListener('aurora-msg', onMsg);
 
     const draw = () => {
       const w = canvas.width;
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
+      // ── Draw aurora curtains ──
       for (const c of CURTAINS) {
         const baseY = h * c.yF;
         const amp   = h * c.amp;
-        const halfH = h * 0.20;
-
+        const halfH = h * 0.18;
         for (let x = 0; x <= w; x += STEP) {
-          // 3 harmonics — ทำให้เส้นไม่ regular เหมือนแสงเหนือจริง
-          const wave =
-            Math.sin(x * c.fr        + t * c.sp           ) * amp
-          + Math.sin(x * c.fr * 1.73 + t * c.sp * 0.7 + 1.2) * amp * 0.38
-          + Math.sin(x * c.fr * 2.41 + t * c.sp * 1.3 + 2.5) * amp * 0.16;
-
-          const midY = baseY + wave;
-          const top  = midY - halfH;
-          const bot  = midY + halfH;
-
-          const g = ctx.createLinearGradient(x, top, x, bot);
-          const a = c.al;
-          g.addColorStop(0,    `rgba(${c.r},${c.g},${c.b},0)`);
-          g.addColorStop(0.25, `rgba(${c.r},${c.g},${c.b},${+(a * 0.45).toFixed(3)})`);
-          g.addColorStop(0.50, `rgba(${c.r},${c.g},${c.b},${a})`);
-          g.addColorStop(0.75, `rgba(${c.r},${c.g},${c.b},${+(a * 0.38).toFixed(3)})`);
-          g.addColorStop(1,    `rgba(${c.r},${c.g},${c.b},0)`);
-
-          ctx.fillStyle = g;
+          const noise = fbm(x * c.sc + t * 0.10, t * 0.07);
+          const midY  = baseY + noise * amp * 2;
+          const top   = midY - halfH;
+          const bot   = midY + halfH;
+          const grad  = ctx.createLinearGradient(x, top, x, bot);
+          const a     = c.al;
+          grad.addColorStop(0,    `rgba(${c.r},${c.g},${c.b},0)`);
+          grad.addColorStop(0.25, `rgba(${c.r},${c.g},${c.b},${+(a * 0.40).toFixed(3)})`);
+          grad.addColorStop(0.50, `rgba(${c.r},${c.g},${c.b},${a})`);
+          grad.addColorStop(0.75, `rgba(${c.r},${c.g},${c.b},${+(a * 0.35).toFixed(3)})`);
+          grad.addColorStop(1,    `rgba(${c.r},${c.g},${c.b},0)`);
+          ctx.fillStyle = grad;
           ctx.fillRect(x, top, STEP, bot - top);
         }
       }
 
+      // ── Draw vertical rays ──
+      if (Math.random() < 0.025 && rays.length < 14) spawnRay(w, h);
+      for (let i = rays.length - 1; i >= 0; i--) {
+        const ray   = rays[i];
+        ray.age++;
+        if (ray.age >= ray.maxAge) { rays.splice(i, 1); continue; }
+        const alpha = Math.sin((ray.age / ray.maxAge) * Math.PI) * 0.22;
+        const rg    = ctx.createLinearGradient(ray.x, ray.yTop, ray.x, ray.yTop + ray.height);
+        rg.addColorStop(0,   `rgba(${ray.r},${ray.g},${ray.b},0)`);
+        rg.addColorStop(0.3, `rgba(${ray.r},${ray.g},${ray.b},${alpha})`);
+        rg.addColorStop(0.7, `rgba(${ray.r},${ray.g},${ray.b},${alpha})`);
+        rg.addColorStop(1,   `rgba(${ray.r},${ray.g},${ray.b},0)`);
+        ctx.fillStyle = rg;
+        ctx.fillRect(ray.x - ray.width / 2, ray.yTop, ray.width, ray.height);
+      }
+
+      // ── Draw chat-reactive flashes ──
+      const flashes = flashesRef.current;
+      for (let i = flashes.length - 1; i >= 0; i--) {
+        const fl    = flashes[i];
+        fl.age++;
+        if (fl.age >= fl.maxAge) { flashes.splice(i, 1); continue; }
+        const life  = fl.age / fl.maxAge;
+        const alpha = Math.sin(life * Math.PI) * 0.38;
+        const radius = Math.min(w, h) * (0.25 + life * 0.45);
+        const fg    = ctx.createRadialGradient(
+          fl.xFrac * w, fl.yFrac * h, 0,
+          fl.xFrac * w, fl.yFrac * h, radius,
+        );
+        fg.addColorStop(0,   `rgba(${fl.r},${fl.g},${fl.b},${alpha})`);
+        fg.addColorStop(0.5, `rgba(${fl.r},${fl.g},${fl.b},${+(alpha * 0.28).toFixed(3)})`);
+        fg.addColorStop(1,   `rgba(${fl.r},${fl.g},${fl.b},0)`);
+        ctx.fillStyle = fg;
+        ctx.fillRect(0, 0, w, h);
+      }
+
       t += 0.016;
+      raf = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('aurora-msg', onMsg);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={ref}
+      style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:0, width:'100%', height:'100%' }}
+    />
+  );
+}
+
+// ============================================================
+// NeonRainCanvas — Cyberpunk neon rain drops (Canvas API)
+// ============================================================
+function NeonRainCanvas() {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let raf;
+
+    const resize = () => {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const COLORS = [
+      [255, 20, 147], [0, 255, 255], [255, 255, 0],
+      [180, 0, 255], [0, 255, 100], [255, 120, 0], [255, 255, 255],
+    ];
+
+    const drops = Array.from({ length: 180 }, (_, i) => {
+      const c = COLORS[i % COLORS.length];
+      return {
+        x:     Math.random() * 1920,
+        y:     Math.random() * 1080,
+        speed: 3 + Math.random() * 11,
+        len:   18 + Math.random() * 65,
+        width: 0.4 + Math.random() * 1.6,
+        r: c[0], g: c[1], b: c[2],
+        alpha: 0.25 + Math.random() * 0.55,
+      };
+    });
+
+    const draw = () => {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const d of drops) {
+        d.y += d.speed;
+        if (d.y > h + d.len) {
+          d.y     = -d.len - Math.random() * 300;
+          d.x     = Math.random() * w;
+          const nc = COLORS[Math.floor(Math.random() * COLORS.length)];
+          d.r = nc[0]; d.g = nc[1]; d.b = nc[2];
+          d.speed = 3 + Math.random() * 11;
+          d.alpha = 0.25 + Math.random() * 0.55;
+        }
+
+        // Rain streak
+        const sg = ctx.createLinearGradient(d.x, d.y - d.len, d.x, d.y);
+        sg.addColorStop(0,   `rgba(${d.r},${d.g},${d.b},0)`);
+        sg.addColorStop(0.6, `rgba(${d.r},${d.g},${d.b},${+(d.alpha * 0.55).toFixed(3)})`);
+        sg.addColorStop(1,   `rgba(${d.r},${d.g},${d.b},${d.alpha})`);
+        ctx.strokeStyle = sg;
+        ctx.lineWidth   = d.width;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y - d.len);
+        ctx.lineTo(d.x, d.y);
+        ctx.stroke();
+
+        // Glowing tip
+        const tg = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.width * 4);
+        tg.addColorStop(0, `rgba(${d.r},${d.g},${d.b},0.90)`);
+        tg.addColorStop(1, `rgba(${d.r},${d.g},${d.b},0)`);
+        ctx.fillStyle = tg;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.width * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       raf = requestAnimationFrame(draw);
     };
 
@@ -92,7 +269,7 @@ function AuroraCanvas() {
 export const VALID_SKIN_IDS = [
   '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
   'sakura', 'pastel', 'ocean', 'starfall', 'candy',
-  'snowfall', 'autumn', 'witch', 'music', 'aurora',
+  'snowfall', 'autumn', 'witch', 'music', 'aurora', 'neonrain',
 ];
 
 // ============================================================
@@ -731,6 +908,115 @@ const SKINS = {
       }
     `,
   },
+
+  neonrain: {
+    id: 'neonrain', label: 'Neon Rain', emoji: '🌧️', category: 'premium',
+    preview: { from: '#020010', to: '#ff1493', ac: '#00ffff' },
+    particleCount: 0, particleOrigin: 'top',
+    dur: 0, sizeMin: 0, sizeMax: 0, renderType: 'div',
+    // glass-dark bubble — ::before ทำ neon edge ที่กระพริบ
+    bubbleStyle: (_userColor, _ac, bga = 80) => ({
+      position:   'relative',
+      overflow:   'hidden',
+      background: `rgba(2,0,16,${((bga / 100) * 0.92).toFixed(2)})`,
+      borderLeft: '2px solid rgba(255,20,147,0.15)',
+      borderTop:  '1px solid rgba(0,255,255,0.10)',
+      boxShadow:  [
+        '0 0 0 1px rgba(255,20,147,0.08)',
+        '0 0 18px rgba(255,20,147,0.22)',
+        '0 8px 32px rgba(0,0,0,0.70)',
+        'inset 0 0 24px rgba(0,255,255,0.04)',
+      ].join(','),
+    }),
+    nameStyle: (userColor) => ({
+      color:          userColor,
+      fontFamily:     '"Courier New",monospace',
+      letterSpacing:  '0.04em',
+      textShadow: [
+        `0 0 6px ${userColor}`,
+        `0 0 20px ${userColor}`,
+        '0 0 40px rgba(255,20,147,0.65)',
+        '0 0 70px rgba(0,255,255,0.30)',
+      ].join(', '),
+    }),
+    textStyle: () => ({ color: '#ffe0f8', fontFamily: '"Courier New",monospace' }),
+    css: `
+      /* ═══════════════════════════════════════════
+         NEON RAIN — Cyberpunk city rain
+         (rain drops rendered by NeonRainCanvas component)
+         ═══════════════════════════════════════════ */
+
+      /* ─── City glow at bottom of screen ─── */
+      .skin-neonrain-glow {
+        position:fixed; inset:0; pointer-events:none; z-index:1;
+        background:
+          radial-gradient(ellipse 90% 25% at 50% 100%, rgba(255,20,147,0.10) 0%, transparent 70%),
+          radial-gradient(ellipse 60% 18% at 22% 100%, rgba(0,255,255,0.08) 0%, transparent 70%),
+          radial-gradient(ellipse 50% 16% at 78% 100%, rgba(180,0,255,0.08) 0%, transparent 70%);
+      }
+
+      /* ─── Bubble: neon edge with scroll + flicker ─── */
+      .skin-neonrain-bubble::before {
+        content:'';
+        position:absolute; left:0; top:0; bottom:0; width:2px;
+        background:linear-gradient(180deg,
+          #ff1493 0%, #00ffff 33%, #ff1493 66%, #b400ff 100%
+        );
+        background-size:100% 300%;
+        animation:neonEdgeScroll 2s linear infinite, neonFlicker 4.2s step-end infinite;
+        z-index:3;
+      }
+      @keyframes neonEdgeScroll {
+        0%   { background-position:0% 0%;   }
+        100% { background-position:0% 300%; }
+      }
+      @keyframes neonFlicker {
+        0%,89%,91%,94%,96%,100% { opacity:1;   }
+        90%                     { opacity:0.08; }
+        92%,93%                 { opacity:0.05; }
+        95%                     { opacity:0.4;  }
+      }
+
+      /* ─── Bubble: rain streak sliding down glass ─── */
+      .skin-neonrain-bubble::after {
+        content:'';
+        position:absolute;
+        top:-10%; left:68%;
+        width:1px; height:35%;
+        background:linear-gradient(
+          180deg,
+          transparent 0%,
+          rgba(0,255,255,0.40) 40%,
+          rgba(255,20,147,0.28) 70%,
+          transparent 100%
+        );
+        animation:neonRainStreak 4.0s ease-in infinite;
+        pointer-events:none; z-index:2;
+      }
+      @keyframes neonRainStreak {
+        0%   { top:-10%; opacity:0; }
+        6%   { opacity:1; }
+        88%  { opacity:0.7; }
+        100% { top:110%;  opacity:0; }
+      }
+
+      /* ─── Name: chromatic glitch animation ─── */
+      .skin-neonrain-name {
+        animation:neonGlitch 5.5s linear infinite;
+        display:inline;
+      }
+      @keyframes neonGlitch {
+        0%,83%,91%,100% { transform:none;                         filter:none; }
+        84% { transform:skewX(-3deg) translateX(-2px); filter:hue-rotate(180deg) brightness(1.8); }
+        85% { transform:skewX( 3deg) translateX( 2px); filter:hue-rotate( 90deg) brightness(2.2); }
+        86% { transform:skewX(-1deg) translateX(   0); filter:hue-rotate(270deg) brightness(1.3); }
+        87% { transform:none;                         filter:brightness(0.4);                      }
+        88% { transform:skewX( 2deg) translateX( 1px); filter:hue-rotate(180deg) brightness(2.0); }
+        89% { transform:none;                         filter:none;                                 }
+        90% { transform:skewX(-1deg);                 filter:hue-rotate(120deg) brightness(1.5);  }
+      }
+    `,
+  },
 };
 
 export default SKINS;
@@ -810,10 +1096,16 @@ export function SkinParticles({ skinId }) {
       {skinId === 'galaxy'  && <div className="skin-galaxy-nebula"/>}
       {skinId === 'sakura'  && <div className="skin-sakura-bloom"/>}
       {skinId === 'witch'   && <div className="skin-witch-mist"/>}
-      {skinId === 'aurora'  && (
+      {skinId === 'aurora'    && (
         <>
           <AuroraCanvas />
           <div className="skin-aurora-stars" />
+        </>
+      )}
+      {skinId === 'neonrain'  && (
+        <>
+          <NeonRainCanvas />
+          <div className="skin-neonrain-glow" />
         </>
       )}
 
