@@ -15,7 +15,7 @@ const WIDGETS = [
   { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '600 × 600' },
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดง comment — คลิกเพื่อ Pin ข้อความ + โปรไฟล์', size: '400 × 600' },
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
-  { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400 × 180' },
+  { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
   { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ',                  size: '300 × 400' },
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้', size: '400 × 200', noStyle: true },
 ];

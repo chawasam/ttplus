@@ -1,6 +1,6 @@
 // widget/pinprofile.js — Pin Profile Card Widget สำหรับ OBS
 // รับข้อมูล user จาก Chat Overlay ผ่าน BroadcastChannel('ttplus_pinprofile')
-// OBS Size แนะนำ: แนวนอน 400 x 170 | แนวตั้ง 240 x 280
+// OBS Size แนะนำ: แนวนอน 400 x 150 | แนวตั้ง 240 x 320
 import { useEffect, useState } from 'react';
 import { safeTikTokImageUrl } from '../../lib/sanitize';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
@@ -24,9 +24,7 @@ export default function PinProfileWidget() {
         uniqueId:          'ttsamfan',
         nickname:          'TTsamFan',
         profilePictureUrl: '',
-        bio:               'TikTok streamer 🎮 | ไลฟ์ทุกวัน',
-        followRole:        1,
-        comment:           'ไลฟ์สนุกมากเลยครับ 🎉',
+        bio:               'TikTok streamer 🎮 ไลฟ์ทุกวัน | สอนเล่นเกม | ฝากติดตามด้วยนะครับ 🙏',
         color:             '#ff2d62',
       });
       setVisible(true);
@@ -62,12 +60,11 @@ export default function PinProfileWidget() {
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
-  const userColor = pinned?.color || styles.ac;
-  const avatarUrl = safeTikTokImageUrl(pinned?.profilePictureUrl || '');
+  const userColor  = pinned?.color || styles.ac;
+  const avatarUrl  = safeTikTokImageUrl(pinned?.profilePictureUrl || '');
   const isVertical = styles.orient === 'v';
 
-  // ===== Shared sub-components (render ใช้ทั้ง 2 layout) =====
-  const Avatar = (size = 60) => avatarUrl ? (
+  const AvatarEl = ({ size }) => avatarUrl ? (
     <img
       src={avatarUrl}
       alt=""
@@ -78,7 +75,7 @@ export default function PinProfileWidget() {
         border:       `2.5px solid ${userColor}`,
         flexShrink:   0,
         objectFit:    'cover',
-        boxShadow:    `0 0 14px ${userColor}66`,
+        boxShadow:    `0 0 16px ${userColor}66`,
       }}
     />
   ) : (
@@ -86,30 +83,14 @@ export default function PinProfileWidget() {
       width: size, height: size,
       borderRadius:   '50%',
       background:     `linear-gradient(135deg, ${userColor}66, ${userColor}1a)`,
-      border:         `2px solid ${userColor}`,
+      border:         `2.5px solid ${userColor}`,
       display:        'flex',
       alignItems:     'center',
       justifyContent: 'center',
-      fontSize:       size * 0.42,
+      fontSize:       Math.round(size * 0.42),
       flexShrink:     0,
     }}>👤</div>
   );
-
-  const FollowBadge = pinned?.followRole >= 1 ? (
-    <span style={{
-      background:    `${userColor}28`,
-      color:         userColor,
-      border:        `1px solid ${userColor}55`,
-      borderRadius:  5,
-      padding:       '1px 6px',
-      fontSize:      9,
-      fontWeight:    700,
-      fontFamily:    'sans-serif',
-      letterSpacing: 0.5,
-    }}>
-      {pinned.followRole >= 2 ? 'FRIEND' : 'FOLLOWER'}
-    </span>
-  ) : null;
 
   return (
     <>
@@ -135,9 +116,8 @@ export default function PinProfileWidget() {
               width:        '100%',
               boxSizing:    'border-box',
               overflow:     'hidden',
-              // แนวตั้ง: border-top | แนวนอน: border-left
               ...(isVertical
-                ? { borderTop: `4px solid ${userColor}`, padding: '14px 14px 12px' }
+                ? { borderTop: `4px solid ${userColor}`, padding: '16px 14px 14px' }
                 : { borderLeft: `4px solid ${userColor}`, padding: '12px 14px' }
               ),
             }}
@@ -153,72 +133,70 @@ export default function PinProfileWidget() {
 
             {isVertical ? (
               /* ===== แนวตั้ง ===== */
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                {Avatar(68)}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
 
-                {/* Name + badge */}
+                <AvatarEl size={76} />
+
+                {/* Name */}
                 <div style={{ textAlign: 'center' }}>
                   <div style={{
                     color:        userColor,
                     fontWeight:   800,
-                    fontSize:     styles.fs + 2,
+                    fontSize:     styles.fs + 3,
                     fontFamily:   'sans-serif',
                     lineHeight:   1.2,
-                    whiteSpace:   'nowrap',
-                    overflow:     'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth:     200,
+                    wordBreak:    'break-word',
                   }}>
                     {pinned.nickname || pinned.uniqueId}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 3 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: styles.fs - 2, fontFamily: 'sans-serif' }}>
-                      @{pinned.uniqueId}
-                    </span>
-                    {FollowBadge}
+                  <div style={{
+                    color:      'rgba(255,255,255,0.4)',
+                    fontSize:   styles.fs - 2,
+                    fontFamily: 'sans-serif',
+                    marginTop:  2,
+                  }}>
+                    @{pinned.uniqueId}
                   </div>
                 </div>
 
                 {/* Bio */}
                 {pinned.bio ? (
                   <div style={{
-                    color:      styles.tc,
-                    fontSize:   styles.fs - 1,
-                    fontFamily: 'sans-serif',
-                    lineHeight: 1.4,
-                    textAlign:  'center',
-                    opacity:    0.85,
-                    wordBreak:  'break-word',
-                    width:      '100%',
+                    color:        styles.tc,
+                    fontSize:     styles.fs,
+                    fontFamily:   'sans-serif',
+                    lineHeight:   1.55,
+                    textAlign:    'center',
+                    wordBreak:    'break-word',
+                    width:        '100%',
+                    padding:      '8px 10px',
+                    background:   `${userColor}0d`,
+                    borderRadius: styles.br > 6 ? styles.br - 4 : 4,
+                    borderTop:    `1px solid ${userColor}22`,
+                    boxSizing:    'border-box',
                   }}>
                     {pinned.bio}
                   </div>
-                ) : null}
-
-                {/* ข้อความ */}
-                <div style={{
-                  padding:      '5px 10px',
-                  background:   `${userColor}14`,
-                  borderRadius: styles.br > 4 ? styles.br - 2 : 4,
-                  color:        'rgba(255,255,255,0.55)',
-                  fontSize:     styles.fs - 1,
-                  fontFamily:   'sans-serif',
-                  lineHeight:   1.4,
-                  fontStyle:    'italic',
-                  wordBreak:    'break-word',
-                  textAlign:    'center',
-                  width:        '100%',
-                  boxSizing:    'border-box',
-                }}>
-                  "{pinned.comment}"
-                </div>
+                ) : (
+                  <div style={{
+                    color:      'rgba(255,255,255,0.2)',
+                    fontSize:   styles.fs - 1,
+                    fontFamily: 'sans-serif',
+                    fontStyle:  'italic',
+                  }}>
+                    ไม่มี bio
+                  </div>
+                )}
               </div>
+
             ) : (
               /* ===== แนวนอน ===== */
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                {Avatar(52)}
+
+                <AvatarEl size={54} />
 
                 <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Name + @username */}
                   <div style={{
                     color:        userColor,
                     fontWeight:   800,
@@ -231,43 +209,38 @@ export default function PinProfileWidget() {
                   }}>
                     {pinned.nickname || pinned.uniqueId}
                   </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: styles.fs - 2, fontFamily: 'sans-serif' }}>
-                      @{pinned.uniqueId}
-                    </span>
-                    {FollowBadge}
+                  <div style={{
+                    color:      'rgba(255,255,255,0.4)',
+                    fontSize:   styles.fs - 2,
+                    fontFamily: 'sans-serif',
+                    marginTop:  2,
+                  }}>
+                    @{pinned.uniqueId}
                   </div>
 
+                  {/* Bio */}
                   {pinned.bio ? (
                     <div style={{
                       color:      styles.tc,
                       fontSize:   styles.fs - 1,
                       fontFamily: 'sans-serif',
-                      marginTop:  5,
-                      lineHeight: 1.4,
+                      marginTop:  6,
+                      lineHeight: 1.5,
                       wordBreak:  'break-word',
-                      opacity:    0.85,
                     }}>
                       {pinned.bio}
                     </div>
-                  ) : null}
-
-                  <div style={{
-                    marginTop:    6,
-                    padding:      '4px 8px',
-                    background:   `${userColor}14`,
-                    borderLeft:   `2px solid ${userColor}55`,
-                    borderRadius: '0 6px 6px 0',
-                    color:        'rgba(255,255,255,0.55)',
-                    fontSize:     styles.fs - 1,
-                    fontFamily:   'sans-serif',
-                    lineHeight:   1.4,
-                    fontStyle:    'italic',
-                    wordBreak:    'break-word',
-                  }}>
-                    "{pinned.comment}"
-                  </div>
+                  ) : (
+                    <div style={{
+                      color:      'rgba(255,255,255,0.2)',
+                      fontSize:   styles.fs - 2,
+                      fontFamily: 'sans-serif',
+                      marginTop:  5,
+                      fontStyle:  'italic',
+                    }}>
+                      ไม่มี bio
+                    </div>
+                  )}
                 </div>
               </div>
             )}
