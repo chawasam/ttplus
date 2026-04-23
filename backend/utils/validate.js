@@ -159,7 +159,7 @@ function validateSettings(raw) {
     if (typeof raw.widgetStyles !== 'object' || Array.isArray(raw.widgetStyles)) {
       throw new Error('widgetStyles must be object');
     }
-    const widgetKeys = ['alert', 'chat', 'pinchat', 'leaderboard', 'goal', 'viewers', 'coinjar'];
+    const widgetKeys = ['alert', 'chat', 'pinchat', 'pinprofile', 'leaderboard', 'goal', 'viewers', 'coinjar'];
     const cleanStyles = {};
     const hexRe = /^[0-9a-f]{6}$/i;
 
