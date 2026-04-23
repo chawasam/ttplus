@@ -9,6 +9,7 @@ import Sidebar from '../components/Sidebar';
 import {
   loadSettings, saveSettings, playKey, uploadCustom, removeCustom, removeAllCustom,
   getAudioContext, loadNames, saveName, stopAllAudio, clearCustomCache,
+  getPlayingKeys, exportSettings, importSettings,
 } from '../lib/soundboardStore';
 import { KB_ROWS } from '../lib/soundSynth';
 
@@ -16,24 +17,31 @@ const KEY_BASE_PX   = 68;
 const KEY_MIN_SCALE = 0.55;
 const KEY_MAX_SCALE = 1.45;
 const LONG_PRESS_MS = 380;
+const STOP_FADE_MS  = 280;
+const GLOW_MS       = 400;   // minimum glow duration after a key plays
 
 const ALL_KEYS = new Set(KB_ROWS.flat());
 
 // ===== SoundKey =====
-function SoundKey({ keyChar, keyName, mode, store, pressing, editMode, theme, onPress, onPreview, onRemove, onRename, onModeToggle }) {
+function SoundKey({
+  keyChar, keyName, mode, store, pressing, editMode, theme,
+  isPlaying, recentlyPlayed,
+  onPress, onPreview, onRemove, onRename, onModeToggle,
+}) {
   const timerRef  = useRef(null);
   const startedAt = useRef(null);
 
   const isDown     = pressing.has(keyChar);
   const hasCustom  = !!store?.customs?.[keyChar]?.b64;
-  const customFile = store?.customs?.[keyChar]?.name || '';
+  const custFile   = store?.customs?.[keyChar]?.name || '';
   const scale      = store?.keySize ?? 1.0;
   const sizePx     = Math.round(KEY_BASE_PX * scale);
   const isStop     = mode === 'stop';
+  const isLit      = isPlaying || recentlyPlayed.has(keyChar);
 
   const titleParts = editMode
     ? [`[${keyChar}] กดสั้น = อัปโหลด | กดค้าง = preview`, '✏️ คลิกชื่อ = ตั้งชื่อ']
-    : [keyName ? `[${keyChar}] ${keyName}` : `[${keyChar}]`, customFile && `📄 ${customFile}`].filter(Boolean);
+    : [keyName ? `[${keyChar}] ${keyName}` : `[${keyChar}]`, custFile && `📄 ${custFile}`].filter(Boolean);
   const titleText = titleParts.join('\n');
 
   const handlePointerDown = (e) => {
@@ -63,9 +71,13 @@ function SoundKey({ keyChar, keyName, mode, store, pressing, editMode, theme, on
         'transition-all duration-75 border font-medium',
         isDown
           ? 'bg-brand-500 border-brand-400 shadow-lg shadow-brand-500/30 scale-90'
-          : theme === 'dark'
-            ? 'bg-gray-800 border-gray-700 hover:bg-gray-700 hover:border-gray-600'
-            : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm',
+          : isLit
+            ? theme === 'dark'
+              ? 'bg-gray-800 border-cyan-400 shadow-[0_0_10px_2px_rgba(34,211,238,0.45)]'
+              : 'bg-white border-cyan-400 shadow-[0_0_10px_2px_rgba(34,211,238,0.35)]'
+            : theme === 'dark'
+              ? 'bg-gray-800 border-gray-700 hover:bg-gray-700 hover:border-gray-600'
+              : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm',
         editMode && 'ring-2 ring-yellow-400/60'
       )}
       onPointerDown={handlePointerDown}
@@ -81,16 +93,19 @@ function SoundKey({ keyChar, keyName, mode, store, pressing, editMode, theme, on
         {keyChar}
       </span>
 
-      {/* Mode badge ∞/⏹ — มุมซ้ายล่าง */}
+      {/* Mode badge ∞/⏹ — มุมซ้ายล่าง (คลิกได้เฉพาะ edit mode ป้องกันกดโดน) */}
       <span
         className={clsx(
-          'absolute bottom-1 left-1.5 text-[9px] font-bold leading-none cursor-pointer transition-colors',
+          'absolute bottom-1 left-1.5 text-[9px] font-bold leading-none transition-colors',
+          editMode ? 'cursor-pointer' : 'cursor-default',
           isStop
-            ? 'text-orange-400 hover:text-orange-300'
-            : isDown ? 'text-white/30' : theme === 'dark' ? 'text-gray-700 hover:text-gray-400' : 'text-gray-200 hover:text-gray-400'
+            ? editMode ? 'text-orange-400 hover:text-orange-300' : 'text-orange-400'
+            : isDown ? 'text-white/30' : theme === 'dark' ? 'text-gray-700' : 'text-gray-200'
         )}
-        title={isStop ? 'หยุดแล้วเล่นใหม่ — คลิกเปลี่ยน' : 'เล่นซ้อนกัน — คลิกเปลี่ยน'}
-        onPointerDown={(e) => { e.stopPropagation(); onModeToggle(keyChar); }}
+        title={editMode
+          ? (isStop ? 'หยุดแล้วเล่นใหม่ — คลิกเปลี่ยน' : 'เล่นซ้อนกัน — คลิกเปลี่ยน')
+          : (isStop ? '⏹ หยุดแล้วเล่นใหม่' : '∞ เล่นซ้อนกัน')}
+        onPointerDown={editMode ? (e) => { e.stopPropagation(); onModeToggle(keyChar); } : undefined}
       >
         {isStop ? '⏹' : '∞'}
       </span>
@@ -99,7 +114,7 @@ function SoundKey({ keyChar, keyName, mode, store, pressing, editMode, theme, on
       {hasCustom && (
         <span
           className="absolute top-1 right-1 text-[8px] bg-green-500 text-white rounded px-0.5 leading-none cursor-pointer hover:bg-red-500 transition-colors"
-          title={`ไฟล์: ${customFile} — คลิกลบ`}
+          title={`ไฟล์: ${custFile} — คลิกลบ`}
           onPointerDown={(e) => { e.stopPropagation(); onRemove(keyChar); }}
         >
           ✔
@@ -128,7 +143,11 @@ function SoundKey({ keyChar, keyName, mode, store, pressing, editMode, theme, on
 }
 
 // ===== KeyboardLayout =====
-function KeyboardLayout({ store, names, pressing, editMode, theme, onPress, onPreview, onRemove, onRename, onModeToggle }) {
+function KeyboardLayout({
+  store, names, pressing, editMode, theme,
+  playingKeys, recentlyPlayed,
+  onPress, onPreview, onRemove, onRename, onModeToggle,
+}) {
   const scale   = store?.keySize ?? 1.0;
   const sizePx  = Math.round(KEY_BASE_PX * scale);
   const gap     = Math.round(sizePx * 0.12);
@@ -139,14 +158,19 @@ function KeyboardLayout({ store, names, pressing, editMode, theme, onPress, onPr
     keyChar: key, keyName: names[key] || '',
     mode: store?.modes?.[key] || 'poly',
     store, pressing, editMode, theme,
+    isPlaying: playingKeys.has(key),
+    recentlyPlayed,
     onPress, onPreview, onRemove, onRename, onModeToggle,
   });
 
+  // แนวตั้ง — KB_ROWS เป็น column (Q→Z, W→X, …)
+  // stagger: column ซ้ายสุด (Q-Z) มี offset มากที่สุด → ลดลงทางขวา
+  // → ให้ดูเป็น keyboard stagger ที่ถูกต้องเมื่อพลิกจอ
   if (isVert) {
     return (
       <div className="inline-flex flex-row items-start" style={{ gap }}>
         {KB_ROWS.map((col, ci) => (
-          <div key={ci} className="flex flex-col" style={{ paddingTop: ci * stagger, gap }}>
+          <div key={ci} className="flex flex-col" style={{ paddingTop: (KB_ROWS.length - 1 - ci) * stagger, gap }}>
             {col.map(key => <SoundKey key={key} {...keyProps(key)} />)}
           </div>
         ))}
@@ -167,18 +191,31 @@ function KeyboardLayout({ store, names, pressing, editMode, theme, onPress, onPr
 
 // ===== Main =====
 export default function SoundboardPage({ theme, user, activePage: navPage, setActivePage }) {
-  const [store,      setStore]      = useState(null);
-  const [names,      setNames]      = useState({});
-  const [page,       setPage]       = useState(1);     // soundboard page: 1 | 2
-  const [editMode,   setEditMode]   = useState(false);
-  const [pressing,   setPressing]   = useState(new Set());
-  const [uploadKey,  setUploadKey]  = useState(null);
-  const fileInputRef = useRef(null);
+  const [store,          setStore]          = useState(null);
+  const [names,          setNames]          = useState({});
+  const [page,           setPage]           = useState(1);
+  const [editMode,       setEditMode]       = useState(false);
+  const [pressing,       setPressing]       = useState(new Set());
+  const [playingKeys,    setPlayingKeys]    = useState(new Set());
+  const [recentlyPlayed, setRecentlyPlayed] = useState(new Set());
+  const [uploadKey,      setUploadKey]      = useState(null);
+
+  const fileInputRef   = useRef(null);
+  const importInputRef = useRef(null);
+  const recentTimers   = useRef({});   // key → timeout id
 
   const email = user?.email || null;
 
   useEffect(() => { setStore(loadSettings()); }, []);
   useEffect(() => { setNames(loadNames(email, page)); }, [email, page]);
+
+  // Poll getPlayingKeys ทุก 80 ms
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPlayingKeys(getPlayingKeys());
+    }, 80);
+    return () => clearInterval(id);
+  }, []);
 
   // effectiveStore: แทน customs/modes ด้วย page ปัจจุบัน
   const effectiveStore = store
@@ -187,6 +224,21 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       : store
     : null;
 
+  // flashKey — guarantee minimum glow even for very short sounds
+  // CRITICAL: ต้องประกาศก่อน useEffect ที่ใช้ flashKey ใน dependency array
+  const flashKey = useCallback((key) => {
+    setRecentlyPlayed(prev => new Set([...prev, key]));
+    if (recentTimers.current[key]) clearTimeout(recentTimers.current[key]);
+    recentTimers.current[key] = setTimeout(() => {
+      setRecentlyPlayed(prev => {
+        const ns = new Set(prev);
+        ns.delete(key);
+        return ns;
+      });
+      delete recentTimers.current[key];
+    }, GLOW_MS);
+  }, []);
+
   // Keyboard: Q-M + Escape + Tab
   useEffect(() => {
     if (!store) return;
@@ -194,7 +246,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       // Escape = Stop All
       if (e.key === 'Escape') {
         e.preventDefault();
-        stopAllAudio();
+        stopAllAudio(STOP_FADE_MS);
         toast('⏹ หยุดเสียงทั้งหมด', { duration: 800 });
         return;
       }
@@ -216,7 +268,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       e.preventDefault();
       getAudioContext();
       setPressing(s => new Set([...s, key]));
-      if (!editMode) playKey(key, effectiveStore, page === 1);
+      if (!editMode) {
+        playKey(key, effectiveStore, page === 1);
+        flashKey(key);
+      }
     };
     const onUp = (e) => {
       const key = e.key.toUpperCase();
@@ -228,7 +283,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup',   onUp);
     };
-  }, [store, editMode, effectiveStore, page]);
+  }, [store, editMode, effectiveStore, page, flashKey]);
 
   const patch = useCallback((update) => {
     setStore(prev => {
@@ -242,21 +297,23 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     if (editMode) { setUploadKey(key); fileInputRef.current?.click(); return; }
     getAudioContext();
     playKey(key, effectiveStore, page === 1);
+    flashKey(key);
     setPressing(s => new Set([...s, key]));
     setTimeout(() => setPressing(s => { const ns = new Set(s); ns.delete(key); return ns; }), 130);
-  }, [effectiveStore, editMode, page]);
+  }, [effectiveStore, editMode, page, flashKey]);
 
   const handleKeyPreview = useCallback((key) => {
     if (!effectiveStore) return;
     getAudioContext();
     playKey(key, effectiveStore, page === 1);
+    flashKey(key);
     setPressing(s => new Set([...s, key]));
     setTimeout(() => setPressing(s => { const ns = new Set(s); ns.delete(key); return ns; }), 300);
     toast(`🔊 preview [${key}]`, { duration: 900 });
-  }, [effectiveStore, page]);
+  }, [effectiveStore, page, flashKey]);
 
   const handleStopAll = useCallback(() => {
-    stopAllAudio();
+    stopAllAudio(STOP_FADE_MS);
     toast('⏹ หยุดเสียงทั้งหมด', { duration: 800 });
   }, []);
 
@@ -303,12 +360,48 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const handleResetAll = useCallback(() => {
     const customs = page === 2 ? store?.customs2 : store?.customs;
     const count   = Object.keys(customs || {}).length;
-    if (!count) return;
-    if (!window.confirm(`รีเซ็ต custom sound ทั้งหมด ${count} เสียง ใน Page ${page}?`)) return;
+    if (!count) { toast('ไม่มีเสียง custom ใน Page ' + page, { duration: 1500 }); return; }
+    const ok = window.confirm(
+      `⚠️ รีเซ็ต Page ${page} — จะลบไฟล์เสียง custom ทั้งหมด ${count} เสียง\n\n` +
+      `หลังรีเซ็ตจะต้องอัปโหลดไฟล์เสียงใหม่ทั้งหมด — กู้คืนไม่ได้!\n\n` +
+      `กด OK เพื่อยืนยัน`
+    );
+    if (!ok) return;
     removeAllCustom(page);
     setStore(loadSettings());
-    toast.success(`รีเซ็ต Page ${page} แล้ว (${count} เสียง)`);
+    toast.success(`รีเซ็ต Page ${page} แล้ว (ลบ ${count} เสียง)`);
   }, [store, page]);
+
+  const handleExport = useCallback(() => {
+    try {
+      const data = exportSettings(email);
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `soundboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Export เรียบร้อย');
+    } catch (err) { toast.error('Export ไม่สำเร็จ: ' + err.message); }
+  }, [email]);
+
+  const handleImportFile = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const restored = importSettings(data, email);
+      setStore(restored);
+      setNames(loadNames(email, page));
+      toast.success('Import เรียบร้อย — โหลดการตั้งค่าแล้ว');
+    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message); }
+  }, [email, page]);
 
   if (!store || !effectiveStore) return null;
 
@@ -378,6 +471,30 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               )}
             >
               ✏️ {editMode ? 'กำลังแก้ไข...' : 'แก้ไข'}
+            </button>
+
+            {/* Export */}
+            <button
+              onClick={handleExport}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-sm transition-all',
+                isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              )}
+              title="Export การตั้งค่าทั้งหมด + ชื่อปุ่ม"
+            >
+              ⬇ Export
+            </button>
+
+            {/* Import */}
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-sm transition-all',
+                isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              )}
+              title="Import การตั้งค่าจากไฟล์ backup"
+            >
+              ⬆ Import
             </button>
 
             {/* Reset page */}
@@ -499,6 +616,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               pressing={pressing}
               editMode={editMode}
               theme={theme}
+              playingKeys={playingKeys}
+              recentlyPlayed={recentlyPlayed}
               onPress={handleKeyPress}
               onPreview={handleKeyPreview}
               onRemove={handleRemove}
@@ -516,14 +635,14 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             <div className="space-y-3 text-xs">
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🎵 เล่นเสียง</p>
-                <p>กดปุ่มตัวอักษรบน<b>คีย์บอร์ด</b> (Q–P / A–L / Z–M) หรือ<b>แตะปุ่มบนหน้าจอ</b> กดหลายปุ่มพร้อมกันได้ ไม่ตัดเสียงกัน ไม่หยุดเพลงพื้นหลัง</p>
+                <p>กดปุ่มตัวอักษรบน<b>คีย์บอร์ด</b> (Q–P / A–L / Z–M) หรือ<b>แตะปุ่มบนหน้าจอ</b> กดหลายปุ่มพร้อมกันได้ ไม่ตัดเสียงกัน ไม่หยุดเพลงพื้นหลัง ปุ่มจะ<b>เรืองแสง</b>ขณะเสียงกำลังเล่น</p>
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⏹ หยุดเสียง</p>
                 <p>กด <b>Escape</b> หรือปุ่ม "หยุดทั้งหมด" เพื่อตัดทุกเสียงที่กำลังเล่นทันที</p>
               </div>
               <div>
-                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🔁 โหมดกดซ้ำ (คลิก ∞ / ⏹ มุมล่างซ้ายของปุ่ม)</p>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🔁 โหมดกดซ้ำ (ต้องอยู่ในโหมดแก้ไขเพื่อเปลี่ยน)</p>
                 <p><b>∞ เล่นซ้อน</b> — กดซ้ำขณะเสียงยังเล่นอยู่จะเล่นทับกันเลย เช่น เสียง 2 วินาที กดซ้ำตอน 1 วิ → จะมีเสียงซ้อน 2 ชั้นและจบภายใน 3 วินาที</p>
                 <p className="mt-0.5"><b>⏹ หยุดแล้วเล่นใหม่</b> — กดซ้ำขณะเล่นจะหยุดทันทีแล้วเริ่มใหม่จากต้น</p>
               </div>
@@ -535,13 +654,18 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>✏️ แก้ไข (กดปุ่ม "แก้ไข" ก่อน)</p>
                 <p><b>กดสั้น</b> = อัปโหลดไฟล์เสียง | <b>กดค้าง</b> = ฟัง preview | <b>คลิกชื่อ</b> = ตั้งชื่อปุ่ม | <b>คลิก ✔</b> = ลบไฟล์ custom</p>
               </div>
+              <div>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⬇⬆ Export / Import</p>
+                <p>บันทึกการตั้งค่าทั้งหมด (โหมด, ชื่อปุ่ม, เสียง custom) เป็นไฟล์ .json เพื่อสำรองข้อมูลหรือย้ายไปเครื่องอื่น</p>
+              </div>
             </div>
           </div>
 
         </div>
       </main>
 
-      <input ref={fileInputRef} type="file" accept="audio/*" className="hidden" onChange={handleFileChange} />
+      <input ref={fileInputRef}   type="file" accept="audio/*"       className="hidden" onChange={handleFileChange} />
+      <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
     </div>
   );
 }
