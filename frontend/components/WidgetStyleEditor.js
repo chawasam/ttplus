@@ -234,13 +234,13 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
               </span>
             </div>
             <input
-              type="range" min="50" max="200" step="5"
+              type="range" min="50" max="300" step="5"
               value={style.gs ?? 100}
               onChange={e => set('gs', +e.target.value)}
               className="w-full accent-amber-500"
             />
             <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-              <span>เล็ก (50%)</span><span>ปกติ (100%)</span><span>ใหญ่ (200%)</span>
+              <span>เล็ก (50%)</span><span>ปกติ (100%)</span><span>ใหญ่ (300%)</span>
             </div>
             <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
               💡 &lt;999 coin = 0.5× &nbsp;|&nbsp; 999+ = 0.75× &nbsp;|&nbsp; 9999+ = 1.5×
@@ -256,14 +256,19 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
               </span>
             </div>
             <input
-              type="range" min="10" max="300" step="10"
+              type="range" min="10" max="600" step="10"
               value={style.mi ?? 150}
               onChange={e => set('mi', +e.target.value)}
               className="w-full accent-amber-500"
             />
             <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-              <span>น้อย (10)</span><span>150</span><span>เยอะ (300)</span>
+              <span>น้อย (10)</span><span>150</span><span>เยอะ (600) ⚠️CPU</span>
             </div>
+            {(style.mi ?? 150) > 300 && (
+              <p className={clsx('text-xs', theme === 'dark' ? 'text-yellow-500' : 'text-yellow-600')}>
+                ⚠️ {style.mi} ชิ้น — physics หนัก อาจ lag บน PC ทั่วไป แนะนำ ≤ 300
+              </p>
+            )}
           </div>
 
           {/* Cat mascot */}

@@ -54,7 +54,7 @@ export default function ChatWidget() {
 
   useEffect(() => {
     const params      = new URLSearchParams(window.location.search);
-    const widgetToken = params.get('wt');
+    const widgetToken = params.get('cid') ?? params.get('wt');
     const isPreview   = params.get('preview') === '1';
     const s           = parseWidgetStyles(params, 'chat');
     setStyles(s);

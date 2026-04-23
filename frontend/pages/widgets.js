@@ -21,7 +21,7 @@ const WIDGETS = [
 
 // user, authLoading มาจาก _app.js
 export default function WidgetsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
-  const [widgetToken, setWidgetToken] = useState('');
+  const [widgetCid, setWidgetCid]     = useState(''); // channel ID สั้น เช่น "10001"
   const [tokenLoading, setTokenLoading] = useState(false);
   const [baseUrl, setBaseUrl]         = useState('');
   const [styles, setStyles]           = useState(() =>
@@ -76,7 +76,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       })();
     } else {
       // Not logged in — no socket needed on widgets page
-      setWidgetToken('');
+      setWidgetCid('');
     }
 
     return () => {
@@ -103,25 +103,24 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     if (!u) { setShowLoginModal(true); return; }
     setTokenLoading(true);
     try {
-      const res   = await api.post('/api/widget-token');
-      const token = res.data?.token;
-      if (typeof token === 'string' && /^[a-f0-9]{64}$/.test(token)) {
-        setWidgetToken(token);
+      const res = await api.post('/api/widget-token');
+      const cid = res.data?.cid;
+      if (typeof cid === 'string' && /^\d{4,8}$/.test(cid)) {
+        setWidgetCid(cid);
       } else {
-        toast.error('Widget Token ไม่ถูกต้อง กรุณาลองใหม่');
+        toast.error('Widget ID ไม่ถูกต้อง กรุณาลองใหม่');
       }
     } catch (err) {
-      showError(err, 'ไม่สามารถสร้าง Widget Token ได้');
+      showError(err, 'ไม่สามารถสร้าง Widget ID ได้');
     } finally {
       setTokenLoading(false);
     }
   }, [user]);
 
   const getWidgetUrl = useCallback((widgetId) => {
-    if (!widgetToken || !baseUrl) return '';
-    // Style ถูกบันทึกใน Firestore แล้ว — URL มีแค่ wt token
-    return `${baseUrl}/widget/${widgetId}?wt=${widgetToken}`;
-  }, [widgetToken, baseUrl]);
+    if (!widgetCid || !baseUrl) return '';
+    return `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
+  }, [widgetCid, baseUrl]);
 
   const copyUrl = useCallback((widgetId) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -163,7 +162,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const toggleExpand = useCallback((id) =>
     setExpanded(prev => ({ ...prev, [id]: !prev[id] })), []);
 
-  const tokenReady = !!widgetToken && !tokenLoading;
+  const tokenReady = !!widgetCid && !tokenLoading;
 
   const isDark  = theme === 'dark';
   const bg      = isDark ? 'bg-gray-950 text-white'       : 'bg-gray-100 text-gray-900';
@@ -276,8 +275,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       title={tokenReady ? url : ''}
                       onClick={() => tokenReady && copyUrl(w.id)}>
                       {tokenReady
-                        ? (url.length > 54 ? url.slice(0, 54) + '…' : url)
-                        : (tokenLoading ? '⏳ กำลังโหลด...' : '— กด Refresh Token ก่อน —')}
+                        ? url
+                        : (tokenLoading ? '⏳ กำลังโหลด...' : '— รอสักครู่ —')}
                     </div>
                     <button onClick={() => copyUrl(w.id)} disabled={!tokenReady}
                       className="flex-shrink-0 px-3 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold transition disabled:opacity-50 whitespace-nowrap">
