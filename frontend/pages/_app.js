@@ -6,30 +6,33 @@ import { auth } from '../lib/firebase';
 import '../styles/globals.css';
 
 // โหลดทุกหน้าพร้อมกัน — ไม่ unmount เมื่อสลับแถบ
-import Dashboard  from './dashboard';
-import TtsPage    from './tts';
-import WidgetsPage from './widgets';
-import SettingsPage from './settings';
-import DonatePage  from './donate';
-import FaqPage     from './faq';
+import Dashboard     from './dashboard';
+import TtsPage       from './tts';
+import WidgetsPage   from './widgets';
+import SoundboardPage from './soundboard';
+import SettingsPage  from './settings';
+import DonatePage    from './donate';
+import FaqPage       from './faq';
 
 const PAGES = [
-  { id: 'dashboard', Component: Dashboard   },
-  { id: 'tts',       Component: TtsPage     },
-  { id: 'widgets',   Component: WidgetsPage },
-  { id: 'settings',  Component: SettingsPage },
-  { id: 'donate',    Component: DonatePage  },
-  { id: 'faq',       Component: FaqPage     },
+  { id: 'dashboard',  Component: Dashboard      },
+  { id: 'tts',        Component: TtsPage        },
+  { id: 'widgets',    Component: WidgetsPage    },
+  { id: 'soundboard', Component: SoundboardPage },
+  { id: 'settings',   Component: SettingsPage   },
+  { id: 'donate',     Component: DonatePage     },
+  { id: 'faq',        Component: FaqPage        },
 ];
 
 const PATH_TO_ID = {
-  '/':          'dashboard',
-  '/dashboard': 'dashboard',
-  '/tts':       'tts',
-  '/widgets':   'widgets',
-  '/settings':  'settings',
-  '/donate':    'donate',
-  '/faq':       'faq',
+  '/':           'dashboard',
+  '/dashboard':  'dashboard',
+  '/tts':        'tts',
+  '/widgets':    'widgets',
+  '/soundboard': 'soundboard',
+  '/settings':   'settings',
+  '/donate':     'donate',
+  '/faq':        'faq',
 };
 
 function applyTheme(t) {
