@@ -2,7 +2,7 @@
 // OBS Size แนะนำ: 600 × 600
 // เมื่อมีคนส่ง gift ใน TikTok Live → รูป gift ตกลงมาในโถพร้อม physics จริง
 // ของขวัญล้นออกนอกโถได้ — กองบนพื้นข้างขวดโหล
-// URL params: ?wt=TOKEN&jx=OFFSET(-150~150)&cat=left|right|behind&preview=1
+// URL params: ?wt=TOKEN&jx=OFFSET(-150~150)&preview=1
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
@@ -176,7 +176,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap }) {
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset }) {
   // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
   const isCid   = /^\d{4,8}$/.test(cidOrWt);
   const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
@@ -239,21 +239,6 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
       }
     }
 
-    // cat — อัปเดต mascot ทันที
-    if (style?.cat !== undefined) {
-      setCatPos(['left', 'right', 'behind'].includes(style.cat) ? style.cat : null);
-    }
-
-    // cs — ขนาดแมว
-    if (style?.cs !== undefined) {
-      setCatScale(Math.max(50, Math.min(200, parseInt(style.cs) || 100)));
-    }
-
-    // cg — ระยะห่างแมวจากขวด
-    if (style?.cg !== undefined) {
-      setCatGap(Math.max(-30, Math.min(150, parseInt(style.cg) || 0)));
-    }
-
     // gs — ขนาด gift base scale
     if (style?.gs !== undefined) {
       giftScaleRef.current = Math.max(50, Math.min(200, parseInt(style.gs) || 100));
@@ -270,9 +255,6 @@ export default function CoinJarWidget() {
   const [popup, setPopup]         = useState(null);
   const [styles, setStyles]       = useState(null);
   const [jarOffset, setJarOffset] = useState(0);
-  const [catPos, setCatPos]       = useState(null);   // 'left' | 'right' | 'behind' | null
-  const [catScale, setCatScale]   = useState(100);    // 50–200 %
-  const [catGap, setCatGap]       = useState(0);      // -30–150 px ระยะห่างจากขวด
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -348,7 +330,7 @@ export default function CoinJarWidget() {
       const isPreview = params.get('preview') === '1';
 
       // โหลด style: ถ้ามี cid/wt และไม่ใช่ preview → ดึงจาก API
-      // URL params ที่ตั้งชัดเจน (cat, jx, gs, mi, cs, cg) ชนะ API เสมอ
+      // URL params ที่ตั้งชัดเจน (jx, gs, mi) ชนะ API เสมอ
       let s = parseWidgetStyles(params, 'coinjar');
       if (cidOrWt && !isPreview) {
         try {
@@ -362,12 +344,9 @@ export default function CoinJarWidget() {
               const apiStyle = rawToStyle(data.styles.coinjar, 'coinjar');
               // Merge: API เป็น base, URL params ที่ตั้งชัดเจนชนะ
               s = { ...apiStyle };
-              if (params.has('cat')) s.cat = parseWidgetStyles(params, 'coinjar').cat;
               if (params.has('jx'))  s.jx  = parseWidgetStyles(params, 'coinjar').jx;
               if (params.has('gs'))  s.gs  = parseWidgetStyles(params, 'coinjar').gs;
               if (params.has('mi'))  s.mi  = parseWidgetStyles(params, 'coinjar').mi;
-              if (params.has('cs'))  s.cs  = parseWidgetStyles(params, 'coinjar').cs;
-              if (params.has('cg'))  s.cg  = parseWidgetStyles(params, 'coinjar').cg;
             }
           }
         } catch { /* ใช้ URL params แทน */ }
@@ -381,11 +360,6 @@ export default function CoinJarWidget() {
       giftScaleRef.current = s.gs ?? 100;
       J = getJ(ox);
       setJarOffset(ox);
-
-      // init cat mascot จาก parsed style
-      if (['left', 'right', 'behind'].includes(s.cat)) setCatPos(s.cat);
-      setCatScale(s.cs ?? 100);
-      setCatGap(s.cg ?? 0);
 
       const initPhysics = () => {
         if (!mounted) return;
@@ -413,7 +387,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset, setCatPos, setCatScale, setCatGap });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -489,9 +463,6 @@ export default function CoinJarWidget() {
         </div>
       )}
 
-      {/* ===== แมวน่ารัก (behind = ด้านหลัง, z-index ต่ำกว่า jar) ===== */}
-      {catPos === 'behind' && <CatMascot position="behind" jarOffset={jarOffset} scale={catScale} catGap={catGap} />}
-
       {/* ===== Physics items layer (DOM, z-index ต่ำกว่า jar overlay) ===== */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
         {items.map(item => (
@@ -532,28 +503,11 @@ export default function CoinJarWidget() {
       {/* ===== Jar SVG overlay (glass visual, z-index สูงกว่า items) ===== */}
       <JarSVG acColor={styles.ac} offset={jarOffset} />
 
-      {/* ===== แมวน่ารัก (left / right = ด้านข้าง, z-index สูงกว่า jar) ===== */}
-      {(catPos === 'left' || catPos === 'right') && (
-        <CatMascot position={catPos} jarOffset={jarOffset} scale={catScale} catGap={catGap} />
-      )}
-
       {/* CSS animations */}
       <style>{`
         @keyframes jarPopIn {
           from { opacity: 0; transform: translateX(-18px) scale(0.95); }
           to   { opacity: 1; transform: translateX(0)     scale(1);    }
-        }
-        @keyframes catBob {
-          0%, 100% { transform: translateY(0px); }
-          50%      { transform: translateY(-8px); }
-        }
-        @keyframes catBlink {
-          0%, 88%, 100% { transform: scaleY(1); }
-          93%           { transform: scaleY(0.08); }
-        }
-        @keyframes catPawPoint {
-          0%,  5%,  48%, 100% { transform: rotate(0deg);    }
-          20%, 34%            { transform: rotate(-130deg); }
         }
       `}</style>
     </div>
@@ -805,170 +759,6 @@ function JarSVG({ acColor, offset = 0 }) {
         strokeWidth="1"
       />
     </svg>
-  );
-}
-
-// ===================== Cat Mascot =====================
-/**
- * แมวน่ารัก 4 ขา ตัวใหญ่เท่าขวดโหล — นั่งข้าง/หลังขวด พร้อม animation
- * position: 'left' | 'right' | 'behind'
- * ขาหน้าขวา animation ชี้ขวด (catPawPoint) ทุก 5 วิ
- */
-function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
-  const Jc = getJ(jarOffset);
-
-  // viewBox 140×300 — ทุก element อยู่ใน 0-140 ไม่ crop
-  const CAT_H = Math.round(460 * scale / 100);
-  const CAT_W = Math.round(215 * scale / 100);
-
-  // เท้าอยู่ y=283/300 → วางให้เสมอก้นขวด (JAR_BASE.floor=522)
-  const top = Math.round(JAR_BASE.floor - (283 / 300) * CAT_H);
-
-  let left, zIndex, flip;
-  if (position === 'left') {
-    left   = Math.round(Jc.bL - (75 / 140) * CAT_W - 10 - catGap);
-    zIndex = 4;
-    flip   = false;
-  } else if (position === 'right') {
-    left   = Math.round(Jc.bR + 10 + catGap - (65 / 140) * CAT_W);
-    zIndex = 4;
-    flip   = true;
-  } else {
-    // behind
-    left   = Math.round((Jc.bL + Jc.bR) / 2 - CAT_W / 2);
-    zIndex = 1;
-    flip   = false;
-  }
-
-  return (
-    <div style={{
-      position:      'absolute',
-      left, top,
-      width:         CAT_W,
-      height:        CAT_H,
-      zIndex,
-      pointerEvents: 'none',
-      transform:     flip ? 'scaleX(-1)' : undefined,
-    }}>
-      <div style={{ width: '100%', height: '100%', animation: 'catBob 3.5s ease-in-out infinite' }}>
-        <svg width={CAT_W} height={CAT_H} viewBox="0 0 140 300" overflow="visible">
-
-          {/* ── หาง (หมุนรอบโคนหาง) ── */}
-          <g>
-            <path d="M 42 232 C 14 212 8 182 12 158 C 16 135 30 124 34 112 C 38 100 28 90 36 84"
-              stroke="#f59e0b" strokeWidth="12" fill="none" strokeLinecap="round" />
-            <path d="M 42 232 C 14 212 8 182 12 158 C 16 135 30 124 34 112 C 38 100 28 90 36 84"
-              stroke="#fde68a" strokeWidth="5.5" fill="none" strokeLinecap="round" />
-            <circle cx="38" cy="82" r="9"   fill="#fde68a" />
-            <circle cx="38" cy="82" r="5.5" fill="#fbbf24" />
-            <animateTransform attributeName="transform" type="rotate"
-              values="0 42 232; 15 42 232; 0 42 232; -12 42 232; 0 42 232"
-              dur="2.4s" repeatCount="indefinite" calcMode="spline"
-              keySplines="0.4 0 0.6 1; 0.4 0 0.6 1; 0.4 0 0.6 1; 0.4 0 0.6 1" />
-          </g>
-
-          {/* ── ขาหลังซ้าย (hind leg — อยู่ด้านหลัง วาดก่อน body ทับ) ── */}
-          <ellipse cx="47" cy="252" rx="13" ry="22" fill="#f59e0b" />
-          <ellipse cx="40" cy="273" rx="17" ry="11" fill="#fbbf24" />
-          <ellipse cx="40" cy="271" rx="13" ry="8"  fill="#f59e0b" />
-          <path d="M 29 271 Q 32 267 36 271" stroke="#d97706" strokeWidth="1.5" fill="none" />
-          <path d="M 36 269 Q 40 265 44 269" stroke="#d97706" strokeWidth="1.5" fill="none" />
-          <path d="M 43 270 Q 46 266 50 270" stroke="#d97706" strokeWidth="1.5" fill="none" />
-
-          {/* ── ขาหลังขวา (hind leg — อยู่ด้านหลัง วาดก่อน body ทับ) ── */}
-          <ellipse cx="103" cy="252" rx="13" ry="22" fill="#f59e0b" />
-          <ellipse cx="110" cy="273" rx="17" ry="11" fill="#fbbf24" />
-          <ellipse cx="110" cy="271" rx="13" ry="8"  fill="#f59e0b" />
-          <path d="M 99 271 Q 102 267 106 271" stroke="#d97706" strokeWidth="1.5" fill="none" />
-          <path d="M 106 269 Q 110 265 114 269" stroke="#d97706" strokeWidth="1.5" fill="none" />
-          <path d="M 113 270 Q 116 266 120 270" stroke="#d97706" strokeWidth="1.5" fill="none" />
-
-          {/* ── ตัว (วาดทับขาหลัง) ── */}
-          <ellipse cx="75" cy="215" rx="34" ry="54" fill="#fbbf24" />
-          <ellipse cx="75" cy="226" rx="22" ry="40" fill="#fde68a" />
-          <path d="M 45 195 Q 75 205 103 195" stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.6" />
-          <path d="M 44 211 Q 75 222 106 211" stroke="#d97706" strokeWidth="2"   fill="none" strokeLinecap="round" opacity="0.5" />
-          <path d="M 45 229 Q 75 241 103 229" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.4" />
-
-          {/* ── ขาหน้าซ้าย (front left leg + paw) ── */}
-          <line x1="58" y1="250" x2="54" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-          <line x1="58" y1="250" x2="54" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
-          <ellipse cx="54" cy="271" rx="19" ry="12" fill="#fbbf24" />
-          <ellipse cx="54" cy="269" rx="15" ry="9"  fill="#f59e0b" />
-          <path d="M 42 269 Q 46 265 50 269" stroke="#d97706" strokeWidth="1.6" fill="none" />
-          <path d="M 50 267 Q 54 263 58 267" stroke="#d97706" strokeWidth="1.6" fill="none" />
-          <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
-
-          {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* ไหล่ที่ (106, 193) — บนขอบขวาของ body ellipse (cx=75,cy=215,rx=34,ry=54)
-              คำนวณ: x = 75 + 34*sqrt(1-((193-215)/54)²) = 106 */}
-          <g style={{
-            transformBox: 'view-box',
-            transformOrigin: '106px 193px',
-            animation: 'catPawPoint 5s ease-in-out infinite',
-            animationDelay: '2s',
-          }}>
-            {/* จุดบอลไหล่ (shoulder joint) */}
-            <circle cx="106" cy="193" r="7" fill="#fbbf24" />
-            <circle cx="106" cy="193" r="4" fill="#f59e0b" />
-            {/* แขน foreleg จากไหล่ลงมา */}
-            <line x1="106" y1="193" x2="95" y2="262" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-            <line x1="106" y1="193" x2="95" y2="262" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
-            {/* เท้า */}
-            <ellipse cx="95" cy="267" rx="19" ry="12" fill="#fbbf24" />
-            <ellipse cx="95" cy="265" rx="15" ry="9"  fill="#f59e0b" />
-            <path d="M 83 265 Q 87 261 91 265" stroke="#d97706" strokeWidth="1.6" fill="none" />
-            <path d="M 91 263 Q 95 259 99 263" stroke="#d97706" strokeWidth="1.6" fill="none" />
-            <path d="M 98 264 Q 102 260 106 264" stroke="#d97706" strokeWidth="1.6" fill="none" />
-          </g>
-
-          {/* ── หัว (เลื่อนลง 35px — cy 88→123 ก้นหัวชนลำตัว y=161) ── */}
-          <circle cx="75" cy="123" r="38" fill="#fbbf24" />
-          <path d="M 48 91 Q 57 81 65 91"  stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
-          <path d="M 65 86 Q 73 75 81 86"  stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
-          <path d="M 83 91 Q 92 81 100 91" stroke="#d97706" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.65" />
-
-          {/* ── หูซ้าย ── */}
-          <polygon points="44,101 36,55 64,89" fill="#fbbf24" />
-          <polygon points="47,97 42,63 60,86" fill="#f9a8d4" />
-
-          {/* ── หูขวา ── */}
-          <polygon points="106,101 116,55 88,89" fill="#fbbf24" />
-          <polygon points="103,97 110,63 92,86" fill="#f9a8d4" />
-
-          {/* ── ตาซ้าย ── */}
-          <ellipse cx="60" cy="120" rx="8" ry="9" fill="#1c1c3a" />
-          <ellipse cx="60" cy="120" rx="4.5" ry="5.5" fill="#3b82f6" />
-          <circle  cx="63" cy="117" r="3"   fill="white" />
-          <circle  cx="62" cy="116" r="1.2" fill="rgba(255,255,255,0.7)" />
-
-          {/* ── ตาขวา (กะพริบ) ── */}
-          <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'catBlink 4.5s ease infinite' }}>
-            <ellipse cx="90" cy="120" rx="8" ry="9" fill="#1c1c3a" />
-            <ellipse cx="90" cy="120" rx="4.5" ry="5.5" fill="#3b82f6" />
-            <circle  cx="93" cy="117" r="3"   fill="white" />
-            <circle  cx="92" cy="116" r="1.2" fill="rgba(255,255,255,0.7)" />
-          </g>
-
-          {/* ── จมูก ── */}
-          <ellipse cx="74" cy="136" rx="4.5" ry="3.5" fill="#f9a8d4" />
-          <path d="M 74 132 L 74 136" stroke="#d97706" strokeWidth="1.4" />
-
-          {/* ── ปาก ── */}
-          <path d="M 69 141 Q 74 147 79 141" stroke="#c2410c" strokeWidth="1.8" fill="none" strokeLinecap="round" />
-
-          {/* ── หนวดซ้าย (x=15~62) ── */}
-          <line x1="15" y1="132" x2="62" y2="136" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="14" y1="139" x2="62" y2="140" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="17" y1="147" x2="62" y2="145" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
-
-          {/* ── หนวดขวา (x=86~132) ── */}
-          <line x1="86" y1="136" x2="131" y2="132" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="86" y1="140" x2="132" y2="139" stroke="rgba(255,255,255,0.92)" strokeWidth="1.6" />
-          <line x1="86" y1="145" x2="129" y2="147" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
-        </svg>
-      </div>
-    </div>
   );
 }
 
