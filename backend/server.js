@@ -389,6 +389,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ===== Widget Pin Relay (widget → widget room, no auth needed) =====
+  // ใช้โดย chat overlay widget เพื่อ relay pin events ไปยัง pinchat / pinprofile
+  // ใน OBS ที่ BroadcastChannel ทำงานข้าม process ไม่ได้
+  socket.on('widget_pin_relay', (data) => {
+    if (!socketRateLimit(socket.id, 30, 5000)) return; // max 30 per 5s
+    const { widgetId, payload } = data || {};
+    if (!widgetId || typeof widgetId !== 'string' || widgetId.length > 50) return;
+    if (!payload || typeof payload !== 'object') return;
+    // หา widget room ที่ socket นี้อยู่
+    const widgetRoom = [...socket.rooms].find(r => r.startsWith('widget_'));
+    if (!widgetRoom) return; // ต้องเคย join_widget ก่อน
+    // Broadcast เฉพาะ pinnable widgetId
+    if (!['pinchat', 'pinprofile'].includes(widgetId)) return;
+    // ส่ง style_update ด้วย payload พิเศษ _pin / _profile
+    const styleKey = widgetId === 'pinchat' ? '_pin' : '_profile';
+    io.to(widgetRoom).emit('style_update', { widgetId, style: { [styleKey]: payload } });
+  });
+
   socket.on('disconnect', () => {
     if (socket.userId) {
       userSockets.delete(socket.userId);

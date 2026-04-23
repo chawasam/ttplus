@@ -45,6 +45,13 @@ export default function PinChatWidget() {
     const socket = createWidgetSocket(widgetToken, {
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'pinchat') return;
+        // _pin → pin event ส่งมาจาก chat overlay ผ่าน socket (รองรับ OBS)
+        if (style?._pin) {
+          setPinned(style._pin);
+          setVisible(true);
+          setPinKey(k => k + 1);
+          return;
+        }
         setStyles(rawToStyle(style, 'pinchat'));
       },
     });

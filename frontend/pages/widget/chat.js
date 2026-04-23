@@ -32,6 +32,7 @@ export default function ChatWidget() {
   const stylesRef = useRef(null);
   const bottomRef = useRef(null);
   const topRef    = useRef(null);
+  const socketRef = useRef(null);
 
   // scroll ไปหา anchor เมื่อ messages เปลี่ยน
   useEffect(() => {
@@ -79,25 +80,44 @@ export default function ChatWidget() {
       },
     });
     if (!socket) return;
+    socketRef.current = socket;
 
-    return () => socket.disconnect();
+    return () => {
+      socketRef.current = null;
+      socket.disconnect();
+    };
   }, []);
 
   // ===== คลิก bubble → broadcast ไป Pin Chat + Pin Profile Card =====
+  // ใช้ทั้ง BroadcastChannel (same-browser) + Socket (cross-process / OBS)
   const pinMessage = useCallback((msg) => {
-    if (typeof BroadcastChannel === 'undefined') return;
     const userColor = getUserColor(msg.uniqueId);
     const payload   = { ...msg, color: userColor };
-    try {
-      const chPin = new BroadcastChannel('ttplus_pinchat');
-      chPin.postMessage({ type: 'pin', message: payload });
-      chPin.close();
-    } catch { /* ignore */ }
-    try {
-      const chProfile = new BroadcastChannel('ttplus_pinprofile');
-      chProfile.postMessage({ type: 'profile', message: payload });
-      chProfile.close();
-    } catch { /* ignore */ }
+
+    // BroadcastChannel — same-browser tabs (fallback / Chrome-only)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const chPin = new BroadcastChannel('ttplus_pinchat');
+        chPin.postMessage({ type: 'pin', message: payload });
+        chPin.close();
+      } catch { /* ignore */ }
+      try {
+        const chProfile = new BroadcastChannel('ttplus_pinprofile');
+        chProfile.postMessage({ type: 'profile', message: payload });
+        chProfile.close();
+      } catch { /* ignore */ }
+    }
+
+    // Socket — cross-process (OBS browser source)
+    // ใช้ widget_pin_relay event ที่ backend relay ต่อไปยัง widget room
+    // (ไม่ต้องการ authenticate — widget connection ก็ส่งได้)
+    const sock = socketRef.current;
+    if (sock?.connected) {
+      try {
+        sock.emit('widget_pin_relay', { widgetId: 'pinchat',    payload });
+        sock.emit('widget_pin_relay', { widgetId: 'pinprofile', payload });
+      } catch { /* ignore */ }
+    }
   }, []);
 
   if (!styles) return <div style={{ background: 'transparent' }} />;

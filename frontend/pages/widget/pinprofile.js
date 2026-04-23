@@ -48,6 +48,13 @@ export default function PinProfileWidget() {
     const socket = createWidgetSocket(widgetToken, {
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'pinprofile') return;
+        // _profile → pin profile event ส่งมาจาก chat overlay ผ่าน socket (รองรับ OBS)
+        if (style?._profile) {
+          setPinned(style._profile);
+          setVisible(true);
+          setPinKey(k => k + 1);
+          return;
+        }
         setStyles(rawToStyle(style, 'pinprofile'));
       },
     });
