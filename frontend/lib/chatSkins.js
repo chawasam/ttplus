@@ -9,7 +9,7 @@ import { hexAlphaToRgba } from './widgetStyles';
 export const VALID_SKIN_IDS = [
   '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
   'sakura', 'pastel', 'ocean', 'starfall', 'candy',
-  'snowfall', 'autumn', 'witch', 'music',
+  'snowfall', 'autumn', 'witch', 'music', 'aurora',
 ];
 
 // ============================================================
@@ -515,6 +515,138 @@ const SKINS = {
       }
     `,
   },
+
+  // ───── PREMIUM ───────────────────────────────────────────
+
+  aurora: {
+    id: 'aurora', label: 'Aurora Borealis', emoji: '🌠', category: 'premium',
+    preview: { from: '#000d18', to: '#00ffd0', ac: '#a855f7' },
+    particleCount: 30, particleOrigin: 'bottom',
+    dur: 9, sizeMin: 3, sizeMax: 10, renderType: 'div',
+    extraPerParticle: (i) => ({
+      color: [
+        'rgba(0,255,170,0.62)',
+        'rgba(0,200,255,0.55)',
+        'rgba(120,60,255,0.52)',
+        'rgba(0,255,220,0.58)',
+        'rgba(60,160,255,0.50)',
+      ][i % 5],
+    }),
+    // Custom function — NOT using makeBubble — full glass-morphism control
+    bubbleStyle: (_userColor, _ac, bga = 80) => ({
+      background:  `rgba(0,10,22,${((bga / 100) * 0.88).toFixed(2)})`,
+      borderLeft:  '2px solid rgba(0,240,185,0.68)',
+      borderTop:   '1px solid rgba(0,240,185,0.18)',
+      boxShadow:   [
+        '0 0 0 1px rgba(0,240,185,0.07)',
+        '0 0 22px rgba(0,240,185,0.18)',
+        '0 8px 32px rgba(0,0,0,0.62)',
+        'inset 0 0 24px rgba(0,240,185,0.04)',
+      ].join(','),
+    }),
+    // ชื่อผู้ใช้: ตัวขาวสว่าง + เรืองแสงสีของผู้ใช้แต่ละคน (ราวกับถูกส่องโดยแสงเหนือ)
+    nameStyle: (userColor) => ({
+      color: '#ffffff',
+      textShadow: `0 0 8px ${userColor}, 0 0 20px rgba(0,255,185,0.45)`,
+    }),
+    textStyle: () => ({ color: '#d0fff8' }),
+    css: `
+      /* ───── Aurora background layers ───── */
+      .skin-aurora-bg {
+        position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden;
+      }
+      /* Band 1: green-teal aurora — หลัก */
+      .skin-aurora-band1 {
+        position:absolute;
+        top:8%; left:-12%; width:124%; height:32%;
+        background:linear-gradient(180deg,
+          transparent 0%,
+          rgba(0,255,150,0.14) 28%,
+          rgba(0,220,200,0.20) 52%,
+          rgba(0,255,150,0.12) 76%,
+          transparent 100%
+        );
+        border-radius:50%;
+        filter:blur(34px);
+        animation:auroraBand1 15s ease-in-out infinite;
+      }
+      /* Band 2: purple-blue aurora — สีแดงม่วงลึก */
+      .skin-aurora-band2 {
+        position:absolute;
+        top:33%; left:-18%; width:136%; height:28%;
+        background:linear-gradient(180deg,
+          transparent 0%,
+          rgba(90,40,255,0.11) 25%,
+          rgba(0,120,255,0.15) 52%,
+          rgba(100,0,240,0.10) 78%,
+          transparent 100%
+        );
+        border-radius:50%;
+        filter:blur(42px);
+        animation:auroraBand2 22s ease-in-out 5s infinite;
+      }
+      /* Band 3: cyan accent — ชั้นบางที่ 3 เคลื่อนสวนทาง */
+      .skin-aurora-band3 {
+        position:absolute;
+        top:55%; left:-8%; width:116%; height:20%;
+        background:linear-gradient(180deg,
+          transparent 0%,
+          rgba(0,255,220,0.10) 38%,
+          rgba(60,240,200,0.14) 56%,
+          transparent 100%
+        );
+        border-radius:50%;
+        filter:blur(26px);
+        animation:auroraBand1 11s ease-in-out 8s infinite reverse;
+      }
+      /* Star field — 12 จุดกระจาย */
+      .skin-aurora-stars {
+        position:absolute; inset:0;
+        background-image:
+          radial-gradient(1px 1px at 8%  7%,  rgba(255,255,255,0.68) 0%, transparent 100%),
+          radial-gradient(1px 1px at 23% 12%, rgba(255,255,255,0.52) 0%, transparent 100%),
+          radial-gradient(1px 1px at 42% 5%,  rgba(200,248,255,0.60) 0%, transparent 100%),
+          radial-gradient(1px 1px at 64% 9%,  rgba(255,255,255,0.48) 0%, transparent 100%),
+          radial-gradient(1px 1px at 80% 4%,  rgba(255,255,255,0.62) 0%, transparent 100%),
+          radial-gradient(1px 1px at 92% 17%, rgba(200,255,240,0.54) 0%, transparent 100%),
+          radial-gradient(1px 1px at 14% 28%, rgba(255,255,255,0.40) 0%, transparent 100%),
+          radial-gradient(1px 1px at 36% 22%, rgba(255,255,255,0.44) 0%, transparent 100%),
+          radial-gradient(1px 1px at 58% 31%, rgba(255,255,255,0.38) 0%, transparent 100%),
+          radial-gradient(1px 1px at 77% 26%, rgba(200,242,255,0.48) 0%, transparent 100%),
+          radial-gradient(2px 2px at 5%  20%, rgba(255,255,255,0.32) 0%, transparent 100%),
+          radial-gradient(1px 1px at 89% 36%, rgba(255,255,255,0.42) 0%, transparent 100%);
+        animation:skinTwinkle 5s ease-in-out 1.5s infinite alternate;
+      }
+      /* ───── Aurora wave keyframes ───── */
+      @keyframes auroraBand1 {
+        0%,100% { transform:skewX(-4deg) translateY(0)   scaleX(1.00); opacity:0.75; }
+        22%     { transform:skewX( 7deg) translateY(-5%) scaleX(1.06); opacity:1.00; }
+        48%     { transform:skewX(-2deg) translateY( 4%) scaleX(0.95); opacity:0.52; }
+        73%     { transform:skewX( 5deg) translateY(-2%) scaleX(1.04); opacity:0.88; }
+      }
+      @keyframes auroraBand2 {
+        0%,100% { transform:skewX( 3deg) translateY(0)   scaleX(1.00); opacity:0.60; }
+        30%     { transform:skewX(-7deg) translateY( 4%) scaleX(1.06); opacity:0.92; }
+        62%     { transform:skewX( 9deg) translateY(-5%) scaleX(0.96); opacity:0.40; }
+      }
+      /* ───── Orb particle ───── */
+      @keyframes skinAuroraOrb {
+        0%   { transform:translateY(0)      translateX(0)    scale(1.00); opacity:0;    }
+        6%   { opacity:0.85; }
+        28%  { transform:translateY(-26vh)  translateX(7px)  scale(1.18); }
+        52%  { transform:translateY(-54vh)  translateX(-9px) scale(0.88); opacity:0.62; }
+        78%  { transform:translateY(-82vh)  translateX(6px)  scale(1.06); opacity:0.30; }
+        100% { transform:translateY(-112vh) translateX(0)    scale(0.65); opacity:0;    }
+      }
+      .skin-particle-aurora {
+        position:fixed; pointer-events:none; z-index:1;
+        border-radius:50%;
+        filter:blur(2px);
+        box-shadow:0 0 10px 3px currentColor;
+        animation:skinAuroraOrb var(--dur,9s) var(--delay,0s) ease-in infinite;
+      }
+    `,
+  },
 };
 
 export default SKINS;
@@ -594,6 +726,14 @@ export function SkinParticles({ skinId }) {
       {skinId === 'galaxy'  && <div className="skin-galaxy-nebula"/>}
       {skinId === 'sakura'  && <div className="skin-sakura-bloom"/>}
       {skinId === 'witch'   && <div className="skin-witch-mist"/>}
+      {skinId === 'aurora'  && (
+        <div className="skin-aurora-bg">
+          <div className="skin-aurora-band1" />
+          <div className="skin-aurora-band2" />
+          <div className="skin-aurora-band3" />
+          <div className="skin-aurora-stars" />
+        </div>
+      )}
 
       {/* Particle elements */}
       {particles.map(p => (

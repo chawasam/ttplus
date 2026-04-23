@@ -4,7 +4,7 @@
 const VALID_SKIN_IDS = [
   '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
   'sakura', 'pastel', 'ocean', 'starfall', 'candy',
-  'snowfall', 'autumn', 'witch', 'music',
+  'snowfall', 'autumn', 'witch', 'music', 'aurora',
 ];
 
 /**
