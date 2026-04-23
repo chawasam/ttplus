@@ -168,6 +168,43 @@ function validateSettings(raw) {
         clean.max = Math.round(v);
       }
 
+      // ===== coinjar-specific fields =====
+      // jx — jar x offset (-200 to 200)
+      if (s.jx !== undefined) {
+        const v = Number(s.jx);
+        if (isNaN(v) || v < -200 || v > 200) throw new Error(`widgetStyles.${key}.jx must be -200 to 200`);
+        clean.jx = Math.round(v);
+      }
+      // gs — gift scale 50-300
+      if (s.gs !== undefined) {
+        const v = Number(s.gs);
+        if (isNaN(v) || v < 50 || v > 300) throw new Error(`widgetStyles.${key}.gs must be 50-300`);
+        clean.gs = Math.round(v);
+      }
+      // mi — max items 10-600
+      if (s.mi !== undefined) {
+        const v = Number(s.mi);
+        if (isNaN(v) || v < 10 || v > 600) throw new Error(`widgetStyles.${key}.mi must be 10-600`);
+        clean.mi = Math.round(v);
+      }
+      // cat — cat position (coinjar)
+      if (s.cat !== undefined) {
+        if (!['none', 'left', 'right', 'behind'].includes(s.cat)) throw new Error(`widgetStyles.${key}.cat must be none/left/right/behind`);
+        clean.cat = s.cat;
+      }
+      // cs — cat scale 50-200
+      if (s.cs !== undefined) {
+        const v = Number(s.cs);
+        if (isNaN(v) || v < 50 || v > 200) throw new Error(`widgetStyles.${key}.cs must be 50-200`);
+        clean.cs = Math.round(v);
+      }
+      // cg — cat gap -30 to 150
+      if (s.cg !== undefined) {
+        const v = Number(s.cg);
+        if (isNaN(v) || v < -30 || v > 150) throw new Error(`widgetStyles.${key}.cg must be -30 to 150`);
+        clean.cg = Math.round(v);
+      }
+
       cleanStyles[key] = clean;
     }
     allowed.widgetStyles = cleanStyles;
