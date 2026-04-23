@@ -1,15 +1,16 @@
 // widgetStyles.js — ค่า default + encode/decode URL params สำหรับ Widget Appearance
 
-// skin IDs ที่ valid (sync กับ chatSkins.js)
+// skin IDs ที่ valid (sync กับ chatSkins.js และ validate.js)
 export const VALID_SKIN_IDS = [
   '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
   'sakura', 'pastel', 'ocean', 'starfall', 'candy',
+  'snowfall', 'autumn', 'witch', 'music',
 ];
 
 // ค่า default ของแต่ละ widget (hex ไม่มี #)
 export const WIDGET_DEFAULTS = {
   alert:       { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16 },
-  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '' },
+  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '', bw: 100, layout: 'inline' },
   pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0, skin: '' },
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
@@ -80,6 +81,17 @@ export function parseWidgetStyles(params, widgetId) {
     ? (VALID_SKIN_IDS.includes(skinParam) ? skinParam : (d.skin || ''))
     : '';
 
+  // bw — bubble width % (chat เท่านั้น)
+  const bw = d.bw !== undefined
+    ? clamp(parseInt(params.get('bw') ?? d.bw), 30, 100)
+    : 100;
+
+  // layout — inline | stack (chat เท่านั้น)
+  const layoutParam = params.get('layout') ?? '';
+  const layout = d.layout !== undefined
+    ? (['inline','stack'].includes(layoutParam) ? layoutParam : (d.layout || 'inline'))
+    : 'inline';
+
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -90,9 +102,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
-    skin,
+    skin, bw, layout,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout },
   };
 }
 
@@ -120,7 +132,9 @@ export function styleToParams(style, widgetId) {
   if (d.jx   !== undefined && style.jx   !== d.jx)   p.set('jx',   style.jx);
   if (d.mi   !== undefined && style.mi   !== d.mi)   p.set('mi',   style.mi);
   if (d.gs   !== undefined && style.gs   !== d.gs)   p.set('gs',   style.gs);
-  if (d.skin !== undefined && style.skin !== d.skin) p.set('skin', style.skin);
+  if (d.skin   !== undefined && style.skin   !== d.skin)   p.set('skin',   style.skin);
+  if (d.bw     !== undefined && style.bw     !== d.bw)     p.set('bw',     style.bw);
+  if (d.layout !== undefined && style.layout !== d.layout) p.set('layout', style.layout);
   return p.toString();
 }
 
@@ -153,6 +167,13 @@ export function rawToStyle(raw = {}, widgetId) {
   const skin = d.skin !== undefined
     ? (VALID_SKIN_IDS.includes(rawSkin) ? rawSkin : (d.skin || ''))
     : '';
+  const bw = d.bw !== undefined
+    ? clamp(parseInt(raw.bw ?? d.bw), 30, 100)
+    : 100;
+  const rawLayout = raw.layout ?? '';
+  const layout = d.layout !== undefined
+    ? (['inline','stack'].includes(rawLayout) ? rawLayout : (d.layout || 'inline'))
+    : 'inline';
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -160,8 +181,8 @@ export function rawToStyle(raw = {}, widgetId) {
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
-    skin,
+    skin, bw, layout,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout },
   };
 }

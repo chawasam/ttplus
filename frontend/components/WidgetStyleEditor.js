@@ -192,6 +192,55 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
               <span>น้อย (3)</span><span>เยอะ (50)</span>
             </div>
           </div>
+
+          {/* Bubble width */}
+          <div className="space-y-1">
+            <div className={row}>
+              <span className={label}>↔ ความกว้าง Bubble</span>
+              <div className="flex items-center gap-1.5">
+                <span className={clsx('text-xs font-mono font-bold',
+                  (style.bw ?? 100) < 100 ? 'text-brand-400' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                  {style.bw ?? 100}%
+                </span>
+                {(style.bw ?? 100) < 100 && (
+                  <button onClick={() => set('bw', 100)} className="text-xs text-gray-500 hover:text-brand-400 transition" title="รีเซ็ต">↩</button>
+                )}
+              </div>
+            </div>
+            <input type="range" min="30" max="100" step="5"
+              value={style.bw ?? 100}
+              onChange={e => set('bw', +e.target.value)}
+              className="w-full accent-brand-500"
+            />
+            <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              <span>แคบ (30%)</span><span>เต็ม (100%)</span>
+            </div>
+          </div>
+
+          {/* Layout: inline vs stack */}
+          <div className="space-y-2">
+            <span className={label}>รูปแบบ Bubble</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 'inline', icon: '▬', text: 'ชื่อ + ข้อความ (บรรทัดเดียว)' },
+                { val: 'stack',  icon: '☰', text: 'ชื่อบน / ข้อความล่าง' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('layout', opt.val)}
+                  title={opt.text}
+                  className={clsx(
+                    'py-2 px-2 rounded-lg text-xs font-semibold transition border text-left',
+                    (style.layout ?? 'inline') === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
         </>
       )}
 

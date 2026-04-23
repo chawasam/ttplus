@@ -59,9 +59,10 @@ export default function PinChatWidget() {
 
   const activeSkin   = styles.skin ? SKINS[styles.skin] : null;
   const pinColor     = pinned?.color || styles.ac;
-  const skinBubble   = activeSkin ? activeSkin.bubbleStyle(pinColor, styles.ac)  : {};
-  const skinNameSt   = activeSkin ? activeSkin.nameStyle(pinColor, styles.ac)    : {};
-  const skinTextSt   = activeSkin ? activeSkin.textStyle(styles.ac)               : {};
+  const bga          = styles.raw?.bga ?? 85;
+  const skinBubble   = activeSkin ? activeSkin.bubbleStyle(pinColor, styles.ac, bga) : {};
+  const skinNameSt   = activeSkin ? activeSkin.nameStyle(pinColor, styles.ac)        : {};
+  const skinTextSt   = activeSkin ? activeSkin.textStyle(styles.ac)                  : {};
 
   return (
     <>

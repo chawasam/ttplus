@@ -151,9 +151,11 @@ export default function ChatWidget() {
 
         {displayMsgs.map((msg) => {
           const userColor  = getUserColor(msg.uniqueId);
-          const skinBubble = activeSkin ? activeSkin.bubbleStyle(userColor, styles.ac) : {};
-          const skinName   = activeSkin ? activeSkin.nameStyle(userColor, styles.ac)   : {};
-          const skinText   = activeSkin ? activeSkin.textStyle(styles.ac)               : {};
+          const bga        = styles.raw?.bga ?? 65;
+          const skinBubble = activeSkin ? activeSkin.bubbleStyle(userColor, styles.ac, bga) : {};
+          const skinName   = activeSkin ? activeSkin.nameStyle(userColor, styles.ac)        : {};
+          const skinText   = activeSkin ? activeSkin.textStyle(styles.ac)                   : {};
+          const isStack    = styles.layout === 'stack';
 
           return (
             <div
@@ -171,25 +173,52 @@ export default function ChatWidget() {
                 borderLeft:   `3px solid ${userColor}`,
                 cursor:       'pointer',
                 flexShrink:   0,
+                alignSelf:    'flex-start',
+                maxWidth:     `${styles.bw ?? 100}%`,
                 boxSizing:    'border-box',
                 ...skinBubble,
               }}
             >
               <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                <span style={{
-                  color: userColor, fontWeight: 700,
-                  fontSize: styles.fs, fontFamily: 'sans-serif',
-                  ...skinName,
-                }}>
-                  {msg.nickname || msg.uniqueId}
-                </span>
-                <span style={{
-                  color: styles.tc,
-                  fontSize: styles.fs, fontFamily: 'sans-serif', marginLeft: 6,
-                  ...skinText,
-                }}>
-                  {msg.comment}
-                </span>
+                {isStack ? (
+                  /* Stack layout — ชื่อบน ข้อความล่าง */
+                  <>
+                    <div style={{
+                      color: userColor, fontWeight: 700,
+                      fontSize: styles.fs, fontFamily: 'sans-serif',
+                      lineHeight: 1.3,
+                      ...skinName,
+                    }}>
+                      {msg.nickname || msg.uniqueId}
+                    </div>
+                    <div style={{
+                      color: styles.tc,
+                      fontSize: styles.fs, fontFamily: 'sans-serif',
+                      lineHeight: 1.4, marginTop: 2,
+                      ...skinText,
+                    }}>
+                      {msg.comment}
+                    </div>
+                  </>
+                ) : (
+                  /* Inline layout — ชื่อ + ข้อความบรรทัดเดียว (default) */
+                  <>
+                    <span style={{
+                      color: userColor, fontWeight: 700,
+                      fontSize: styles.fs, fontFamily: 'sans-serif',
+                      ...skinName,
+                    }}>
+                      {msg.nickname || msg.uniqueId}
+                    </span>
+                    <span style={{
+                      color: styles.tc,
+                      fontSize: styles.fs, fontFamily: 'sans-serif', marginLeft: 6,
+                      ...skinText,
+                    }}>
+                      {msg.comment}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           );

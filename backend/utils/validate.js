@@ -4,6 +4,7 @@
 const VALID_SKIN_IDS = [
   '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
   'sakura', 'pastel', 'ocean', 'starfall', 'candy',
+  'snowfall', 'autumn', 'witch', 'music',
 ];
 
 /**
@@ -176,6 +177,17 @@ function validateSettings(raw) {
       if (s.skin !== undefined && (key === 'chat' || key === 'pinchat')) {
         if (!VALID_SKIN_IDS.includes(s.skin)) throw new Error(`widgetStyles.${key}.skin invalid`);
         clean.skin = s.skin;
+      }
+      // bw — bubble width % 30-100 (chat เท่านั้น)
+      if (s.bw !== undefined && key === 'chat') {
+        const v = Number(s.bw);
+        if (isNaN(v) || v < 30 || v > 100) throw new Error(`widgetStyles.${key}.bw must be 30-100`);
+        clean.bw = Math.round(v);
+      }
+      // layout — bubble layout (chat เท่านั้น)
+      if (s.layout !== undefined && key === 'chat') {
+        if (!['inline','stack'].includes(s.layout)) throw new Error(`widgetStyles.${key}.layout must be inline or stack`);
+        clean.layout = s.layout;
       }
 
       // ===== coinjar-specific fields =====
