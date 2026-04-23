@@ -1,6 +1,11 @@
 // validate.js — Schema validation สำหรับ request body
 // ป้องกัน injection และ unexpected data เข้า Firestore
 
+const VALID_SKIN_IDS = [
+  '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
+  'sakura', 'pastel', 'ocean', 'starfall', 'candy',
+];
+
 /**
  * Sanitize string — ลบ HTML tags และ trim
  */
@@ -166,6 +171,11 @@ function validateSettings(raw) {
         const v = Number(s.max);
         if (isNaN(v) || v < 3 || v > 50) throw new Error(`widgetStyles.${key}.max must be 3-50`);
         clean.max = Math.round(v);
+      }
+      // skin — chat + pinchat overlay skin
+      if (s.skin !== undefined && (key === 'chat' || key === 'pinchat')) {
+        if (!VALID_SKIN_IDS.includes(s.skin)) throw new Error(`widgetStyles.${key}.skin invalid`);
+        clean.skin = s.skin;
       }
 
       // ===== coinjar-specific fields =====

@@ -4,6 +4,8 @@
 import { useEffect, useState } from 'react';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
+import { SkinParticles } from '../../lib/chatSkins';
+import SKINS from '../../lib/chatSkins';
 
 export default function PinChatWidget() {
   const [pinned,  setPinned]  = useState(null);
@@ -55,78 +57,94 @@ export default function PinChatWidget() {
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
+  const activeSkin   = styles.skin ? SKINS[styles.skin] : null;
+  const pinColor     = pinned?.color || styles.ac;
+  const skinBubble   = activeSkin ? activeSkin.bubbleStyle(pinColor, styles.ac)  : {};
+  const skinNameSt   = activeSkin ? activeSkin.nameStyle(pinColor, styles.ac)    : {};
+  const skinTextSt   = activeSkin ? activeSkin.textStyle(styles.ac)               : {};
+
   return (
-    <div style={{
-      background:      'transparent',
-      padding:         '8px 10px',
-      maxWidth:        400,
-      boxSizing:       'border-box',
-      transform:       styles.transform3D,
-      transformOrigin: 'center center',
-      transformStyle:  'preserve-3d',
-    }}>
-      {visible && pinned && (
-        <div
-          key={pinKey}  /* key เปลี่ยน → React unmount+remount → animation restart */
-          style={{
-            background:   styles.bgRgba,
-            borderRadius: styles.br,
-            padding:      '10px 14px',
-            borderLeft:   `4px solid ${pinned.color || styles.ac}`,
-            display:      'flex',
-            alignItems:   'flex-start',
-            gap:          8,
-            animation:    'pinDrop 0.7s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.7s infinite',
-            position:     'relative',
-            width:        '100%',
-            boxSizing:    'border-box',
-          }}
-        >
-          <span style={{ fontSize: 12, opacity: 0.75, flexShrink: 0, marginTop: 2, color: styles.ac, fontFamily: 'sans-serif' }}>
-            📌
-          </span>
+    <>
+      {/* Particles (position:fixed — นอก transform container) */}
+      <SkinParticles skinId={styles.skin} />
 
-          <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-            <div style={{
-              color: pinned.color || styles.ac, fontWeight: 700,
-              fontSize: styles.fs, fontFamily: 'sans-serif', marginBottom: 2,
-            }}>
-              {pinned.nickname}
-            </div>
-            <div style={{
-              color: styles.tc, fontSize: styles.fs,
-              fontFamily: 'sans-serif', lineHeight: 1.4,
-            }}>
-              {pinned.comment}
-            </div>
-          </div>
-
-          <button
-            onClick={() => setVisible(false)}
+      <div style={{
+        background:      'transparent',
+        padding:         '8px 10px',
+        maxWidth:        400,
+        boxSizing:       'border-box',
+        transform:       styles.transform3D,
+        transformOrigin: 'center center',
+        transformStyle:  'preserve-3d',
+        position:        'relative',
+        zIndex:          1,
+      }}>
+        {visible && pinned && (
+          <div
+            key={pinKey}  /* key เปลี่ยน → React unmount+remount → animation restart */
             style={{
-              position: 'absolute', top: 6, right: 8,
-              background: 'none', border: 'none',
-              color: 'rgba(255,255,255,0.35)', cursor: 'pointer',
-              fontSize: 13, lineHeight: 1, padding: 0,
+              background:   styles.bgRgba,
+              borderRadius: styles.br,
+              padding:      '10px 14px',
+              borderLeft:   `4px solid ${pinColor}`,
+              display:      'flex',
+              alignItems:   'flex-start',
+              gap:          8,
+              animation:    'pinDrop 0.7s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.7s infinite',
+              position:     'relative',
+              width:        '100%',
+              boxSizing:    'border-box',
+              ...skinBubble,
             }}
-            title="ล้างข้อความ pin"
-          >✕</button>
-        </div>
-      )}
-      <style>{`
-        @keyframes pinDrop {
-          0%   { opacity:0; transform: translateY(-48px) scale(0.9); }
-          55%  { opacity:1; transform: translateY(8px)   scale(1.02); }
-          72%  { transform: translateY(-4px) scale(0.99); }
-          86%  { transform: translateY(3px)  scale(1.005); }
-          100% { transform: translateY(0)    scale(1); }
-        }
-        @keyframes pinFloat {
-          0%,100% { transform: translateY(0px); }
-          50%     { transform: translateY(-5px); }
-        }
-      `}</style>
-    </div>
+          >
+            <span style={{ fontSize: 12, opacity: 0.75, flexShrink: 0, marginTop: 2, color: styles.ac, fontFamily: 'sans-serif' }}>
+              📌
+            </span>
+
+            <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+              <div style={{
+                color: pinColor, fontWeight: 700,
+                fontSize: styles.fs, fontFamily: 'sans-serif', marginBottom: 2,
+                ...skinNameSt,
+              }}>
+                {pinned.nickname}
+              </div>
+              <div style={{
+                color: styles.tc, fontSize: styles.fs,
+                fontFamily: 'sans-serif', lineHeight: 1.4,
+                ...skinTextSt,
+              }}>
+                {pinned.comment}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setVisible(false)}
+              style={{
+                position: 'absolute', top: 6, right: 8,
+                background: 'none', border: 'none',
+                color: 'rgba(255,255,255,0.35)', cursor: 'pointer',
+                fontSize: 13, lineHeight: 1, padding: 0,
+              }}
+              title="ล้างข้อความ pin"
+            >✕</button>
+          </div>
+        )}
+        <style>{`
+          @keyframes pinDrop {
+            0%   { opacity:0; transform: translateY(-48px) scale(0.9); }
+            55%  { opacity:1; transform: translateY(8px)   scale(1.02); }
+            72%  { transform: translateY(-4px) scale(0.99); }
+            86%  { transform: translateY(3px)  scale(1.005); }
+            100% { transform: translateY(0)    scale(1); }
+          }
+          @keyframes pinFloat {
+            0%,100% { transform: translateY(0px); }
+            50%     { transform: translateY(-5px); }
+          }
+        `}</style>
+      </div>
+    </>
   );
 }
 

@@ -5,6 +5,8 @@ import { useEffect, useState, useRef } from 'react';
 import { sanitizeEvent } from '../../lib/sanitize';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
+import { SkinParticles } from '../../lib/chatSkins';
+import SKINS from '../../lib/chatSkins';
 
 const PALETTE = ['#ff2d62','#ff6b35','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899'];
 const MAX_COLOR_MAP = 150;
@@ -116,73 +118,99 @@ export default function ChatWidget() {
   const displayMsgs = isUp ? [...messages].reverse() : messages;
   const animName    = isUp ? 'slideDown' : 'slideUp';
 
+  // Skin — ถ้า skin ไม่ว่าง จะ override bubble/name/text styles
+  const activeSkin  = styles.skin ? SKINS[styles.skin] : null;
+
   return (
-    <div
-      style={{
-        background:      'transparent',
-        padding:         10,
-        maxWidth:        400,
-        height:          '100vh',
-        overflowY:       'auto',
-        display:         'flex',
-        flexDirection:   'column',
-        justifyContent:  isUp ? 'flex-start' : 'flex-end',
-        gap:             5,
-        boxSizing:       'border-box',
-        scrollbarWidth:  'none',
-        transform:       styles.transform3D,
-        transformOrigin: 'center center',
-        transformStyle:  'preserve-3d',
-      }}
-    >
-      {/* anchor บนสุด (สำหรับ dir=up) */}
-      <div ref={topRef} style={{ flexShrink: 0 }} />
+    <>
+      {/* Particle / overlay layer (position:fixed — อยู่นอก transform container) */}
+      <SkinParticles skinId={styles.skin} />
 
-      {displayMsgs.map((msg) => (
-        <div
-          key={msg._key}
-          onClick={() => pinMessage(msg)}
-          title="คลิกเพื่อ Pin ข้อความนี้"
-          style={{
-            display:      'flex',
-            alignItems:   'flex-start',
-            gap:          8,
-            animation:    `${animName} 0.3s ease-out both`,
-            background:   styles.bgRgba,
-            borderRadius: styles.br,
-            padding:      '6px 10px',
-            borderLeft:   `3px solid ${getUserColor(msg.uniqueId)}`,
-            cursor:       'pointer',
-            flexShrink:   0,
-            boxSizing:    'border-box',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-            <span style={{ color: getUserColor(msg.uniqueId), fontWeight: 700, fontSize: styles.fs, fontFamily: 'sans-serif' }}>
-              {msg.nickname || msg.uniqueId}
-            </span>
-            <span style={{ color: styles.tc, fontSize: styles.fs, fontFamily: 'sans-serif', marginLeft: 6 }}>
-              {msg.comment}
-            </span>
-          </div>
-        </div>
-      ))}
+      <div
+        style={{
+          background:      'transparent',
+          padding:         10,
+          maxWidth:        400,
+          height:          '100vh',
+          overflowY:       'auto',
+          display:         'flex',
+          flexDirection:   'column',
+          justifyContent:  isUp ? 'flex-start' : 'flex-end',
+          gap:             5,
+          boxSizing:       'border-box',
+          scrollbarWidth:  'none',
+          transform:       styles.transform3D,
+          transformOrigin: 'center center',
+          transformStyle:  'preserve-3d',
+          position:        'relative',
+          zIndex:          1,
+        }}
+      >
+        {/* anchor บนสุด (สำหรับ dir=up) */}
+        <div ref={topRef} style={{ flexShrink: 0 }} />
 
-      {/* anchor ล่างสุด (สำหรับ dir=down) */}
-      <div ref={bottomRef} style={{ flexShrink: 0 }} />
+        {displayMsgs.map((msg) => {
+          const userColor  = getUserColor(msg.uniqueId);
+          const skinBubble = activeSkin ? activeSkin.bubbleStyle(userColor, styles.ac) : {};
+          const skinName   = activeSkin ? activeSkin.nameStyle(userColor, styles.ac)   : {};
+          const skinText   = activeSkin ? activeSkin.textStyle(styles.ac)               : {};
 
-      <style>{`
-        div::-webkit-scrollbar { display: none; }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-12px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-    </div>
+          return (
+            <div
+              key={msg._key}
+              onClick={() => pinMessage(msg)}
+              title="คลิกเพื่อ Pin ข้อความนี้"
+              style={{
+                display:      'flex',
+                alignItems:   'flex-start',
+                gap:          8,
+                animation:    `${animName} 0.3s ease-out both`,
+                background:   styles.bgRgba,
+                borderRadius: styles.br,
+                padding:      '6px 10px',
+                borderLeft:   `3px solid ${userColor}`,
+                cursor:       'pointer',
+                flexShrink:   0,
+                boxSizing:    'border-box',
+                ...skinBubble,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                <span style={{
+                  color: userColor, fontWeight: 700,
+                  fontSize: styles.fs, fontFamily: 'sans-serif',
+                  ...skinName,
+                }}>
+                  {msg.nickname || msg.uniqueId}
+                </span>
+                <span style={{
+                  color: styles.tc,
+                  fontSize: styles.fs, fontFamily: 'sans-serif', marginLeft: 6,
+                  ...skinText,
+                }}>
+                  {msg.comment}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* anchor ล่างสุด (สำหรับ dir=down) */}
+        <div ref={bottomRef} style={{ flexShrink: 0 }} />
+
+        <style>{`
+          div::-webkit-scrollbar { display: none; }
+          @keyframes slideUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-12px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+      </div>
+    </>
   );
 }
 

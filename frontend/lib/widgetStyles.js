@@ -1,10 +1,16 @@
 // widgetStyles.js — ค่า default + encode/decode URL params สำหรับ Widget Appearance
 
+// skin IDs ที่ valid (sync กับ chatSkins.js)
+export const VALID_SKIN_IDS = [
+  '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
+  'sakura', 'pastel', 'ocean', 'starfall', 'candy',
+];
+
 // ค่า default ของแต่ละ widget (hex ไม่มี #)
 export const WIDGET_DEFAULTS = {
   alert:       { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16 },
-  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0 },
-  pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0 },
+  chat:        { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '' },
+  pinchat:     { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0, skin: '' },
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
@@ -68,6 +74,12 @@ export function parseWidgetStyles(params, widgetId) {
   const mi  = clamp(parseInt(params.get('mi') ?? (d.mi ?? 150)), 10, 600);
   const gs  = clamp(parseInt(params.get('gs') ?? (d.gs ?? 100)), 50, 300);
 
+  // skin (chat + pinchat เท่านั้น)
+  const skinParam = params.get('skin') ?? '';
+  const skin = d.skin !== undefined
+    ? (VALID_SKIN_IDS.includes(skinParam) ? skinParam : (d.skin || ''))
+    : '';
+
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -78,8 +90,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
+    skin,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin },
   };
 }
 
@@ -104,9 +117,10 @@ export function styleToParams(style, widgetId) {
   if (d.ry !== undefined && style.ry !== d.ry) p.set('ry', style.ry);
   if (d.rz !== undefined && style.rz !== d.rz) p.set('rz', style.rz);
   // coinjar-specific
-  if (d.jx  !== undefined && style.jx  !== d.jx)  p.set('jx',  style.jx);
-  if (d.mi  !== undefined && style.mi  !== d.mi)  p.set('mi',  style.mi);
-  if (d.gs  !== undefined && style.gs  !== d.gs)  p.set('gs',  style.gs);
+  if (d.jx   !== undefined && style.jx   !== d.jx)   p.set('jx',   style.jx);
+  if (d.mi   !== undefined && style.mi   !== d.mi)   p.set('mi',   style.mi);
+  if (d.gs   !== undefined && style.gs   !== d.gs)   p.set('gs',   style.gs);
+  if (d.skin !== undefined && style.skin !== d.skin) p.set('skin', style.skin);
   return p.toString();
 }
 
@@ -135,6 +149,10 @@ export function rawToStyle(raw = {}, widgetId) {
   const jx  = clamp(parseInt(raw.jx   ?? (d.jx ?? 0)), -200, 200);
   const mi  = clamp(parseInt(raw.mi   ?? (d.mi ?? 150)), 10, 300);
   const gs  = clamp(parseInt(raw.gs   ?? (d.gs ?? 100)), 50, 200);
+  const rawSkin = raw.skin ?? '';
+  const skin = d.skin !== undefined
+    ? (VALID_SKIN_IDS.includes(rawSkin) ? rawSkin : (d.skin || ''))
+    : '';
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -142,7 +160,8 @@ export function rawToStyle(raw = {}, widgetId) {
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
+    skin,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin },
   };
 }

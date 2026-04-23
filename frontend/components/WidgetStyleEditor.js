@@ -2,6 +2,7 @@
 // รับ: styles object, widgetId, theme, onChange callback
 import clsx from 'clsx';
 import { addHash, stripHash, hexAlphaToRgba, WIDGET_DEFAULTS } from '../lib/widgetStyles';
+import { SKIN_LIST } from '../lib/chatSkins';
 
 const WIDGET_LABELS = {
   alert:       '🔔 Gift Alert',
@@ -271,6 +272,109 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             )}
           </div>
 
+        </div>
+      )}
+
+      {/* ── Skin Selector (chat + pinchat เท่านั้น) ── */}
+      {(widgetId === 'chat' || widgetId === 'pinchat') && (
+        <div className="space-y-3 pt-1">
+          <div className={row}>
+            <span className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-pink-400' : 'text-pink-600')}>
+              ✨ Overlay Skin
+            </span>
+            {(style.skin || '') !== '' && (
+              <button
+                onClick={() => set('skin', '')}
+                className="text-xs text-gray-500 hover:text-brand-400 transition"
+                title="ปิด Skin"
+              >
+                ↩ ปิด
+              </button>
+            )}
+          </div>
+
+          {/* No skin option */}
+          <button
+            onClick={() => set('skin', '')}
+            className={clsx(
+              'w-full py-2 px-3 rounded-lg text-xs font-medium transition border text-left',
+              (style.skin || '') === ''
+                ? 'bg-brand-500 border-brand-500 text-white'
+                : theme === 'dark'
+                  ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                  : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+            )}
+          >
+            🚫 ไม่ใช้ Skin (default)
+          </button>
+
+          {/* Cool skins */}
+          <p className={clsx('text-xs font-semibold mt-2', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+            ─ เท่ / Cool ─
+          </p>
+          <div className="grid grid-cols-1 gap-1.5">
+            {SKIN_LIST.filter(s => s.category === 'cool').map(skin => (
+              <button
+                key={skin.id}
+                onClick={() => set('skin', skin.id)}
+                className={clsx(
+                  'py-2.5 px-3 rounded-lg text-xs font-semibold transition border text-left flex items-center gap-2',
+                  (style.skin || '') === skin.id
+                    ? 'border-brand-500 text-white'
+                    : theme === 'dark'
+                      ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
+                      : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                )}
+                style={
+                  (style.skin || '') === skin.id
+                    ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` }
+                    : {}
+                }
+              >
+                <span className="text-base">{skin.emoji}</span>
+                <span>{skin.label}</span>
+                {(style.skin || '') === skin.id && (
+                  <span className="ml-auto text-white opacity-80">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Cute skins */}
+          <p className={clsx('text-xs font-semibold mt-2', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+            ─ สวยน่ารัก / Cute ─
+          </p>
+          <div className="grid grid-cols-1 gap-1.5">
+            {SKIN_LIST.filter(s => s.category === 'cute').map(skin => (
+              <button
+                key={skin.id}
+                onClick={() => set('skin', skin.id)}
+                className={clsx(
+                  'py-2.5 px-3 rounded-lg text-xs font-semibold transition border text-left flex items-center gap-2',
+                  (style.skin || '') === skin.id
+                    ? 'border-brand-500 text-white'
+                    : theme === 'dark'
+                      ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
+                      : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                )}
+                style={
+                  (style.skin || '') === skin.id
+                    ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` }
+                    : {}
+                }
+              >
+                <span className="text-base">{skin.emoji}</span>
+                <span>{skin.label}</span>
+                {(style.skin || '') === skin.id && (
+                  <span className="ml-auto text-white opacity-80">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+            💡 Skin เปลี่ยน real-time ใน OBS — particle animation เริ่มทันที
+          </p>
         </div>
       )}
 
