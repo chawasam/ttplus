@@ -890,22 +890,25 @@ function CatMascot({ position, jarOffset = 0, scale = 100, catGap = 0 }) {
           <path d="M 57 268 Q 61 264 65 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
 
           {/* ── ขาหน้าขวา + เท้า (ชี้ปากขวดทุก 5 วิ) ── */}
-          {/* transformBox:view-box + transformOrigin ชี้ตรงจุดไหล่ (107,205) เพื่อหมุนแขนติดลำตัว */}
+          {/* ไหล่อยู่ที่ (104, 183) — บน-ขวาของ body ellipse (cx=75,cy=215,rx=34,ry=54) */}
           <g style={{
             transformBox: 'view-box',
-            transformOrigin: '107px 205px',
+            transformOrigin: '104px 183px',
             animation: 'catPawPoint 5s ease-in-out infinite',
             animationDelay: '2s',
           }}>
-            {/* ขาหน้า foreleg จากต้นแขน (ไหล่) ลงมาถึงเท้า */}
-            <line x1="107" y1="205" x2="96" y2="266" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
-            <line x1="107" y1="205" x2="96" y2="266" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
+            {/* จุดบอลไหล่ (shoulder joint) */}
+            <circle cx="104" cy="183" r="7" fill="#fbbf24" />
+            <circle cx="104" cy="183" r="4" fill="#f59e0b" />
+            {/* แขน foreleg จากไหล่ลงมา */}
+            <line x1="104" y1="183" x2="93" y2="252" stroke="#fbbf24" strokeWidth="11" strokeLinecap="round" />
+            <line x1="104" y1="183" x2="93" y2="252" stroke="#f59e0b" strokeWidth="6.5" strokeLinecap="round" />
             {/* เท้า */}
-            <ellipse cx="96" cy="271" rx="19" ry="12" fill="#fbbf24" />
-            <ellipse cx="96" cy="269" rx="15" ry="9"  fill="#f59e0b" />
-            <path d="M 84 269 Q 88 265 92 269" stroke="#d97706" strokeWidth="1.6" fill="none" />
-            <path d="M 92 267 Q 96 263 100 267" stroke="#d97706" strokeWidth="1.6" fill="none" />
-            <path d="M 99 268 Q 103 264 107 268" stroke="#d97706" strokeWidth="1.6" fill="none" />
+            <ellipse cx="93" cy="257" rx="19" ry="12" fill="#fbbf24" />
+            <ellipse cx="93" cy="255" rx="15" ry="9"  fill="#f59e0b" />
+            <path d="M 81 255 Q 85 251 89 255" stroke="#d97706" strokeWidth="1.6" fill="none" />
+            <path d="M 89 253 Q 93 249 97 253" stroke="#d97706" strokeWidth="1.6" fill="none" />
+            <path d="M 96 254 Q 100 250 104 254" stroke="#d97706" strokeWidth="1.6" fill="none" />
           </g>
 
           {/* ── หัว (เลื่อนลง 35px — cy 88→123 ก้นหัวชนลำตัว y=161) ── */}
