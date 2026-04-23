@@ -119,7 +119,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     }
   }, []);
 
-  // โหลด settings จาก API
+  // โหลด settings จาก API (Firestore-synced — ใช้แทน localStorage เมื่อมีค่า)
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -141,9 +141,52 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           voice:      s.ttsVoice  || '',
         };
         setTts(loaded);
-        configureTTS(loaded);
+
+        // Engine/voice settings — Firestore ชนะ localStorage ถ้ามีค่า
+        if (s.ttsGoogleVoice)    { setGoogleVoice(s.ttsGoogleVoice);   localStorage.setItem('ttplus_google_tts_voice', s.ttsGoogleVoice); }
+        if (s.ttsGeminiVoice)    { setGeminiVoice(s.ttsGeminiVoice);   localStorage.setItem('ttplus_gemini_voice',    s.ttsGeminiVoice); }
+        if (s.ttsGeminiPersona !== undefined) { setGeminiPersona(s.ttsGeminiPersona); localStorage.setItem('ttplus_gemini_persona', s.ttsGeminiPersona); }
+        if (s.ttsGeminiShuffle !== undefined) { setGeminiShuffle(s.ttsGeminiShuffle); saveGeminiShuffle(s.ttsGeminiShuffle); }
+        if (s.ttsGemini25Linked !== undefined){ setGemini25Linked(s.ttsGemini25Linked); saveGemini25Linked(s.ttsGemini25Linked); }
+        if (s.ttsGemini25Voice)  { setGemini25Voice(s.ttsGemini25Voice);   saveGemini25Voice(s.ttsGemini25Voice); }
+        if (s.ttsGemini25Persona !== undefined){ setGemini25Persona(s.ttsGemini25Persona); saveGemini25Persona(s.ttsGemini25Persona); }
+        if (s.ttsGemini25Shuffle !== undefined){ setGemini25Shuffle(s.ttsGemini25Shuffle); saveGemini25Shuffle(s.ttsGemini25Shuffle); }
+        if (s.ttsEnabledEngines && Array.isArray(s.ttsEnabledEngines)) {
+          setEnabledEngines(s.ttsEnabledEngines);
+          saveEnabledEngines(s.ttsEnabledEngines);
+        }
+        if (s.ttsEngineOrder && Array.isArray(s.ttsEngineOrder)) {
+          setEngineOrder(s.ttsEngineOrder);
+          saveEngineOrder(s.ttsEngineOrder);
+        }
+
+        configureTTS({
+          ...loaded,
+          googleVoice:     s.ttsGoogleVoice   || loadGoogleApiKey() ? (s.ttsGoogleVoice || googleVoice) : googleVoice,
+          geminiVoice:     s.ttsGeminiVoice   || geminiVoice,
+          geminiPersona:   s.ttsGeminiPersona ?? geminiPersona,
+          geminiShuffle:   s.ttsGeminiShuffle ?? geminiShuffle,
+          gemini25Linked:  s.ttsGemini25Linked ?? gemini25Linked,
+          gemini25Voice:   s.ttsGemini25Voice  || gemini25Voice,
+          gemini25Persona: s.ttsGemini25Persona ?? gemini25Persona,
+          gemini25Shuffle: s.ttsGemini25Shuffle ?? gemini25Shuffle,
+          enabledEngines:  s.ttsEnabledEngines || enabledEngines,
+        });
       } catch { /* ignore */ }
     })();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Helper: save engine config ไป Firestore (debounced 800ms)
+  const engineSaveTimerRef = useRef(null);
+  const saveEngineConfig = useCallback((patch) => {
+    if (!user) return;
+    if (engineSaveTimerRef.current) clearTimeout(engineSaveTimerRef.current);
+    engineSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await api.post('/api/settings', { settings: patch });
+        setCachedSettings({ ...(getCachedSettings() || {}), ...patch });
+      } catch { /* silent — ไม่ critical */ }
+    }, 800);
   }, [user]);
 
   const handleGoogleLogin = useCallback(async () => {
@@ -491,6 +534,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   arr.splice(from, 1);
                   arr.splice(to, 0, dragId);
                   saveEngineOrder(arr);
+                  saveEngineConfig({ ttsEngineOrder: arr });
                   return arr;
                 });
                 setDragOver(null);
@@ -512,6 +556,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                     const result = next.length > 0 ? next : ['web'];
                     saveEnabledEngines(result);
                     configureTTS({ enabledEngines: result });
+                    saveEngineConfig({ ttsEnabledEngines: result });
                     return result;
                   });
                 };
@@ -656,6 +701,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                       setGeminiVoice(v.name);
                       localStorage.setItem('ttplus_gemini_voice', v.name);
                       configureTTS({ geminiVoice: v.name });
+                      saveEngineConfig({ ttsGeminiVoice: v.name });
                     }}
                     className={clsx(
                       'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition',
@@ -684,6 +730,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                       setGeminiPersona(p.instruction);
                       localStorage.setItem('ttplus_gemini_persona', p.instruction);
                       configureTTS({ geminiPersona: p.instruction });
+                      saveEngineConfig({ ttsGeminiPersona: p.instruction });
                     }}
                     className={clsx(
                       'px-3 py-2 rounded-xl border text-left text-xs font-semibold transition',
@@ -720,6 +767,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   setGeminiShuffle(v);
                   saveGeminiShuffle(v);
                   configureTTS({ geminiShuffle: v });
+                  saveEngineConfig({ ttsGeminiShuffle: v });
                   toast.success(v ? '🎲 เปิดสุ่มทุกแชทแล้ว!' : 'ปิดโหมดสุ่มแล้ว');
                 }}
               />
@@ -817,6 +865,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   setGemini25Linked(v);
                   saveGemini25Linked(v);
                   configureTTS({ gemini25Linked: v });
+                  saveEngineConfig({ ttsGemini25Linked: v });
                 }}
               />
             </div>
@@ -833,6 +882,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                         setGemini25Voice(v.name);
                         saveGemini25Voice(v.name);
                         configureTTS({ gemini25Voice: v.name });
+                        saveEngineConfig({ ttsGemini25Voice: v.name });
                       }}
                       className={clsx(
                         'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition',
@@ -861,6 +911,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                         setGemini25Persona(p.instruction);
                         saveGemini25Persona(p.instruction);
                         configureTTS({ gemini25Persona: p.instruction });
+                        saveEngineConfig({ ttsGemini25Persona: p.instruction });
                       }}
                       className={clsx(
                         'px-3 py-2 rounded-xl border text-left text-xs font-semibold transition',
@@ -897,6 +948,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                     setGemini25Shuffle(v);
                     saveGemini25Shuffle(v);
                     configureTTS({ gemini25Shuffle: v });
+                    saveEngineConfig({ ttsGemini25Shuffle: v });
                     toast.success(v ? '🎲 เปิดสุ่มทุกแชทแล้ว!' : 'ปิดโหมดสุ่มแล้ว');
                   }}
                 />
@@ -995,6 +1047,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                       setGoogleVoice(v.name);
                       localStorage.setItem('ttplus_google_tts_voice', v.name);
                       configureTTS({ googleVoice: v.name });
+                      saveEngineConfig({ ttsGoogleVoice: v.name });
                     }}
                     className={clsx(
                       'w-full flex items-center gap-3 px-3 py-2 rounded-xl border text-left transition',

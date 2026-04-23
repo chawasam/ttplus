@@ -1,15 +1,71 @@
-// tiktok.js — จัดการ TikTok Live connection
+// tiktok.js — จัดการ TikTok Live connection + auto-reconnect exponential backoff
 const { WebcastPushConnection } = require('tiktok-live-connector');
 const { logSession, logError } = require('../utils/logger');
 const { sanitizeTikTokEvent } = require('../utils/validate');
 
-const activeConnections = new Map();
+const activeConnections = new Map(); // userId -> { connection, tiktokUsername, connectedAt, manualDisconnect }
+const reconnectTimers   = new Map(); // userId -> timerId
+const reconnectAttempts = new Map(); // userId -> attempt count
 
 // จำกัด connections สูงสุดต่อ server (ป้องกัน resource exhaustion)
-const MAX_CONNECTIONS = 100;
+const MAX_CONNECTIONS        = 100;
+const MAX_RECONNECT_ATTEMPTS = 6;    // ~5s + 10s + 20s + 40s + 80s + 160s ≈ 5 นาที
+const RECONNECT_BASE_MS      = 5000; // delay ครั้งแรก
 
 // Timeout สำหรับ connect (ms)
 const CONNECT_TIMEOUT_MS = 15000;
+
+// ===== Reconnect helpers =====
+
+function clearReconnectTimer(userId) {
+  const t = reconnectTimers.get(userId);
+  if (t) { clearTimeout(t); reconnectTimers.delete(userId); }
+}
+
+function scheduleReconnect(userId, tiktokUsername, io, socketId) {
+  const attempt   = (reconnectAttempts.get(userId) || 0) + 1;
+  const widgetRoom = `widget_${userId}`;
+  reconnectAttempts.set(userId, attempt);
+
+  if (attempt > MAX_RECONNECT_ATTEMPTS) {
+    // หมดความพยายาม — แจ้ง disconnect จริง
+    reconnectAttempts.delete(userId);
+    console.log(`[TikTok] Auto-reconnect exhausted for @${tiktokUsername} (userId=${userId})`);
+    if (socketId) io.to(socketId).emit('connection_status', { status: 'disconnected', tiktokUsername });
+    io.to(widgetRoom).emit('connection_status', { status: 'disconnected', tiktokUsername });
+    return;
+  }
+
+  // Exponential backoff: 5s → 10s → 20s → 40s → 80s → 120s (cap)
+  const delayMs = Math.min(RECONNECT_BASE_MS * Math.pow(2, attempt - 1), 120_000);
+
+  console.log(`[TikTok] Auto-reconnect @${tiktokUsername} attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS} in ${delayMs / 1000}s`);
+
+  if (socketId) io.to(socketId).emit('connection_status', {
+    status: 'reconnecting', tiktokUsername, attempt, maxAttempts: MAX_RECONNECT_ATTEMPTS, nextRetryMs: delayMs,
+  });
+  io.to(widgetRoom).emit('connection_status', {
+    status: 'reconnecting', tiktokUsername, attempt, maxAttempts: MAX_RECONNECT_ATTEMPTS, nextRetryMs: delayMs,
+  });
+
+  const timer = setTimeout(async () => {
+    reconnectTimers.delete(userId);
+    if (activeConnections.has(userId)) return; // เชื่อมต่อแล้ว (อาจมีคนกด reconnect manual)
+
+    try {
+      await startConnection(userId, tiktokUsername, io, socketId);
+      reconnectAttempts.delete(userId); // สำเร็จ — reset attempts
+    } catch {
+      // startConnection ส่ง error event ให้ frontend แล้ว
+      // วนต่อ (scheduleReconnect ถูกเรียกจาก error catch ใน startConnection ไม่ได้ — ต้องเรียกตรงนี้)
+      scheduleReconnect(userId, tiktokUsername, io, socketId);
+    }
+  }, delayMs);
+
+  reconnectTimers.set(userId, timer);
+}
+
+// ===== Main connection =====
 
 async function startConnection(userId, tiktokUsername, io, socketId) {
   // ตรวจ server capacity
@@ -43,9 +99,20 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
   try {
     const state = await connectWithTimeout();
 
-    activeConnections.set(userId, { connection, tiktokUsername, connectedAt: Date.now() });
+    activeConnections.set(userId, {
+      connection,
+      tiktokUsername,
+      connectedAt:      Date.now(),
+      manualDisconnect: false,
+    });
 
     await logSession({ userId, tiktokUsername, action: 'connect', roomId: state.roomId });
+
+    const widgetRoom = `widget_${userId}`;
+    const emitAll = (event, payload) => {
+      if (socketId) io.to(socketId).emit(event, payload);
+      io.to(widgetRoom).emit(event, payload);
+    };
 
     if (socketId) {
       io.to(socketId).emit('connection_status', {
@@ -55,14 +122,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       });
     }
 
-    // ===== Event Listeners (ทุก event sanitize ก่อนส่ง) =====
-    // emit ไปทั้ง dashboard socket (socketId) และ widget room (widget_${userId})
-    // socketId อาจเป็น null ได้ เมื่อ widget auto-connect โดยไม่มี dashboard เปิดค้าง
-    const widgetRoom = `widget_${userId}`;
-    const emitAll = (event, payload) => {
-      if (socketId) io.to(socketId).emit(event, payload);
-      io.to(widgetRoom).emit(event, payload);
-    };
+    // ===== Event Listeners =====
 
     connection.on('chat', (data) => {
       const safe = sanitizeTikTokEvent(data);
@@ -77,9 +137,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
     });
 
     connection.on('gift', (data) => {
-      // Skip streaming gifts ที่ยังไม่จบ
       if (data.giftType === 1 && !data.repeatEnd) return;
-
       const safe = sanitizeTikTokEvent(data);
       emitAll('gift', {
         type: 'gift',
@@ -135,10 +193,21 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
     });
 
     connection.on('disconnected', async () => {
+      const conn      = activeConnections.get(userId);
+      const wasManual = conn?.manualDisconnect ?? false;
+
       activeConnections.delete(userId);
       await logSession({ userId, tiktokUsername, action: 'disconnect' });
-      if (socketId) io.to(socketId).emit('connection_status', { status: 'disconnected', tiktokUsername });
-      io.to(widgetRoom).emit('connection_status', { status: 'disconnected', tiktokUsername });
+
+      if (wasManual) {
+        // Manual stop — แจ้ง disconnected ทันที ไม่ reconnect
+        if (socketId) io.to(socketId).emit('connection_status', { status: 'disconnected', tiktokUsername });
+        io.to(widgetRoom).emit('connection_status', { status: 'disconnected', tiktokUsername });
+      } else {
+        // TikTok-initiated disconnect — เริ่ม auto-reconnect
+        console.log(`[TikTok] Unexpected disconnect for @${tiktokUsername} — scheduling reconnect`);
+        scheduleReconnect(userId, tiktokUsername, io, socketId);
+      }
     });
 
     connection.on('error', async (err) => {
@@ -151,7 +220,6 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
     console.error(`[TikTok] Failed to connect @${tiktokUsername}:`, err.message);
     await logError(userId, tiktokUsername, err.message);
 
-    // ส่งข้อความที่ user-friendly
     const raw = err.message || '';
     let userMessage = `เชื่อมต่อไม่ได้: ${raw.slice(0, 120)}`;
     if (raw.toLowerCase().includes('offline') || raw.toLowerCase().includes('is not live')) {
@@ -172,8 +240,15 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
 }
 
 async function stopConnection(userId) {
+  clearReconnectTimer(userId);
+  reconnectAttempts.delete(userId);
+
   const conn = activeConnections.get(userId);
   if (!conn) return;
+
+  // ตั้ง flag ก่อน disconnect เพื่อกัน auto-reconnect
+  conn.manualDisconnect = true;
+
   try { conn.connection.disconnect(); } catch (e) { console.warn('[TikTok] disconnect error:', e?.message); }
   activeConnections.delete(userId);
   await logSession({ userId, tiktokUsername: conn.tiktokUsername, action: 'manual_disconnect' });

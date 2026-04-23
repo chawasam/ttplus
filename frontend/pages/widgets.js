@@ -119,8 +119,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getWidgetUrl = useCallback((widgetId) => {
     if (!widgetCid || !baseUrl) return '';
-    return `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
-  }, [widgetCid, baseUrl]);
+    const base  = `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
+    const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
+    if (!style) return base; // widget ที่ไม่มี style (เช่น ttsmonitor)
+    const styleQ = styleToParams(style, widgetId);
+    return styleQ ? `${base}&${styleQ}` : base;
+  }, [widgetCid, baseUrl, styles]);
 
   const copyUrl = useCallback((widgetId) => {
     if (!user) { setShowLoginModal(true); return; }

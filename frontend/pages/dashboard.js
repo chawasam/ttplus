@@ -95,8 +95,14 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         if (data.tiktokUsername) {
           setUsernameHistory(prev => saveUsernameHistory(data.tiktokUsername, prev));
         }
+      } else if (data.status === 'reconnecting') {
+        setConnected(false);
+        const sec = Math.round((data.nextRetryMs || 5000) / 1000);
+        toast(`🔄 เชื่อมต่อใหม่อัตโนมัติ (${data.attempt}/${data.maxAttempts}) ใน ${sec}s...`,
+          { id: 'reconnecting', duration: (data.nextRetryMs || 5000) + 1000 });
       } else if (data.status === 'disconnected') {
         setConnected(false);
+        toast.dismiss('reconnecting');
         toast(`📴 ตัดการเชื่อมต่อแล้ว`);
       } else if (data.status === 'error') {
         setConnected(false);

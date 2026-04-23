@@ -115,6 +115,45 @@ function validateSettings(raw) {
     allowed.ttsVoice = sanitizeStr(String(raw.ttsVoice || ''), 100);
   }
 
+  // ===== TTS Engine / Voice settings (Firestore-synced, API key stays in localStorage) =====
+  const VALID_ENGINE_IDS = ['web', 'google', 'gemini31', 'gemini25'];
+  if (raw.ttsGoogleVoice !== undefined) {
+    allowed.ttsGoogleVoice = sanitizeStr(String(raw.ttsGoogleVoice || ''), 100);
+  }
+  if (raw.ttsGeminiVoice !== undefined) {
+    allowed.ttsGeminiVoice = sanitizeStr(String(raw.ttsGeminiVoice || ''), 50);
+  }
+  if (raw.ttsGeminiPersona !== undefined) {
+    allowed.ttsGeminiPersona = sanitizeStr(String(raw.ttsGeminiPersona || ''), 300);
+  }
+  if (raw.ttsGeminiShuffle !== undefined) {
+    if (typeof raw.ttsGeminiShuffle !== 'boolean') throw new Error('ttsGeminiShuffle must be boolean');
+    allowed.ttsGeminiShuffle = raw.ttsGeminiShuffle;
+  }
+  if (raw.ttsGemini25Linked !== undefined) {
+    if (typeof raw.ttsGemini25Linked !== 'boolean') throw new Error('ttsGemini25Linked must be boolean');
+    allowed.ttsGemini25Linked = raw.ttsGemini25Linked;
+  }
+  if (raw.ttsGemini25Voice !== undefined) {
+    allowed.ttsGemini25Voice = sanitizeStr(String(raw.ttsGemini25Voice || ''), 50);
+  }
+  if (raw.ttsGemini25Persona !== undefined) {
+    allowed.ttsGemini25Persona = sanitizeStr(String(raw.ttsGemini25Persona || ''), 300);
+  }
+  if (raw.ttsGemini25Shuffle !== undefined) {
+    if (typeof raw.ttsGemini25Shuffle !== 'boolean') throw new Error('ttsGemini25Shuffle must be boolean');
+    allowed.ttsGemini25Shuffle = raw.ttsGemini25Shuffle;
+  }
+  if (raw.ttsEnabledEngines !== undefined) {
+    if (!Array.isArray(raw.ttsEnabledEngines)) throw new Error('ttsEnabledEngines must be array');
+    const engines = raw.ttsEnabledEngines.filter(e => VALID_ENGINE_IDS.includes(e));
+    allowed.ttsEnabledEngines = engines.length > 0 ? engines : ['web'];
+  }
+  if (raw.ttsEngineOrder !== undefined) {
+    if (!Array.isArray(raw.ttsEngineOrder)) throw new Error('ttsEngineOrder must be array');
+    allowed.ttsEngineOrder = raw.ttsEngineOrder.filter(e => VALID_ENGINE_IDS.includes(e));
+  }
+
   // widgetStyles — ค่า appearance ของแต่ละ widget
   if (raw.widgetStyles !== undefined) {
     if (typeof raw.widgetStyles !== 'object' || Array.isArray(raw.widgetStyles)) {
