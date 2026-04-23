@@ -144,3 +144,10 @@ export function removeCustom(key) {
   _cache.delete(key);
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch { /* quota */ }
 }
+
+export function removeAllCustom() {
+  const store = loadSettings();
+  store.customs = {};
+  _cache.clear();
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch { /* quota */ }
+}

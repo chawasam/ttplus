@@ -1,6 +1,6 @@
 // widget/pinprofile.js — Pin Profile Card Widget สำหรับ OBS
 // รับข้อมูล user จาก Chat Overlay ผ่าน BroadcastChannel('ttplus_pinprofile')
-// OBS Size แนะนำ: แนวนอน 400 x 150 | แนวตั้ง 240 x 320
+// OBS Size แนะนำ: แนวนอน 400×150 | แนวตั้ง 240×240
 import { useEffect, useState } from 'react';
 import { safeTikTokImageUrl } from '../../lib/sanitize';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
@@ -24,7 +24,7 @@ export default function PinProfileWidget() {
         uniqueId:          'ttsamfan',
         nickname:          'TTsamFan',
         profilePictureUrl: '',
-        bio:               'TikTok streamer 🎮 ไลฟ์ทุกวัน | สอนเล่นเกม | ฝากติดตามด้วยนะครับ 🙏',
+        comment:           'โห เยี่ยมเลยครับ! 🔥🎉',
         color:             '#ff2d62',
       });
       setVisible(true);
@@ -63,6 +63,7 @@ export default function PinProfileWidget() {
   const userColor  = pinned?.color || styles.ac;
   const avatarUrl  = safeTikTokImageUrl(pinned?.profilePictureUrl || '');
   const isVertical = styles.orient === 'v';
+  const showChat   = styles.showChat === 1;
 
   const AvatarEl = ({ size }) => avatarUrl ? (
     <img
@@ -71,11 +72,11 @@ export default function PinProfileWidget() {
       referrerPolicy="no-referrer"
       style={{
         width: size, height: size,
-        borderRadius: '50%',
-        border:       `2.5px solid ${userColor}`,
-        flexShrink:   0,
-        objectFit:    'cover',
-        boxShadow:    `0 0 16px ${userColor}66`,
+        borderRadius:  '50%',
+        border:        `2.5px solid ${userColor}`,
+        flexShrink:    0,
+        objectFit:     'cover',
+        boxShadow:     `0 0 16px ${userColor}66`,
       }}
     />
   ) : (
@@ -91,6 +92,39 @@ export default function PinProfileWidget() {
       flexShrink:     0,
     }}>👤</div>
   );
+
+  // ── Chat bubble (แสดงเมื่อ showChat=1 และมี comment) ──
+  const ChatBubble = () => {
+    if (!showChat || !pinned?.comment) return null;
+    return (
+      <div style={{
+        marginTop:    8,
+        padding:      '7px 10px',
+        background:   `${userColor}14`,
+        borderLeft:   `3px solid ${userColor}`,
+        borderRadius: styles.br > 6 ? styles.br - 4 : 4,
+        color:        styles.tc,
+        fontSize:     styles.fs - 1,
+        fontFamily:   'sans-serif',
+        lineHeight:   1.5,
+        wordBreak:    'break-word',
+        fontStyle:    'italic',
+        boxSizing:    'border-box',
+        width:        '100%',
+      }}>
+        <span style={{
+          color:      `${userColor}aa`,
+          fontSize:   styles.fs - 3,
+          fontStyle:  'normal',
+          display:    'block',
+          marginBottom: 2,
+        }}>
+          💬
+        </span>
+        {pinned.comment}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -117,7 +151,7 @@ export default function PinProfileWidget() {
               boxSizing:    'border-box',
               overflow:     'hidden',
               ...(isVertical
-                ? { borderTop: `4px solid ${userColor}`, padding: '16px 14px 14px' }
+                ? { borderTop:  `4px solid ${userColor}`, padding: '14px 14px 14px' }
                 : { borderLeft: `4px solid ${userColor}`, padding: '12px 14px' }
               ),
             }}
@@ -133,19 +167,19 @@ export default function PinProfileWidget() {
 
             {isVertical ? (
               /* ===== แนวตั้ง ===== */
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
 
-                <AvatarEl size={76} />
+                <AvatarEl size={72} />
 
                 {/* Name */}
-                <div style={{ textAlign: 'center' }}>
+                <div style={{ textAlign: 'center', width: '100%' }}>
                   <div style={{
-                    color:        userColor,
-                    fontWeight:   800,
-                    fontSize:     styles.fs + 3,
-                    fontFamily:   'sans-serif',
-                    lineHeight:   1.2,
-                    wordBreak:    'break-word',
+                    color:      userColor,
+                    fontWeight: 800,
+                    fontSize:   styles.fs + 3,
+                    fontFamily: 'sans-serif',
+                    lineHeight: 1.2,
+                    wordBreak:  'break-word',
                   }}>
                     {pinned.nickname || pinned.uniqueId}
                   </div>
@@ -159,41 +193,14 @@ export default function PinProfileWidget() {
                   </div>
                 </div>
 
-                {/* Bio */}
-                {pinned.bio ? (
-                  <div style={{
-                    color:        styles.tc,
-                    fontSize:     styles.fs,
-                    fontFamily:   'sans-serif',
-                    lineHeight:   1.55,
-                    textAlign:    'center',
-                    wordBreak:    'break-word',
-                    width:        '100%',
-                    padding:      '8px 10px',
-                    background:   `${userColor}0d`,
-                    borderRadius: styles.br > 6 ? styles.br - 4 : 4,
-                    borderTop:    `1px solid ${userColor}22`,
-                    boxSizing:    'border-box',
-                  }}>
-                    {pinned.bio}
-                  </div>
-                ) : (
-                  <div style={{
-                    color:      'rgba(255,255,255,0.2)',
-                    fontSize:   styles.fs - 1,
-                    fontFamily: 'sans-serif',
-                    fontStyle:  'italic',
-                  }}>
-                    ไม่มี bio
-                  </div>
-                )}
+                <ChatBubble />
               </div>
 
             ) : (
               /* ===== แนวนอน ===== */
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
 
-                <AvatarEl size={54} />
+                <AvatarEl size={52} />
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Name + @username */}
@@ -218,29 +225,7 @@ export default function PinProfileWidget() {
                     @{pinned.uniqueId}
                   </div>
 
-                  {/* Bio */}
-                  {pinned.bio ? (
-                    <div style={{
-                      color:      styles.tc,
-                      fontSize:   styles.fs - 1,
-                      fontFamily: 'sans-serif',
-                      marginTop:  6,
-                      lineHeight: 1.5,
-                      wordBreak:  'break-word',
-                    }}>
-                      {pinned.bio}
-                    </div>
-                  ) : (
-                    <div style={{
-                      color:      'rgba(255,255,255,0.2)',
-                      fontSize:   styles.fs - 2,
-                      fontFamily: 'sans-serif',
-                      marginTop:  5,
-                      fontStyle:  'italic',
-                    }}>
-                      ไม่มี bio
-                    </div>
-                  )}
+                  <ChatBubble />
                 </div>
               </div>
             )}
