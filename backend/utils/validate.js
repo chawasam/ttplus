@@ -280,6 +280,12 @@ function validateSettings(raw) {
         if (v !== 0 && v !== 1) throw new Error(`widgetStyles.${key}.showSender must be 0 or 1`);
         clean.showSender = v;
       }
+      // showGiftName — 0 or 1 (coinjar เท่านั้น)
+      if (s.showGiftName !== undefined && key === 'coinjar') {
+        const v = Number(s.showGiftName);
+        if (v !== 0 && v !== 1) throw new Error(`widgetStyles.${key}.showGiftName must be 0 or 1`);
+        clean.showGiftName = v;
+      }
       cleanStyles[key] = clean;
     }
     allowed.widgetStyles = cleanStyles;

@@ -76,7 +76,8 @@ function SoundKey({
   };
 
   const handlePointerUp = () => {
-    const held = Date.now() - (startedAt.current || 0);
+    if (!startedAt.current) return; // gesture ถูก cancel แล้ว
+    const held = Date.now() - startedAt.current;
     clearTimeout(timerRef.current);
     startedAt.current = null;
     if (editMode) { if (held < LONG_PRESS_MS) onPress(keyChar); }
@@ -84,6 +85,11 @@ function SoundKey({
   };
 
   const handlePointerLeave = () => {
+    clearTimeout(timerRef.current);
+    // ไม่ null startedAt — บน mobile pointerLeave อาจยิงก่อน pointerUp
+  };
+
+  const handlePointerCancel = () => {
     clearTimeout(timerRef.current);
     startedAt.current = null;
   };
@@ -124,6 +130,7 @@ function SoundKey({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerLeave}
+      onPointerCancel={handlePointerCancel}
       onContextMenu={onContextMenu ? (e) => { e.preventDefault(); onContextMenu(keyChar, e); } : undefined}
       onDragOver={onDragOver ? (e) => { e.preventDefault(); onDragOver(keyChar); } : undefined}
       onDrop={onDrop ? (e) => { e.preventDefault(); onDrop(keyChar, e); } : undefined}
@@ -251,7 +258,7 @@ function KeyboardLayout({
     isDragTarget: dragOverKey === key,
     progress: playingProgress?.get(key)?.progress ?? null,
     onPress, onPreview, onRemove, onRename, onModeToggle,
-    onContextMenu: isDesktop ? onContextMenu : undefined,
+    onContextMenu: isDesktop && editMode ? onContextMenu : undefined,
     onDragOver:    !isMobile  ? onDragOver   : undefined,
     onDrop:        !isMobile  ? onDrop       : undefined,
   });
@@ -306,7 +313,7 @@ function PadLayout({
     showKbHint,
     progress: playingProgress?.get(key)?.progress ?? null,
     onPress, onPreview, onRemove, onRename, onModeToggle,
-    onContextMenu: isDesktop ? onContextMenu : undefined,
+    onContextMenu: isDesktop && editMode ? onContextMenu : undefined,
     onDragOver:    !isMobile  ? onDragOver   : undefined,
     onDrop:        !isMobile  ? onDrop       : undefined,
   });
@@ -419,17 +426,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     };
   }, []);
 
-  // Close context menu on outside click / Escape
+  // Close context menu on Escape (backdrop div จัดการ outside click แทน)
   useEffect(() => {
     if (!ctxMenu) return;
-    const onKey   = (e) => { if (e.key === 'Escape') setCtxMenu(null); };
-    const onClick = () => setCtxMenu(null);
+    const onKey = (e) => { if (e.key === 'Escape') setCtxMenu(null); };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('click',   onClick);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('click',   onClick);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [ctxMenu]);
 
   // effectiveStore: map pageN fields → primary names (รองรับ 4 pages)
@@ -954,8 +956,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 <p className="font-semibold text-sm">โหมดแก้ไข — Page {page} ({LAYOUT_LABEL[curLayout]})</p>
                 <p><b>กดที่ปุ่ม</b> = เปิดเมนูแก้ไขรวม (อัปโหลด / ตั้งชื่อ / สี / ความเร็ว / โหมด / คัดลอก)</p>
                 {!isPadMode && <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview เสียง</p>}
-                {isDesktop && <p>🖱️ <b>Right-click</b> = เมนูด่วน (ทำงานได้ทั้งในและนอกโหมดแก้ไข)</p>}
-                {isDesktop && <p>🖱️ <b>Right-click</b> ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด)</p>}
+                {isDesktop && <p>🖱️ <b>Right-click</b> ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด, คัดลอก)</p>}
                 {!isMobile && <p>🎵 <b>ลากไฟล์</b>จาก File Explorer มาวางบนปุ่มได้โดยตรง</p>}
               </div>
             </div>
@@ -1182,13 +1183,15 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
       {/* ===== Action Sheet (Edit Mode) ===== */}
       {editMode && selectedKey && (
-        <div className="fixed inset-0 z-40 flex items-end" onClick={() => setSelectedKey(null)}>
+        <div
+          className="fixed inset-0 z-40 flex items-end"
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedKey(null); }}
+        >
           <div
             className={clsx(
               'w-full max-w-sm mx-auto mb-4 rounded-2xl shadow-2xl border p-4 space-y-3',
               isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
             )}
-            onClick={e => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -1342,6 +1345,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
       {/* ===== Right-click Context Menu (Desktop) ===== */}
       {ctxMenu && (
+        <>
+        {/* Backdrop — คลิกนอกเมนูปิด (ไม่บล็อก click ภายในเมนู) */}
+        <div className="fixed inset-0" style={{ zIndex: 49 }} onClick={() => setCtxMenu(null)} />
         <div
           className="fixed z-50"
           style={{
@@ -1483,6 +1489,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             </div>
           </div>
         </div>
+        </>
       )}
 
       {/* ===== Rename Overlay ===== */}
