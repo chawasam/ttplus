@@ -151,6 +151,22 @@ async function loadSfxBuffer(ctx, key) {
   } catch { _sfxCache.set(key, null); return null; }
 }
 
+const _sfx2Cache = new Map(); // page 2 default sfx decode cache
+
+async function loadSfx2Buffer(ctx, key) {
+  if (_sfx2Cache.has(key)) return _sfx2Cache.get(key);
+  try {
+    // โหลด base64 จาก defaultSounds2.js (dynamic import — โหลดครั้งเดียวเมื่อใช้ Page 2)
+    const mod    = await import('./defaultSounds2.js');
+    const sounds = mod.default || mod;
+    const b64    = sounds[key.toUpperCase()];
+    if (!b64) { _sfx2Cache.set(key, null); return null; }
+    const buf = await decodeB64(ctx, b64);
+    _sfx2Cache.set(key, buf);
+    return buf;
+  } catch { _sfx2Cache.set(key, null); return null; }
+}
+
 async function decodeB64(ctx, b64) {
   const bin   = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -160,7 +176,8 @@ async function decodeB64(ctx, b64) {
 
 // ===== Play =====
 
-export async function playKey(key, store, useSfx = true) {
+// page: 1 = โหลดจาก /sfx/, 2 = โหลดจาก /sfx2/, 0/false = ไม่โหลด default
+export async function playKey(key, store, page = 1) {
   if (!store?.enabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -202,9 +219,13 @@ export async function playKey(key, store, useSfx = true) {
     } catch {}
   }
 
-  // 2. Default SFX (page 1)
-  if (useSfx && SFX_KEYS.has(key)) {
+  // 2. Default SFX — page 1: /sfx/, page 2: /sfx2/
+  if (page === 1 && SFX_KEYS.has(key)) {
     const sfxBuf = await loadSfxBuffer(ctx, key);
+    if (sfxBuf) { playBuffer(sfxBuf); return; }
+  }
+  if (page === 2 && SFX_KEYS.has(key)) {
+    const sfxBuf = await loadSfx2Buffer(ctx, key);
     if (sfxBuf) { playBuffer(sfxBuf); return; }
   }
 
