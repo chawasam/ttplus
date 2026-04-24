@@ -36,7 +36,8 @@ const WIDGETS = [
       { key: '_g1',       label: '🐉 Boss Setup',                    type: 'group' },
       { key: 'hp',        label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
       { key: 'bossname',  label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
-      { key: 'emoji',     label: 'Boss Emoji',                       type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
+      { key: 'emoji',     label: 'Boss Emoji (ถ้าไม่ใส่รูป)',         type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
+      { key: 'bossimg',  label: 'Boss Image URL (PNG โปร่งใส 256×256 — ทับ emoji)', type: 'url', default: '' },
       { key: 'element',   label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
       { key: 'hideelement', label: 'ซ่อนธาตุ Boss',                  type: 'toggle',  default: 0, onLabel: 'ซ่อน — เปิดเผยที่ HP ≤75%', offLabel: 'แสดงธาตุตั้งแต่ต้น' },
       { key: '_g2',       label: '⚔️ Gameplay',                      type: 'group' },
@@ -187,6 +188,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         continue;
       }
       const val = cfg[f.key] ?? f.default;
+      // ข้าม url/text fields ที่ว่าง — ไม่ต้องใส่ใน query string
+      if ((f.type === 'url' || f.type === 'text') && !val) continue;
       params.push(`${f.key}=${encodeURIComponent(val)}`);
     }
     return params.join('&');
@@ -507,6 +510,32 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                                 className={clsx('w-full px-3 py-2 rounded-lg text-sm border',
                                   isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
                               />
+                            )}
+                            {f.type === 'url' && (
+                              <div className="space-y-2">
+                                <input
+                                  type="url"
+                                  value={val}
+                                  placeholder="https://example.com/boss.png"
+                                  onChange={e => setKey(f.key, e.target.value)}
+                                  className={clsx('w-full px-3 py-2 rounded-lg text-xs border font-mono',
+                                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-600' : 'bg-gray-100 border-gray-200 text-gray-900 placeholder-gray-400')}
+                                />
+                                {val && (
+                                  <div className="flex items-center gap-3">
+                                    <img src={val} alt="preview" crossOrigin="anonymous"
+                                      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
+                                      onError={e => { e.currentTarget.style.opacity = '0.3'; }}
+                                    />
+                                    <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>ตัวอย่างรูปบอส</span>
+                                    <button onClick={() => setKey(f.key, '')}
+                                      className={clsx('ml-auto text-xs px-2 py-0.5 rounded border transition',
+                                        isDark ? 'border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-500/40' : 'border-gray-300 text-gray-400 hover:text-red-500')}>
+                                      ✕ ล้าง
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             )}
                             {f.type === 'emoji' && (
                               <div className="flex gap-2 flex-wrap">

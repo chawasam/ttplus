@@ -116,6 +116,7 @@ export default function BossBattleWidget() {
   const [maxHp,        setMaxHp]       = useState(1000);
   const [round,        setRound]       = useState(1);
   const [bossEmoji,    setBossEmoji]   = useState('🐉');
+  const [bossImg,      setBossImg]     = useState(''); // URL รูปบอส (ถ้ามี จะแสดงแทน emoji)
   const [bossName,     setBossName]    = useState('Dark Dragon');
   const [bossElem,     setBossElem]    = useState('neutral');
   const [phase,        setPhase]       = useState('battle');
@@ -516,6 +517,7 @@ export default function BossBattleWidget() {
 
     setMaxHp(mhp);
     setBossEmoji(decodeURIComponent(emoji));
+    setBossImg(decodeURIComponent(params.get('bossimg') ?? ''));
     setBossName(decodeURIComponent(name));
     setBossElem(elem);
 
@@ -800,11 +802,21 @@ export default function BossBattleWidget() {
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ position: 'absolute', width: '140px', height: '140px', borderRadius: '50%', background: `radial-gradient(circle, ${elemInfo.aura} 0%, transparent 70%)`, filter: 'blur(12px)' }} />
               <div style={{
-                fontSize: '88px', lineHeight: 1, position: 'relative', zIndex: 2,
+                position: 'relative', zIndex: 2,
                 filter: `drop-shadow(0 0 22px ${elemInfo.color}99)`,
                 animation: shaking ? 'bossShake 0.45s ease' : 'bossFloat 3s ease-in-out infinite',
               }}>
-                {bossEmoji}
+                {bossImg ? (
+                  <img
+                    src={bossImg}
+                    crossOrigin="anonymous"
+                    alt={bossName}
+                    style={{ width: '108px', height: '108px', objectFit: 'contain', display: 'block' }}
+                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : (
+                  <span style={{ fontSize: '88px', lineHeight: 1, display: 'block' }}>{bossEmoji}</span>
+                )}
               </div>
             </div>
 

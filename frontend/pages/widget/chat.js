@@ -27,7 +27,7 @@ let _msgSeq = 0;
 
 export default function ChatWidget() {
   const [messages, setMessages] = useState([]);
-  const [styles, setStyles]     = useState(null);
+  const [styles,   setStyles]   = useState(null);
 
   const stylesRef = useRef(null);
   const bottomRef = useRef(null);
@@ -139,7 +139,7 @@ export default function ChatWidget() {
 
       <div
         style={{
-          background:      'transparent',
+          background:      styles.pagebg ? `#${styles.pagebg}` : 'transparent',
           padding:         10,
           maxWidth:        400,
           height:          '100vh',

@@ -272,28 +272,52 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
 
-          {/* Language toggle */}
+          {/* Page Background (สำหรับ OBS Dock) */}
           <div className="space-y-2">
-            <span className={label}>ภาษาข้อความ (Font)</span>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { val: 'th', icon: '🇹🇭', text: 'ไทย (Noto Sans Thai)' },
-                { val: 'en', icon: '🇺🇸', text: 'ENG (Arial)' },
-              ].map(opt => (
-                <button key={opt.val}
-                  onClick={() => set('lang', opt.val)}
-                  className={clsx(
-                    'py-2 px-2 rounded-lg text-xs font-semibold transition border text-left',
-                    (style.lang ?? 'th') === opt.val
-                      ? 'bg-brand-500 border-brand-500 text-white'
-                      : theme === 'dark'
-                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
-                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
-                  )}>
-                  {opt.icon} {opt.text}
+            <div className="flex items-center justify-between">
+              <span className={label}>พื้นหลังทั้งหน้า <span className={clsx('text-xs font-normal', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>(OBS Dock)</span></span>
+              {style.pagebg && (
+                <button onClick={() => set('pagebg', '')}
+                  className={clsx('text-xs px-2 py-0.5 rounded border transition',
+                    theme === 'dark' ? 'border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-500/40' : 'border-gray-300 text-gray-500 hover:text-red-500')}>
+                  ✕ ล้าง (โปร่งใส)
                 </button>
-              ))}
+              )}
             </div>
+            <div className="flex items-center gap-3">
+              <input type="color"
+                value={style.pagebg ? `#${style.pagebg}` : '#1a1a1a'}
+                onChange={e => set('pagebg', e.target.value.replace('#', ''))}
+                className="w-10 h-10 rounded-lg border-0 cursor-pointer bg-transparent"
+                style={{ padding: 2 }}
+              />
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { label: 'โปร่งใส', val: '',       preview: 'rgba(0,0,0,0)',   border: true },
+                  { label: 'เกือบดำ', val: '111111', preview: '#111111' },
+                  { label: 'เทาเข้ม', val: '1e1e2e', preview: '#1e1e2e' },
+                  { label: 'น้ำเงินเข้ม', val: '0d1117', preview: '#0d1117' },
+                ].map(p => (
+                  <button key={p.val} onClick={() => set('pagebg', p.val)}
+                    title={p.label}
+                    className={clsx(
+                      'w-8 h-8 rounded-lg border-2 transition',
+                      (style.pagebg ?? '') === p.val
+                        ? 'border-brand-400 scale-110'
+                        : theme === 'dark' ? 'border-gray-600 hover:border-gray-400' : 'border-gray-300 hover:border-gray-500'
+                    )}
+                    style={{ background: p.preview ?? p.val }}>
+                    {p.border && <span className="text-gray-400 text-xs">∅</span>}
+                  </button>
+                ))}
+              </div>
+              {style.pagebg && (
+                <span className={clsx('text-xs font-mono', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>#{style.pagebg}</span>
+              )}
+            </div>
+            <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              💡 OBS Overlay ใช้โปร่งใส — OBS Dock เลือกสีเข้ม
+            </p>
           </div>
 
         </>
