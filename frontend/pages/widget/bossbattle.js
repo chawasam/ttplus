@@ -204,17 +204,18 @@ export default function BossBattleWidget() {
   }, []);
 
   // ── Physics: add gift body ──────────────────────────────────
-  // landFrac (0–1): horizontal fraction of widgetWidth to spawn at (matches CSS animation landing)
-  const addGiftToPhysics = useCallback((emoji, elemColor, imageUrl, landFrac) => {
+  // landFrac (0–1): x position as fraction of widgetWidth
+  // diamonds: gift cost — used to prioritize removal (cheapest out first)
+  const addGiftToPhysics = useCallback((emoji, elemColor, imageUrl, landFrac, diamonds) => {
     const Matter = window.Matter;
     if (!Matter || !engineRef.current) return;
     const w = widthRef.current;
-    // Use landFrac if provided (continuous trajectory handoff), else random
     const x = landFrac !== undefined
       ? Math.max(22, Math.min(w - 22, landFrac * w))
       : w * 0.1 + Math.random() * w * 0.8;
-    // Spawn just above canvas top; velocity small since CSS already animated the fall
-    const body = Matter.Bodies.circle(x, -18, 20, {
+    // Spawn near bottom of canvas — ตรงกับจุดที่ CSS arc จบ ไม่วาปจากด้านบน
+    const spawnY = PHYS_H - 60;
+    const body = Matter.Bodies.circle(x, spawnY, 20, {
       restitution: 0.28,
       friction: 0.55,
       frictionAir: 0.012,
@@ -222,11 +223,11 @@ export default function BossBattleWidget() {
       label: emoji,
     });
     Matter.Body.setVelocity(body, {
-      x: (Math.random() - 0.5) * 3,
-      y: 2.5 + Math.random() * 2,
+      x: (Math.random() - 0.5) * 2,
+      y: 1 + Math.random() * 1.5, // gentle push — settle into pile
     });
     Matter.Composite.add(engineRef.current.world, body);
-    giftBodiesRef.current.push({ body, emoji, elemColor, imageUrl: imageUrl || '' });
+    giftBodiesRef.current.push({ body, emoji, elemColor, imageUrl: imageUrl || '', diamonds: diamonds ?? 1 });
     // Pre-load gift image for canvas rendering
     if (imageUrl && !imageCacheRef.current.has(imageUrl)) {
       const img = new Image();
@@ -234,10 +235,15 @@ export default function BossBattleWidget() {
       img.src = imageUrl;
       imageCacheRef.current.set(imageUrl, img);
     }
-    // Cap at MAX_GIFTS — remove oldest
+    // Cap at MAX_GIFTS — ลบของขวัญที่ถูกที่สุดออกก่อน (ไม่ใช่เก่าสุด)
     if (giftBodiesRef.current.length > MAX_GIFTS) {
-      const old = giftBodiesRef.current.shift();
-      try { Matter.Composite.remove(engineRef.current.world, old.body); } catch {}
+      let minIdx = 0;
+      let minVal = Infinity;
+      giftBodiesRef.current.forEach((g, i) => {
+        if (g.diamonds < minVal) { minVal = g.diamonds; minIdx = i; }
+      });
+      const [removed] = giftBodiesRef.current.splice(minIdx, 1);
+      try { Matter.Composite.remove(engineRef.current.world, removed.body); } catch {}
     }
   }, []);
 
@@ -248,7 +254,7 @@ export default function BossBattleWidget() {
   //   550→1100ms : fall + arc from boss → physics pile (keyframe 55–100%)
   //   1050ms     : physics body spawns at landX — seamless handoff
   //   1150ms     : CSS element removed
-  const spawnFlyingGift = useCallback((emoji, elemColor, elemEmoji, imageUrl) => {
+  const spawnFlyingGift = useCallback((emoji, elemColor, elemEmoji, imageUrl, diamonds) => {
     const id       = ++flyIdRef.current;
     const side     = Math.random() < 0.5 ? 'left' : 'right';
     // Where the gift lands in physics canvas (fraction of widgetWidth)
@@ -267,7 +273,7 @@ export default function BossBattleWidget() {
     // Remove CSS element after full animation
     setTimeout(() => setFlyingGifts(prev => prev.filter(g => g.id !== id)), 1150);
     // Spawn physics body just as CSS element reaches the pile area
-    setTimeout(() => addGiftToPhysics(emoji, elemColor, imageUrl, landFrac), 1050);
+    setTimeout(() => addGiftToPhysics(emoji, elemColor, imageUrl, landFrac, diamonds ?? 1), 1050);
   }, [addGiftToPhysics, widgetWidth]);
 
   const startBattle = useCallback((hp, rnd) => {
@@ -325,7 +331,7 @@ export default function BossBattleWidget() {
     const displayEmoji = giftEmoji || ELEMENTS[giftEl]?.emoji || '🎁';
     const displayColor = ELEMENTS[giftEl]?.color;
     const elemEmoji    = giftEl !== 'neutral' ? ELEMENTS[giftEl]?.emoji : '';
-    spawnFlyingGift(displayEmoji, displayColor, elemEmoji, giftImageUrl || '');
+    spawnFlyingGift(displayEmoji, displayColor, elemEmoji, giftImageUrl || '', baseDmg);
 
     // Streak (effective gifts ติดกัน)
     let streakBonus = false;
@@ -660,7 +666,7 @@ export default function BossBattleWidget() {
 
   // align helper
   const hAlign = sideAlign === 'left' ? 'flex-start' : sideAlign === 'right' ? 'flex-end' : 'center';
-  const hPad   = sideAlign === 'left' ? { paddingLeft: '12px' } : sideAlign === 'right' ? { paddingRight: '12px' } : {};
+  const hPad   = sideAlign === 'left' ? { paddingLeft: '17px' } : sideAlign === 'right' ? { paddingRight: '17px' } : {};
   const textAlign = sideAlign === 'left' ? 'left' : sideAlign === 'right' ? 'right' : 'center';
 
   return (

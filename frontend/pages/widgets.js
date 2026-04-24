@@ -37,12 +37,6 @@ const BOSS_ELEMENTS  = [
 const CREATURE_EMOJIS = ['🐉','🦋','🦄','🐣','🔥','🌟','👑','🐺'];
 
 const WIDGETS = [
-  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '800 × 600' },
-  { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
-  { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
-  { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
-  { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ ไม่ได้ปรับปรุง',  size: '300 × 400' },
-  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
   {
     id: 'bossbattle', icon: '👾', name: 'Boss Battle',
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
@@ -73,16 +67,14 @@ const WIDGETS = [
       { key: 'carda',     label: 'ความทึบแผง (0=โปร่งใส → 100=ทึบ)', type: 'number', default: 58,  min: 0,   max: 100, step: 5  },
     ],
   },
-  {
-    id: 'egghatch', icon: '🥚', name: 'Egg Hatch (ยังไม่ได้ปรับปรุง)',
-    desc: 'ไข่ฟักออก — ส่งของขวัญครบ diamond goal เพื่อเปิดเผยสิ่งที่ซ่อนอยู่',
-    size: '300 × 420', noStyle: true,
-    configFields: [
-      { key: 'goal',     label: 'Diamond Goal',    type: 'number', default: 500,          min: 1, max: 100000, step: 50 },
-      { key: 'eggname',  label: 'ชื่อไข่',         type: 'text',   default: 'Mystery Egg', maxLen: 30 },
-      { key: 'creature', label: 'สิ่งที่ฟักออก',   type: 'emoji',  default: '🐉',          options: CREATURE_EMOJIS },
-    ],
-  },
+  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '800 × 600' },
+  { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
+  { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
+  { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
+  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
+  // ── ซ่อนชั่วคราว — ยังไม่พร้อมใช้งาน ──
+  // { id: 'leaderboard', ... }
+  // { id: 'egghatch', ... }
 ];
 
 // user, authLoading มาจาก _app.js
