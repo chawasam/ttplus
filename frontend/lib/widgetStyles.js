@@ -2,9 +2,35 @@
 
 // skin IDs ที่ valid (sync กับ chatSkins.js และ validate.js)
 export const VALID_SKIN_IDS = [
+  // originals
   '', 'cyber', 'samurai', 'galaxy', 'matrix', 'volcanic',
   'sakura', 'pastel', 'ocean', 'starfall', 'candy',
   'snowfall', 'autumn', 'witch', 'music', 'aurora', 'neonrain',
+  // tier 1
+  'obsidian', 'linen', 'carbon', 'chalk', 'studio', 'tungsten',
+  'parchment', 'graphite', 'onyx', 'ivory', 'slate', 'matteblack',
+  'fog', 'washi', 'concrete', 'raw', 'ecru', 'vapor', 'blueprint', 'noir',
+  // tier 2
+  'obsidianglass', 'rosegold', 'midnight', 'aquazen', 'amberhaze',
+  'deepforest', 'burgundy', 'chrome', 'titanium', 'emberstorm',
+  'dusk2', 'reef', 'northernpine', 'peachfuzz', 'moonstone',
+  'bordeaux', 'mirage', 'cerulean', 'espresso', 'dustyrose',
+  // tier 3
+  'holographic', 'liquidmetal', 'cybergrid2', 'katana2', 'bloodmoon',
+  'deepocean', 'thunder', 'seraphim', 'sakurastorm2', 'inkwash',
+  'neondusk', 'wildfire', 'frozen', 'lava', 'spectral',
+  'circuit', 'prism', 'tempest', 'bioluminescence', 'mosaic',
+  // tier 4
+  'nebulacore', 'eventhorizon', 'quantumfoam', 'dragonscales', 'abyssal',
+  'stormfront', 'astralplane', 'eclipse', 'reactor', 'rift',
+  'aurora2', 'cosmicdust', 'volcanicglass', 'singularity', 'tesseract',
+  'deepspace', 'tempestvortex', 'phosphor', 'crystalcave', 'arcanesigil',
+  // tier 5
+  'livingportrait', 'cyberpunkrain2', 'shogunsgarden', 'lovecraftian',
+  'timecrystal', 'neuralstorm', 'quantumentangle', 'ghostprotocol',
+  'forbiddencity', 'eldritchcodex', 'celestialorrery', 'soundwave',
+  'mirrorworld', 'wormhole', 'dnahelix', 'volcaniceruption',
+  'sentientslime', 'akashicrecord', 'realityglitch', 'thevoid',
 ];
 
 // ค่า default ของแต่ละ widget (hex ไม่มี #)
