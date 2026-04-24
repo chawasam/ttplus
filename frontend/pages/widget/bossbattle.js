@@ -845,7 +845,7 @@ export default function BossBattleWidget() {
                 </div>
               )}
               {isHidden ? (
-                <div style={{ fontSize: '10px', marginTop: '4px', display: 'inline-block', padding: '2px 8px', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.45)' }}>
+                <div style={{ fontSize: '10px', marginTop: '4px', display: 'inline-block', padding: '2px 8px', borderRadius: '6px', background: `rgba(0,0,0,${cardAlpha / 100 * 0.86})`, color: 'rgba(255,255,255,0.45)' }}>
                   ธาตุ: <span style={{ color: '#64748b', letterSpacing: '0.12em' }}>???</span> — เปิดเผยที่ HP ≤75%
                 </div>
               ) : bossElem !== 'neutral' && effInfo && (

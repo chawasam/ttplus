@@ -33,19 +33,26 @@ const WIDGETS = [
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
     size: '380 × 675', noStyle: true,
     configFields: [
+      { key: '_g1',       label: '🐉 Boss Setup',                    type: 'group' },
       { key: 'hp',        label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
       { key: 'bossname',  label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
       { key: 'emoji',     label: 'Boss Emoji',                       type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
       { key: 'element',   label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
       { key: 'hideelement', label: 'ซ่อนธาตุ Boss',                  type: 'toggle',  default: 0, onLabel: 'ซ่อน — เปิดเผยที่ HP ≤75%', offLabel: 'แสดงธาตุตั้งแต่ต้น' },
+      { key: '_g2',       label: '⚔️ Gameplay',                      type: 'group' },
       { key: 'dmgmult',   label: 'ตัวคูณดาเมจ (1 coin = X dmg)',     type: 'number',  default: 1,            min: 0.1, max: 20,     step: 0.1 },
-      { key: 'taprate',   label: 'Like → Damage: ทุกกี่ like ทำดาเมจ 1 ครั้ง (0 = ปิด)', type: 'number', default: 0,  min: 0, max: 1000, step: 1 },
-      { key: 'tapdmg',    label: 'Like → Damage: ดาเมจต่อครั้ง',                              type: 'number', default: 1,  min: 1, max: 10000, step: 1 },
+      { key: '_tap',      label: 'Like → Damage',                    type: 'row',
+        fields: [
+          { key: 'taprate', label: 'ทุกกี่ like (0=ปิด)', type: 'number', default: 0,  min: 0, max: 1000,  step: 1 },
+          { key: 'tapdmg',  label: 'dmg ต่อครั้ง',        type: 'number', default: 1,  min: 1, max: 10000, step: 1 },
+        ]
+      },
       { key: 'wrongheal', label: 'ผิดธาตุ = Heal Boss',              type: 'toggle',  default: 1, onLabel: 'เปิด — ผิดธาตุ heal boss', offLabel: 'ปิด — ผิดธาตุ = 0 dmg' },
       { key: 'respawn',   label: 'Respawn Mode',                     type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
-      { key: 'side',      label: 'ตำแหน่ง Widget',                   type: 'select',  default: 'center', options: [{ value:'center', label:'กลาง (ค่าเริ่มต้น)' }, { value:'left', label:'ซ้าย (ไม่บัง streamer ซ้าย)' }, { value:'right', label:'ขวา (ไม่บัง streamer ขวา)' }] },
-      { key: 'ww',        label: 'ความกว้าง Widget (px) — ตั้งให้ตรงกับ OBS Browser Source', type: 'number', default: 380, min: 280, max: 800, step: 10 },
-      { key: 'carda',     label: 'ความทึบแผง (Card Opacity) 0=โปร่งใส 100=ทึบ', type: 'number', default: 58,  min: 0,   max: 100, step: 5  },
+      { key: '_g3',       label: '🖼️ Display',                       type: 'group' },
+      { key: 'side',      label: 'ตำแหน่ง',   type: 'select',  default: 'center', options: [{ value:'center', label:'■ กลาง' }, { value:'left', label:'◀ ซ้าย' }, { value:'right', label:'ขวา ▶' }] },
+      { key: 'ww',        label: 'ความกว้าง Widget (px) — ตรงกับ OBS Source Width', type: 'number', default: 380, min: 280, max: 800, step: 10 },
+      { key: 'carda',     label: 'ความทึบแผง (0=โปร่งใส → 100=ทึบ)', type: 'number', default: 58,  min: 0,   max: 100, step: 5  },
     ],
   },
   {
@@ -169,10 +176,20 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const buildCustomParams = useCallback((w) => {
     const cfg = customConfigs[w.id] || {};
-    return w.configFields.map(f => {
+    const params = [];
+    for (const f of w.configFields) {
+      if (f.type === 'group') continue; // section header — ไม่มี value
+      if (f.type === 'row') {           // row — encode แต่ละ sub-field
+        for (const sf of f.fields) {
+          const val = cfg[sf.key] ?? sf.default;
+          params.push(`${sf.key}=${encodeURIComponent(val)}`);
+        }
+        continue;
+      }
       const val = cfg[f.key] ?? f.default;
-      return `${f.key}=${encodeURIComponent(val)}`;
-    }).join('&');
+      params.push(`${f.key}=${encodeURIComponent(val)}`);
+    }
+    return params.join('&');
   }, [customConfigs]);
 
   const getWidgetUrl = useCallback((widgetId) => {
@@ -428,6 +445,34 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                   return (
                     <div className={clsx('border-t px-4 pb-4 pt-3 space-y-4', divider)}>
                       {w.configFields.map(f => {
+                        // ── Section header ──
+                        if (f.type === 'group') return (
+                          <div key={f.key} className={clsx('flex items-center gap-2 pt-1', isDark ? 'border-gray-700' : 'border-gray-100')}>
+                            <span className={clsx('text-xs font-bold tracking-wide', isDark ? 'text-gray-300' : 'text-gray-600')}>{f.label}</span>
+                            <div className={clsx('flex-1 h-px', isDark ? 'bg-gray-700' : 'bg-gray-200')} />
+                          </div>
+                        );
+                        // ── Side-by-side row (e.g. taprate + tapdmg) ──
+                        if (f.type === 'row') return (
+                          <div key={f.key}>
+                            <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              {f.fields.map(sf => {
+                                const sv = cfg[sf.key] ?? sf.default;
+                                return (
+                                  <div key={sf.key}>
+                                    <p className={clsx('text-xs mb-1', isDark ? 'text-gray-500' : 'text-gray-400')}>{sf.label}</p>
+                                    <input type="number" min={sf.min} max={sf.max} step={sf.step || 1} value={sv}
+                                      onChange={e => setKey(sf.key, Math.max(sf.min, Math.min(sf.max, Number(e.target.value))))}
+                                      className={clsx('w-full px-2 py-1.5 rounded-lg text-sm text-center font-mono border',
+                                        isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
                         const val = cfg[f.key] ?? f.default;
                         return (
                           <div key={f.key}>
