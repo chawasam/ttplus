@@ -426,13 +426,22 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     };
   }, []);
 
-  // Close context menu on Escape (backdrop div จัดการ outside click แทน)
+  // Close context menu on Escape
   useEffect(() => {
     if (!ctxMenu) return;
     const onKey = (e) => { if (e.key === 'Escape') setCtxMenu(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [ctxMenu]);
+
+  // ป้องกัน Chrome native context menu ใน edit mode (desktop)
+  // ใช้ capture phase เพื่อให้ preventDefault() มีผลก่อน browser จะ render เมนู
+  useEffect(() => {
+    if (!editMode || !isDesktop) return;
+    const prevent = (e) => e.preventDefault();
+    document.addEventListener('contextmenu', prevent, true);
+    return () => document.removeEventListener('contextmenu', prevent, true);
+  }, [editMode, isDesktop]);
 
   // effectiveStore: map pageN fields → primary names (รองรับ 4 pages)
   const effectiveStore = store ? (() => {
@@ -753,7 +762,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         return (
           <button
             key={i}
-            onClick={() => handleColorChange(targetKey, c)}
+            onClick={() => {
+              handleColorChange(targetKey, c);
+              toast(c ? `[${targetKey}] 🎨 สีเปลี่ยนแล้ว` : `[${targetKey}] 🎨 ล้างสีแล้ว`, { duration: 700 });
+            }}
             style={{
               width: size, height: size, borderRadius: '50%', flexShrink: 0,
               background: c || (isDark ? '#374151' : '#e5e7eb'),
@@ -1346,8 +1358,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       {/* ===== Right-click Context Menu (Desktop) ===== */}
       {ctxMenu && (
         <>
-        {/* Backdrop — คลิกนอกเมนูปิด (ไม่บล็อก click ภายในเมนู) */}
-        <div className="fixed inset-0" style={{ zIndex: 49 }} onClick={() => setCtxMenu(null)} />
+        {/* Backdrop — mousedown นอกเมนูปิด */}
+        <div className="fixed inset-0" style={{ zIndex: 49 }} onMouseDown={() => setCtxMenu(null)} />
         <div
           className="fixed z-50"
           style={{
@@ -1355,6 +1367,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             top:  Math.min(ctxMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 800)  - 420),
           }}
           onClick={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
         >
           <div className={clsx(
             'w-56 rounded-xl shadow-2xl border p-3 space-y-2.5',
@@ -1415,7 +1428,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                   return (
                     <button
                       key={opt.id}
-                      onClick={() => handleModeSet(ctxMenu.key, opt.id)}
+                      onClick={() => {
+                        handleModeSet(ctxMenu.key, opt.id);
+                        toast(`[${ctxMenu.key}] ${opt.icon} ${opt.label}`, { duration: 900 });
+                      }}
                       title={opt.label}
                       className={clsx(
                         'flex flex-col items-center py-1.5 rounded-lg text-xs transition border',
