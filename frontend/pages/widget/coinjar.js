@@ -101,6 +101,7 @@ function setupEngine(M, ox = 0) {
     positionIterations:   12,
     velocityIterations:   10,
     constraintIterations: 4,
+    enableSleeping:       true,
   });
   Composite.add(engine.world, buildJarWalls(M.Bodies, ox));
   return engine;
@@ -176,7 +177,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, engineRef, mRef, setJarOffset }) {
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, engineRef, mRef, setJarOffset }) {
   // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
   const isCid   = /^\d{4,8}$/.test(cidOrWt);
   const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
@@ -208,7 +209,8 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
       gift:       safe.giftName || 'Gift',
       emoji,      imgUrl,
       rose:       isRose(safe.giftName || ''),
-      showSender: showSenderRef.current,
+      showSender:   showSenderRef.current,
+      showGiftName: showGiftNameRef.current,
     });
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
   });
@@ -249,6 +251,10 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
     if (style?.showSender !== undefined) {
       showSenderRef.current = parseInt(style.showSender) === 0 ? 0 : 1;
     }
+    // showGiftName — 0 | 1
+    if (style?.showGiftName !== undefined) {
+      showGiftNameRef.current = parseInt(style.showGiftName) === 0 ? 0 : 1;
+    }
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -262,6 +268,7 @@ export default function CoinJarWidget() {
   const [styles, setStyles]         = useState(null);
   const [jarOffset, setJarOffset]   = useState(0);
   const showSenderRef               = useRef(1); // default: แสดงชื่อผู้ส่ง
+  const showGiftNameRef             = useRef(1); // default: แสดงชื่อของขวัญ
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -290,11 +297,12 @@ export default function CoinJarWidget() {
         const y = J.nT + 14;
 
         const body = Bodies.circle(x, y, itemR, {
-          restitution: 0.32,
-          friction:    0.65,
-          frictionAir: 0.009,
+          restitution: 0.08,
+          friction:    0.9,
+          frictionAir: 0.06,
           density:     0.002,
           label:       'gift',
+          sleepThreshold: 30,
         });
         body._img      = imgUrl;
         body._emoji    = emoji;
@@ -365,7 +373,8 @@ export default function CoinJarWidget() {
       const ox = s.jx ?? 0;
       maxItemsRef.current  = s.mi ?? 150;
       giftScaleRef.current = s.gs ?? 100;
-      showSenderRef.current = s.showSender ?? 1;
+      showSenderRef.current   = s.showSender   ?? 1;
+      showGiftNameRef.current = s.showGiftName ?? 1;
       J = getJ(ox);
       setJarOffset(ox);
 
@@ -395,7 +404,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, engineRef, mRef, setJarOffset });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, engineRef, mRef, setJarOffset });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -466,9 +475,11 @@ export default function CoinJarWidget() {
                 {popup.user}
               </p>
             )}
-            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: styles.fs - 2, margin: 0, lineHeight: 1.3 }}>
-              {popup.gift}
-            </p>
+            {popup.showGiftName !== 0 && (
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: styles.fs - 2, margin: 0, lineHeight: 1.3 }}>
+                {popup.gift}
+              </p>
+            )}
           </div>
         </div>
       )}

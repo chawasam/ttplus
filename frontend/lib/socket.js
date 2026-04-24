@@ -1,9 +1,10 @@
 // socket.js — Socket.io client singleton
 // - Singleton pattern ป้องกัน connection ซ้ำ
-// - ใช้ socket.once('connect') ป้องกัน listener สะสมเมื่อ reconnect
+// - ใช้ s.on('connect') แทน once() เพื่อ re-authenticate ทุกครั้งที่ reconnect
 import { io } from 'socket.io-client';
 
 let socket = null;
+let _authToken = null; // เก็บ token ล่าสุด — ใช้ตอน auto-reconnect
 
 export function getSocket() {
   if (!socket) {
@@ -14,19 +15,23 @@ export function getSocket() {
       reconnectionAttempts: 5,
       reconnectionDelay:    2000,
     });
+    // ส่ง authenticate ทุกครั้ง connect/reconnect — ป้องกัน userSockets หาย
+    socket.on('connect', () => {
+      if (_authToken) socket.emit('authenticate', { token: _authToken });
+    });
   }
   return socket;
 }
 
 export function connectSocket(token) {
+  _authToken = token; // อัปเดต token ล่าสุดเสมอ
   const s = getSocket();
 
   if (!s.connected) {
-    // ใช้ once() ไม่ใช่ on() — ป้องกัน listener สะสมเมื่อ reconnect หลายครั้ง
-    s.once('connect', () => {
-      s.emit('authenticate', { token });
-    });
     s.connect();
+  } else {
+    // already connected — re-authenticate ด้วย token ใหม่ทันที
+    s.emit('authenticate', { token });
   }
 
   return s;

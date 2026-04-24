@@ -17,7 +17,7 @@ function getDefaults() {
     keySize:  1.0,
     layout:   'h',    // 'h' | 'v'
     customs:  {},     // page 1: key → { b64, mime, name }
-    modes:    {},     // page 1: key → 'poly' | 'stop'
+    modes:    {},     // page 1: key → 'poly' | 'stop' | 'toggle'
     customs2: {},     // page 2
     modes2:   {},     // page 2
   };
@@ -164,6 +164,10 @@ export async function playKey(key, store, useSfx = true) {
 
   const mode = store.modes?.[key] || 'poly';
   if (mode === 'stop') stopKeyAudio(key);
+  if (mode === 'toggle') {
+    // ถ้ากำลังเล่นอยู่ → หยุด (ไม่เริ่มใหม่)
+    if (getPlayingKeys().has(key)) { stopKeyAudio(key); return; }
+  }
 
   const v = Math.max(0, Math.min(1, store.volume ?? 0.75));
   const t = ctx.currentTime + 0.01;

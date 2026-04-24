@@ -203,9 +203,15 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const [selectedKey,    setSelectedKey]    = useState(null); // key ที่เลือกใน edit mode
   const [renaming,       setRenaming]       = useState(null); // key กำลังตั้งชื่อ
   const [renameVal,      setRenameVal]      = useState('');
+  // Combined upload+rename modal (mobile)
+  const [combinedKey,    setCombinedKey]    = useState(null);
+  const [combinedName,   setCombinedName]   = useState('');
+  const [combinedFile,   setCombinedFile]   = useState(null);
+  const [isMobile,       setIsMobile]       = useState(false);
 
-  const fileInputRef   = useRef(null);
-  const importInputRef = useRef(null);
+  const fileInputRef         = useRef(null);
+  const importInputRef       = useRef(null);
+  const combinedFileInputRef = useRef(null);
   const recentTimers   = useRef({});   // key → timeout id
   const renameInputRef = useRef(null);
 
@@ -213,6 +219,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   useEffect(() => { setStore(loadSettings()); }, []);
   useEffect(() => { setNames(loadNames(email, page)); }, [email, page]);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // Poll getPlayingKeys ทุก 80 ms
   useEffect(() => {
@@ -331,9 +343,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const handleModeToggle = useCallback((key) => {
     const field = page === 2 ? 'modes2' : 'modes';
     const cur   = (store?.[field] || {})[key] || 'poly';
-    const next  = cur === 'poly' ? 'stop' : 'poly';
+    const next  = cur === 'poly' ? 'stop' : cur === 'stop' ? 'toggle' : 'poly';
     patch({ [field]: { ...(store?.[field] || {}), [key]: next } });
-    toast(next === 'stop' ? `[${key}] ⏹ หยุดแล้วเล่นใหม่` : `[${key}] ∞ เล่นซ้อนกัน`, { duration: 1000 });
+    const label = next === 'stop' ? `[${key}] ⏹ หยุดแล้วเล่นใหม่`
+                : next === 'toggle' ? `[${key}] ⏯ กดอีกครั้ง = หยุด`
+                : `[${key}] ∞ เล่นซ้อนกัน`;
+    toast(label, { duration: 1000 });
   }, [store, patch, page]);
 
   const handleRename = useCallback((key) => {
@@ -350,6 +365,26 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     toast.success(renameVal.trim() ? `[${renaming}] ชื่อ "${renameVal.trim()}"` : `[${renaming}] ลบชื่อแล้ว`);
     setRenaming(null);
   }, [renaming, renameVal, email, page]);
+
+  const handleCombinedSubmit = useCallback(async () => {
+    if (!combinedKey) return;
+    if (combinedName.trim()) {
+      const updated = saveName(email, combinedKey, combinedName.trim(), page);
+      setNames({ ...updated });
+    }
+    if (combinedFile) {
+      try {
+        const res = await uploadCustom(combinedKey, combinedFile, page);
+        setStore(loadSettings());
+        toast.success(`[${combinedKey}] อัปโหลด "${res.name}" — Page ${page}`);
+      } catch (err) { toast.error(err.message); }
+    } else if (combinedName.trim()) {
+      toast.success(`[${combinedKey}] ชื่อ "${combinedName.trim()}"`);
+    }
+    setCombinedKey(null);
+    setCombinedFile(null);
+    setCombinedName('');
+  }, [combinedKey, combinedName, combinedFile, email, page]);
 
   const handleFileChange = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -379,6 +414,11 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       `กด OK เพื่อยืนยัน`
     );
     if (!ok) return;
+    const ok2 = window.confirm(
+      `🗑️ ยืนยันอีกครั้ง — ลบเสียง custom ${count} เสียงใน Page ${page} ถาวร?\n\n` +
+      `กด OK เพื่อลบ`
+    );
+    if (!ok2) return;
     removeAllCustom(page);
     setStore(loadSettings());
     toast.success(`รีเซ็ต Page ${page} แล้ว (ลบ ${count} เสียง)`);
@@ -676,7 +716,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         </div>
       </main>
 
-      <input ref={fileInputRef}   type="file" accept="audio/*"       className="hidden" onChange={handleFileChange} />
+      <input ref={fileInputRef}         type="file" accept="audio/*"            className="hidden" onChange={handleFileChange} />
+      <input ref={combinedFileInputRef} type="file" accept="audio/*"            className="hidden" onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }} />
       <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
 
       {/* ===== Action Sheet (Edit Mode — เลือก key แล้วเลือก action) ===== */}
@@ -700,30 +741,46 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               <button onClick={() => setSelectedKey(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {/* Upload */}
-              <button
-                onClick={() => { setUploadKey(selectedKey); setSelectedKey(null); fileInputRef.current?.click(); }}
-                className={clsx(
-                  'flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-sm transition',
-                  isDark ? 'bg-brand-600/20 border border-brand-500/40 text-brand-300 hover:bg-brand-600/30' : 'bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100'
-                )}
-              >
-                <span className="text-2xl">📂</span>
-                <span>อัปโหลดเสียง</span>
-                <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>mp3 / ogg / wav ≤ 2MB</span>
-              </button>
-              {/* Rename */}
-              <button
-                onClick={() => handleRename(selectedKey)}
-                className={clsx(
-                  'flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-sm transition',
-                  isDark ? 'bg-yellow-600/15 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-600/25' : 'bg-yellow-50 border border-yellow-200 text-yellow-700 hover:bg-yellow-100'
-                )}
-              >
-                <span className="text-2xl">✏️</span>
-                <span>ตั้งชื่อปุ่ม</span>
-                <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>ชื่อที่แสดงบนปุ่ม</span>
-              </button>
+              {isMobile ? (
+                /* Mobile: combined upload + rename button */
+                <button
+                  onClick={() => { setCombinedKey(selectedKey); setCombinedName(names[selectedKey] || ''); setCombinedFile(null); setSelectedKey(null); }}
+                  className={clsx(
+                    'col-span-2 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition',
+                    isDark ? 'bg-brand-600/20 border border-brand-500/40 text-brand-300 hover:bg-brand-600/30' : 'bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100'
+                  )}
+                >
+                  <span className="text-xl">📂✏️</span>
+                  <span>ตั้งชื่อ & อัปโหลดเสียง</span>
+                </button>
+              ) : (
+                <>
+                  {/* Upload */}
+                  <button
+                    onClick={() => { setUploadKey(selectedKey); setSelectedKey(null); fileInputRef.current?.click(); }}
+                    className={clsx(
+                      'flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-sm transition',
+                      isDark ? 'bg-brand-600/20 border border-brand-500/40 text-brand-300 hover:bg-brand-600/30' : 'bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100'
+                    )}
+                  >
+                    <span className="text-2xl">📂</span>
+                    <span>อัปโหลดเสียง</span>
+                    <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>mp3 / ogg / wav ≤ 2MB</span>
+                  </button>
+                  {/* Rename */}
+                  <button
+                    onClick={() => handleRename(selectedKey)}
+                    className={clsx(
+                      'flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-sm transition',
+                      isDark ? 'bg-yellow-600/15 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-600/25' : 'bg-yellow-50 border border-yellow-200 text-yellow-700 hover:bg-yellow-100'
+                    )}
+                  >
+                    <span className="text-2xl">✏️</span>
+                    <span>ตั้งชื่อปุ่ม</span>
+                    <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>ชื่อที่แสดงบนปุ่ม</span>
+                  </button>
+                </>
+              )}
               {/* Preview */}
               <button
                 onClick={() => { handleKeyPreview(selectedKey); setSelectedKey(null); }}
@@ -739,12 +796,20 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 onClick={() => { handleModeToggle(selectedKey); setSelectedKey(null); }}
                 className={clsx(
                   'flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition',
-                  (effectiveStore?.modes?.[selectedKey] || 'poly') === 'stop'
-                    ? isDark ? 'bg-orange-900/30 border border-orange-700/50 text-orange-300' : 'bg-orange-50 border border-orange-200 text-orange-700'
-                    : isDark ? 'bg-gray-800 border border-gray-700 text-gray-400' : 'bg-gray-100 border border-gray-200 text-gray-500'
+                  (() => {
+                    const m = effectiveStore?.modes?.[selectedKey] || 'poly';
+                    if (m === 'stop')   return isDark ? 'bg-orange-900/30 border border-orange-700/50 text-orange-300' : 'bg-orange-50 border border-orange-200 text-orange-700';
+                    if (m === 'toggle') return isDark ? 'bg-purple-900/30 border border-purple-700/50 text-purple-300' : 'bg-purple-50 border border-purple-200 text-purple-700';
+                    return isDark ? 'bg-gray-800 border border-gray-700 text-gray-400' : 'bg-gray-100 border border-gray-200 text-gray-500';
+                  })()
                 )}
               >
-                {(effectiveStore?.modes?.[selectedKey] || 'poly') === 'stop' ? '⏹ หยุดแล้วเล่น' : '∞ เล่นซ้อน'}
+                {(() => {
+                  const m = effectiveStore?.modes?.[selectedKey] || 'poly';
+                  if (m === 'stop')   return '⏹ หยุดแล้วเล่น';
+                  if (m === 'toggle') return '⏯ กดซ้ำ = หยุด';
+                  return '∞ เล่นซ้อน';
+                })()}
               </button>
             </div>
             {/* Remove custom */}
@@ -801,6 +866,81 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </button>
               <button
                 onClick={() => setRenaming(null)}
+                className={clsx(
+                  'px-5 py-2.5 rounded-xl font-semibold text-sm transition',
+                  isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                )}
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Combined Upload + Rename Modal (Mobile) ===== */}
+      {combinedKey && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-4" onClick={() => { setCombinedKey(null); setCombinedFile(null); }}>
+          <div
+            className={clsx(
+              'w-full max-w-sm mb-6 rounded-2xl shadow-2xl border p-4 space-y-3',
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            )}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className={clsx('font-semibold', isDark ? 'text-gray-100' : 'text-gray-800')}>
+                📂✏️ ปุ่ม [{combinedKey}] — Page {page}
+              </span>
+              <button onClick={() => { setCombinedKey(null); setCombinedFile(null); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            {/* ชื่อปุ่ม */}
+            <div className="space-y-1">
+              <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ชื่อปุ่ม</span>
+              <input
+                type="text"
+                value={combinedName}
+                onChange={e => setCombinedName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCombinedSubmit(); if (e.key === 'Escape') { setCombinedKey(null); setCombinedFile(null); } }}
+                placeholder="ชื่อที่แสดงบนปุ่ม (เว้นว่างเพื่อลบชื่อ)"
+                maxLength={40}
+                className={clsx(
+                  'w-full px-4 py-3 rounded-xl text-sm border outline-none focus:ring-2 focus:ring-brand-400 transition',
+                  isDark ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'
+                )}
+              />
+            </div>
+            {/* เลือกไฟล์เสียง */}
+            <div className="space-y-1">
+              <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ไฟล์เสียง (ไม่บังคับ)</span>
+              <button
+                onClick={() => combinedFileInputRef.current?.click()}
+                className={clsx(
+                  'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition border',
+                  combinedFile
+                    ? isDark ? 'bg-green-900/30 border-green-700/50 text-green-300' : 'bg-green-50 border-green-200 text-green-700'
+                    : isDark ? 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
+                )}
+              >
+                <span className="text-lg">{combinedFile ? '🎵' : '📂'}</span>
+                <span className="truncate">{combinedFile ? combinedFile.name : 'เลือกไฟล์ mp3 / ogg / wav ≤ 2MB'}</span>
+                {combinedFile && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setCombinedFile(null); }}
+                    className="ml-auto text-xs text-red-400 hover:text-red-300"
+                  >✕</button>
+                )}
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleCombinedSubmit}
+                className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition"
+              >
+                บันทึก
+              </button>
+              <button
+                onClick={() => { setCombinedKey(null); setCombinedFile(null); }}
                 className={clsx(
                   'px-5 py-2.5 rounded-xl font-semibold text-sm transition',
                   isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'

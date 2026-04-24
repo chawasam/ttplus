@@ -1,5 +1,6 @@
 // WidgetStyleEditor.js — UI สำหรับปรับแต่ง Widget Appearance
 // รับ: styles object, widgetId, theme, onChange callback
+import { useState } from 'react';
 import clsx from 'clsx';
 import { addHash, stripHash, hexAlphaToRgba, WIDGET_DEFAULTS } from '../lib/widgetStyles';
 import { SKIN_LIST } from '../lib/chatSkins';
@@ -18,6 +19,10 @@ const WIDGET_LABELS = {
 export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) {
   const set = (key, val) => onChange({ ...style, [key]: val });
   const d = WIDGET_DEFAULTS[widgetId];
+
+  // skin tab: auto-select tab ตาม skin ปัจจุบัน
+  const activeSkinCat = SKIN_LIST.find(s => s.id === (style.skin || ''))?.category || 'cool';
+  const [skinTab, setSkinTab] = useState(activeSkinCat);
 
   const label   = clsx('text-xs font-medium', theme === 'dark' ? 'text-gray-400' : 'text-gray-500');
   const card    = clsx('rounded-xl p-4 space-y-4 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm');
@@ -242,6 +247,54 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
               ))}
             </div>
           </div>
+
+          {/* Full-width bubble toggle */}
+          <div className="space-y-2">
+            <span className={label}>ขนาด Bubble</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 0, icon: '◀▶', text: 'ขนาดตามเนื้อหา' },
+                { val: 1, icon: '⬛', text: 'เต็มความกว้าง' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('fullBubble', opt.val)}
+                  className={clsx(
+                    'py-2 px-2 rounded-lg text-xs font-semibold transition border text-left',
+                    (style.fullBubble ?? 0) === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Language toggle */}
+          <div className="space-y-2">
+            <span className={label}>ภาษาหลัก</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 'th', icon: '🇹🇭', text: 'ไทย' },
+                { val: 'en', icon: '🇬🇧', text: 'English' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('lang', opt.val)}
+                  className={clsx(
+                    'py-2 px-3 rounded-lg text-xs font-semibold transition border',
+                    (style.lang ?? 'th') === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
         </>
       )}
 
@@ -400,6 +453,30 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
 
+          {/* Show gift name toggle */}
+          <div className="space-y-2">
+            <span className={label}>แสดงชื่อของขวัญ</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 1, icon: '🎁', text: 'แสดงชื่อ' },
+                { val: 0, icon: '🙈', text: 'ซ่อนชื่อ' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('showGiftName', opt.val)}
+                  className={clsx(
+                    'py-2 px-3 rounded-lg text-xs font-semibold transition border',
+                    (style.showGiftName ?? 1) === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
         </div>
       )}
 
@@ -417,14 +494,52 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             }
           </div>
 
-          {/* Grid 2 columns — cool + cute รวมกัน */}
-          <div className="grid grid-cols-2 gap-1">
+          {/* Active skin badge */}
+          {(style.skin || '') !== '' && (() => {
+            const cur = SKIN_LIST.find(s => s.id === style.skin);
+            return cur ? (
+              <div
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold border border-brand-500/40"
+                style={{ background: `linear-gradient(135deg,${cur.preview.from} 0%,${cur.preview.to} 100%)`, color: '#fff' }}
+              >
+                <span>{cur.emoji}</span>
+                <span className="truncate">{cur.label}</span>
+                <span className="ml-auto opacity-70">✓ active</span>
+              </div>
+            ) : null;
+          })()}
 
-            {/* ปิด skin */}
+          {/* Tab pills */}
+          <div className="flex gap-1 flex-wrap">
+            {[
+              { id: 'none',    label: '🚫 ไม่ใช้' },
+              { id: 'cool',    label: '⚡ Cool' },
+              { id: 'cute',    label: '🌸 Cute' },
+              { id: 'premium', label: '✨ Premium' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setSkinTab(tab.id)}
+                className={clsx(
+                  'px-2.5 py-1 rounded-lg text-xs font-semibold transition border',
+                  skinTab === tab.id
+                    ? 'bg-brand-500 border-brand-500 text-white'
+                    : theme === 'dark'
+                      ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                      : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          {skinTab === 'none' && (
             <button
               onClick={() => set('skin', '')}
               className={clsx(
-                'col-span-2 py-1.5 px-2 rounded-lg text-xs font-medium transition border flex items-center gap-1.5',
+                'w-full py-2 px-3 rounded-lg text-xs font-semibold transition border flex items-center gap-2',
                 (style.skin || '') === ''
                   ? 'bg-brand-500 border-brand-500 text-white'
                   : theme === 'dark'
@@ -432,98 +547,73 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
                     : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
               )}
             >
-              🚫 <span>ไม่ใช้ Skin</span>
+              🚫 ไม่ใช้ Skin
+              {(style.skin || '') === '' && <span className="ml-auto">✓</span>}
             </button>
+          )}
 
-            {/* หัวข้อ Cool */}
-            <div className={clsx('col-span-2 text-xs pt-0.5', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-              ⚡ Cool
+          {(skinTab === 'cool' || skinTab === 'cute') && (
+            <div className="grid grid-cols-2 gap-1">
+              {SKIN_LIST.filter(s => s.category === skinTab).map(skin => {
+                const isActive = (style.skin || '') === skin.id;
+                return (
+                  <button
+                    key={skin.id}
+                    onClick={() => set('skin', skin.id)}
+                    title={skin.label}
+                    className={clsx(
+                      'py-1.5 px-2 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 overflow-hidden',
+                      isActive
+                        ? 'border-brand-500 text-white'
+                        : theme === 'dark'
+                          ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
+                          : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                    )}
+                    style={isActive ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` } : {}}
+                  >
+                    <span>{skin.emoji}</span>
+                    <span className="truncate">{skin.label}</span>
+                    {isActive && <span className="ml-auto flex-shrink-0 opacity-80">✓</span>}
+                  </button>
+                );
+              })}
             </div>
+          )}
 
-            {SKIN_LIST.filter(s => s.category === 'cool').map(skin => {
-              const isActive = (style.skin || '') === skin.id;
-              return (
-                <button
-                  key={skin.id}
-                  onClick={() => set('skin', skin.id)}
-                  title={skin.label}
-                  className={clsx(
-                    'py-1.5 px-2 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 overflow-hidden',
-                    isActive
-                      ? 'border-brand-500 text-white'
-                      : theme === 'dark'
-                        ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
-                        : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
-                  )}
-                  style={isActive ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` } : {}}
-                >
-                  <span>{skin.emoji}</span>
-                  <span className="truncate">{skin.label}</span>
-                  {isActive && <span className="ml-auto flex-shrink-0 opacity-80">✓</span>}
-                </button>
-              );
-            })}
-
-            {/* หัวข้อ Cute */}
-            <div className={clsx('col-span-2 text-xs pt-0.5', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-              🌸 Cute
-            </div>
-
-            {SKIN_LIST.filter(s => s.category === 'cute').map(skin => {
-              const isActive = (style.skin || '') === skin.id;
-              return (
-                <button
-                  key={skin.id}
-                  onClick={() => set('skin', skin.id)}
-                  title={skin.label}
-                  className={clsx(
-                    'py-1.5 px-2 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 overflow-hidden',
-                    isActive
-                      ? 'border-brand-500 text-white'
-                      : theme === 'dark'
-                        ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
-                        : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
-                  )}
-                  style={isActive ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` } : {}}
-                >
-                  <span>{skin.emoji}</span>
-                  <span className="truncate">{skin.label}</span>
-                  {isActive && <span className="ml-auto flex-shrink-0 opacity-80">✓</span>}
-                </button>
-              );
-            })}
-
-            {/* หัวข้อ Premium */}
-            {SKIN_LIST.some(s => s.category === 'premium') && (
-              <div className={clsx('col-span-2 text-xs pt-0.5', theme === 'dark' ? 'text-yellow-600' : 'text-yellow-500')}>
-                ✨ Premium
+          {skinTab === 'premium' && (
+            <div
+              className={clsx(
+                'rounded-xl border overflow-y-auto',
+                theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+              )}
+              style={{ maxHeight: 220 }}
+            >
+              <div className="grid grid-cols-3 gap-1 p-1.5">
+                {SKIN_LIST.filter(s => s.category === 'premium').map(skin => {
+                  const isActive = (style.skin || '') === skin.id;
+                  return (
+                    <button
+                      key={skin.id}
+                      onClick={() => set('skin', skin.id)}
+                      title={skin.label}
+                      className={clsx(
+                        'py-1.5 px-1 rounded-lg text-[10px] font-semibold transition border flex flex-col items-center gap-0.5 overflow-hidden',
+                        isActive
+                          ? 'border-yellow-500 text-white'
+                          : theme === 'dark'
+                            ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-yellow-700/60'
+                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-yellow-50 hover:border-yellow-300'
+                      )}
+                      style={isActive ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` } : {}}
+                    >
+                      <span className="text-base leading-none">{skin.emoji}</span>
+                      <span className="truncate w-full text-center leading-tight">{skin.label}</span>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-
-            {SKIN_LIST.filter(s => s.category === 'premium').map(skin => {
-              const isActive = (style.skin || '') === skin.id;
-              return (
-                <button
-                  key={skin.id}
-                  onClick={() => set('skin', skin.id)}
-                  title={skin.label}
-                  className={clsx(
-                    'col-span-2 py-1.5 px-2 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 overflow-hidden',
-                    isActive
-                      ? 'border-yellow-500 text-white'
-                      : theme === 'dark'
-                        ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-yellow-700'
-                        : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-yellow-50 hover:border-yellow-300'
-                  )}
-                  style={isActive ? { background: `linear-gradient(135deg,${skin.preview.from} 0%,${skin.preview.to} 100%)` } : {}}
-                >
-                  <span>{skin.emoji}</span>
-                  <span className="truncate">{skin.label}</span>
-                  {isActive && <span className="ml-auto flex-shrink-0 opacity-80">✓</span>}
-                </button>
-              );
-            })}
-          </div>
+            </div>
+          )}
         </div>
       )}
 

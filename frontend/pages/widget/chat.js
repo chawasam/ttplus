@@ -183,9 +183,12 @@ export default function ChatWidget() {
                 borderLeft: `3px solid ${userColor}`,
                 cursor:     'pointer',
                 flexShrink: 0,
-                alignSelf:  'flex-start',
-                maxWidth:   `${styles.bw ?? 100}%`,
+                alignSelf:  styles.fullBubble ? 'stretch' : 'flex-start',
+                width:      styles.fullBubble ? '100%' : undefined,
+                maxWidth:   styles.fullBubble ? undefined : `${styles.bw ?? 100}%`,
                 boxSizing:  'border-box',
+                fontFamily: styles.lang === 'en' ? 'Arial, sans-serif' : '"Noto Sans Thai", "Sarabun", sans-serif',
+                lineHeight: styles.lang === 'en' ? 1.4 : 1.6,
                 ...skinBubble,
                 // br ต้องอยู่หลัง skinBubble เสมอ — ให้ user slider ชนะเสมอ
                 borderRadius: styles.br,
@@ -243,6 +246,7 @@ export default function ChatWidget() {
         <div ref={bottomRef} style={{ flexShrink: 0 }} />
 
         <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&family=Sarabun:wght@400;700&display=swap');
           div::-webkit-scrollbar { display: none; }
           @keyframes slideUp {
             from { opacity: 0; transform: translateY(12px); }
