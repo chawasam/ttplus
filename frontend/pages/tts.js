@@ -58,6 +58,11 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [gemini25Voice, setGemini25Voice]     = useState('Aoede');
   const [gemini25Persona, setGemini25Persona] = useState('');
   const [gemini25Shuffle, setGemini25Shuffle] = useState(false);
+  // Custom personas — 2 ช่องกรอกเอง (shared ระหว่าง 3.1 และ 2.5)
+  const [customPersonas, setCustomPersonas]   = useState([
+    { label: '', instruction: '' },
+    { label: '', instruction: '' },
+  ]);
   const [enabledEngines, setEnabledEngines]   = useState(['web']);
   const [engineOrder, setEngineOrder]       = useState(['gemini31','gemini25','google','web']);
   const [dragOver, setDragOver]             = useState(null); // id ของ engine ที่ hover อยู่
@@ -84,6 +89,11 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     const gVoice = localStorage.getItem('ttplus_google_tts_voice') || 'th-TH-Neural2-C';
     setGoogleKey(gKey);
     setGoogleVoice(gVoice);
+
+    try {
+      const cp = JSON.parse(localStorage.getItem('ttplus_custom_personas') || '[]');
+      if (Array.isArray(cp) && cp.length >= 2) setCustomPersonas(cp.slice(0, 2));
+    } catch {}
 
     const mKey      = loadGeminiApiKey();
     const mVoice    = localStorage.getItem('ttplus_gemini_voice')   || 'Aoede';
@@ -767,6 +777,57 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   </button>
                 ))}
               </div>
+
+              {/* Custom Personas — 2 ช่องกรอกเอง */}
+              <div className="space-y-2 mt-2">
+                <p className={clsx('text-xs font-semibold', isDark ? 'text-purple-400' : 'text-purple-600')}>✏️ Custom Persona (กรอกเอง)</p>
+                {customPersonas.map((cp, i) => (
+                  <div key={i} className={clsx('rounded-xl border p-2.5 space-y-1.5', isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
+                    <input
+                      type="text"
+                      placeholder={`ชื่อ Custom ${i + 1} (เช่น น่ารัก, ร้ายกาจ)`}
+                      value={cp.label}
+                      onChange={e => {
+                        const updated = customPersonas.map((x, j) => j === i ? { ...x, label: e.target.value } : x);
+                        setCustomPersonas(updated);
+                        try { localStorage.setItem('ttplus_custom_personas', JSON.stringify(updated)); } catch {}
+                      }}
+                      maxLength={30}
+                      className={clsx('w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none transition focus:ring-1 focus:ring-purple-400', isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
+                    />
+                    <textarea
+                      placeholder={`Instruction เช่น "พูดเหมือนผู้หญิงสดใส ร่าเริง น่ารัก ใช้คำลงท้าย ค่ะ จ้ะ นะ"`}
+                      value={cp.instruction}
+                      onChange={e => {
+                        const updated = customPersonas.map((x, j) => j === i ? { ...x, instruction: e.target.value } : x);
+                        setCustomPersonas(updated);
+                        try { localStorage.setItem('ttplus_custom_personas', JSON.stringify(updated)); } catch {}
+                      }}
+                      rows={3}
+                      maxLength={500}
+                      className={clsx('w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none resize-none transition focus:ring-1 focus:ring-purple-400', isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
+                    />
+                    <button
+                      onClick={() => {
+                        if (!cp.instruction.trim()) { toast.error('กรุณากรอก instruction ก่อน'); return; }
+                        setGeminiPersona(cp.instruction);
+                        localStorage.setItem('ttplus_gemini_persona', cp.instruction);
+                        configureTTS({ geminiPersona: cp.instruction });
+                        saveEngineConfig({ ttsGeminiPersona: cp.instruction });
+                        toast.success(`✏️ ใช้ Custom ${i + 1}${cp.label ? ` "${cp.label}"` : ''} แล้ว`);
+                      }}
+                      className={clsx(
+                        'w-full py-1.5 rounded-lg text-xs font-semibold transition border',
+                        geminiPersona === cp.instruction && cp.instruction
+                          ? 'bg-purple-600 border-purple-600 text-white'
+                          : isDark ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-purple-900/30 hover:border-purple-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-purple-50 hover:border-purple-300'
+                      )}
+                    >
+                      {geminiPersona === cp.instruction && cp.instruction ? '✓ ใช้งานอยู่' : `ใช้ Custom ${i + 1}`}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Shuffle toggle */}
@@ -946,6 +1007,57 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                       )}>
                       {p.label}
                     </button>
+                  ))}
+                </div>
+
+                {/* Custom Personas — 2 ช่องกรอกเอง */}
+                <div className="space-y-2 mt-2">
+                  <p className={clsx('text-xs font-semibold', isDark ? 'text-violet-400' : 'text-violet-600')}>✏️ Custom Persona (กรอกเอง)</p>
+                  {customPersonas.map((cp, i) => (
+                    <div key={i} className={clsx('rounded-xl border p-2.5 space-y-1.5', isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
+                      <input
+                        type="text"
+                        placeholder={`ชื่อ Custom ${i + 1} (เช่น น่ารัก, ร้ายกาจ)`}
+                        value={cp.label}
+                        onChange={e => {
+                          const updated = customPersonas.map((x, j) => j === i ? { ...x, label: e.target.value } : x);
+                          setCustomPersonas(updated);
+                          try { localStorage.setItem('ttplus_custom_personas', JSON.stringify(updated)); } catch {}
+                        }}
+                        maxLength={30}
+                        className={clsx('w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none transition focus:ring-1 focus:ring-violet-400', isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
+                      />
+                      <textarea
+                        placeholder={`Instruction เช่น "พูดเหมือนผู้หญิงสดใส ร่าเริง น่ารัก ใช้คำลงท้าย ค่ะ จ้ะ นะ"`}
+                        value={cp.instruction}
+                        onChange={e => {
+                          const updated = customPersonas.map((x, j) => j === i ? { ...x, instruction: e.target.value } : x);
+                          setCustomPersonas(updated);
+                          try { localStorage.setItem('ttplus_custom_personas', JSON.stringify(updated)); } catch {}
+                        }}
+                        rows={3}
+                        maxLength={500}
+                        className={clsx('w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none resize-none transition focus:ring-1 focus:ring-violet-400', isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
+                      />
+                      <button
+                        onClick={() => {
+                          if (!cp.instruction.trim()) { toast.error('กรุณากรอก instruction ก่อน'); return; }
+                          setGemini25Persona(cp.instruction);
+                          saveGemini25Persona(cp.instruction);
+                          configureTTS({ gemini25Persona: cp.instruction });
+                          saveEngineConfig({ ttsGemini25Persona: cp.instruction });
+                          toast.success(`✏️ ใช้ Custom ${i + 1}${cp.label ? ` "${cp.label}"` : ''} แล้ว`);
+                        }}
+                        className={clsx(
+                          'w-full py-1.5 rounded-lg text-xs font-semibold transition border',
+                          gemini25Persona === cp.instruction && cp.instruction
+                            ? 'bg-violet-600 border-violet-600 text-white'
+                            : isDark ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-violet-900/30 hover:border-violet-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-violet-50 hover:border-violet-300'
+                        )}
+                      >
+                        {gemini25Persona === cp.instruction && cp.instruction ? '✓ ใช้งานอยู่' : `ใช้ Custom ${i + 1}`}
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
