@@ -1,7 +1,9 @@
 // soundboard.js — หน้า Soundboard
 // 2 pages × 26 ปุ่ม = 52 เสียง | สลับ page ด้วย Tab
 // Stop All ด้วย Escape | Layout แนวนอน/แนวตั้ง
-// ชื่อปุ่มตั้งเองได้ ผูกกับ email | โหมดกดซ้ำ: poly / stop
+// ชื่อปุ่มตั้งเองได้ ผูกกับ email | โหมด: poly / stop / toggle / loop
+// Drag & drop ไฟล์ลงปุ่มได้ (Desktop/iPad) | Right-click context menu (Desktop ≥1024px)
+// Per-key color + volume
 import { useEffect, useState, useRef, useCallback } from 'react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -22,27 +24,49 @@ const GLOW_MS       = 400;   // minimum glow duration after a key plays
 
 const ALL_KEYS = new Set(KB_ROWS.flat());
 
+// 12 swatches: index 0 = default/clear, 1-11 = colors
+const KEY_COLORS = [
+  '',
+  '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
+  '#a16207', '#6b7280', '#f1f5f9',
+];
+
+const MODE_OPTS = [
+  { id: 'poly',   icon: '∞',  label: 'เล่นซ้อน' },
+  { id: 'stop',   icon: '⏹', label: 'หยุด-เล่นใหม่' },
+  { id: 'toggle', icon: '⏯', label: 'กดซ้ำ=หยุด' },
+  { id: 'loop',   icon: '🔁', label: 'เล่นวน' },
+];
+
 // ===== SoundKey =====
 function SoundKey({
   keyChar, keyName, mode, store, pressing, editMode, theme,
-  isPlaying, recentlyPlayed,
-  onPress, onPreview, onRemove, onRename, onModeToggle,
+  isPlaying, recentlyPlayed, keyColor, isDragTarget,
+  onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu,
+  onDragOver, onDrop,
 }) {
   const timerRef  = useRef(null);
   const startedAt = useRef(null);
 
-  const isDown     = pressing.has(keyChar);
-  const hasCustom  = !!store?.customs?.[keyChar]?.b64;
-  const custFile   = store?.customs?.[keyChar]?.name || '';
-  const scale      = store?.keySize ?? 1.0;
-  const sizePx     = Math.round(KEY_BASE_PX * scale);
-  const isStop     = mode === 'stop';
-  const isLit      = isPlaying || recentlyPlayed.has(keyChar);
+  const isDown    = pressing.has(keyChar);
+  const hasCustom = !!store?.customs?.[keyChar]?.b64;
+  const custFile  = store?.customs?.[keyChar]?.name || '';
+  const scale     = store?.keySize ?? 1.0;
+  const sizePx    = Math.round(KEY_BASE_PX * scale);
+  const isLit     = isPlaying || recentlyPlayed.has(keyChar);
+
+  const modeIcon  = mode === 'stop' ? '⏹' : mode === 'toggle' ? '⏯' : mode === 'loop' ? '🔁' : '∞';
+  const modeOpt   = MODE_OPTS.find(m => m.id === mode) || MODE_OPTS[0];
+  const modeColorClass =
+    mode === 'stop'   ? 'text-orange-400'
+    : mode === 'toggle' ? 'text-purple-400'
+    : mode === 'loop'   ? 'text-cyan-400'
+    : isDown ? 'text-white/30' : theme === 'dark' ? 'text-gray-700' : 'text-gray-200';
 
   const titleParts = editMode
     ? [`[${keyChar}] กดสั้น = อัปโหลด | กดค้าง = preview`, '✏️ คลิกชื่อ = ตั้งชื่อ']
     : [keyName ? `[${keyChar}] ${keyName}` : `[${keyChar}]`, custFile && `📄 ${custFile}`].filter(Boolean);
-  const titleText = titleParts.join('\n');
 
   const handlePointerDown = (e) => {
     e.preventDefault();
@@ -63,15 +87,28 @@ function SoundKey({
     startedAt.current = null;
   };
 
+  // Inline style overrides for drag target / custom color
+  const colorStyle = {};
+  if (isDragTarget) {
+    colorStyle.borderColor = '#22c55e';
+    colorStyle.boxShadow   = '0 0 0 2px #22c55e, 0 0 15px rgba(34,197,94,0.4)';
+    colorStyle.background  = 'rgba(34,197,94,0.12)';
+  } else if (keyColor && !isDown) {
+    colorStyle.borderColor     = keyColor;
+    colorStyle.backgroundColor = keyColor + '22'; // ~13% opacity
+    if (isLit) colorStyle.boxShadow = `0 0 10px 2px ${keyColor}80`;
+  }
+
   return (
     <div
-      style={{ width: sizePx, height: sizePx }}
+      data-key={keyChar}
+      style={{ width: sizePx, height: sizePx, ...colorStyle }}
       className={clsx(
         'relative flex flex-col items-center justify-center rounded-xl select-none cursor-pointer',
         'transition-all duration-75 border font-medium',
         isDown
           ? 'bg-brand-500 border-brand-400 shadow-lg shadow-brand-500/30 scale-90'
-          : isLit
+          : isLit && !keyColor
             ? theme === 'dark'
               ? 'bg-gray-800 border-cyan-400 shadow-[0_0_10px_2px_rgba(34,211,238,0.45)]'
               : 'bg-white border-cyan-400 shadow-[0_0_10px_2px_rgba(34,211,238,0.35)]'
@@ -83,7 +120,10 @@ function SoundKey({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerLeave}
-      title={titleText}
+      onContextMenu={onContextMenu ? (e) => { e.preventDefault(); onContextMenu(keyChar, e); } : undefined}
+      onDragOver={onDragOver ? (e) => { e.preventDefault(); onDragOver(keyChar); } : undefined}
+      onDrop={onDrop ? (e) => { e.preventDefault(); onDrop(keyChar, e); } : undefined}
+      title={titleParts.join('\n')}
     >
       {/* Key letter — มุมซ้ายบน */}
       <span className={clsx(
@@ -93,21 +133,17 @@ function SoundKey({
         {keyChar}
       </span>
 
-      {/* Mode badge ∞/⏹ — มุมซ้ายล่าง (คลิกได้เฉพาะ edit mode ป้องกันกดโดน) */}
+      {/* Mode badge — มุมซ้ายล่าง */}
       <span
         className={clsx(
           'absolute bottom-1 left-1.5 text-[9px] font-bold leading-none transition-colors',
           editMode ? 'cursor-pointer' : 'cursor-default',
-          isStop
-            ? editMode ? 'text-orange-400 hover:text-orange-300' : 'text-orange-400'
-            : isDown ? 'text-white/30' : theme === 'dark' ? 'text-gray-700' : 'text-gray-200'
+          modeColorClass
         )}
-        title={editMode
-          ? (isStop ? 'หยุดแล้วเล่นใหม่ — คลิกเปลี่ยน' : 'เล่นซ้อนกัน — คลิกเปลี่ยน')
-          : (isStop ? '⏹ หยุดแล้วเล่นใหม่' : '∞ เล่นซ้อนกัน')}
+        title={editMode ? `${modeIcon} ${modeOpt.label} — คลิกเปลี่ยน` : `${modeIcon} ${modeOpt.label}`}
         onPointerDown={editMode ? (e) => { e.stopPropagation(); onModeToggle(keyChar); } : undefined}
       >
-        {isStop ? '⏹' : '∞'}
+        {modeIcon}
       </span>
 
       {/* Custom badge ✔ — มุมขวาบน */}
@@ -145,8 +181,9 @@ function SoundKey({
 // ===== KeyboardLayout =====
 function KeyboardLayout({
   store, names, pressing, editMode, theme,
-  playingKeys, recentlyPlayed,
-  onPress, onPreview, onRemove, onRename, onModeToggle,
+  playingKeys, recentlyPlayed, colors, dragOverKey,
+  isDesktop, isMobile,
+  onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu, onDragOver, onDrop,
 }) {
   const scale   = store?.keySize ?? 1.0;
   const sizePx  = Math.round(KEY_BASE_PX * scale);
@@ -160,12 +197,14 @@ function KeyboardLayout({
     store, pressing, editMode, theme,
     isPlaying: playingKeys.has(key),
     recentlyPlayed,
+    keyColor: colors?.[key] || '',
+    isDragTarget: dragOverKey === key,
     onPress, onPreview, onRemove, onRename, onModeToggle,
+    onContextMenu: isDesktop ? onContextMenu : undefined,
+    onDragOver:    !isMobile  ? onDragOver   : undefined,
+    onDrop:        !isMobile  ? onDrop       : undefined,
   });
 
-  // แนวตั้ง — KB_ROWS เป็น column (Q→Z, W→X, …)
-  // stagger: column ซ้ายสุด (Q-Z) มี offset มากที่สุด → ลดลงทางขวา
-  // → ให้ดูเป็น keyboard stagger ที่ถูกต้องเมื่อพลิกจอ
   if (isVert) {
     return (
       <div className="inline-flex flex-row items-start" style={{ gap }}>
@@ -199,28 +238,40 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const [playingKeys,    setPlayingKeys]    = useState(new Set());
   const [recentlyPlayed, setRecentlyPlayed] = useState(new Set());
   const [uploadKey,      setUploadKey]      = useState(null);
-  // Rename overlay (แทน window.prompt — ใช้ได้บนมือถือ)
-  const [selectedKey,    setSelectedKey]    = useState(null); // key ที่เลือกใน edit mode
-  const [renaming,       setRenaming]       = useState(null); // key กำลังตั้งชื่อ
+  // Rename overlay
+  const [selectedKey,    setSelectedKey]    = useState(null);
+  const [renaming,       setRenaming]       = useState(null);
   const [renameVal,      setRenameVal]      = useState('');
   // Combined upload+rename modal (mobile)
   const [combinedKey,    setCombinedKey]    = useState(null);
   const [combinedName,   setCombinedName]   = useState('');
   const [combinedFile,   setCombinedFile]   = useState(null);
+  // Device type
   const [isMobile,       setIsMobile]       = useState(false);
+  const [isDesktop,      setIsDesktop]      = useState(false);
+  // Drag & drop
+  const [isDragging,     setIsDragging]     = useState(false);
+  const [dragOverKey,    setDragOverKey]    = useState(null);
+  // Right-click context menu (desktop only)
+  const [ctxMenu,        setCtxMenu]        = useState(null); // { key, x, y } | null
 
   const fileInputRef         = useRef(null);
   const importInputRef       = useRef(null);
   const combinedFileInputRef = useRef(null);
-  const recentTimers   = useRef({});   // key → timeout id
+  const recentTimers   = useRef({});
   const renameInputRef = useRef(null);
 
   const email = user?.email || null;
 
   useEffect(() => { setStore(loadSettings()); }, []);
   useEffect(() => { setNames(loadNames(email, page)); }, [email, page]);
+
+  // Device detection
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 640);
+    const check = () => {
+      setIsMobile(window.innerWidth < 640);
+      setIsDesktop(window.innerWidth >= 1024);
+    };
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
@@ -228,21 +279,71 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   // Poll getPlayingKeys ทุก 80 ms
   useEffect(() => {
-    const id = setInterval(() => {
-      setPlayingKeys(getPlayingKeys());
-    }, 80);
+    const id = setInterval(() => setPlayingKeys(getPlayingKeys()), 80);
     return () => clearInterval(id);
   }, []);
 
-  // effectiveStore: แทน customs/modes ด้วย page ปัจจุบัน
+  // Window-level drag & drop detection (Desktop/iPad, not Mobile)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let counter = 0;
+
+    const onDragEnter = (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      counter++;
+      setIsDragging(true);
+    };
+    const onDragLeave = () => {
+      counter--;
+      if (counter <= 0) { counter = 0; setIsDragging(false); setDragOverKey(null); }
+    };
+    const onDragOver = (e) => { e.preventDefault(); }; // allow drop on page
+    const onDrop = (e) => {
+      e.preventDefault();
+      counter = 0;
+      setIsDragging(false);
+      setDragOverKey(null);
+    };
+
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('dragover',  onDragOver);
+    window.addEventListener('drop',      onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('dragover',  onDragOver);
+      window.removeEventListener('drop',      onDrop);
+    };
+  }, []);
+
+  // Close context menu on outside click / Escape
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onKey   = (e) => { if (e.key === 'Escape') setCtxMenu(null); };
+    const onClick = () => setCtxMenu(null);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('click',   onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('click',   onClick);
+    };
+  }, [ctxMenu]);
+
+  // effectiveStore: map page 2 fields to primary names
   const effectiveStore = store
     ? page === 2
-      ? { ...store, customs: store.customs2 || {}, modes: store.modes2 || {} }
+      ? {
+          ...store,
+          customs: store.customs2  || {},
+          modes:   store.modes2    || {},
+          colors:  store.colors2   || {},
+          volumes: store.volumes2  || {},
+        }
       : store
     : null;
 
   // flashKey — guarantee minimum glow even for very short sounds
-  // CRITICAL: ต้องประกาศก่อน useEffect ที่ใช้ flashKey ใน dependency array
   const flashKey = useCallback((key) => {
     setRecentlyPlayed(prev => new Set([...prev, key]));
     if (recentTimers.current[key]) clearTimeout(recentTimers.current[key]);
@@ -260,22 +361,16 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   useEffect(() => {
     if (!store) return;
     const onDown = (e) => {
-      // Escape = Stop All
       if (e.key === 'Escape') {
         e.preventDefault();
         stopAllAudio(STOP_FADE_MS);
         toast('⏹ หยุดเสียงทั้งหมด', { duration: 800 });
         return;
       }
-      // Tab = สลับ page
       if (e.key === 'Tab') {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
         e.preventDefault();
-        setPage(p => {
-          const next = p === 1 ? 2 : 1;
-          clearCustomCache();
-          return next;
-        });
+        setPage(p => { const next = p === 1 ? 2 : 1; clearCustomCache(); return next; });
         return;
       }
       if (e.repeat) return;
@@ -311,7 +406,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   const handleKeyPress = useCallback((key) => {
     if (!effectiveStore) return;
-    // Edit mode → เปิด action sheet เลือก Upload/Rename แทนการเปิด file picker ตรงๆ (แก้ bug มือถือ)
     if (editMode) { setSelectedKey(k => k === key ? null : key); return; }
     getAudioContext();
     playKey(key, effectiveStore, page === 1);
@@ -340,16 +434,51 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     setPage(newPage);
   }, []);
 
+  // Cycle through 4 modes: poly → stop → toggle → loop → poly
   const handleModeToggle = useCallback((key) => {
     const field = page === 2 ? 'modes2' : 'modes';
     const cur   = (store?.[field] || {})[key] || 'poly';
-    const next  = cur === 'poly' ? 'stop' : cur === 'stop' ? 'toggle' : 'poly';
+    const next  = cur === 'poly' ? 'stop' : cur === 'stop' ? 'toggle' : cur === 'toggle' ? 'loop' : 'poly';
     patch({ [field]: { ...(store?.[field] || {}), [key]: next } });
-    const label = next === 'stop' ? `[${key}] ⏹ หยุดแล้วเล่นใหม่`
-                : next === 'toggle' ? `[${key}] ⏯ กดอีกครั้ง = หยุด`
-                : `[${key}] ∞ เล่นซ้อนกัน`;
-    toast(label, { duration: 1000 });
+    const opt = MODE_OPTS.find(m => m.id === next);
+    toast(`[${key}] ${opt?.icon} ${opt?.label}`, { duration: 1000 });
   }, [store, patch, page]);
+
+  // Set mode directly (for context menu / action sheet 4-button UI)
+  const handleModeSet = useCallback((key, mode) => {
+    const field = page === 2 ? 'modes2' : 'modes';
+    patch({ [field]: { ...(store?.[field] || {}), [key]: mode } });
+  }, [store, patch, page]);
+
+  // Per-key color
+  const handleColorChange = useCallback((key, color) => {
+    const field = page === 2 ? 'colors2' : 'colors';
+    patch({ [field]: { ...(store?.[field] || {}), [key]: color } });
+  }, [store, patch, page]);
+
+  // Per-key volume (multiplier 0.1–2.0)
+  const handleVolumeChange = useCallback((key, vol) => {
+    const field = page === 2 ? 'volumes2' : 'volumes';
+    patch({ [field]: { ...(store?.[field] || {}), [key]: parseFloat(Number(vol).toFixed(2)) } });
+  }, [store, patch, page]);
+
+  // Drag & drop onto a specific key
+  const handleKeyDrop = useCallback(async (key, e) => {
+    setDragOverKey(null);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('audio/')) { toast.error('ไฟล์ต้องเป็น audio (.mp3 .ogg .wav)'); return; }
+    try {
+      const res = await uploadCustom(key, file, page);
+      setStore(loadSettings());
+      toast.success(`[${key}] 🎵 "${res.name}"`);
+    } catch (err) { toast.error(err.message); }
+  }, [page]);
+
+  // Right-click context menu (desktop only — gated via prop passed to KeyboardLayout)
+  const handleContextMenu = useCallback((key, e) => {
+    setCtxMenu({ key, x: e.clientX, y: e.clientY });
+  }, []);
 
   const handleRename = useCallback((key) => {
     setRenaming(key);
@@ -410,13 +539,11 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     if (!count) { toast('ไม่มีเสียง custom ใน Page ' + page, { duration: 1500 }); return; }
     const ok = window.confirm(
       `⚠️ รีเซ็ต Page ${page} — จะลบไฟล์เสียง custom ทั้งหมด ${count} เสียง\n\n` +
-      `หลังรีเซ็ตจะต้องอัปโหลดไฟล์เสียงใหม่ทั้งหมด — กู้คืนไม่ได้!\n\n` +
-      `กด OK เพื่อยืนยัน`
+      `หลังรีเซ็ตจะต้องอัปโหลดไฟล์เสียงใหม่ทั้งหมด — กู้คืนไม่ได้!\n\nกด OK เพื่อยืนยัน`
     );
     if (!ok) return;
     const ok2 = window.confirm(
-      `🗑️ ยืนยันอีกครั้ง — ลบเสียง custom ${count} เสียงใน Page ${page} ถาวร?\n\n` +
-      `กด OK เพื่อลบ`
+      `🗑️ ยืนยันอีกครั้ง — ลบเสียง custom ${count} เสียงใน Page ${page} ถาวร?\n\nกด OK เพื่อลบ`
     );
     if (!ok2) return;
     removeAllCustom(page);
@@ -429,7 +556,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       const data = exportSettings(email);
       const json = JSON.stringify(data, null, 2);
       const filename = `soundboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      // ใช้ data URI (ทำงานได้ทั้ง mobile Safari + Android + Desktop)
       const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
       const a   = document.createElement('a');
       a.href     = uri;
@@ -461,6 +587,64 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const scale       = store.keySize ?? 1.0;
   const isVertical  = store.layout === 'v';
   const customCount = Object.keys((page === 2 ? store.customs2 : store.customs) || {}).length;
+
+  // Helper for mode button color in action sheet / context menu
+  const modeActiveClass = (id) => {
+    if (id === 'stop')   return 'bg-orange-500 border-orange-400 text-white';
+    if (id === 'toggle') return 'bg-purple-500 border-purple-400 text-white';
+    if (id === 'loop')   return 'bg-cyan-500 border-cyan-400 text-white';
+    return 'bg-brand-500 border-brand-400 text-white';
+  };
+  const modeInactiveClass = isDark
+    ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+    : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100';
+
+  // Color swatch renderer (shared between action sheet + context menu)
+  const ColorSwatch = ({ targetKey, size = 22 }) => (
+    <div className="flex flex-wrap gap-1.5">
+      {KEY_COLORS.map((c, i) => {
+        const isActive = (effectiveStore?.colors?.[targetKey] ?? '') === c;
+        return (
+          <button
+            key={i}
+            onClick={() => handleColorChange(targetKey, c)}
+            style={{
+              width: size, height: size, borderRadius: '50%', flexShrink: 0,
+              background: c || (isDark ? '#374151' : '#e5e7eb'),
+              outline: isActive ? `2px solid ${isDark ? '#e5e7eb' : '#374151'}` : 'none',
+              outlineOffset: 2,
+              border: `1.5px solid ${c ? c + '80' : isDark ? '#4b5563' : '#d1d5db'}`,
+            }}
+            title={c || 'ค่าเริ่มต้น'}
+          />
+        );
+      })}
+    </div>
+  );
+
+  // Mode buttons (shared)
+  const ModeBtns = ({ targetKey, compact = false }) => {
+    const cur = effectiveStore?.modes?.[targetKey] || 'poly';
+    return (
+      <div className={clsx('grid gap-1', compact ? 'grid-cols-4' : 'grid-cols-4')}>
+        {MODE_OPTS.map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => handleModeSet(targetKey, opt.id)}
+            title={opt.label}
+            className={clsx(
+              'flex flex-col items-center py-1.5 rounded-lg transition border',
+              compact ? 'text-[10px]' : 'text-xs',
+              cur === opt.id ? modeActiveClass(opt.id) : modeInactiveClass
+            )}
+          >
+            <span>{opt.icon}</span>
+            {!compact && <span className="text-[9px] mt-0.5">{opt.label}</span>}
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className={clsx('flex h-screen overflow-hidden', isDark ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900')}>
@@ -612,10 +796,11 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               <span className="mt-0.5">✏️</span>
               <div className="space-y-0.5 text-xs">
                 <p className="font-semibold text-sm">โหมดแก้ไข — Page {page}</p>
-                <p><b>กดสั้น</b> ที่ปุ่ม = เลือกไฟล์เสียง (.mp3 / .ogg / .wav ≤ 2 MB)</p>
-                <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview ก่อน</p>
-                <p><b>คลิกชื่อ</b>ใต้ปุ่ม = ตั้งชื่อ (บันทึกตาม account + page)</p>
-                <p>คลิก <b>∞ / ⏹</b> มุมล่างซ้าย = สลับโหมดกดซ้ำ | คลิก <b>✔</b> มุมบนขวา = ลบไฟล์ custom</p>
+                <p><b>กดสั้น</b> ที่ปุ่ม = เลือกไฟล์เสียง (.mp3 / .ogg / .wav ≤ 5 MB)</p>
+                <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview ก่อน | <b>คลิกชื่อ</b>ใต้ปุ่ม = ตั้งชื่อ</p>
+                <p>คลิก <b>∞/⏹/⏯/🔁</b> มุมล่างซ้าย = สลับโหมด | คลิก <b>✔</b> มุมบนขวา = ลบไฟล์</p>
+                {isDesktop && <p>🖱️ <b>Right-click</b> ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด)</p>}
+                {!isMobile && <p>🎵 <b>ลากไฟล์</b>จาก File Explorer มาวางบนปุ่มได้โดยตรง</p>}
               </div>
             </div>
           )}
@@ -627,7 +812,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
           )}>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-sm font-medium">🔊 ระดับเสียง</span>
+                <span className="text-sm font-medium">🔊 ระดับเสียงรวม</span>
                 <span className={clsx('text-sm font-mono', isDark ? 'text-gray-400' : 'text-gray-500')}>{Math.round(store.volume * 100)}%</span>
               </div>
               <input type="range" min="0" max="1" step="0.01" value={store.volume}
@@ -650,7 +835,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             'rounded-2xl p-4 overflow-auto',
             isDark ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200 shadow-sm'
           )}>
-            {/* Page indicator บน keyboard */}
             <div className="flex items-center justify-between mb-3">
               <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full',
                 isDark ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500')}>
@@ -670,11 +854,18 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               theme={theme}
               playingKeys={playingKeys}
               recentlyPlayed={recentlyPlayed}
+              colors={effectiveStore?.colors || {}}
+              dragOverKey={dragOverKey}
+              isDesktop={isDesktop}
+              isMobile={isMobile}
               onPress={handleKeyPress}
               onPreview={handleKeyPreview}
               onRemove={handleRemove}
               onRename={handleRename}
               onModeToggle={handleModeToggle}
+              onContextMenu={handleContextMenu}
+              onDragOver={setDragOverKey}
+              onDrop={handleKeyDrop}
             />
           </div>
 
@@ -687,28 +878,33 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             <div className="space-y-3 text-xs">
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🎵 เล่นเสียง</p>
-                <p>กดปุ่มตัวอักษรบน<b>คีย์บอร์ด</b> (Q–P / A–L / Z–M) หรือ<b>แตะปุ่มบนหน้าจอ</b> กดหลายปุ่มพร้อมกันได้ ไม่ตัดเสียงกัน ไม่หยุดเพลงพื้นหลัง ปุ่มจะ<b>เรืองแสง</b>ขณะเสียงกำลังเล่น</p>
+                <p>กดปุ่มตัวอักษรบน<b>คีย์บอร์ด</b> (Q–P / A–L / Z–M) หรือ<b>แตะปุ่มบนหน้าจอ</b> กดหลายปุ่มพร้อมกันได้ ปุ่มจะ<b>เรืองแสง</b>ขณะเสียงกำลังเล่น</p>
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⏹ หยุดเสียง</p>
                 <p>กด <b>Escape</b> หรือปุ่ม "หยุดทั้งหมด" เพื่อตัดทุกเสียงที่กำลังเล่นทันที</p>
               </div>
               <div>
-                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🔁 โหมดกดซ้ำ (ต้องอยู่ในโหมดแก้ไขเพื่อเปลี่ยน)</p>
-                <p><b>∞ เล่นซ้อน</b> — กดซ้ำขณะเสียงยังเล่นอยู่จะเล่นทับกันเลย เช่น เสียง 2 วินาที กดซ้ำตอน 1 วิ → จะมีเสียงซ้อน 2 ชั้นและจบภายใน 3 วินาที</p>
-                <p className="mt-0.5"><b>⏹ หยุดแล้วเล่นใหม่</b> — กดซ้ำขณะเล่นจะหยุดทันทีแล้วเริ่มใหม่จากต้น</p>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🔁 โหมดกดซ้ำ 4 แบบ</p>
+                <p><b>∞ เล่นซ้อน</b> — กดซ้ำ = เสียงซ้อนกัน | <b>⏹ หยุด-เล่นใหม่</b> — กดซ้ำ = restart ทันที | <b>⏯ กดซ้ำ=หยุด</b> — toggle on/off | <b>🔁 เล่นวน</b> — loop ไม่จบ กดซ้ำ = หยุด</p>
               </div>
+              <div>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🎨 สี + 🔊 ระดับเสียงแต่ละปุ่ม</p>
+                <p>ตั้งสีและระดับเสียงเฉพาะปุ่มได้ผ่าน <b>Action Sheet</b> (โหมดแก้ไข &gt; กดปุ่ม){isDesktop ? ' หรือ Right-click ปุ่ม' : ''}</p>
+              </div>
+              {!isMobile && (
+                <div>
+                  <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🎵 Drag & Drop</p>
+                  <p>ลากไฟล์ .mp3 / .ogg / .wav (≤ 5 MB) จาก File Explorer มาวางบนปุ่มใดก็ได้โดยตรง — ไม่ต้องเข้าโหมดแก้ไข</p>
+                </div>
+              )}
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📄 2 Pages (Tab = สลับ)</p>
                 <p>Page 1 มีเสียง default พร้อมใช้ทุกปุ่ม — Page 2 ว่างไว้ อัปโหลดเสียงเพิ่มเองได้อีก 26 เสียง</p>
               </div>
               <div>
-                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>✏️ แก้ไข (กดปุ่ม "แก้ไข" ก่อน)</p>
-                <p><b>กดสั้น</b> = อัปโหลดไฟล์เสียง | <b>กดค้าง</b> = ฟัง preview | <b>คลิกชื่อ</b> = ตั้งชื่อปุ่ม | <b>คลิก ✔</b> = ลบไฟล์ custom</p>
-              </div>
-              <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⬇⬆ Export / Import</p>
-                <p>บันทึกการตั้งค่าทั้งหมด (โหมด, ชื่อปุ่ม, เสียง custom) เป็นไฟล์ .json เพื่อสำรองข้อมูลหรือย้ายไปเครื่องอื่น</p>
+                <p>บันทึกการตั้งค่าทั้งหมด (โหมด, ชื่อ, สี, ระดับเสียง, เสียง custom) เป็นไฟล์ .json</p>
               </div>
             </div>
           </div>
@@ -720,7 +916,22 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       <input ref={combinedFileInputRef} type="file" accept="audio/*"            className="hidden" onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }} />
       <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
 
-      {/* ===== Action Sheet (Edit Mode — เลือก key แล้วเลือก action) ===== */}
+      {/* ===== Drag & Drop Overlay ===== */}
+      {isDragging && !isMobile && (
+        <div className="fixed inset-0 z-30 pointer-events-none flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className={clsx(
+            'relative z-10 flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed',
+            isDark ? 'bg-gray-900/90 border-cyan-400 text-cyan-300' : 'bg-white/90 border-brand-400 text-brand-600'
+          )}>
+            <span className="text-5xl">🎵</span>
+            <span className="text-xl font-bold">วางไฟล์บนปุ่มใดก็ได้</span>
+            <span className="text-sm opacity-70">.mp3 / .ogg / .wav ≤ 5 MB</span>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Action Sheet (Edit Mode) ===== */}
       {editMode && selectedKey && (
         <div className="fixed inset-0 z-40 flex items-end" onClick={() => setSelectedKey(null)}>
           <div
@@ -730,6 +941,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             )}
             onClick={e => e.stopPropagation()}
           >
+            {/* Header */}
             <div className="flex items-center justify-between">
               <span className={clsx('font-bold text-base', isDark ? 'text-white' : 'text-gray-900')}>
                 ปุ่ม [{selectedKey}]
@@ -740,9 +952,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </span>
               <button onClick={() => setSelectedKey(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
             </div>
+
+            {/* Upload + Rename / Preview */}
             <div className="grid grid-cols-2 gap-2">
               {isMobile ? (
-                /* Mobile: combined upload + rename button */
                 <button
                   onClick={() => { setCombinedKey(selectedKey); setCombinedName(names[selectedKey] || ''); setCombinedFile(null); setSelectedKey(null); }}
                   className={clsx(
@@ -755,7 +968,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 </button>
               ) : (
                 <>
-                  {/* Upload */}
                   <button
                     onClick={() => { setUploadKey(selectedKey); setSelectedKey(null); fileInputRef.current?.click(); }}
                     className={clsx(
@@ -765,9 +977,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                   >
                     <span className="text-2xl">📂</span>
                     <span>อัปโหลดเสียง</span>
-                    <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>mp3 / ogg / wav ≤ 2MB</span>
+                    <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>mp3 / ogg / wav ≤ 5MB</span>
                   </button>
-                  {/* Rename */}
                   <button
                     onClick={() => handleRename(selectedKey)}
                     className={clsx(
@@ -781,7 +992,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                   </button>
                 </>
               )}
-              {/* Preview */}
               <button
                 onClick={() => { handleKeyPreview(selectedKey); setSelectedKey(null); }}
                 className={clsx(
@@ -791,27 +1001,45 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               >
                 🔊 ฟัง Preview
               </button>
-              {/* Mode Toggle */}
               <button
-                onClick={() => { handleModeToggle(selectedKey); setSelectedKey(null); }}
+                onClick={() => setSelectedKey(null)}
                 className={clsx(
                   'flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition',
-                  (() => {
-                    const m = effectiveStore?.modes?.[selectedKey] || 'poly';
-                    if (m === 'stop')   return isDark ? 'bg-orange-900/30 border border-orange-700/50 text-orange-300' : 'bg-orange-50 border border-orange-200 text-orange-700';
-                    if (m === 'toggle') return isDark ? 'bg-purple-900/30 border border-purple-700/50 text-purple-300' : 'bg-purple-50 border border-purple-200 text-purple-700';
-                    return isDark ? 'bg-gray-800 border border-gray-700 text-gray-400' : 'bg-gray-100 border border-gray-200 text-gray-500';
-                  })()
+                  isDark ? 'bg-gray-800 border border-gray-700 text-gray-500 hover:bg-gray-700' : 'bg-gray-100 border border-gray-200 text-gray-400 hover:bg-gray-200'
                 )}
               >
-                {(() => {
-                  const m = effectiveStore?.modes?.[selectedKey] || 'poly';
-                  if (m === 'stop')   return '⏹ หยุดแล้วเล่น';
-                  if (m === 'toggle') return '⏯ กดซ้ำ = หยุด';
-                  return '∞ เล่นซ้อน';
-                })()}
+                ✕ ปิด
               </button>
             </div>
+
+            {/* Mode — 4 buttons */}
+            <div className="space-y-1.5">
+              <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-500' : 'text-gray-400')}>โหมด</span>
+              <ModeBtns targetKey={selectedKey} />
+            </div>
+
+            {/* Color swatches */}
+            <div className="space-y-1.5">
+              <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-500' : 'text-gray-400')}>สีปุ่ม</span>
+              <ColorSwatch targetKey={selectedKey} size={24} />
+            </div>
+
+            {/* Per-key Volume */}
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-500' : 'text-gray-400')}>ระดับเสียงเฉพาะปุ่ม</span>
+                <span className={clsx('text-xs font-mono', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                  {Math.round((effectiveStore?.volumes?.[selectedKey] ?? 1.0) * 100)}%
+                </span>
+              </div>
+              <input
+                type="range" min="0.1" max="2" step="0.05"
+                value={effectiveStore?.volumes?.[selectedKey] ?? 1.0}
+                onChange={e => handleVolumeChange(selectedKey, parseFloat(e.target.value))}
+                className="w-full accent-brand-500 cursor-pointer"
+              />
+            </div>
+
             {/* Remove custom */}
             {effectiveStore?.customs?.[selectedKey]?.b64 && (
               <button
@@ -828,7 +1056,116 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         </div>
       )}
 
-      {/* ===== Rename Overlay (แทน window.prompt) ===== */}
+      {/* ===== Right-click Context Menu (Desktop) ===== */}
+      {ctxMenu && (
+        <div
+          className="fixed z-50"
+          style={{
+            left: Math.min(ctxMenu.x, (typeof window !== 'undefined' ? window.innerWidth  : 1200) - 250),
+            top:  Math.min(ctxMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 800)  - 420),
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className={clsx(
+            'w-56 rounded-xl shadow-2xl border p-3 space-y-2.5',
+            isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+          )}>
+            {/* Header */}
+            <div className={clsx('flex items-center gap-2 pb-1.5 border-b', isDark ? 'border-gray-800' : 'border-gray-100')}>
+              <span className={clsx('font-bold text-sm', isDark ? 'text-gray-100' : 'text-gray-800')}>
+                [{ctxMenu.key}]
+              </span>
+              {names[ctxMenu.key] && (
+                <span className={clsx('text-xs truncate flex-1', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                  {names[ctxMenu.key]}
+                </span>
+              )}
+              {effectiveStore?.customs?.[ctxMenu.key]?.name && (
+                <span className="text-xs text-green-500">🎵</span>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="grid grid-cols-2 gap-0.5">
+              {[
+                { icon: '📂', label: 'อัปโหลด', action: () => { setUploadKey(ctxMenu.key); setCtxMenu(null); fileInputRef.current?.click(); } },
+                { icon: '✏️', label: 'ตั้งชื่อ', action: () => { handleRename(ctxMenu.key); setCtxMenu(null); } },
+                { icon: '🔊', label: 'Preview',  action: () => { handleKeyPreview(ctxMenu.key); setCtxMenu(null); } },
+              ].map(item => (
+                <button
+                  key={item.label}
+                  onClick={item.action}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium transition text-left',
+                    isDark ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-600'
+                  )}
+                >
+                  {item.icon} {item.label}
+                </button>
+              ))}
+              {effectiveStore?.customs?.[ctxMenu.key]?.b64 && (
+                <button
+                  onClick={() => { handleRemove(ctxMenu.key); setCtxMenu(null); }}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium transition text-left',
+                    isDark ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-500'
+                  )}
+                >
+                  🗑️ ลบเสียง
+                </button>
+              )}
+            </div>
+
+            {/* Mode */}
+            <div className="space-y-1.5">
+              <span className={clsx('text-[10px] font-semibold uppercase tracking-wide', isDark ? 'text-gray-500' : 'text-gray-400')}>โหมด</span>
+              <div className="grid grid-cols-4 gap-1">
+                {MODE_OPTS.map(opt => {
+                  const isActive = (effectiveStore?.modes?.[ctxMenu.key] || 'poly') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleModeSet(ctxMenu.key, opt.id)}
+                      title={opt.label}
+                      className={clsx(
+                        'flex flex-col items-center py-1.5 rounded-lg text-xs transition border',
+                        isActive ? modeActiveClass(opt.id) : modeInactiveClass
+                      )}
+                    >
+                      {opt.icon}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Color */}
+            <div className="space-y-1.5">
+              <span className={clsx('text-[10px] font-semibold uppercase tracking-wide', isDark ? 'text-gray-500' : 'text-gray-400')}>สีปุ่ม</span>
+              <ColorSwatch targetKey={ctxMenu.key} size={20} />
+            </div>
+
+            {/* Per-key Volume */}
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className={clsx('text-[10px] font-semibold uppercase tracking-wide', isDark ? 'text-gray-500' : 'text-gray-400')}>ระดับเสียงปุ่มนี้</span>
+                <span className={clsx('text-[10px] font-mono', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                  {Math.round((effectiveStore?.volumes?.[ctxMenu.key] ?? 1.0) * 100)}%
+                </span>
+              </div>
+              <input
+                type="range" min="0.1" max="2" step="0.05"
+                value={effectiveStore?.volumes?.[ctxMenu.key] ?? 1.0}
+                onChange={e => handleVolumeChange(ctxMenu.key, parseFloat(e.target.value))}
+                className="w-full accent-brand-500 cursor-pointer"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Rename Overlay ===== */}
       {renaming && (
         <div className="fixed inset-0 z-50 flex items-end justify-center px-4" onClick={() => setRenaming(null)}>
           <div
@@ -858,18 +1195,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               )}
             />
             <div className="flex gap-2">
-              <button
-                onClick={handleRenameConfirm}
-                className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition"
-              >
+              <button onClick={handleRenameConfirm} className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition">
                 บันทึก
               </button>
               <button
                 onClick={() => setRenaming(null)}
-                className={clsx(
-                  'px-5 py-2.5 rounded-xl font-semibold text-sm transition',
-                  isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                )}
+                className={clsx('px-5 py-2.5 rounded-xl font-semibold text-sm transition', isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
               >
                 ยกเลิก
               </button>
@@ -894,7 +1225,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </span>
               <button onClick={() => { setCombinedKey(null); setCombinedFile(null); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
             </div>
-            {/* ชื่อปุ่ม */}
             <div className="space-y-1">
               <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ชื่อปุ่ม</span>
               <input
@@ -910,7 +1240,6 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 )}
               />
             </div>
-            {/* เลือกไฟล์เสียง */}
             <div className="space-y-1">
               <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ไฟล์เสียง (ไม่บังคับ)</span>
               <button
@@ -923,7 +1252,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 )}
               >
                 <span className="text-lg">{combinedFile ? '🎵' : '📂'}</span>
-                <span className="truncate">{combinedFile ? combinedFile.name : 'เลือกไฟล์ mp3 / ogg / wav ≤ 2MB'}</span>
+                <span className="truncate">{combinedFile ? combinedFile.name : 'เลือกไฟล์ mp3 / ogg / wav ≤ 5MB'}</span>
                 {combinedFile && (
                   <button
                     onClick={e => { e.stopPropagation(); setCombinedFile(null); }}
@@ -933,18 +1262,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </button>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleCombinedSubmit}
-                className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition"
-              >
+              <button onClick={handleCombinedSubmit} className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition">
                 บันทึก
               </button>
               <button
                 onClick={() => { setCombinedKey(null); setCombinedFile(null); }}
-                className={clsx(
-                  'px-5 py-2.5 rounded-xl font-semibold text-sm transition',
-                  isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                )}
+                className={clsx('px-5 py-2.5 rounded-xl font-semibold text-sm transition', isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
               >
                 ยกเลิก
               </button>

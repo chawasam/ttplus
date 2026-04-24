@@ -4,7 +4,7 @@
 import { SYNTHS } from './soundSynth';
 
 const STORE_KEY   = 'ttplus_soundboard';
-const MAX_FILE_MB = 2;
+const MAX_FILE_MB = 5;
 
 // ===== Defaults =====
 
@@ -15,11 +15,15 @@ function getDefaults() {
     enabled:  false,
     volume:   0.75,
     keySize:  1.0,
-    layout:   'h',    // 'h' | 'v'
-    customs:  {},     // page 1: key → { b64, mime, name }
-    modes:    {},     // page 1: key → 'poly' | 'stop' | 'toggle'
-    customs2: {},     // page 2
-    modes2:   {},     // page 2
+    layout:   'h',     // 'h' | 'v'
+    customs:  {},      // page 1: key → { b64, mime, name }
+    modes:    {},      // page 1: key → 'poly' | 'stop' | 'toggle' | 'loop'
+    customs2: {},      // page 2
+    modes2:   {},      // page 2
+    colors:   {},      // page 1: key → css color string ('' = default)
+    colors2:  {},      // page 2
+    volumes:  {},      // page 1: key → 0.1-2.0 multiplier (default 1.0)
+    volumes2: {},      // page 2
   };
 }
 
@@ -33,8 +37,10 @@ export function loadSettings() {
     const p = JSON.parse(raw);
     return {
       ...getDefaults(), ...p,
-      customs: p.customs || {}, modes: p.modes || {},
-      customs2: p.customs2 || {}, modes2: p.modes2 || {},
+      customs:  p.customs   || {}, modes:    p.modes    || {},
+      customs2: p.customs2  || {}, modes2:   p.modes2   || {},
+      colors:   p.colors    || {}, colors2:  p.colors2  || {},
+      volumes:  p.volumes   || {}, volumes2: p.volumes2 || {},
     };
   } catch { return getDefaults(); }
 }
@@ -42,7 +48,7 @@ export function loadSettings() {
 export function saveSettings(patch) {
   const cur  = loadSettings();
   const next = { ...cur, ...patch };
-  ['customs','modes','customs2','modes2'].forEach(f => {
+  ['customs','modes','customs2','modes2','colors','colors2','volumes','volumes2'].forEach(f => {
     if (!Object.prototype.hasOwnProperty.call(patch, f)) next[f] = cur[f];
   });
   try {
@@ -164,17 +170,20 @@ export async function playKey(key, store, useSfx = true) {
 
   const mode = store.modes?.[key] || 'poly';
   if (mode === 'stop') stopKeyAudio(key);
-  if (mode === 'toggle') {
+  if (mode === 'toggle' || mode === 'loop') {
     // ถ้ากำลังเล่นอยู่ → หยุด (ไม่เริ่มใหม่)
     if (getPlayingKeys().has(key)) { stopKeyAudio(key); return; }
   }
 
-  const v = Math.max(0, Math.min(1, store.volume ?? 0.75));
+  // per-key volume multiplier (default 1.0) × global volume
+  const perKeyVol = store.volumes?.[key] ?? 1.0;
+  const v = Math.max(0, Math.min(2, (store.volume ?? 0.75) * perKeyVol));
   const t = ctx.currentTime + 0.01;
 
   function playBuffer(buf) {
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    if (mode === 'loop') src.loop = true; // loop mode — เล่นวนไม่จบ
     const g = ctx.createGain();
     g.gain.value = v;
     g.connect(ctx.destination);
@@ -292,6 +301,10 @@ export function importSettings(data, email) {
     modes:    s.modes    || {},
     customs2: s.customs2 || {},
     modes2:   s.modes2   || {},
+    colors:   s.colors   || {},
+    colors2:  s.colors2  || {},
+    volumes:  s.volumes  || {},
+    volumes2: s.volumes2 || {},
   };
   try { localStorage.setItem(STORE_KEY, JSON.stringify(restored)); } catch {}
   // restore names
