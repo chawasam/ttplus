@@ -11,7 +11,14 @@ import Sidebar from '../components/Sidebar';
 import WidgetStyleEditor from '../components/WidgetStyleEditor';
 import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
-const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂'];
+const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂','🐺','🦊','🐲','🦅'];
+const BOSS_ELEMENTS  = [
+  { val: 'neutral', label: '⚪ กลาง (ไม่มีธาตุ)', desc: 'ดาเมจปกติทุกของขวัญ' },
+  { val: 'fire',    label: '🔥 ไฟ',               desc: 'แพ้น้ำ | ทน: ดิน' },
+  { val: 'water',   label: '💧 น้ำ',              desc: 'แพ้ลม | ทน: ไฟ' },
+  { val: 'earth',   label: '🌍 ดิน',              desc: 'แพ้ไฟ | ทน: ลม' },
+  { val: 'wind',    label: '🌪️ ลม',               desc: 'แพ้ดิน | ทน: น้ำ' },
+];
 const CREATURE_EMOJIS = ['🐉','🦋','🦄','🐣','🔥','🌟','👑','🐺'];
 
 const WIDGETS = [
@@ -22,14 +29,19 @@ const WIDGETS = [
   { id: 'leaderboard', icon: '🏆', name: 'Leaderboard',     desc: 'อันดับผู้ส่งของขวัญ ไม่ได้ปรับปรุง',  size: '300 × 400' },
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
   {
-    id: 'bossbattle', icon: '👾', name: 'Boss Battle (ยังไม่ได้ปรับปรุง)',
-    desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ชุมชนช่วยกันล้าง boss',
-    size: '400 × 350', noStyle: true,
+    id: 'bossbattle', icon: '👾', name: 'Boss Battle',
+    desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
+    size: '400 × 380', noStyle: true,
     configFields: [
-      { key: 'hp',       label: 'Boss HP (รอบแรก)', type: 'number',  default: 1000,         min: 10, max: 100000, step: 100 },
-      { key: 'bossname', label: 'ชื่อ Boss',         type: 'text',    default: 'Dark Dragon', maxLen: 30 },
-      { key: 'emoji',    label: 'Boss',               type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
-      { key: 'respawn',  label: 'Respawn Mode',       type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
+      { key: 'hp',        label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
+      { key: 'bossname',  label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
+      { key: 'emoji',     label: 'Boss Emoji',                       type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
+      { key: 'element',   label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
+      { key: 'hideelement', label: 'ซ่อนธาตุ Boss',                  type: 'toggle',  default: 0, onLabel: 'ซ่อน — เปิดเผยที่ HP ≤75%', offLabel: 'แสดงธาตุตั้งแต่ต้น' },
+      { key: 'dmgmult',   label: 'ตัวคูณดาเมจ (1 coin = X dmg)',     type: 'number',  default: 1,            min: 0.1, max: 20,     step: 0.1 },
+      { key: 'taprate',   label: 'Like → Damage (0 = ปิด, X like = 1 dmg)', type: 'number', default: 0,     min: 0,   max: 1000,   step: 1 },
+      { key: 'wrongheal', label: 'ผิดธาตุ = Heal Boss',              type: 'toggle',  default: 1, onLabel: 'เปิด — ผิดธาตุ heal boss', offLabel: 'ปิด — ผิดธาตุ = 0 dmg' },
+      { key: 'respawn',   label: 'Respawn Mode',                     type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
     ],
   },
   {
@@ -435,6 +447,25 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                               >
                                 {val ? `✅ ${f.onLabel}` : `⬜ ${f.offLabel}`}
                               </button>
+                            )}
+                            {f.type === 'element' && (
+                              <div className="space-y-1.5">
+                                {BOSS_ELEMENTS.map(el => (
+                                  <button
+                                    key={el.val}
+                                    onClick={() => setKey(f.key, el.val)}
+                                    className={clsx(
+                                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium border transition text-left',
+                                      val === el.val
+                                        ? 'bg-brand-500/15 border-brand-500/50 text-brand-300'
+                                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300'
+                                    )}
+                                  >
+                                    <span className="font-bold">{el.label}</span>
+                                    <span className={clsx('text-xs ml-auto', isDark ? 'text-gray-500' : 'text-gray-400')}>{el.desc}</span>
+                                  </button>
+                                ))}
+                              </div>
                             )}
                           </div>
                         );
