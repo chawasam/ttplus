@@ -39,7 +39,8 @@ const WIDGETS = [
       { key: 'element',   label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
       { key: 'hideelement', label: 'ซ่อนธาตุ Boss',                  type: 'toggle',  default: 0, onLabel: 'ซ่อน — เปิดเผยที่ HP ≤75%', offLabel: 'แสดงธาตุตั้งแต่ต้น' },
       { key: 'dmgmult',   label: 'ตัวคูณดาเมจ (1 coin = X dmg)',     type: 'number',  default: 1,            min: 0.1, max: 20,     step: 0.1 },
-      { key: 'taprate',   label: 'Like → Damage: กี่ like = 1 dmg (0 = ปิด)', type: 'number', default: 0,     min: 0,   max: 1000,   step: 1 },
+      { key: 'taprate',   label: 'Like → Damage: ทุกกี่ like ทำดาเมจ 1 ครั้ง (0 = ปิด)', type: 'number', default: 0,  min: 0, max: 1000, step: 1 },
+      { key: 'tapdmg',    label: 'Like → Damage: ดาเมจต่อครั้ง',                              type: 'number', default: 1,  min: 1, max: 10000, step: 1 },
       { key: 'wrongheal', label: 'ผิดธาตุ = Heal Boss',              type: 'toggle',  default: 1, onLabel: 'เปิด — ผิดธาตุ heal boss', offLabel: 'ปิด — ผิดธาตุ = 0 dmg' },
       { key: 'respawn',   label: 'Respawn Mode',                     type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
       { key: 'side',      label: 'ตำแหน่ง Widget',                   type: 'select',  default: 'center', options: [{ value:'center', label:'กลาง (ค่าเริ่มต้น)' }, { value:'left', label:'ซ้าย (ไม่บัง streamer ซ้าย)' }, { value:'right', label:'ขวา (ไม่บัง streamer ขวา)' }] },
@@ -558,6 +559,11 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                             <div>
                               <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>🔥 Streak Bonus</p>
                               <p>ส่งธาตุที่ชนะ 3 ครั้งติดกัน → <strong className={isDark ? 'text-yellow-400' : 'text-yellow-600'}>×3 dmg</strong> (streak bonus ×1.5 เพิ่มเติม)</p>
+                            </div>
+                            <div>
+                              <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>❤️ Like → Damage</p>
+                              <p>ตั้ง <strong>ทุกกี่ like</strong> ทำดาเมจ 1 ครั้ง + <strong>ดาเมจต่อครั้ง</strong></p>
+                              <p className="mt-0.5 opacity-75">เช่น: ทุก 5 like = 10 dmg → taprate=5, tapdmg=10</p>
                             </div>
                           </div>
                         </div>

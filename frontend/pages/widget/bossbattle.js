@@ -189,6 +189,7 @@ export default function BossBattleWidget() {
   const streakElemRef  = useRef(null);
   const dmgMultRef     = useRef(1);
   const tapRateRef     = useRef(0);
+  const tapDmgRef      = useRef(1); // damage per taprate-trigger
   const wrongHealRef   = useRef(true);
   const bossElemRef    = useRef('neutral');
   const likeBuffRef    = useRef(0);
@@ -490,6 +491,7 @@ export default function BossBattleWidget() {
     const elemParam = params.get('element') ?? 'neutral';
     const dmgMult   = Math.max(0.1, parseFloat(params.get('dmgmult') ?? '1'));
     const tapRate   = Math.max(0, parseInt(params.get('taprate') ?? '0'));
+    const tapDmg    = Math.max(1, parseInt(params.get('tapdmg')  ?? '1'));
     const wrongHeal = params.get('wrongheal') !== '0';
 
     const elem     = ELEMENTS[elemParam] ? elemParam : 'neutral';
@@ -499,6 +501,7 @@ export default function BossBattleWidget() {
     bossElemRef.current  = elem;
     dmgMultRef.current   = dmgMult;
     tapRateRef.current   = tapRate;
+    tapDmgRef.current    = tapDmg;
     wrongHealRef.current = wrongHeal;
     hideElemRef.current  = hideElem && elem !== 'neutral';
     setElemRevealed(!hideElem || elem === 'neutral');
@@ -561,8 +564,9 @@ export default function BossBattleWidget() {
         const ev = sanitizeEvent(data);
         likeBuffRef.current += (ev.likeCount || ev.count || 1);
         if (likeBuffRef.current >= tapRateRef.current) {
-          const dmg = Math.floor(likeBuffRef.current / tapRateRef.current);
+          const triggers = Math.floor(likeBuffRef.current / tapRateRef.current);
           likeBuffRef.current = likeBuffRef.current % tapRateRef.current;
+          const dmg = triggers * tapDmgRef.current; // damage per trigger × จำนวนครั้ง
           applyDamage(dmg, ev.nickname || 'Tapper', 'neutral', '❤️');
         }
       },

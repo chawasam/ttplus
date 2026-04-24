@@ -71,6 +71,8 @@ function SoundKey({
 
   const handlePointerDown = (e) => {
     e.preventDefault();
+    // Capture pointer → ทำให้ pointerUp ยิงบน element นี้เสมอ แม้นิ้วจะเลื่อนออกไปเล็กน้อย (แก้ปัญหา mobile tap ไม่ติด)
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
     startedAt.current = Date.now();
     if (editMode) timerRef.current = setTimeout(() => onPreview(keyChar), LONG_PRESS_MS);
   };
@@ -1189,7 +1191,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       </main>
 
       <input ref={fileInputRef}         type="file" accept="audio/*"            className="hidden" onChange={handleFileChange} />
-      <input id="sb-combined-file-input" ref={combinedFileInputRef} type="file" accept="audio/*" className="hidden" onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }} />
+      {/* combined file input ย้ายไปอยู่ข้างใน label ใน combined modal แล้ว */}
       <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
 
       {/* ===== Drag & Drop Banner (เล็กๆ ลอยบนสุด ไม่บังปุ่ม) ===== */}
@@ -1602,8 +1604,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             </div>
             <div className="space-y-1">
               <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ไฟล์เสียง (ไม่บังคับ)</span>
+              {/* label ครอบ input โดยตรง — เสถียรกว่า htmlFor บน iOS */}
               <label
-                htmlFor="sb-combined-file-input"
                 className={clsx(
                   'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition border cursor-pointer',
                   combinedFile
@@ -1611,6 +1613,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                     : isDark ? 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
                 )}
               >
+                <input
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }}
+                />
                 <span className="text-lg">{combinedFile ? '🎵' : '📂'}</span>
                 <span className="truncate">{combinedFile ? combinedFile.name : 'เลือกไฟล์ mp3 / ogg / wav ≤ 5MB'}</span>
                 {combinedFile && (
