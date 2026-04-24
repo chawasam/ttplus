@@ -484,8 +484,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         setPage(p => { if (p !== np) clearCustomCache(); return np; });
         return;
       }
-      // backtick `: toggle ON/OFF
-      if (e.key === '`') {
+      // กด 5: toggle ON/OFF
+      if (e.key === '5') {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
         e.preventDefault();
         patch({ enabled: !store.enabled });
@@ -1150,7 +1150,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⌨️ Hotkeys</p>
-                <p><b>Escape</b> = หยุดทั้งหมด | <b>Tab</b> = สลับ Page | <b>1–4</b> = ไป Page โดยตรง | <b>` (Backtick)</b> = เปิด/ปิด Soundboard</p>
+                <p><b>Escape</b> = หยุดทั้งหมด | <b>Tab</b> = สลับ Page | <b>1–4</b> = ไป Page โดยตรง | <b>5</b> = เปิด/ปิด Soundboard</p>
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⬇⬆ Export / Import</p>
