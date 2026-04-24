@@ -1,0 +1,70 @@
+// routes/game.js — Express router for Ashenveil game endpoints
+const express = require('express');
+const router  = express.Router();
+const rateLimit = require('express-rate-limit');
+
+const { verifyToken } = require('../middleware/auth');
+
+const account   = require('../handlers/game/account');
+const currency  = require('../handlers/game/currency');
+const combat    = require('../handlers/game/combat');
+const inventory = require('../handlers/game/inventory');
+const explore   = require('../handlers/game/explore');
+const npc       = require('../handlers/game/npc');
+
+// ===== Game-specific rate limiters =====
+const gameLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 60,
+  message: { error: 'Too many game requests. Slow down!' },
+});
+
+const battleLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 30,
+  message: { error: 'Too many battle actions' },
+});
+
+const shopLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 20,
+  message: { error: 'Too many shop requests' },
+});
+
+// ===== All game routes require auth =====
+router.use(verifyToken);
+router.use(gameLimiter);
+
+// ----- Account -----
+router.post('/account/sync',             account.syncAccount);
+router.post('/account/verify-request',   account.requestVerifyCode);
+router.get ('/account/verify-status',    account.getVerifyStatus);
+router.post('/account/character/create', account.createCharacter);
+router.get ('/account/character',        account.loadCharacter);
+
+// ----- Currency -----
+router.get ('/currency/balance',     currency.getBalance);
+router.post('/currency/redeem-rp',   currency.redeemRealmPoints);
+
+// ----- Explore -----
+router.post('/explore',  explore.explore);
+router.post('/travel',   explore.travel);
+
+// ----- Combat -----
+router.post('/battle/start',  battleLimiter, combat.startBattle);
+router.post('/battle/action', battleLimiter, combat.processAction);
+router.post('/battle/rest',   combat.rest);
+
+// ----- Inventory -----
+router.get ('/inventory',        inventory.getInventory);
+router.post('/inventory/equip',  inventory.equipItem);
+router.post('/inventory/unequip',inventory.unequipItem);
+router.post('/inventory/sell',   shopLimiter, inventory.sellItem);
+
+// ----- NPC Shop -----
+router.get ('/shop',      shopLimiter, inventory.getShopItems);
+router.post('/shop/buy',  shopLimiter, inventory.buyItem);
+
+// ----- NPC Affection -----
+router.get ('/npcs',              npc.getNPCList);
+router.get ('/npc/:npcId',        npc.talkToNPC);
+router.post('/npc/gift',          npc.giveGift);
+
+module.exports = router;

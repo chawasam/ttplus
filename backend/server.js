@@ -253,6 +253,10 @@ app.get('/api/stats', verifyToken, async (req, res) => {
   }
 });
 
+// ===== Game Routes =====
+const gameRouter = require('./routes/game');
+app.use('/api/game', gameRouter);
+
 // ===== Error Handlers =====
 app.use((err, _req, res, _next) => {
   console.error('[Server] Unhandled:', err.message);

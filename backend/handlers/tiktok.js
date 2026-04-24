@@ -2,6 +2,10 @@
 const { WebcastPushConnection } = require('tiktok-live-connector');
 const { logSession, logError } = require('../utils/logger');
 const { sanitizeTikTokEvent, sanitizeStr } = require('../utils/validate');
+const { processGift }  = require('./game/tiktokCurrency');
+const { checkChatVerify } = require('./game/account');
+const crypto = require('crypto');
+const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 
 const activeConnections = new Map(); // userId -> { connection, tiktokUsername, connectedAt, manualDisconnect }
 const reconnectTimers   = new Map(); // userId -> timerId
@@ -137,11 +141,15 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         followRole:        Number(data.followRole) || 0,
         timestamp:         Date.now(),
       });
+      // ตรวจ TikTok verify code ใน chat
+      checkChatVerify(safe.uniqueId, safe.comment || '').catch(() => {});
     });
 
     connection.on('gift', (data) => {
       if (data.giftType === 1 && !data.repeatEnd) return;
-      const safe = sanitizeTikTokEvent(data);
+      const safe         = sanitizeTikTokEvent(data);
+      const diamondCount = Math.max(0, Number(data.diamondCount) || 0);
+      const repeatCount  = Math.min(Number(data.repeatCount) || 1, 9999);
       emitAll('gift', {
         type: 'gift',
         uniqueId:          safe.uniqueId,
@@ -149,10 +157,24 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         profilePictureUrl: safe.profilePictureUrl,
         giftName:          safe.giftName,
         giftPictureUrl:    safe.giftPictureUrl,
-        diamondCount:      Math.max(0, Number(data.diamondCount) || 0),
-        repeatCount:       Math.min(Number(data.repeatCount) || 1, 9999),
+        diamondCount,
+        repeatCount,
         timestamp:         Date.now(),
       });
+      // Game currency pipeline
+      if (diamondCount > 0) {
+        const socketIp = io?.sockets?.sockets?.get?.(socketId)?.handshake?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || '';
+        const ipHash   = socketIp ? crypto.createHmac('sha256', IP_HASH_SALT).update(socketIp).digest('hex').slice(0, 16) : null;
+        processGift({
+          vjUid:          userId,
+          tiktokUniqueId: safe.uniqueId,
+          giftName:       safe.giftName,
+          diamondCount,
+          repeatCount,
+          serverTime:     Date.now(),
+          ipHash,
+        }).catch(err => console.error('[TikTok] processGift error:', err?.message));
+      }
     });
 
     connection.on('like', (data) => {
