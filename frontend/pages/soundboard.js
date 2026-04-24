@@ -66,7 +66,7 @@ function SoundKey({
     : isDown ? 'text-white/30' : theme === 'dark' ? 'text-gray-700' : 'text-gray-200';
 
   const titleParts = editMode
-    ? [`[${keyChar}] กดสั้น = อัปโหลด | กดค้าง = preview`, '✏️ คลิกชื่อ = ตั้งชื่อ']
+    ? [`[${keyChar}] กดเพื่อเปิดเมนูแก้ไข${custFile ? ` — 📄 ${custFile}` : ''}`, 'กดค้าง = ฟัง preview']
     : [keyName ? `[${keyChar}] ${keyName}` : `[${keyChar}]`, custFile && `📄 ${custFile}`].filter(Boolean);
 
   const handlePointerDown = (e) => {
@@ -142,25 +142,30 @@ function SoundKey({
         </span>
       )}
 
-      {/* Mode badge — มุมซ้ายล่าง */}
+      {/* Mode badge — มุมซ้ายล่าง (editMode: bubble ขึ้น parent เพื่อเปิด Action Sheet) */}
       <span
         className={clsx(
           'absolute bottom-1 left-1.5 text-[9px] font-bold leading-none transition-colors',
           editMode ? 'cursor-pointer' : 'cursor-default',
           modeColorClass
         )}
-        title={editMode ? `${modeIcon} ${modeOpt.label} — คลิกเปลี่ยน` : `${modeIcon} ${modeOpt.label}`}
-        onPointerDown={editMode ? (e) => { e.stopPropagation(); onModeToggle(keyChar); } : undefined}
+        title={editMode ? `เปิดเมนูแก้ไข [${keyChar}]` : `${modeIcon} ${modeOpt.label}`}
+        onPointerDown={editMode ? undefined : undefined}
       >
         {modeIcon}
       </span>
 
-      {/* Custom badge ✔ — มุมขวาบน */}
+      {/* Custom badge ✔ — มุมขวาบน (editMode: bubble ขึ้น parent เพื่อเปิด Action Sheet) */}
       {hasCustom && (
         <span
-          className="absolute top-1 right-1 text-[8px] bg-green-500 text-white rounded px-0.5 leading-none cursor-pointer hover:bg-red-500 transition-colors"
-          title={`ไฟล์: ${custFile} — คลิกลบ`}
-          onPointerDown={(e) => { e.stopPropagation(); onRemove(keyChar); }}
+          className={clsx(
+            'absolute top-1 right-1 text-[8px] rounded px-0.5 leading-none transition-colors',
+            editMode
+              ? 'bg-green-500 text-white cursor-pointer'
+              : 'bg-green-500 text-white cursor-pointer hover:bg-red-500'
+          )}
+          title={editMode ? `เปิดเมนูแก้ไข [${keyChar}]` : `ไฟล์: ${custFile} — คลิกลบ`}
+          onPointerDown={editMode ? undefined : (e) => { e.stopPropagation(); onRemove(keyChar); }}
         >
           ✔
         </span>
@@ -178,7 +183,6 @@ function SoundKey({
                 'px-1 text-center font-bold leading-tight break-all line-clamp-2 max-w-full',
                 isDown ? 'text-white' : theme === 'dark' ? 'text-gray-100' : 'text-gray-800',
               )}
-              onPointerDown={editMode ? (e) => { e.stopPropagation(); onRename(keyChar); } : undefined}
             >
               {keyName || keyChar}
             </span>
@@ -197,9 +201,7 @@ function SoundKey({
             className={clsx(
               'mt-0.5 px-0.5 truncate max-w-full leading-none',
               isDown ? 'text-white/80' : theme === 'dark' ? 'text-gray-400' : 'text-gray-500',
-              editMode && 'underline decoration-dotted cursor-text'
             )}
-            onPointerDown={editMode ? (e) => { e.stopPropagation(); onRename(keyChar); } : undefined}
           >
             {keyName || (editMode ? '—' : '')}
           </span>
@@ -950,9 +952,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               <span className="mt-0.5">✏️</span>
               <div className="space-y-0.5 text-xs">
                 <p className="font-semibold text-sm">โหมดแก้ไข — Page {page} ({LAYOUT_LABEL[curLayout]})</p>
-                <p><b>กดปุ่ม</b> = เปิด menu (อัปโหลด / ตั้งชื่อ / preview / สี / โหมด)</p>
-                {!isPadMode && <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview | <b>คลิกชื่อ</b>ใต้ปุ่ม = ตั้งชื่อ</p>}
-                <p>คลิก <b>∞/⏹/⏯/🔁</b> มุมล่างซ้าย = สลับโหมด | คลิก <b>✔</b> มุมบนขวา = ลบไฟล์</p>
+                <p><b>กดที่ปุ่ม</b> = เปิดเมนูแก้ไขรวม (อัปโหลด / ตั้งชื่อ / สี / ความเร็ว / โหมด / คัดลอก)</p>
+                {!isPadMode && <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview เสียง</p>}
+                {isDesktop && <p>🖱️ <b>Right-click</b> = เมนูด่วน (ทำงานได้ทั้งในและนอกโหมดแก้ไข)</p>}
                 {isDesktop && <p>🖱️ <b>Right-click</b> ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด)</p>}
                 {!isMobile && <p>🎵 <b>ลากไฟล์</b>จาก File Explorer มาวางบนปุ่มได้โดยตรง</p>}
               </div>
