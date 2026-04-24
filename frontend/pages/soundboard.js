@@ -584,11 +584,11 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     patch({ [field]: { ...(store?.[field] || {}), [key]: mode } });
   }, [store, patch, pf]);
 
-  // Per-key color
+  // Per-key color — ใช้ functional update เพื่อหลีกเลี่ยง stale closure
   const handleColorChange = useCallback((key, color) => {
     const field = pf('colors');
-    patch({ [field]: { ...(store?.[field] || {}), [key]: color } });
-  }, [store, patch, pf]);
+    patch((prev) => ({ [field]: { ...(prev?.[field] || {}), [key]: color } }));
+  }, [patch, pf]);
 
   // Per-key volume (multiplier 0.1–2.0)
   const handleVolumeChange = useCallback((key, vol) => {
@@ -755,6 +755,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100';
 
   // Color swatch renderer (shared between action sheet + context menu)
+  // ใช้ onPointerDown แทน onClick เพื่อ fire ทันทีก่อน re-render จะ unmount element
   const ColorSwatch = ({ targetKey, size = 22 }) => (
     <div className="flex flex-wrap gap-1.5">
       {KEY_COLORS.map((c, i) => {
@@ -762,7 +763,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         return (
           <button
             key={i}
-            onClick={() => {
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               handleColorChange(targetKey, c);
               toast(c ? `[${targetKey}] 🎨 สีเปลี่ยนแล้ว` : `[${targetKey}] 🎨 ล้างสีแล้ว`, { duration: 700 });
             }}
@@ -772,6 +775,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               outline: isActive ? `2px solid ${isDark ? '#e5e7eb' : '#374151'}` : 'none',
               outlineOffset: 2,
               border: `1.5px solid ${c ? c + '80' : isDark ? '#4b5563' : '#d1d5db'}`,
+              cursor: 'pointer', touchAction: 'none',
             }}
             title={c || 'ค่าเริ่มต้น'}
           />
@@ -1200,6 +1204,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
           onClick={(e) => { if (e.target === e.currentTarget) setSelectedKey(null); }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             className={clsx(
               'w-full max-w-sm mx-auto mb-4 rounded-2xl shadow-2xl border p-4 space-y-3',
               isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
