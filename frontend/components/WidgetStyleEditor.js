@@ -477,6 +477,30 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
 
+          {/* Show gift image toggle */}
+          <div className="space-y-2">
+            <span className={label}>แสดงรูปของขวัญ (ในโถ + popup)</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 1, icon: '🖼️', text: 'แสดงรูป' },
+                { val: 0, icon: '⚫', text: 'ซ่อนรูป' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('showGiftImage', opt.val)}
+                  className={clsx(
+                    'py-2 px-3 rounded-lg text-xs font-semibold transition border',
+                    (style.showGiftImage ?? 1) === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
         </div>
       )}
 

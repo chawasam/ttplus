@@ -156,12 +156,9 @@ const _sfx2Cache = new Map(); // page 2 default sfx decode cache
 async function loadSfx2Buffer(ctx, key) {
   if (_sfx2Cache.has(key)) return _sfx2Cache.get(key);
   try {
-    // โหลด base64 จาก defaultSounds2.js (dynamic import — โหลดครั้งเดียวเมื่อใช้ Page 2)
-    const mod    = await import('./defaultSounds2.js');
-    const sounds = mod.default || mod;
-    const b64    = sounds[key.toUpperCase()];
-    if (!b64) { _sfx2Cache.set(key, null); return null; }
-    const buf = await decodeB64(ctx, b64);
+    const resp = await fetch(`/sfx2/${key.toLowerCase()}.mp3`);
+    if (!resp.ok) { _sfx2Cache.set(key, null); return null; }
+    const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
     _sfx2Cache.set(key, buf);
     return buf;
   } catch { _sfx2Cache.set(key, null); return null; }

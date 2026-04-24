@@ -177,7 +177,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, engineRef, mRef, setJarOffset }) {
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, showGiftImageRef, engineRef, mRef, setJarOffset }) {
   // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
   const isCid   = /^\d{4,8}$/.test(cidOrWt);
   const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
@@ -209,8 +209,9 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
       gift:       safe.giftName || 'Gift',
       emoji,      imgUrl,
       rose:       isRose(safe.giftName || ''),
-      showSender:   showSenderRef.current,
-      showGiftName: showGiftNameRef.current,
+      showSender:    showSenderRef.current,
+      showGiftName:  showGiftNameRef.current,
+      showGiftImage: showGiftImageRef.current,
     });
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
   });
@@ -255,6 +256,10 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
     if (style?.showGiftName !== undefined) {
       showGiftNameRef.current = parseInt(style.showGiftName) === 0 ? 0 : 1;
     }
+    // showGiftImage — 0 | 1
+    if (style?.showGiftImage !== undefined) {
+      showGiftImageRef.current = parseInt(style.showGiftImage) === 0 ? 0 : 1;
+    }
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -269,6 +274,7 @@ export default function CoinJarWidget() {
   const [jarOffset, setJarOffset]   = useState(0);
   const showSenderRef               = useRef(1); // default: แสดงชื่อผู้ส่ง
   const showGiftNameRef             = useRef(1); // default: แสดงชื่อของขวัญ
+  const showGiftImageRef            = useRef(1); // default: แสดงรูปของขวัญ
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -373,8 +379,9 @@ export default function CoinJarWidget() {
       const ox = s.jx ?? 0;
       maxItemsRef.current  = s.mi ?? 150;
       giftScaleRef.current = s.gs ?? 100;
-      showSenderRef.current   = s.showSender   ?? 1;
-      showGiftNameRef.current = s.showGiftName ?? 1;
+      showSenderRef.current    = s.showSender    ?? 1;
+      showGiftNameRef.current  = s.showGiftName  ?? 1;
+      showGiftImageRef.current = s.showGiftImage ?? 1;
       J = getJ(ox);
       setJarOffset(ox);
 
@@ -404,7 +411,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, engineRef, mRef, setJarOffset });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, showGiftImageRef, engineRef, mRef, setJarOffset });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -465,9 +472,10 @@ export default function CoinJarWidget() {
           border:         `1px solid ${popup.rose ? 'rgba(255,143,163,0.50)' : styles.ac + '55'}`,
           animation:      'jarPopIn 0.3s ease',
         }}>
-          {popup.imgUrl
+          {popup.showGiftImage !== 0 && (popup.imgUrl
             ? <img src={popup.imgUrl} style={{ width: 34, height: 34, objectFit: 'contain', flexShrink: 0 }} alt="" crossOrigin="anonymous" onError={e => { e.currentTarget.style.display = 'none'; }} />
             : <span style={{ fontSize: 30, lineHeight: 1, flexShrink: 0 }}>{popup.emoji}</span>
+          )}
           }
           <div>
             {popup.showSender !== 0 && (
@@ -505,7 +513,7 @@ export default function CoinJarWidget() {
               filter:          'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
             }}
           >
-            {item.img
+            {styles.showGiftImage !== 0 && (item.img
               ? (
                 <img
                   src={item.img}
@@ -516,7 +524,7 @@ export default function CoinJarWidget() {
                 />
               )
               : item.emoji
-            }
+            )}
           </div>
         ))}
       </div>

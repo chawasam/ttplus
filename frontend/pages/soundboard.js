@@ -381,7 +381,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       getAudioContext();
       setPressing(s => new Set([...s, key]));
       if (!editMode) {
-        playKey(key, effectiveStore, page === 1);
+        playKey(key, effectiveStore, page);
         flashKey(key);
       }
     };
@@ -408,7 +408,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     if (!effectiveStore) return;
     if (editMode) { setSelectedKey(k => k === key ? null : key); return; }
     getAudioContext();
-    playKey(key, effectiveStore, page === 1);
+    playKey(key, effectiveStore, page);
     flashKey(key);
     setPressing(s => new Set([...s, key]));
     setTimeout(() => setPressing(s => { const ns = new Set(s); ns.delete(key); return ns; }), 130);
@@ -417,7 +417,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const handleKeyPreview = useCallback((key) => {
     if (!effectiveStore) return;
     getAudioContext();
-    playKey(key, effectiveStore, page === 1);
+    playKey(key, effectiveStore, page);
     flashKey(key);
     setPressing(s => new Set([...s, key]));
     setTimeout(() => setPressing(s => { const ns = new Set(s); ns.delete(key); return ns; }), 300);
@@ -842,7 +842,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </span>
               {page === 2 && (
                 <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
-                  Page 2 ไม่มีเสียง default — อัปโหลดเองได้เลย
+                  Page 2 มีเสียง default ครบ — อัปโหลดทับได้
                 </span>
               )}
             </div>
@@ -900,7 +900,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               )}
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📄 2 Pages (Tab = สลับ)</p>
-                <p>Page 1 มีเสียง default พร้อมใช้ทุกปุ่ม — Page 2 ว่างไว้ อัปโหลดเสียงเพิ่มเองได้อีก 26 เสียง</p>
+                <p>Page 1 และ Page 2 มีเสียง default พร้อมใช้ — อัปโหลดทับปุ่มไหนก็ได้เพื่อเปลี่ยนเสียง</p>
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⬇⬆ Export / Import</p>

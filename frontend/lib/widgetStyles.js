@@ -42,7 +42,7 @@ export const WIDGET_DEFAULTS = {
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
-  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, gs: 100, showSender: 1, showGiftName: 1 },
+  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, gs: 100, showSender: 1, showGiftName: 1, showGiftImage: 1 },
 };
 
 /** hex (6 chars no #) + alpha (0-100) -> rgba(r,g,b,a) */
@@ -140,6 +140,11 @@ export function parseWidgetStyles(params, widgetId) {
     ? (parseInt(params.get('showGiftName') ?? d.showGiftName) === 0 ? 0 : 1)
     : 1;
 
+  // showGiftImage — 0 | 1 (coinjar เท่านั้น) — แสดง/ซ่อนรูปของขวัญในโถ + popup
+  const showGiftImage = d.showGiftImage !== undefined
+    ? (parseInt(params.get('showGiftImage') ?? d.showGiftImage) === 0 ? 0 : 1)
+    : 1;
+
   // fullBubble — 0 | 1 (chat เท่านั้น) — bubble ขยายเต็มความกว้าง background
   const fullBubble = d.fullBubble !== undefined
     ? (parseInt(params.get('fullBubble') ?? d.fullBubble) === 1 ? 1 : 0)
@@ -161,9 +166,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat, showSender, showGiftName, fullBubble, lang,
+    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, fullBubble, lang },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang },
   };
 }
 
@@ -196,8 +201,9 @@ export function styleToParams(style, widgetId) {
   if (d.layout !== undefined && style.layout !== d.layout) p.set('layout', style.layout);
   if (d.orient      !== undefined && style.orient      !== d.orient)      p.set('orient',     style.orient);
   if (d.showChat    !== undefined && style.showChat    !== d.showChat)    p.set('showChat',   style.showChat);
-  if (d.showSender   !== undefined && style.showSender   !== d.showSender)   p.set('showSender',  style.showSender);
-  if (d.showGiftName !== undefined && style.showGiftName !== d.showGiftName) p.set('showGiftName', style.showGiftName);
+  if (d.showSender    !== undefined && style.showSender    !== d.showSender)    p.set('showSender',    style.showSender);
+  if (d.showGiftName  !== undefined && style.showGiftName  !== d.showGiftName)  p.set('showGiftName',  style.showGiftName);
+  if (d.showGiftImage !== undefined && style.showGiftImage !== d.showGiftImage) p.set('showGiftImage', style.showGiftImage);
   if (d.fullBubble   !== undefined && style.fullBubble   !== d.fullBubble)   p.set('fullBubble',  style.fullBubble);
   if (d.lang         !== undefined && style.lang         !== d.lang)         p.set('lang',         style.lang);
   return p.toString();
@@ -252,6 +258,9 @@ export function rawToStyle(raw = {}, widgetId) {
   const showGiftName = d.showGiftName !== undefined
     ? (parseInt(raw.showGiftName ?? d.showGiftName) === 0 ? 0 : 1)
     : 1;
+  const showGiftImage = d.showGiftImage !== undefined
+    ? (parseInt(raw.showGiftImage ?? d.showGiftImage) === 0 ? 0 : 1)
+    : 1;
   const fullBubble = d.fullBubble !== undefined
     ? (parseInt(raw.fullBubble ?? d.fullBubble) === 1 ? 1 : 0)
     : 0;
@@ -266,8 +275,8 @@ export function rawToStyle(raw = {}, widgetId) {
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat, showSender, showGiftName, fullBubble, lang,
+    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, fullBubble, lang },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang },
   };
 }
