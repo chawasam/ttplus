@@ -11,7 +11,7 @@ import Sidebar from '../components/Sidebar';
 import {
   loadSettings, saveSettings, playKey, uploadCustom, removeCustom, removeAllCustom,
   getAudioContext, loadNames, saveName, stopAllAudio, clearCustomCache,
-  getPlayingKeys, exportSettings, importSettings,
+  getPlayingKeys, getPlayingProgress, copyKey, exportSettings, importSettings,
 } from '../lib/soundboardStore';
 import { KB_ROWS } from '../lib/soundSynth';
 
@@ -43,6 +43,7 @@ const MODE_OPTS = [
 function SoundKey({
   keyChar, keyName, mode, store, pressing, editMode, theme,
   isPlaying, recentlyPlayed, keyColor, isDragTarget, padMode,
+  progress, showKbHint,
   onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu,
   onDragOver, onDrop,
 }) {
@@ -128,13 +129,18 @@ function SoundKey({
       onDrop={onDrop ? (e) => { e.preventDefault(); onDrop(keyChar, e); } : undefined}
       title={titleParts.join('\n')}
     >
-      {/* Key letter — มุมซ้ายบน */}
-      <span className={clsx(
-        'absolute top-1 left-1.5 text-[10px] font-bold leading-none',
-        isDown ? 'text-white/70' : theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-      )}>
-        {keyChar}
-      </span>
+      {/* Key letter — มุมซ้ายบน (pad mode: แสดงเฉพาะเมื่อ showKbHint=true) */}
+      {(!padMode || showKbHint !== false) && (
+        <span className={clsx(
+          'absolute top-1 left-1.5 text-[10px] font-bold leading-none',
+          isDown ? 'text-white/70'
+            : padMode && showKbHint
+              ? theme === 'dark' ? 'text-gray-300' : 'text-gray-500'
+              : theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+        )}>
+          {keyChar}
+        </span>
+      )}
 
       {/* Mode badge — มุมซ้ายล่าง */}
       <span
@@ -199,6 +205,23 @@ function SoundKey({
           </span>
         </>
       )}
+
+      {/* Progress bar — ด้านล่างสุดของปุ่ม เมื่อมีเสียงกำลังเล่น */}
+      {progress != null && progress > 0 && progress < 1 && (
+        <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b-xl overflow-hidden">
+          <div
+            className={clsx(
+              'h-full transition-none',
+              keyColor ? '' : 'bg-cyan-400'
+            )}
+            style={{
+              width: `${Math.round(progress * 100)}%`,
+              background: keyColor || undefined,
+              opacity: 0.85,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -206,7 +229,7 @@ function SoundKey({
 // ===== KeyboardLayout =====
 function KeyboardLayout({
   store, names, pressing, editMode, theme,
-  playingKeys, recentlyPlayed, colors, dragOverKey,
+  playingKeys, recentlyPlayed, colors, dragOverKey, playingProgress,
   isDesktop, isMobile,
   onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu, onDragOver, onDrop,
 }) {
@@ -224,6 +247,7 @@ function KeyboardLayout({
     recentlyPlayed,
     keyColor: colors?.[key] || '',
     isDragTarget: dragOverKey === key,
+    progress: playingProgress?.get(key)?.progress ?? null,
     onPress, onPreview, onRemove, onRename, onModeToggle,
     onContextMenu: isDesktop ? onContextMenu : undefined,
     onDragOver:    !isMobile  ? onDragOver   : undefined,
@@ -258,14 +282,15 @@ const ALL_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 function PadLayout({
   store, names, pressing, editMode, theme,
-  playingKeys, recentlyPlayed, colors, dragOverKey,
+  playingKeys, recentlyPlayed, colors, dragOverKey, playingProgress,
   isDesktop, isMobile,
   onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu, onDragOver, onDrop,
 }) {
-  const scale  = store?.keySize ?? 1.0;
-  const sizePx = Math.round(KEY_BASE_PX * scale);
-  const gap    = Math.max(4, Math.round(sizePx * 0.10));
-  const cols   = isMobile ? 4 : 6;
+  const scale      = store?.keySize ?? 1.0;
+  const sizePx     = Math.round(KEY_BASE_PX * scale);
+  const gap        = Math.max(4, Math.round(sizePx * 0.10));
+  const cols       = isMobile ? 4 : 6;
+  const showKbHint = store?.showKbHint ?? true;
 
   const keyProps = (key) => ({
     keyChar: key, keyName: names[key] || '',
@@ -276,6 +301,8 @@ function PadLayout({
     keyColor: colors?.[key] || '',
     isDragTarget: dragOverKey === key,
     padMode: true,
+    showKbHint,
+    progress: playingProgress?.get(key)?.progress ?? null,
     onPress, onPreview, onRemove, onRename, onModeToggle,
     onContextMenu: isDesktop ? onContextMenu : undefined,
     onDragOver:    !isMobile  ? onDragOver   : undefined,
@@ -303,6 +330,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const [editMode,       setEditMode]       = useState(false);
   const [pressing,       setPressing]       = useState(new Set());
   const [playingKeys,    setPlayingKeys]    = useState(new Set());
+  const [playingProgress,setPlayingProgress]= useState(new Map());
   const [recentlyPlayed, setRecentlyPlayed] = useState(new Set());
   const [uploadKey,      setUploadKey]      = useState(null);
   // Rename overlay
@@ -346,9 +374,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Poll getPlayingKeys ทุก 80 ms
+  // Poll getPlayingKeys + getPlayingProgress ทุก 80 ms
   useEffect(() => {
-    const id = setInterval(() => setPlayingKeys(getPlayingKeys()), 80);
+    const id = setInterval(() => {
+      setPlayingKeys(getPlayingKeys());
+      setPlayingProgress(getPlayingProgress());
+    }, 80);
     return () => clearInterval(id);
   }, []);
 
@@ -399,18 +430,19 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     };
   }, [ctxMenu]);
 
-  // effectiveStore: map page 2 fields to primary names
-  const effectiveStore = store
-    ? page === 2
-      ? {
-          ...store,
-          customs: store.customs2  || {},
-          modes:   store.modes2    || {},
-          colors:  store.colors2   || {},
-          volumes: store.volumes2  || {},
-        }
-      : store
-    : null;
+  // effectiveStore: map pageN fields → primary names (รองรับ 4 pages)
+  const effectiveStore = store ? (() => {
+    if (page === 1) return store;
+    const p = page;
+    return {
+      ...store,
+      customs: store[`customs${p}`] || {},
+      modes:   store[`modes${p}`]   || {},
+      colors:  store[`colors${p}`]  || {},
+      volumes: store[`volumes${p}`] || {},
+      speeds:  store[`speeds${p}`]  || {},
+    };
+  })() : null;
 
   // flashKey — guarantee minimum glow even for very short sounds
   const flashKey = useCallback((key) => {
@@ -439,7 +471,23 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       if (e.key === 'Tab') {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
         e.preventDefault();
-        setPage(p => { const next = p === 1 ? 2 : 1; clearCustomCache(); return next; });
+        setPage(p => { const next = p >= 4 ? 1 : p + 1; clearCustomCache(); return next; });
+        return;
+      }
+      // กด 1-4: สลับ Page โดยตรง
+      if (['1','2','3','4'].includes(e.key)) {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+        e.preventDefault();
+        const np = parseInt(e.key);
+        setPage(p => { if (p !== np) clearCustomCache(); return np; });
+        return;
+      }
+      // backtick `: toggle ON/OFF
+      if (e.key === '`') {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+        e.preventDefault();
+        patch({ enabled: !store.enabled });
+        toast(store.enabled ? '🔇 Soundboard ปิด' : '🔊 Soundboard เปิด', { duration: 800 });
         return;
       }
       if (e.repeat) return;
@@ -504,33 +552,50 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     setPage(newPage);
   }, []);
 
+  // helper: ชื่อ field ของ page ปัจจุบัน
+  const pf = useCallback((base) => page === 1 ? base : `${base}${page}`, [page]);
+
   // Cycle through 4 modes: poly → stop → toggle → loop → poly
   const handleModeToggle = useCallback((key) => {
-    const field = page === 2 ? 'modes2' : 'modes';
+    const field = pf('modes');
     const cur   = (store?.[field] || {})[key] || 'poly';
     const next  = cur === 'poly' ? 'stop' : cur === 'stop' ? 'toggle' : cur === 'toggle' ? 'loop' : 'poly';
     patch({ [field]: { ...(store?.[field] || {}), [key]: next } });
     const opt = MODE_OPTS.find(m => m.id === next);
     toast(`[${key}] ${opt?.icon} ${opt?.label}`, { duration: 1000 });
-  }, [store, patch, page]);
+  }, [store, patch, pf]);
 
   // Set mode directly (for context menu / action sheet 4-button UI)
   const handleModeSet = useCallback((key, mode) => {
-    const field = page === 2 ? 'modes2' : 'modes';
+    const field = pf('modes');
     patch({ [field]: { ...(store?.[field] || {}), [key]: mode } });
-  }, [store, patch, page]);
+  }, [store, patch, pf]);
 
   // Per-key color
   const handleColorChange = useCallback((key, color) => {
-    const field = page === 2 ? 'colors2' : 'colors';
+    const field = pf('colors');
     patch({ [field]: { ...(store?.[field] || {}), [key]: color } });
-  }, [store, patch, page]);
+  }, [store, patch, pf]);
 
   // Per-key volume (multiplier 0.1–2.0)
   const handleVolumeChange = useCallback((key, vol) => {
-    const field = page === 2 ? 'volumes2' : 'volumes';
+    const field = pf('volumes');
     patch({ [field]: { ...(store?.[field] || {}), [key]: parseFloat(Number(vol).toFixed(2)) } });
-  }, [store, patch, page]);
+  }, [store, patch, pf]);
+
+  // Per-key speed (0.25–2.0)
+  const handleSpeedChange = useCallback((key, spd) => {
+    const field = pf('speeds');
+    patch({ [field]: { ...(store?.[field] || {}), [key]: parseFloat(Number(spd).toFixed(2)) } });
+  }, [store, patch, pf]);
+
+  // Copy key to another page
+  const handleCopyKey = useCallback((key, toPage) => {
+    const updated = copyKey(key, page, toPage, email);
+    setStore(updated);
+    toast.success(`[${key}] คัดลอก Page ${page} → Page ${toPage}`);
+    setCtxMenu(null);
+  }, [page, email]);
 
   // Drag & drop onto a specific key
   const handleKeyDrop = useCallback(async (key, e) => {
@@ -604,8 +669,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   }, [page]);
 
   const handleResetAll = useCallback(() => {
-    const customs = page === 2 ? store?.customs2 : store?.customs;
-    const count   = Object.keys(customs || {}).length;
+    const customsField = page === 1 ? store?.customs : page === 2 ? store?.customs2 : page === 3 ? store?.customs3 : store?.customs4;
+    const count   = Object.keys(customsField || {}).length;
     if (!count) { toast('ไม่มีเสียง custom ใน Page ' + page, { duration: 1500 }); return; }
     const ok = window.confirm(
       `⚠️ รีเซ็ต Page ${page} — จะลบไฟล์เสียง custom ทั้งหมด ${count} เสียง\n\n` +
@@ -657,7 +722,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const scale       = store.keySize ?? 1.0;
   const isVertical  = store.layout === 'v';
   const isPadMode   = store.layout === 'pad';
-  const customCount = Object.keys((page === 2 ? store.customs2 : store.customs) || {}).length;
+  const customCount = Object.keys(
+    (page === 1 ? store.customs : page === 2 ? store.customs2 : page === 3 ? store.customs3 : store.customs4) || {}
+  ).length;
 
   const LAYOUT_CYCLE = { h: 'v', v: 'pad', pad: 'h' };
   const LAYOUT_LABEL = { h: '↔ แนวนอน', v: '↕ แนวตั้ง', pad: '⊞ Pad' };
@@ -834,8 +901,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
           </div>
 
           {/* ===== Page Tabs ===== */}
-          <div className="flex items-center gap-2">
-            {[1, 2].map(p => (
+          <div className="flex items-center gap-2 flex-wrap">
+            {[1, 2, 3, 4].map(p => (
               <button
                 key={p}
                 onClick={() => handleSwitchPage(p)}
@@ -849,13 +916,14 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', page === p ? 'bg-brand-500' : isDark ? 'bg-gray-600' : 'bg-gray-300')} />
                 Page {p}
                 {(() => {
-                  const cnt = Object.keys((p === 2 ? store.customs2 : store.customs) || {}).length;
+                  const f = p === 1 ? store.customs : p === 2 ? store.customs2 : p === 3 ? store.customs3 : store.customs4;
+                  const cnt = Object.keys(f || {}).length;
                   return cnt > 0 ? <span className={clsx('text-[10px] px-1 rounded-full', isDark ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-500')}>{cnt}</span> : null;
                 })()}
               </button>
             ))}
             <span className={clsx('text-xs ml-1', isDark ? 'text-gray-600' : 'text-gray-400')}>
-              Tab = สลับ Page
+              Tab / 1–4 = สลับ Page {isMobile ? '| ปัดซ้าย/ขวา' : ''}
             </span>
           </div>
 
@@ -914,6 +982,23 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 onChange={e => patch({ keySize: parseFloat(e.target.value) })}
                 className="w-full accent-brand-500 cursor-pointer" />
             </div>
+            {/* showKbHint — เฉพาะ Pad mode */}
+            {isPadMode && (
+              <div className="sm:col-span-2 flex items-center justify-between">
+                <span className="text-sm font-medium">⌨️ แสดง Key บนปุ่ม Pad</span>
+                <button
+                  onClick={() => patch({ showKbHint: !(store.showKbHint ?? true) })}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-1.5 rounded-xl font-semibold text-xs transition-all border',
+                    (store.showKbHint ?? true)
+                      ? isDark ? 'bg-brand-600/30 border-brand-500/50 text-brand-300' : 'bg-brand-50 border-brand-200 text-brand-700'
+                      : isDark ? 'bg-gray-800 border-gray-700 text-gray-500' : 'bg-gray-100 border-gray-200 text-gray-400'
+                  )}
+                >
+                  {(store.showKbHint ?? true) ? '👁 แสดง' : '🙈 ซ่อน'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ===== Keyboard / Pad ===== */}
@@ -933,8 +1018,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               const dx = e.changedTouches[0].clientX - swipeTouchX.current;
               const dy = e.changedTouches[0].clientY - swipeTouchY.current;
               if (Math.abs(dx) > 72 && Math.abs(dy) < Math.abs(dx) * 0.65) {
-                const newPage = dx < 0 ? 2 : 1;
-                if (newPage !== page) { clearCustomCache(); setPage(newPage); }
+                if (dx < 0 && page < 4) { clearCustomCache(); setPage(p => p + 1); }
+                else if (dx > 0 && page > 1) { clearCustomCache(); setPage(p => p - 1); }
               }
               swipeTouchX.current = null;
               swipeTouchY.current = null;
@@ -952,9 +1037,14 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                   </span>
                 )}
               </div>
-              {page === 2 && (
+              {(page === 1 || page === 2) && (
                 <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
-                  Page 2 มีเสียง default ครบ — อัปโหลดทับได้
+                  Page {page} มีเสียง default ครบ — อัปโหลดทับได้
+                </span>
+              )}
+              {(page === 3 || page === 4) && (
+                <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
+                  Page {page} — อัปโหลดเสียงได้ (ไม่มี default)
                 </span>
               )}
             </div>
@@ -970,6 +1060,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 recentlyPlayed={recentlyPlayed}
                 colors={effectiveStore?.colors || {}}
                 dragOverKey={dragOverKey}
+                playingProgress={playingProgress}
                 isDesktop={isDesktop}
                 isMobile={isMobile}
                 onPress={handleKeyPress}
@@ -992,6 +1083,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 recentlyPlayed={recentlyPlayed}
                 colors={effectiveStore?.colors || {}}
                 dragOverKey={dragOverKey}
+                playingProgress={playingProgress}
                 isDesktop={isDesktop}
                 isMobile={isMobile}
                 onPress={handleKeyPress}
@@ -1043,12 +1135,24 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 <p><b>↔ แนวนอน</b> — QWERTY keyboard | <b>↕ แนวตั้ง</b> — QWERTY ตั้ง | <b>⊞ Pad</b> — ตารางสี่เหลี่ยม A–Z ชื่อเด่น เหมาะกับแตะหรือคลิก คลิกปุ่ม Layout เพื่อสลับ</p>
               </div>
               <div>
-                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📄 2 Pages (Tab = สลับ{isMobile ? ' | ปัดซ้าย/ขวา' : ''})</p>
-                <p>Page 1 และ Page 2 มีเสียง default พร้อมใช้ — อัปโหลดทับปุ่มไหนก็ได้เพื่อเปลี่ยนเสียง</p>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📄 4 Pages (Tab / กด 1–4 = สลับ{isMobile ? ' | ปัดซ้าย/ขวา' : ''})</p>
+                <p>Page 1–2 มีเสียง default พร้อมใช้ — Page 3–4 สำหรับอัปโหลดเองได้ครบ อัปโหลดทับปุ่มไหนก็ได้ทุก Page</p>
+              </div>
+              <div>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🎚 ความเร็วเสียงแต่ละปุ่ม</p>
+                <p>ปรับความเร็วเล่น 0.25×–2.0× ได้ผ่าน Action Sheet (แก้ไข &gt; กดปุ่ม){isDesktop ? ' หรือ Right-click' : ''}</p>
+              </div>
+              <div>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📋 คัดลอกปุ่มระหว่าง Page</p>
+                <p>คัดลอก settings + ชื่อ + เสียงของปุ่มไปยัง Page อื่นได้ผ่าน Action Sheet หรือ Right-click</p>
+              </div>
+              <div>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⌨️ Hotkeys</p>
+                <p><b>Escape</b> = หยุดทั้งหมด | <b>Tab</b> = สลับ Page | <b>1–4</b> = ไป Page โดยตรง | <b>` (Backtick)</b> = เปิด/ปิด Soundboard</p>
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⬇⬆ Export / Import</p>
-                <p>บันทึกการตั้งค่าทั้งหมด (โหมด, ชื่อ, สี, ระดับเสียง, เสียง custom) เป็นไฟล์ .json</p>
+                <p>บันทึกการตั้งค่าทั้งหมด (โหมด, ชื่อ, สี, ระดับเสียง, เสียง custom, ทุก Page) เป็นไฟล์ .json</p>
               </div>
             </div>
           </div>
@@ -1183,6 +1287,41 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               />
             </div>
 
+            {/* Per-key Speed */}
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-500' : 'text-gray-400')}>ความเร็วเสียง</span>
+                <span className={clsx('text-xs font-mono', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                  {(effectiveStore?.speeds?.[selectedKey] ?? 1.0).toFixed(2)}×
+                </span>
+              </div>
+              <input
+                type="range" min="0.25" max="2" step="0.05"
+                value={effectiveStore?.speeds?.[selectedKey] ?? 1.0}
+                onChange={e => handleSpeedChange(selectedKey, parseFloat(e.target.value))}
+                className="w-full accent-brand-500 cursor-pointer"
+              />
+            </div>
+
+            {/* Copy to Page */}
+            <div className="space-y-1.5">
+              <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-500' : 'text-gray-400')}>คัดลอกไป</span>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4].filter(p => p !== page).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => handleCopyKey(selectedKey, p)}
+                    className={clsx(
+                      'flex-1 py-2 rounded-xl text-xs font-semibold transition border',
+                      isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                    )}
+                  >
+                    📋 Page {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Remove custom */}
             {effectiveStore?.customs?.[selectedKey]?.b64 && (
               <button
@@ -1303,6 +1442,42 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 className="w-full accent-brand-500 cursor-pointer"
                 onClick={e => e.stopPropagation()}
               />
+            </div>
+
+            {/* Per-key Speed */}
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className={clsx('text-[10px] font-semibold uppercase tracking-wide', isDark ? 'text-gray-500' : 'text-gray-400')}>ความเร็วเสียง</span>
+                <span className={clsx('text-[10px] font-mono', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                  {(effectiveStore?.speeds?.[ctxMenu.key] ?? 1.0).toFixed(2)}×
+                </span>
+              </div>
+              <input
+                type="range" min="0.25" max="2" step="0.05"
+                value={effectiveStore?.speeds?.[ctxMenu.key] ?? 1.0}
+                onChange={e => handleSpeedChange(ctxMenu.key, parseFloat(e.target.value))}
+                className="w-full accent-brand-500 cursor-pointer"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+
+            {/* Copy to Page */}
+            <div className="space-y-1.5">
+              <span className={clsx('text-[10px] font-semibold uppercase tracking-wide', isDark ? 'text-gray-500' : 'text-gray-400')}>คัดลอกไป</span>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].filter(p => p !== page).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => handleCopyKey(ctxMenu.key, p)}
+                    className={clsx(
+                      'flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition border',
+                      isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                    )}
+                  >
+                    Page {p}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

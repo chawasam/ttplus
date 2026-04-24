@@ -10,20 +10,34 @@ const MAX_FILE_MB = 5;
 
 export const SFX_KEYS = new Set(['Q','W','E','R','T','Y','U','I','O','P','A','S','D','F','G','H','J','K','L','Z','X','C','V','B','N','M']);
 
+// ฟิลด์ที่มี per-page object — ต้องรักษาไว้เมื่อ save บางส่วน
+const PAGE_FIELDS = [
+  'customs','modes','colors','volumes','speeds',
+  'customs2','modes2','colors2','volumes2','speeds2',
+  'customs3','modes3','colors3','volumes3','speeds3',
+  'customs4','modes4','colors4','volumes4','speeds4',
+];
+
+// helper: ชื่อ field ของแต่ละ page
+function pageField(base, page) {
+  return page === 1 ? base : `${base}${page}`;
+}
+
 function getDefaults() {
   return {
-    enabled:  false,
-    volume:   0.75,
-    keySize:  1.0,
-    layout:   'h',     // 'h' | 'v'
-    customs:  {},      // page 1: key → { b64, mime, name }
-    modes:    {},      // page 1: key → 'poly' | 'stop' | 'toggle' | 'loop'
-    customs2: {},      // page 2
-    modes2:   {},      // page 2
-    colors:   {},      // page 1: key → css color string ('' = default)
-    colors2:  {},      // page 2
-    volumes:  {},      // page 1: key → 0.1-2.0 multiplier (default 1.0)
-    volumes2: {},      // page 2
+    enabled:    false,
+    volume:     0.75,
+    keySize:    1.0,
+    layout:     'h',       // 'h' | 'v' | 'pad'
+    showKbHint: true,      // แสดง keyboard key ใน Pad mode
+    // page 1
+    customs:  {}, modes:  {}, colors:  {}, volumes:  {}, speeds:  {},
+    // page 2
+    customs2: {}, modes2: {}, colors2: {}, volumes2: {}, speeds2: {},
+    // page 3
+    customs3: {}, modes3: {}, colors3: {}, volumes3: {}, speeds3: {},
+    // page 4
+    customs4: {}, modes4: {}, colors4: {}, volumes4: {}, speeds4: {},
   };
 }
 
@@ -35,25 +49,20 @@ export function loadSettings() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return getDefaults();
     const p = JSON.parse(raw);
-    return {
-      ...getDefaults(), ...p,
-      customs:  p.customs   || {}, modes:    p.modes    || {},
-      customs2: p.customs2  || {}, modes2:   p.modes2   || {},
-      colors:   p.colors    || {}, colors2:  p.colors2  || {},
-      volumes:  p.volumes   || {}, volumes2: p.volumes2 || {},
-    };
+    const result = { ...getDefaults(), ...p };
+    PAGE_FIELDS.forEach(f => { result[f] = p[f] || {}; });
+    return result;
   } catch { return getDefaults(); }
 }
 
 export function saveSettings(patch) {
   const cur  = loadSettings();
   const next = { ...cur, ...patch };
-  ['customs','modes','customs2','modes2','colors','colors2','volumes','volumes2'].forEach(f => {
+  PAGE_FIELDS.forEach(f => {
     if (!Object.prototype.hasOwnProperty.call(patch, f)) next[f] = cur[f];
   });
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(next));
-    // broadcast soundboard enabled → StatusBar
     if (typeof window !== 'undefined' && patch.enabled !== undefined) {
       window.dispatchEvent(new CustomEvent('ttplus-sb', { detail: { enabled: next.enabled } }));
     }
@@ -75,18 +84,18 @@ export function getAudioContext() {
 // ===== Cache =====
 
 const _cache    = new Map(); // custom upload decode cache
-const _sfxCache = new Map(); // default sfx decode cache
+const _sfxCache = new Map(); // page 1 sfx decode cache
+const _sfx2Cache = new Map(); // page 2 sfx decode cache
 
 export function clearCustomCache() { _cache.clear(); }
 
-// ===== Active source tracking =====
-// เก็บทั้ง src + gain เพื่อรองรับ fade out
+// ===== Active source tracking (รวม timing สำหรับ progress bar) =====
 
-const _activeSources = new Map(); // key → Array<{ src, gain }>
+const _activeSources = new Map(); // key → Array<{src, gain, startTime, duration}>
 
-function trackSource(key, src, gain) {
+function trackSource(key, src, gain, startTime, duration) {
   if (!_activeSources.has(key)) _activeSources.set(key, []);
-  const entry = { src, gain };
+  const entry = { src, gain, startTime, duration };
   _activeSources.get(key).push(entry);
   src.onended = () => {
     const list = _activeSources.get(key);
@@ -94,14 +103,14 @@ function trackSource(key, src, gain) {
   };
 }
 
-// หยุดทันที — ใช้ใน mode 'stop' (restart)
+// หยุดทันที — mode 'stop' (restart)
 export function stopKeyAudio(key) {
   const list = _activeSources.get(key) || [];
   list.forEach(({ src }) => { try { src.stop(); } catch {} });
   _activeSources.set(key, []);
 }
 
-// หยุดทุกเสียง + fade out — ใช้กับ Stop All button / Escape
+// หยุดทุกเสียง + fade out
 export function stopAllAudio(fadeMs = 300) {
   const ctx = _ctx;
   if (!ctx) {
@@ -110,7 +119,6 @@ export function stopAllAudio(fadeMs = 300) {
   }
   const now   = ctx.currentTime;
   const fadeS = Math.max(0, fadeMs) / 1000;
-
   for (const [key, list] of _activeSources) {
     list.forEach(({ src, gain }) => {
       try {
@@ -129,7 +137,7 @@ export function stopAllAudio(fadeMs = 300) {
   }
 }
 
-// ส่งคืน Set ของ key ที่กำลังเล่นอยู่ตอนนี้
+// ส่งคืน Set ของ key ที่กำลังเล่นอยู่
 export function getPlayingKeys() {
   const playing = new Set();
   for (const [key, list] of _activeSources) {
@@ -138,7 +146,25 @@ export function getPlayingKeys() {
   return playing;
 }
 
-// ===== SFX loader =====
+// ส่งคืน Map<key, {progress: 0-1, duration: seconds}> สำหรับ progress bar
+export function getPlayingProgress() {
+  const ctx = _ctx;
+  if (!ctx) return new Map();
+  const result = new Map();
+  for (const [key, list] of _activeSources) {
+    if (list.length > 0) {
+      const last = list[list.length - 1];
+      if (last.duration > 0) {
+        const elapsed  = Math.max(0, ctx.currentTime - last.startTime);
+        const progress = Math.min(1, elapsed / last.duration);
+        result.set(key, { elapsed, duration: last.duration, progress });
+      }
+    }
+  }
+  return result;
+}
+
+// ===== SFX loaders =====
 
 async function loadSfxBuffer(ctx, key) {
   if (_sfxCache.has(key)) return _sfxCache.get(key);
@@ -150,8 +176,6 @@ async function loadSfxBuffer(ctx, key) {
     return buf;
   } catch { _sfxCache.set(key, null); return null; }
 }
-
-const _sfx2Cache = new Map(); // page 2 default sfx decode cache
 
 async function loadSfx2Buffer(ctx, key) {
   if (_sfx2Cache.has(key)) return _sfx2Cache.get(key);
@@ -173,7 +197,6 @@ async function decodeB64(ctx, b64) {
 
 // ===== Play =====
 
-// page: 1 = โหลดจาก /sfx/, 2 = โหลดจาก /sfx2/, 0/false = ไม่โหลด default
 export async function playKey(key, store, page = 1) {
   if (!store?.enabled) return;
   const ctx = getAudioContext();
@@ -185,25 +208,27 @@ export async function playKey(key, store, page = 1) {
   const mode = store.modes?.[key] || 'poly';
   if (mode === 'stop') stopKeyAudio(key);
   if (mode === 'toggle' || mode === 'loop') {
-    // ถ้ากำลังเล่นอยู่ → หยุด (ไม่เริ่มใหม่)
     if (getPlayingKeys().has(key)) { stopKeyAudio(key); return; }
   }
 
-  // per-key volume multiplier (default 1.0) × global volume
   const perKeyVol = store.volumes?.[key] ?? 1.0;
+  const speed     = Math.max(0.1, Math.min(4, store.speeds?.[key] ?? 1.0));
   const v = Math.max(0, Math.min(2, (store.volume ?? 0.75) * perKeyVol));
   const t = ctx.currentTime + 0.01;
 
   function playBuffer(buf) {
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    if (mode === 'loop') src.loop = true; // loop mode — เล่นวนไม่จบ
+    src.playbackRate.value = speed;
+    if (mode === 'loop') src.loop = true;
     const g = ctx.createGain();
     g.gain.value = v;
     g.connect(ctx.destination);
     src.connect(g);
     src.start(t);
-    trackSource(key, src, g); // track ทั้ง src และ gain
+    // duration = 0 สำหรับ loop (ไม่จบ)
+    const duration = mode === 'loop' ? 0 : buf.duration / speed;
+    trackSource(key, src, g, t, duration);
   }
 
   // 1. Custom upload
@@ -216,7 +241,7 @@ export async function playKey(key, store, page = 1) {
     } catch {}
   }
 
-  // 2. Default SFX — page 1: /sfx/, page 2: /sfx2/
+  // 2. Default SFX — page 1: /sfx/, page 2: /sfx2/, page 3-4: ไม่มี default
   if (page === 1 && SFX_KEYS.has(key)) {
     const sfxBuf = await loadSfxBuffer(ctx, key);
     if (sfxBuf) { playBuffer(sfxBuf); return; }
@@ -241,7 +266,7 @@ export function uploadCustom(key, file, page = 1) {
     reader.onload = (e) => {
       const b64   = e.target.result.split(',')[1];
       const store = loadSettings();
-      const field = page === 2 ? 'customs2' : 'customs';
+      const field = pageField('customs', page);
       store[field][key] = { b64, mime: file.type, name: file.name };
       _cache.delete(key);
       try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
@@ -254,7 +279,7 @@ export function uploadCustom(key, file, page = 1) {
 
 export function removeCustom(key, page = 1) {
   const store = loadSettings();
-  const field = page === 2 ? 'customs2' : 'customs';
+  const field = pageField('customs', page);
   delete store[field][key];
   _cache.delete(key);
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
@@ -262,8 +287,8 @@ export function removeCustom(key, page = 1) {
 
 export function removeAllCustom(page) {
   const store = loadSettings();
-  if (!page || page === 1) store.customs  = {};
-  if (!page || page === 2) store.customs2 = {};
+  const pages = page ? [page] : [1, 2, 3, 4];
+  pages.forEach(p => { store[pageField('customs', p)] = {}; });
   _cache.clear();
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
 }
@@ -273,7 +298,8 @@ export function removeAllCustom(page) {
 const NAMES_PREFIX = 'ttplus_sb_names_';
 
 function namesKey(email, page) {
-  return NAMES_PREFIX + (email || 'guest') + (page === 2 ? '_p2' : '');
+  const suffix = page === 1 ? '' : `_p${page}`;
+  return NAMES_PREFIX + (email || 'guest') + suffix;
 }
 
 export function loadNames(email, page = 1) {
@@ -292,16 +318,44 @@ export function saveName(email, key, name, page = 1) {
   return names;
 }
 
+// ===== Copy key between pages =====
+
+export function copyKey(key, fromPage, toPage, email) {
+  const store = loadSettings();
+  const updates = {};
+
+  ['customs','modes','colors','volumes','speeds'].forEach(base => {
+    const src = pageField(base, fromPage);
+    const dst = pageField(base, toPage);
+    if (store[src]?.[key] !== undefined) {
+      updates[dst] = { ...(store[dst] || {}), [key]: store[src][key] };
+    }
+  });
+
+  if (Object.keys(updates).length > 0) {
+    Object.assign(store, updates);
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+  }
+
+  // copy name
+  const srcName = loadNames(email, fromPage)[key];
+  if (srcName) saveName(email, key, srcName, toPage);
+
+  return store;
+}
+
 // ===== Export / Import =====
 
 export function exportSettings(email) {
   return {
-    version:    1,
+    version:    2,
     exportedAt: new Date().toISOString(),
     settings:   loadSettings(),
     names: {
       1: loadNames(email, 1),
       2: loadNames(email, 2),
+      3: loadNames(email, 3),
+      4: loadNames(email, 4),
     },
   };
 }
@@ -311,24 +365,18 @@ export function importSettings(data, email) {
   const s = data.settings;
   const restored = {
     ...getDefaults(),
-    enabled:  s.enabled  ?? false,
-    volume:   typeof s.volume  === 'number' ? s.volume  : 0.75,
-    keySize:  typeof s.keySize === 'number' ? s.keySize : 1.0,
-    layout:   s.layout   || 'h',
-    customs:  s.customs  || {},
-    modes:    s.modes    || {},
-    customs2: s.customs2 || {},
-    modes2:   s.modes2   || {},
-    colors:   s.colors   || {},
-    colors2:  s.colors2  || {},
-    volumes:  s.volumes  || {},
-    volumes2: s.volumes2 || {},
+    enabled:    s.enabled    ?? false,
+    volume:     typeof s.volume    === 'number' ? s.volume    : 0.75,
+    keySize:    typeof s.keySize   === 'number' ? s.keySize   : 1.0,
+    layout:     s.layout     || 'h',
+    showKbHint: s.showKbHint ?? true,
   };
+  PAGE_FIELDS.forEach(f => { restored[f] = s[f] || {}; });
   try { localStorage.setItem(STORE_KEY, JSON.stringify(restored)); } catch {}
-  // restore names
   try {
-    localStorage.setItem(namesKey(email, 1), JSON.stringify(data.names?.[1] || {}));
-    localStorage.setItem(namesKey(email, 2), JSON.stringify(data.names?.[2] || {}));
+    [1, 2, 3, 4].forEach(p => {
+      localStorage.setItem(namesKey(email, p), JSON.stringify(data.names?.[p] || {}));
+    });
   } catch {}
   clearCustomCache();
   return restored;
