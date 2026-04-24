@@ -164,21 +164,6 @@ function SoundKey({
         {modeIcon}
       </span>
 
-      {/* Custom badge ✔ — มุมขวาบน (editMode: bubble ขึ้น parent เพื่อเปิด Action Sheet) */}
-      {hasCustom && (
-        <span
-          className={clsx(
-            'absolute top-1 right-1 text-[8px] rounded px-0.5 leading-none transition-colors',
-            editMode
-              ? 'bg-green-500 text-white cursor-pointer'
-              : 'bg-green-500 text-white cursor-pointer hover:bg-red-500'
-          )}
-          title={editMode ? `เปิดเมนูแก้ไข [${keyChar}]` : `ไฟล์: ${custFile} — คลิกลบ`}
-          onPointerDown={editMode ? undefined : (e) => { e.stopPropagation(); onRemove(keyChar); }}
-        >
-          ✔
-        </span>
-      )}
 
       {/* Center content — pad mode แสดงชื่อเด่น, keyboard mode แสดง icon */}
       {padMode ? (
