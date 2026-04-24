@@ -267,10 +267,17 @@ export function uploadCustom(key, file, page = 1) {
       const b64   = e.target.result.split(',')[1];
       const store = loadSettings();
       const field = pageField('customs', page);
+      // ลบ entry เก่าของ key นี้ออกก่อน เพื่อเพิ่มพื้นที่สำหรับเสียงใหม่
+      delete store[field][key];
       store[field][key] = { b64, mime: file.type, name: file.name };
       _cache.delete(key);
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
-      resolve({ name: file.name });
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(store));
+        resolve({ name: file.name });
+      } catch (err) {
+        // QuotaExceededError — หน่วยความจำเต็ม
+        reject(new Error('หน่วยความจำเต็ม — กรุณาลบเสียงปุ่มอื่นก่อน หรือใช้ไฟล์ขนาดเล็กลง'));
+      }
     };
     reader.onerror = () => reject(new Error('อ่านไฟล์ไม่ได้'));
     reader.readAsDataURL(file);
