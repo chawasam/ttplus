@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { sanitizeEvent } from '../../lib/sanitize';
 import { createWidgetSocket } from '../../lib/widgetSocket';
-import { ELEMENTS, BEATS, GIFT_KEYWORDS, effectiveAgainst, weakGiftFor, calcHitType, giftToElement } from '../../lib/bossbattleData';
+import { ELEMENTS, effectiveAgainst, weakGiftFor, calcHitType, giftToElement } from '../../lib/bossbattleData';
 
 const STORAGE_KEY   = 'ttplus_boss_hp';
 const STORAGE_ROUND = 'ttplus_boss_round';
@@ -485,12 +485,15 @@ export default function BossBattleWidget() {
 
     return () => {
       cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
       if (runnerRef.current && window.Matter) {
         try { window.Matter.Runner.stop(runnerRef.current); } catch {}
       }
       if (engineRef.current && window.Matter) {
         try { window.Matter.Engine.clear(engineRef.current); } catch {}
       }
+      engineRef.current = null;
+      runnerRef.current = null;
     };
   }, []);
 

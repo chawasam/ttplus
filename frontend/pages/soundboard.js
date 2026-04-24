@@ -360,6 +360,14 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   useEffect(() => { setStore(loadSettings()); }, []);
   useEffect(() => { setNames(loadNames(email, page)); }, [email, page]);
 
+  // cleanup recentTimers on unmount เพื่อไม่ให้ timeout ค้างหลัง component ตาย
+  useEffect(() => {
+    return () => {
+      Object.values(recentTimers.current).forEach(id => clearTimeout(id));
+      recentTimers.current = {};
+    };
+  }, []);
+
   // sync React state หลัง playKey migrate เสียงเก่า (localStorage → IndexedDB)
   useEffect(() => {
     const handler = () => setStore(loadSettings());

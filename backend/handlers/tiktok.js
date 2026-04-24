@@ -1,4 +1,4 @@
-// tiktok.js — จัดการ TikTok Live connection + auto-reconnect exponential backoff
+// tiktok.js — จัดการ TikTok Live connection + auto-reconnect exponential backoff (3s→5s→10s→20s→40s→60s×5)
 const { WebcastPushConnection } = require('tiktok-live-connector');
 const { logSession, logError } = require('../utils/logger');
 const { sanitizeTikTokEvent, sanitizeStr } = require('../utils/validate');
@@ -9,8 +9,9 @@ const reconnectAttempts = new Map(); // userId -> attempt count
 
 // จำกัด connections สูงสุดต่อ server (ป้องกัน resource exhaustion)
 const MAX_CONNECTIONS        = 100;
-const MAX_RECONNECT_ATTEMPTS = 6;    // ~5s + 10s + 20s + 40s + 80s + 160s ≈ 5 นาที
-const RECONNECT_BASE_MS      = 5000; // delay ครั้งแรก
+const MAX_RECONNECT_ATTEMPTS = 10;   // ~3s+5s+10s+20s+40s+60s×5 ≈ 8 นาที
+const RECONNECT_BASE_MS      = 3000; // delay ครั้งแรก (เร็วขึ้น)
+const RECONNECT_CAP_MS       = 60_000; // cap ที่ 60 วิ (ไม่รอนานเกิน)
 
 // Timeout สำหรับ connect (ms)
 const CONNECT_TIMEOUT_MS = 15000;
@@ -36,8 +37,8 @@ function scheduleReconnect(userId, tiktokUsername, io, socketId) {
     return;
   }
 
-  // Exponential backoff: 5s → 10s → 20s → 40s → 80s → 120s (cap)
-  const delayMs = Math.min(RECONNECT_BASE_MS * Math.pow(2, attempt - 1), 120_000);
+  // Exponential backoff: 3s → 5s → 10s → 20s → 40s → 60s (cap, attempts 6-10 คง 60s)
+  const delayMs = Math.min(RECONNECT_BASE_MS * Math.pow(2, attempt - 1), RECONNECT_CAP_MS);
 
   console.log(`[TikTok] Auto-reconnect @${tiktokUsername} attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS} in ${delayMs / 1000}s`);
 

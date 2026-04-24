@@ -235,9 +235,9 @@ app.get('/api/widget-styles', async (req, res) => {
 });
 
 // ===== Stats (owner only) =====
-const OWNER_EMAIL = 'cksamg@gmail.com';
+const OWNER_EMAIL = process.env.OWNER_EMAIL || '';
 app.get('/api/stats', verifyToken, async (req, res) => {
-  if (req.user.email !== OWNER_EMAIL) return res.status(403).json({ error: 'Forbidden' });
+  if (!OWNER_EMAIL || req.user.email !== OWNER_EMAIL) return res.status(403).json({ error: 'Forbidden' });
   try {
     // registered users — count Firestore docs
     const snap = await admin.firestore().collection('user_settings').count().get();
@@ -363,6 +363,8 @@ io.on('connection', (socket) => {
 
     if (!userId) {
       socket.emit('widget_error', { error: 'Invalid cid or token.' });
+      // disconnect หลังจาก join_widget ล้มเหลว เพื่อป้องกัน brute-force cid
+      socket.disconnect(true);
       return;
     }
 
@@ -373,7 +375,7 @@ io.on('connection', (socket) => {
     // ทำให้ widget ดึงแชทสดได้โดยไม่ต้องมี dashboard เปิดค้างไว้
     if (!hasConnection(userId)) {
       try {
-        const settingsDoc = await admin.firestore().collection('settings').doc(userId).get();
+        const settingsDoc = await admin.firestore().collection('user_settings').doc(userId).get();
         const savedUsername = settingsDoc.exists ? settingsDoc.data()?.tiktokUsername : null;
         if (savedUsername && typeof savedUsername === 'string' && savedUsername.trim()) {
           const clean = savedUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
@@ -397,15 +399,28 @@ io.on('connection', (socket) => {
     if (!socketRateLimit(socket.id, 30, 5000)) return; // max 30 per 5s
     const { widgetId, payload } = data || {};
     if (!widgetId || typeof widgetId !== 'string' || widgetId.length > 50) return;
-    if (!payload || typeof payload !== 'object') return;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
     // หา widget room ที่ socket นี้อยู่
     const widgetRoom = [...socket.rooms].find(r => r.startsWith('widget_'));
     if (!widgetRoom) return; // ต้องเคย join_widget ก่อน
     // Broadcast เฉพาะ pinnable widgetId
     if (!['pinchat', 'pinprofile'].includes(widgetId)) return;
+
+    // Validate payload schema — อนุญาตเฉพาะ fields ที่ปลอดภัย
+    const str = (v, maxLen = 100) => (typeof v === 'string' ? v.slice(0, maxLen) : undefined);
+    const safePayload = {
+      uniqueId:          str(payload.uniqueId, 64),
+      nickname:          str(payload.nickname, 100),
+      profilePictureUrl: str(payload.profilePictureUrl, 512),
+      comment:           str(payload.comment, 300),
+      color:             str(payload.color, 20),
+    };
+    // ลบ key ที่เป็น undefined ออก
+    Object.keys(safePayload).forEach(k => safePayload[k] === undefined && delete safePayload[k]);
+
     // ส่ง style_update ด้วย payload พิเศษ _pin / _profile
     const styleKey = widgetId === 'pinchat' ? '_pin' : '_profile';
-    io.to(widgetRoom).emit('style_update', { widgetId, style: { [styleKey]: payload } });
+    io.to(widgetRoom).emit('style_update', { widgetId, style: { [styleKey]: safePayload } });
   });
 
   socket.on('disconnect', () => {

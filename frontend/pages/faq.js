@@ -42,6 +42,26 @@ const FAQS = [
     a: 'ต้อง Live จริงใน TikTok ถึงจะมี event เข้า ถ้าไม่ได้ Live อยู่จะไม่มีข้อมูล gift/chat/follow ส่งมา',
     tag: 'ทั่วไป',
   },
+  {
+    q: 'Boss Battle ไม่แสดงรูปบอส / โชว์แค่ emoji',
+    a: 'ถ้าเลือก preset "Stone Golem" แต่เห็นแค่ emoji ให้ลองกด Refresh ใน OBS เพราะรูปโหลดจาก server อาจใช้เวลาครั้งแรก ตรวจว่า URL ที่ copy มีคำว่า bossframes= อยู่ด้วย ถ้าไม่มีให้กลับไปเลือก preset ใน Customize แล้ว Copy URL ใหม่',
+    tag: 'Widget',
+  },
+  {
+    q: 'ของขวัญตกลงมาแต่ HP บอสไม่ลด',
+    a: 'ตรวจว่ากด Connect TikTok แล้วและสถานะแสดง "เชื่อมต่อสำเร็จ" ถ้าเชื่อมแล้วแต่ยังไม่ลด ให้กด Refresh OBS แล้วลองส่ง gift อีกครั้ง บางครั้ง socket ขาดช่วงสั้นๆ ตอนเปิด OBS ใหม่',
+    tag: 'Widget',
+  },
+  {
+    q: 'Soundboard กดปุ่มแล้วไม่มีเสียง',
+    a: 'Browser ต้องการ interaction ก่อนเล่นเสียง — ลองคลิกที่หน้าจอ Soundboard สักครั้งแล้วกดปุ่มใหม่ ถ้ายังไม่ได้ให้ตรวจว่าไฟล์เสียงอัปโหลดถูกปุ่มหรือไม่ (Right-click → Preview เสียง)',
+    tag: 'Soundboard',
+  },
+  {
+    q: 'Export Soundboard ได้ไฟล์ใหญ่มาก / ใช้เวลานาน',
+    a: 'ไฟล์ export รวมเสียงทุกปุ่มที่อัปโหลดเอง ขนาดขึ้นอยู่กับจำนวนและขนาดไฟล์เสียง ระบบจะแจ้งขนาดก่อนดาวน์โหลดให้กด ยืนยัน ก่อนเสมอ ถ้าไฟล์ใหญ่เกิน 50 MB แนะนำให้ลด bitrate ไฟล์เสียงก่อน export',
+    tag: 'Soundboard',
+  },
 ];
 
 const TAG_COLORS = {
@@ -49,6 +69,7 @@ const TAG_COLORS = {
   'Login':     'bg-blue-500/20 text-blue-400',
   'Widget':    'bg-purple-500/20 text-purple-400',
   'TTS':       'bg-green-500/20 text-green-400',
+  'Soundboard':'bg-orange-500/20 text-orange-400',
   'ทั่วไป':   'bg-gray-500/20 text-gray-400',
 };
 

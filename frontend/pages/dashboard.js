@@ -59,6 +59,10 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     }));
   }, [connected, tiktokUsername]);
 
+  // ── sync refs ──
+  useEffect(() => { tiktokUsernameRef.current = tiktokUsername; }, [tiktokUsername]);
+  useEffect(() => { if (connected) wasConnectedRef.current = true; }, [connected]);
+
   const [viewers, setViewers]           = useState(0);
   const [totalLikes, setTotalLikes]     = useState(0);
   const [totalComments, setTotalComments] = useState(0);
@@ -66,7 +70,10 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
 
-  const socketRef = useRef(null);
+  const socketRef           = useRef(null);
+  const wasConnectedRef     = useRef(false); // true = เคย connect TikTok ในรอบนี้
+  const manualDisconnectRef = useRef(false); // true = user กด disconnect เอง
+  const tiktokUsernameRef   = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -94,6 +101,29 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   // ===== Socket Listeners =====
   const setupSocketListeners = useCallback((socket) => {
+
+    // auto-reconnect TikTok หลัง socket กลับมา (เช่น หลัง server deploy restart)
+    // ใช้ once() ป้องกัน listener สะสม — แต่ละ connect ลง listener ใหม่ครั้งเดียว
+    const onSocketReconnect = () => {
+      if (!wasConnectedRef.current) return;         // ไม่เคย connect ก็ไม่ต้อง
+      if (manualDisconnectRef.current) return;      // user กด disconnect เอง ไม่ auto
+      const username = tiktokUsernameRef.current;
+      if (!username) return;
+      // รอ authenticate เสร็จก่อน (~600ms) แล้วค่อย reconnect
+      setTimeout(async () => {
+        if (!socket.connected) return;              // socket หลุดอีกแล้ว ไม่ต้อง call
+        if (manualDisconnectRef.current) return;    // user กด disconnect ระหว่างรอ
+        try {
+          await api.post('/api/connect', { tiktokUsername: username });
+          toast('🔄 เชื่อมต่อ TikTok ใหม่อัตโนมัติ...', { id: 'auto-reconnect', duration: 3000 });
+          setConnecting(true);
+        } catch { /* server อาจยัง warm up ไม่เสร็จ — scheduleReconnect ของ backend จะจัดการ */ }
+      }, 600);
+    };
+    // ลบ listener เดิมก่อนเสมอ ป้องกันสะสมถ้า setupSocketListeners ถูกเรียกซ้ำ
+    socket.off('connect', onSocketReconnect);
+    socket.on('connect', onSocketReconnect);
+
     socket.on('connection_status', (data) => {
       if (data.status === 'connected') {
         setConnected(true);
@@ -227,6 +257,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     if (!rawUsername) { toast.error('กรุณากรอก TikTok username'); return; }
     const cleanUsername = rawUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
     if (!cleanUsername) { toast.error('Username ไม่ถูกต้อง (ใช้ได้เฉพาะ a-z, 0-9, . และ _)'); return; }
+    manualDisconnectRef.current = false; // user กด connect เอง — อนุญาต auto-reconnect
     setConnecting(true);
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
@@ -256,6 +287,8 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   }, [user, tiktokUsername]);
 
   const handleDisconnect = useCallback(async () => {
+    manualDisconnectRef.current = true;  // user กด disconnect เอง — ห้าม auto-reconnect
+    wasConnectedRef.current = false;
     try {
       await api.post('/api/disconnect');
       setConnected(false);

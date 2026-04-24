@@ -76,10 +76,11 @@ export default function EggHatchWidget() {
   const [shaking,    setShaking]    = useState(false);
   const [lastSender, setLastSender] = useState(null);
 
-  const currentRef = useRef(0);
-  const goalRef    = useRef(500);
-  const phaseRef   = useRef('waiting');
-  const shakeTimer = useRef(null);
+  const currentRef  = useRef(0);
+  const goalRef     = useRef(500);
+  const phaseRef    = useRef('waiting');
+  const shakeTimer  = useRef(null);
+  const hatchTimer  = useRef(null);
 
   const resetEgg = useCallback(() => {
     clearTimeout(shakeTimer.current);
@@ -111,9 +112,10 @@ export default function EggHatchWidget() {
       phaseRef.current = 'hatching';
       setPhase('hatching');
       playHatch();
-      setTimeout(() => {
+      hatchTimer.current = setTimeout(() => {
         phaseRef.current = 'hatched';
         setPhase('hatched');
+        hatchTimer.current = null;
       }, 1800);
     }
   }, []);
@@ -166,7 +168,11 @@ export default function EggHatchWidget() {
       },
     });
 
-    return () => socket?.disconnect();
+    return () => {
+      socket?.disconnect();
+      clearTimeout(hatchTimer.current);
+      clearTimeout(shakeTimer.current);
+    };
   }, [addDiamonds, resetEgg]);
 
   useEffect(() => {

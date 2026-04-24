@@ -9,11 +9,13 @@ let _authToken = null; // เก็บ token ล่าสุด — ใช้ต
 export function getSocket() {
   if (!socket) {
     socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
-      autoConnect:  false,
-      transports:   ['polling', 'websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay:    2000,
+      autoConnect:          false,
+      transports:           ['polling', 'websocket'],
+      reconnection:         true,
+      reconnectionAttempts: 20,      // พยายาม 20 ครั้ง (~2 นาที ครอบคลุม Railway restart)
+      reconnectionDelay:    2000,    // เริ่มที่ 2 วิ
+      reconnectionDelayMax: 8000,    // cap ที่ 8 วิ ไม่รอนานเกิน
+      randomizationFactor:  0.3,     // jitter เล็กน้อย ป้องกัน thundering herd
     });
     // ส่ง authenticate ทุกครั้ง connect/reconnect — ป้องกัน userSockets หาย
     socket.on('connect', () => {
