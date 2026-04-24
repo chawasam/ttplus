@@ -5,52 +5,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { sanitizeEvent } from '../../lib/sanitize';
 import { createWidgetSocket } from '../../lib/widgetSocket';
+import { ELEMENTS, BEATS, GIFT_KEYWORDS, effectiveAgainst, weakGiftFor, calcHitType, giftToElement } from '../../lib/bossbattleData';
 
 const STORAGE_KEY   = 'ttplus_boss_hp';
 const STORAGE_ROUND = 'ttplus_boss_round';
 const RESPAWN_SECS  = 5;
 const PHYS_H        = 190;  // ความสูง physics canvas (gift pile area)
 const MAX_GIFTS     = 30;   // จำนวนสูงสุดของขวัญในหน้าจอ
-
-// ───── Element system ─────────────────────────────────────────
-const ELEMENTS = {
-  neutral: { id: 'neutral', label: 'กลาง', emoji: '⚪', color: '#94a3b8', aura: 'rgba(148,163,184,0.25)', flash: 'rgba(148,163,184,0.18)' },
-  fire:    { id: 'fire',    label: 'ไฟ',   emoji: '🔥', color: '#f97316', aura: 'rgba(249,115,22,0.35)',  flash: 'rgba(249,115,22,0.22)' },
-  water:   { id: 'water',   label: 'น้ำ',  emoji: '💧', color: '#38bdf8', aura: 'rgba(56,189,248,0.35)',  flash: 'rgba(56,189,248,0.22)' },
-  earth:   { id: 'earth',   label: 'ดิน',  emoji: '🌍', color: '#ca8a04', aura: 'rgba(202,138,4,0.35)',   flash: 'rgba(202,138,4,0.22)' },
-  wind:    { id: 'wind',    label: 'ลม',   emoji: '🌪️', color: '#34d399', aura: 'rgba(52,211,153,0.35)',  flash: 'rgba(52,211,153,0.22)' },
-};
-
-const BEATS = { fire: 'earth', water: 'fire', wind: 'water', earth: 'wind' };
-
-function effectiveAgainst(bossElem) {
-  for (const [atk, victim] of Object.entries(BEATS)) if (victim === bossElem) return atk;
-  return null;
-}
-function weakGiftFor(bossElem) { return BEATS[bossElem] || null; }
-
-function calcHitType(giftElem, bossElem) {
-  if (bossElem === 'neutral' || giftElem === 'neutral') return 'neutral';
-  if (giftElem === effectiveAgainst(bossElem)) return 'effective';
-  if (giftElem === weakGiftFor(bossElem)) return 'wrong';
-  return 'neutral';
-}
-
-// ───── Gift → Element ──────────────────────────────────────────
-const GIFT_KEYWORDS = {
-  fire:  ['rose','heart','fire','rocket','sun','flame','love bang','star','firework','bomb','lightning','thunder','dragon','phoenix','hot','glow','spark','passion','blaze'],
-  water: ['ice','snow','fish','whale','dolphin','ocean','sea','wave','blue','aqua','rain','drop','penguin','crystal','cool','freeze','blue','water','pool'],
-  earth: ['panda','bear','lion','tiger','tree','diamond','crown','gold','mountain','rock','stone','turtle','fossil','gem','kingdom','castle','medal'],
-  wind:  ['butterfly','bird','balloon','cloud','sky','flower','leaf','feather','fairy','angel','fly','kite','breeze','wings','wish','dream','spirit'],
-};
-function giftToElement(giftName) {
-  if (!giftName) return 'neutral';
-  const lower = giftName.toLowerCase();
-  for (const [elem, kws] of Object.entries(GIFT_KEYWORDS)) {
-    if (kws.some(k => lower.includes(k))) return elem;
-  }
-  return 'neutral';
-}
 
 // ───── Web Audio ─────────────────────────────────────────────
 let _ctx = null;
@@ -171,7 +132,9 @@ export default function BossBattleWidget() {
   const [sideAlign,    setSideAlign]   = useState('center'); // 'left' | 'center' | 'right'
   const [lastDmgLabel, setLastDmgLabel] = useState(''); // e.g. "×2 -500" | "HEAL +50" | "×1 -100"
 
-  // Flying gifts state: { id, emoji, elemEmoji, side, imageUrl }
+  // Flying gifts state: { id, emoji, elemEmoji, side, imageUrl, landX, spin }
+  // landX = px offset from boss center → landing position in physics canvas
+  // spin  = rotation degrees during fall
   const [flyingGifts,  setFlyingGifts] = useState([]);
 
   // ── ww: content width (px), carda: card background alpha (0-100) ──
@@ -211,6 +174,7 @@ export default function BossBattleWidget() {
   const bossElemRef    = useRef('neutral');
   const likeBuffRef    = useRef(0);
   const hideElemRef    = useRef(false);
+  const sideAlignRef   = useRef('center'); // synced with setSideAlign
 
   // Physics refs
   const engineRef      = useRef(null);
@@ -235,12 +199,17 @@ export default function BossBattleWidget() {
   }, []);
 
   // ── Physics: add gift body ──────────────────────────────────
-  const addGiftToPhysics = useCallback((emoji, elemColor, imageUrl) => {
+  // landFrac (0–1): horizontal fraction of widgetWidth to spawn at (matches CSS animation landing)
+  const addGiftToPhysics = useCallback((emoji, elemColor, imageUrl, landFrac) => {
     const Matter = window.Matter;
     if (!Matter || !engineRef.current) return;
     const w = widthRef.current;
-    const x = w * 0.1 + Math.random() * w * 0.8;
-    const body = Matter.Bodies.circle(x, -25, 20, {
+    // Use landFrac if provided (continuous trajectory handoff), else random
+    const x = landFrac !== undefined
+      ? Math.max(22, Math.min(w - 22, landFrac * w))
+      : w * 0.1 + Math.random() * w * 0.8;
+    // Spawn just above canvas top; velocity small since CSS already animated the fall
+    const body = Matter.Bodies.circle(x, -18, 20, {
       restitution: 0.28,
       friction: 0.55,
       frictionAir: 0.012,
@@ -248,8 +217,8 @@ export default function BossBattleWidget() {
       label: emoji,
     });
     Matter.Body.setVelocity(body, {
-      x: (Math.random() - 0.5) * 4,
-      y: 1.5 + Math.random() * 3,
+      x: (Math.random() - 0.5) * 3,
+      y: 2.5 + Math.random() * 2,
     });
     Matter.Composite.add(engineRef.current.world, body);
     giftBodiesRef.current.push({ body, emoji, elemColor, imageUrl: imageUrl || '' });
@@ -268,15 +237,33 @@ export default function BossBattleWidget() {
   }, []);
 
   // ── Flying gift animation ──────────────────────────────────
+  // Animation phases:
+  //   0 → 550ms : fly from side edge → boss (CSS keyframe 0–50%)
+  //   550ms      : impact flash (keyframe 50–55%)
+  //   550→1100ms : fall + arc from boss → physics pile (keyframe 55–100%)
+  //   1050ms     : physics body spawns at landX — seamless handoff
+  //   1150ms     : CSS element removed
   const spawnFlyingGift = useCallback((emoji, elemColor, elemEmoji, imageUrl) => {
-    const id = ++flyIdRef.current;
-    const side = Math.random() < 0.5 ? 'left' : 'right';
-    setFlyingGifts(prev => [...prev.slice(-8), { id, emoji, elemEmoji: elemEmoji || '', side, imageUrl: imageUrl || '' }]);
-    // Remove flying animation
-    setTimeout(() => setFlyingGifts(prev => prev.filter(g => g.id !== id)), 750);
-    // Add to physics pile after gift arrives at boss (pass imageUrl for canvas rendering)
-    setTimeout(() => addGiftToPhysics(emoji, elemColor, imageUrl), 700);
-  }, [addGiftToPhysics]);
+    const id       = ++flyIdRef.current;
+    const side     = Math.random() < 0.5 ? 'left' : 'right';
+    // Where the gift lands in physics canvas (fraction of widgetWidth)
+    const landFrac = 0.12 + Math.random() * 0.76;
+    // Boss center as fraction of widgetWidth (matches left/top CSS positioning)
+    const bossFrac = sideAlignRef.current === 'left' ? 0.25
+                   : sideAlignRef.current === 'right' ? 0.75 : 0.5;
+    // Horizontal offset in px from boss center to landing position (for CSS --land-x var)
+    const landX    = Math.round((landFrac - bossFrac) * widgetWidth);
+    // Rotation during fall
+    const spin     = (Math.random() > 0.5 ? 1 : -1) * (120 + Math.random() * 220);
+
+    setFlyingGifts(prev => [...prev.slice(-8), {
+      id, emoji, elemEmoji: elemEmoji || '', side, imageUrl: imageUrl || '', landX, spin,
+    }]);
+    // Remove CSS element after full animation
+    setTimeout(() => setFlyingGifts(prev => prev.filter(g => g.id !== id)), 1150);
+    // Spawn physics body just as CSS element reaches the pile area
+    setTimeout(() => addGiftToPhysics(emoji, elemColor, imageUrl, landFrac), 1050);
+  }, [addGiftToPhysics, widgetWidth]);
 
   const startBattle = useCallback((hp, rnd) => {
     hpRef.current    = hp;
@@ -513,7 +500,9 @@ export default function BossBattleWidget() {
     const elem     = ELEMENTS[elemParam] ? elemParam : 'neutral';
     const hideElem = params.get('hideelement') === '1';
     const side     = params.get('side') || 'center'; // 'left' | 'center' | 'right'
-    setSideAlign(['left','center','right'].includes(side) ? side : 'center');
+    const sideVal  = ['left','center','right'].includes(side) ? side : 'center';
+    sideAlignRef.current = sideVal;
+    setSideAlign(sideVal);
     bossElemRef.current  = elem;
     dmgMultRef.current   = dmgMult;
     tapRateRef.current   = tapRate;
@@ -653,15 +642,19 @@ export default function BossBattleWidget() {
         @keyframes countPulse    { 0%,100%{transform:scale(1);}50%{transform:scale(1.12);} }
         @keyframes roundBadge    { 0%{transform:scale(0);opacity:0;}60%{transform:scale(1.2);}100%{transform:scale(1);opacity:1;} }
         @keyframes streakPop     { 0%{transform:scale(0.6) translateX(-50%);opacity:0;}60%{transform:scale(1.1) translateX(-50%);}100%{transform:scale(1) translateX(-50%);opacity:1;} }
-        @keyframes giftFlyFromLeft  {
-          0%   { transform: translate(calc(-50% - 65vw), -50%) scale(1.6); opacity: 1; }
-          65%  { transform: translate(-50%, -50%) scale(1.0); opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(0.15); opacity: 0; }
+        @keyframes giftFlyFromLeft {
+          0%   { transform: translate(calc(-50% - 65vw), -50%) scale(1.6); opacity: 1; filter: brightness(1); }
+          50%  { transform: translate(-50%, -50%) scale(1.0);  opacity: 1; filter: brightness(1); }
+          55%  { transform: translate(-50%, -50%) scale(1.25); opacity: 1; filter: brightness(3); }
+          93%  { transform: translate(calc(-50% + var(--land-x,0px)), calc(-50% + 54vh - 95px)) scale(0.68) rotate(var(--spin,160deg)); opacity: 0.85; filter: brightness(1); }
+          100% { transform: translate(calc(-50% + var(--land-x,0px)), calc(-50% + 54vh - 80px))  scale(0.65) rotate(var(--spin,160deg)); opacity: 0; filter: brightness(1); }
         }
         @keyframes giftFlyFromRight {
-          0%   { transform: translate(calc(-50% + 65vw), -50%) scale(1.6); opacity: 1; }
-          65%  { transform: translate(-50%, -50%) scale(1.0); opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(0.15); opacity: 0; }
+          0%   { transform: translate(calc(-50% + 65vw), -50%) scale(1.6); opacity: 1; filter: brightness(1); }
+          50%  { transform: translate(-50%, -50%) scale(1.0);  opacity: 1; filter: brightness(1); }
+          55%  { transform: translate(-50%, -50%) scale(1.25); opacity: 1; filter: brightness(3); }
+          93%  { transform: translate(calc(-50% + var(--land-x,0px)), calc(-50% + 54vh - 95px)) scale(0.68) rotate(var(--spin,-160deg)); opacity: 0.85; filter: brightness(1); }
+          100% { transform: translate(calc(-50% + var(--land-x,0px)), calc(-50% + 54vh - 80px))  scale(0.65) rotate(var(--spin,-160deg)); opacity: 0; filter: brightness(1); }
         }
       `}</style>
 
@@ -678,7 +671,10 @@ export default function BossBattleWidget() {
           top: '46%',
           pointerEvents: 'none',
           zIndex: 25,
-          animation: `${g.side === 'left' ? 'giftFlyFromLeft' : 'giftFlyFromRight'} 0.75s cubic-bezier(0.25,0.46,0.45,0.94) forwards`,
+          // CSS vars for landing offset + rotation during fall
+          '--land-x': `${g.landX ?? 0}px`,
+          '--spin': `${g.spin ?? 160}deg`,
+          animation: `${g.side === 'left' ? 'giftFlyFromLeft' : 'giftFlyFromRight'} 1.1s ease-in-out forwards`,
           transform: 'translate(-50%, -50%)',
         }}>
           {g.imageUrl ? (

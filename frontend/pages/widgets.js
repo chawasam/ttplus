@@ -585,8 +585,13 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       {/* Boss Battle: วิธีเล่น + ระบบธาตุ */}
                       {w.id === 'bossbattle' && (
                         <div className={clsx('rounded-xl border mt-2 overflow-hidden', isDark ? 'border-gray-700' : 'border-gray-200')}>
-                          <div className={clsx('px-3 py-2 text-xs font-bold tracking-wide', isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>
-                            📖 วิธีเล่น & ระบบธาตุ
+                          <div className={clsx('px-3 py-2 text-xs font-bold tracking-wide flex items-center justify-between', isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>
+                            <span>📖 วิธีเล่น & ระบบธาตุ</span>
+                            <a href="/bossbattle-guide" target="_blank" rel="noopener noreferrer"
+                              className={clsx('flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold border transition',
+                                isDark ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 hover:bg-purple-500/25' : 'bg-purple-50 border-purple-200 text-purple-600 hover:bg-purple-100')}>
+                              🗺️ ตารางธาตุ ↗
+                            </a>
                           </div>
                           <div className={clsx('px-3 py-3 space-y-3 text-xs', isDark ? 'bg-gray-900 text-gray-400' : 'bg-white text-gray-500')}>
                             <div>
