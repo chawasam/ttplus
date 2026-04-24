@@ -9,7 +9,7 @@ import { ELEMENTS, BEATS, GIFT_KEYWORDS, effectiveAgainst, weakGiftFor, calcHitT
 
 const STORAGE_KEY   = 'ttplus_boss_hp';
 const STORAGE_ROUND = 'ttplus_boss_round';
-const RESPAWN_SECS  = 5;
+const RESPAWN_SECS  = 10;
 const PHYS_H        = 190;  // ความสูง physics canvas (gift pile area)
 const MAX_GIFTS     = 30;   // จำนวนสูงสุดของขวัญในหน้าจอ
 
@@ -132,6 +132,9 @@ export default function BossBattleWidget() {
   const [elemRevealed, setElemRevealed] = useState(false);
   const [sideAlign,    setSideAlign]   = useState('center'); // 'left' | 'center' | 'right'
   const [lastDmgLabel, setLastDmgLabel] = useState(''); // e.g. "×2 -500" | "HEAL +50" | "×1 -100"
+  const [isEnraged,    setIsEnraged]   = useState(false); // true เมื่อ HP ≤ 30%
+  const [bossFrames,   setBossFrames]  = useState([]); // array of 6 image URLs สำหรับ pixel art animation
+  const [animFrame,    setAnimFrame]   = useState(0);  // index ใน bossFrames ที่แสดงอยู่
 
   // Flying gifts state: { id, emoji, elemEmoji, side, imageUrl, landX, spin }
   // landX = px offset from boss center → landing position in physics canvas
@@ -176,6 +179,7 @@ export default function BossBattleWidget() {
   const likeBuffRef    = useRef(0);
   const hideElemRef    = useRef(false);
   const sideAlignRef   = useRef('center'); // synced with setSideAlign
+  const animTimerRef   = useRef(null);     // setInterval สำหรับ frame cycling
 
   // Physics refs
   const engineRef      = useRef(null);
@@ -274,6 +278,7 @@ export default function BossBattleWidget() {
     setHp(hp); setRound(rnd); setPhase('battle');
     setDamages([]); setHpColor('#22c55e');
     setStreakCount(0); setShowStreak(false); setLastHitType('neutral');
+    setIsEnraged(false);
     try {
       localStorage.setItem(STORAGE_KEY,   String(hp));
       localStorage.setItem(STORAGE_ROUND, String(rnd));
@@ -367,6 +372,7 @@ export default function BossBattleWidget() {
 
     const pct = newHp / maxHpRef.current;
     setHpColor(pct > 0.6 ? '#22c55e' : pct > 0.3 ? '#f59e0b' : '#ef4444');
+    setIsEnraged(pct <= 0.30 && newHp > 0);
     setLastHitter(hitter); setLastHitType(hitType);
     setLastDmgLabel(`×${elemMult} -${absDmg.toLocaleString()}`);
 
@@ -519,6 +525,12 @@ export default function BossBattleWidget() {
     setBossEmoji(decodeURIComponent(emoji));
     setBossImg(decodeURIComponent(params.get('bossimg') ?? ''));
     setBossName(decodeURIComponent(name));
+    // bossframes = comma-separated list of 6 image URLs (idle1,idle2,idle3,enrage1,enrage2,death)
+    const framesStr = params.get('bossframes') ?? '';
+    if (framesStr) {
+      const framesArr = framesStr.split(',').map(s => decodeURIComponent(s.trim())).filter(Boolean);
+      setBossFrames(framesArr);
+    }
     setBossElem(elem);
 
     let startHp = mhp, startRound = 1;
@@ -596,6 +608,41 @@ export default function BossBattleWidget() {
     return () => window.removeEventListener('keydown', onKey);
   }, [triggerReset]);
 
+  // ── Boss frame animation ──────────────────────────────────────
+  // Cycles through bossFrames array based on phase + HP%:
+  //   frames 0-2 (idle/walk) → phase=battle, HP > 30%  — 350ms per frame
+  //   frames 3-4 (enraged)   → phase=battle, HP ≤ 30%  — 180ms per frame (faster!)
+  //   frame  5   (death)     → phase=dead or countdown
+  useEffect(() => {
+    if (bossFrames.length === 0) return;
+    clearInterval(animTimerRef.current);
+
+    if (phase === 'dead' || phase === 'countdown') {
+      setAnimFrame(Math.min(5, bossFrames.length - 1));
+      return;
+    }
+
+    const enraged  = isEnraged && bossFrames.length >= 5;
+    const frameSet = enraged
+      ? [3, 4].slice(0, bossFrames.length - 3)   // max available enrage frames
+      : [0, 1, 2].slice(0, Math.min(3, bossFrames.length));
+    const validSet = frameSet.filter(i => i < bossFrames.length);
+    if (validSet.length === 0) { setAnimFrame(0); return; }
+
+    const interval = enraged ? 180 : 350;
+    let i = 0;
+    setAnimFrame(validSet[0]);
+
+    if (validSet.length > 1) {
+      animTimerRef.current = setInterval(() => {
+        i = (i + 1) % validSet.length;
+        setAnimFrame(validSet[i]);
+      }, interval);
+    }
+
+    return () => clearInterval(animTimerRef.current);
+  }, [bossFrames.length, phase, isEnraged]);
+
   if (hp === null) return null;
 
   const elemInfo  = elemRevealed ? (ELEMENTS[bossElem] || ELEMENTS.neutral) : ELEMENTS.neutral;
@@ -644,6 +691,11 @@ export default function BossBattleWidget() {
         @keyframes countPulse    { 0%,100%{transform:scale(1);}50%{transform:scale(1.12);} }
         @keyframes roundBadge    { 0%{transform:scale(0);opacity:0;}60%{transform:scale(1.2);}100%{transform:scale(1);opacity:1;} }
         @keyframes streakPop     { 0%{transform:scale(0.6) translateX(-50%);opacity:0;}60%{transform:scale(1.1) translateX(-50%);}100%{transform:scale(1) translateX(-50%);opacity:1;} }
+        @keyframes auraPulse     { 0%,100%{transform:scale(1);opacity:0.85;} 50%{transform:scale(1.18);opacity:1;} }
+        @keyframes auraRing      { 0%,100%{transform:scale(1);opacity:0.6;} 50%{transform:scale(1.12);opacity:1;} }
+        @keyframes auraRotate    { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+        @keyframes auraHue       { 0%{filter:hue-rotate(0deg) blur(14px);} 100%{filter:hue-rotate(360deg) blur(14px);} }
+        @keyframes enrageFlicker { 0%,100%{opacity:1;} 45%{opacity:0.7;} 50%{opacity:1;} 55%{opacity:0.8;} }
         @keyframes giftFlyFromLeft {
           0%   { transform: translate(calc(-50% - 65vw), -50%) scale(1.6); opacity: 1; filter: brightness(1); }
           50%  { transform: translate(-50%, -50%) scale(1.0);  opacity: 1; filter: brightness(1); }
@@ -771,7 +823,18 @@ export default function BossBattleWidget() {
         {/* ===== DEAD / WIN ===== */}
         {(phase === 'dead' || phase === 'countdown') && (
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-            <div style={{ fontSize: '80px', lineHeight: 1, animation: 'explode 0.9s forwards' }}>{bossEmoji}</div>
+            {/* Boss sprite — ใช้ death frame (index 5) ถ้ามี bossFrames */}
+            {bossFrames.length >= 6 ? (
+              <div style={{ animation: 'explode 0.9s forwards', display: 'inline-block' }}>
+                <img
+                  src={bossFrames[5]}
+                  alt="defeat"
+                  style={{ width: '88px', height: '88px', objectFit: 'contain', imageRendering: 'pixelated', WebkitImageRendering: 'pixelated' }}
+                />
+              </div>
+            ) : (
+              <div style={{ fontSize: '80px', lineHeight: 1, animation: 'explode 0.9s forwards' }}>{bossEmoji}</div>
+            )}
             <div style={{ fontSize: '38px', fontWeight: 900, color: '#fbbf24', textShadow: '0 0 30px rgba(251,191,36,0.95)', animation: 'winPop 0.55s 0.6s both' }}>
               YOU WIN! 🎉
             </div>
@@ -782,11 +845,18 @@ export default function BossBattleWidget() {
             )}
             {phase === 'countdown' && (
               <div style={{ marginTop: '6px', textAlign: 'center' }}>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>Round {round + 1} เริ่มใน...</div>
-                <div style={{ fontSize: '50px', fontWeight: 900, color: '#ef4444', textShadow: '0 0 20px rgba(239,68,68,0.8)', animation: 'countPulse 1s ease-in-out infinite' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.6)', marginBottom: '6px', letterSpacing: '0.05em' }}>
+                  ⚔️ ROUND {round + 1} เริ่มใน...
+                </div>
+                {/* Countdown number — large + pulse */}
+                <div style={{ fontSize: '72px', fontWeight: 900, color: '#ef4444', textShadow: '0 0 30px rgba(239,68,68,0.9), 0 0 60px rgba(239,68,68,0.4)', animation: 'countPulse 1s ease-in-out infinite', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                   {countdown}
                 </div>
-                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', marginTop: '4px' }}>HP ×1.5 จากรอบที่แล้ว</div>
+                {/* Countdown progress bar */}
+                <div style={{ width: '140px', height: '6px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', margin: '10px auto 4px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#ef4444', borderRadius: '3px', width: `${(countdown / RESPAWN_SECS) * 100}%`, transition: 'width 0.95s linear', boxShadow: '0 0 8px rgba(239,68,68,0.7)' }} />
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>HP ×1.5 จากรอบที่แล้ว</div>
               </div>
             )}
             {phase === 'dead' && !respawnRef.current && (
@@ -798,27 +868,112 @@ export default function BossBattleWidget() {
         {/* ===== BATTLE ===== */}
         {phase === 'battle' && (
           <>
-            {/* Boss Sprite + element aura */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ position: 'absolute', width: '140px', height: '140px', borderRadius: '50%', background: `radial-gradient(circle, ${elemInfo.aura} 0%, transparent 70%)`, filter: 'blur(12px)' }} />
-              <div style={{
-                position: 'relative', zIndex: 2,
-                filter: `drop-shadow(0 0 22px ${elemInfo.color}99)`,
-                animation: shaking ? 'bossShake 0.45s ease' : 'bossFloat 3s ease-in-out infinite',
-              }}>
-                {bossImg ? (
-                  <img
-                    src={bossImg}
-                    crossOrigin="anonymous"
-                    alt={bossName}
-                    style={{ width: '108px', height: '108px', objectFit: 'contain', display: 'block' }}
-                    onError={e => { e.currentTarget.style.display = 'none'; }}
-                  />
-                ) : (
-                  <span style={{ fontSize: '88px', lineHeight: 1, display: 'block' }}>{bossEmoji}</span>
-                )}
-              </div>
-            </div>
+            {/* Boss Sprite + tiered element aura (escalates each round) */}
+            {(() => {
+              const tier  = Math.min(5, round);
+              const aC    = elemInfo.color;
+              const auraA = elemInfo.aura;
+              // enrage state overlay: red border + flicker
+              const enrageBorder = isEnraged ? `0 0 0 3px rgba(239,68,68,0.7), 0 0 20px rgba(239,68,68,0.5)` : 'none';
+              return (
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {/* Tier 1+: base radial glow — grows with tier */}
+                  <div style={{
+                    position: 'absolute',
+                    width:  tier >= 2 ? '195px' : '140px',
+                    height: tier >= 2 ? '195px' : '140px',
+                    borderRadius: '50%',
+                    background: `radial-gradient(circle, ${auraA} 0%, transparent 70%)`,
+                    filter: tier >= 5 ? 'blur(16px)' : 'blur(12px)',
+                    animation: tier >= 2 ? 'auraPulse 2.2s ease-in-out infinite' : 'none',
+                    zIndex: 0,
+                  }} />
+                  {/* Tier 3+: second pulsing ring */}
+                  {tier >= 3 && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '230px', height: '230px',
+                      borderRadius: '50%',
+                      border: `2px solid ${aC}55`,
+                      boxShadow: `0 0 18px ${aC}55, inset 0 0 18px ${aC}22`,
+                      animation: 'auraRing 2.8s ease-in-out infinite',
+                      zIndex: 0,
+                    }} />
+                  )}
+                  {/* Tier 4+: rotating conic gradient ring */}
+                  {tier >= 4 && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '270px', height: '270px',
+                      borderRadius: '50%',
+                      background: `conic-gradient(from 0deg, transparent, ${aC}55, transparent, ${aC}33, transparent)`,
+                      animation: 'auraRotate 5s linear infinite',
+                      zIndex: 0,
+                      filter: 'blur(6px)',
+                    }} />
+                  )}
+                  {/* Tier 5+: outer halo with color cycling */}
+                  {tier >= 5 && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '310px', height: '310px',
+                      borderRadius: '50%',
+                      background: `conic-gradient(from 0deg, ${aC}44, transparent 25%, ${aC}66, transparent 50%, ${aC}55, transparent 75%, ${aC}44)`,
+                      animation: 'auraRotate 3.2s linear infinite reverse, auraHue 8s linear infinite',
+                      zIndex: 0,
+                      filter: 'blur(14px)',
+                    }} />
+                  )}
+                  {/* Tier 5+: inner shimmer pulse */}
+                  {tier >= 5 && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '150px', height: '150px',
+                      borderRadius: '50%',
+                      boxShadow: `0 0 50px 25px ${aC}66, 0 0 90px 45px ${aC}22`,
+                      animation: 'auraPulse 1.1s ease-in-out infinite alternate',
+                      zIndex: 1,
+                    }} />
+                  )}
+
+                  {/* Boss sprite */}
+                  <div style={{
+                    position: 'relative', zIndex: 2,
+                    filter: `drop-shadow(0 0 22px ${aC}99)`,
+                    animation: shaking
+                      ? 'bossShake 0.45s ease'
+                      : isEnraged
+                        ? 'bossFloat 1.5s ease-in-out infinite, enrageFlicker 0.4s ease-in-out infinite'
+                        : 'bossFloat 3s ease-in-out infinite',
+                    boxShadow: enrageBorder,
+                    borderRadius: bossFrames.length > 0 ? '8px' : '0',
+                  }}>
+                    {bossFrames.length > 0 ? (
+                      <img
+                        src={bossFrames[animFrame] ?? bossFrames[0]}
+                        alt={bossName}
+                        style={{
+                          width: '108px', height: '108px',
+                          objectFit: 'contain', display: 'block',
+                          imageRendering: 'pixelated',
+                          WebkitImageRendering: 'pixelated',
+                        }}
+                      />
+                    ) : bossImg ? (
+                      <img
+                        src={bossImg}
+                        crossOrigin="anonymous"
+                        alt={bossName}
+                        style={{ width: '108px', height: '108px', objectFit: 'contain', display: 'block' }}
+                        onError={e => { e.currentTarget.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: '88px', lineHeight: 1, display: 'block' }}>{bossEmoji}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Last hit + weakness hint */}
             <div style={{ marginTop: '8px', minHeight: '44px', textAlign: 'center' }}>
