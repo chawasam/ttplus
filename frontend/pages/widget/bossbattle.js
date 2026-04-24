@@ -499,31 +499,31 @@ export default function BossBattleWidget() {
           )}
 
           {/* HP Bar */}
-          <div style={{ width: '86%', maxWidth: '360px', marginBottom: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                {bossElem !== 'neutral' && (
-                  <span style={{ fontSize: '14px', filter: `drop-shadow(0 0 6px ${elemInfo.color}99)` }}>
-                    {elemInfo.emoji}
-                  </span>
-                )}
-                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{bossEmoji} {bossName}</span>
-                {isHidden ? (
-                  <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: '#ffffff15', color: '#94a3b8', border: '1px solid #ffffff25', letterSpacing: '0.1em' }}>
-                    ???
-                  </span>
-                ) : bossElem !== 'neutral' && (
-                  <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: elemInfo.color + '22', color: elemInfo.color, border: `1px solid ${elemInfo.color}44` }}>
-                    {elemInfo.emoji} {elemInfo.label}
-                  </span>
-                )}
-              </div>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', fontVariantNumeric: 'tabular-nums', animation: pct < 25 ? 'hpPulse 0.7s ease-in-out infinite' : 'none' }}>
-                {hp.toLocaleString()} / {maxHpNow.toLocaleString()}
-              </span>
+          <div style={{ width: '80%', maxWidth: '260px', marginBottom: '12px' }}>
+            {/* Boss name + element badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px', flexWrap: 'wrap' }}>
+              {bossElem !== 'neutral' && (
+                <span style={{ fontSize: '13px', filter: `drop-shadow(0 0 6px ${elemInfo.color}99)` }}>
+                  {elemInfo.emoji}
+                </span>
+              )}
+              <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{bossEmoji} {bossName}</span>
+              {isHidden ? (
+                <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: '#ffffff15', color: '#94a3b8', border: '1px solid #ffffff25', letterSpacing: '0.1em' }}>
+                  ???
+                </span>
+              ) : bossElem !== 'neutral' && (
+                <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: elemInfo.color + '22', color: elemInfo.color, border: `1px solid ${elemInfo.color}44` }}>
+                  {elemInfo.emoji} {elemInfo.label}
+                </span>
+              )}
             </div>
-            <div style={{ height: '14px', background: 'rgba(255,255,255,0.07)', borderRadius: '7px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: hpColor, borderRadius: '7px', transition: 'width 0.35s ease, background 0.5s ease', boxShadow: `0 0 10px ${hpColor}bb` }} />
+            {/* HP bar + numbers */}
+            <div style={{ height: '10px', background: 'rgba(255,255,255,0.08)', borderRadius: '5px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', marginBottom: '3px' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: hpColor, borderRadius: '5px', transition: 'width 0.35s ease, background 0.5s ease', boxShadow: `0 0 8px ${hpColor}bb` }} />
+            </div>
+            <div style={{ textAlign: 'right', fontSize: '11px', color: 'rgba(255,255,255,0.65)', fontVariantNumeric: 'tabular-nums', animation: pct < 25 ? 'hpPulse 0.7s ease-in-out infinite' : 'none' }}>
+              {hp.toLocaleString()} / {maxHpNow.toLocaleString()}
             </div>
           </div>
 
@@ -540,27 +540,36 @@ export default function BossBattleWidget() {
           </div>
 
           {/* Last hit + weakness hint */}
-          <div style={{ marginTop: '12px', minHeight: '38px', textAlign: 'center' }}>
+          <div style={{ marginTop: '10px', minHeight: '38px', textAlign: 'center' }}>
             {lastHitter && (
               <div style={{
+                display: 'inline-block',
                 fontSize: '13px',
-                color: lastHitType === 'wrong'     ? '#22c55e'
+                padding: '3px 10px',
+                borderRadius: '8px',
+                background: lastHitType === 'effective' ? 'rgba(251,191,36,0.22)'
+                          : lastHitType === 'wrong'     ? 'rgba(34,197,94,0.22)'
+                          : 'rgba(0,0,0,0.55)',
+                border: lastHitType === 'effective' ? '1px solid rgba(251,191,36,0.35)'
+                      : lastHitType === 'wrong'     ? '1px solid rgba(34,197,94,0.35)'
+                      : '1px solid rgba(255,255,255,0.12)',
+                color: lastHitType === 'wrong'     ? '#4ade80'
                      : lastHitType === 'effective' ? '#fbbf24'
-                     : 'rgba(255,255,255,0.88)',
-                textShadow: lastHitType === 'effective' ? '0 0 12px rgba(251,191,36,0.8)'
-                          : lastHitType === 'wrong'     ? '0 0 12px rgba(34,197,94,0.8)'
-                          : '0 0 8px rgba(255,45,98,0.5)',
+                     : 'rgba(255,255,255,0.92)',
+                textShadow: lastHitType === 'effective' ? '0 0 10px rgba(251,191,36,0.7)'
+                          : lastHitType === 'wrong'     ? '0 0 10px rgba(34,197,94,0.7)'
+                          : 'none',
               }}>
                 {lastHitType === 'effective' ? '⚡ EFFECTIVE! ' : lastHitType === 'wrong' ? '💚 HEALED! ' : '⚔️ '}
                 {lastHitter}
               </div>
             )}
             {isHidden ? (
-              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>
+              <div style={{ fontSize: '10px', marginTop: '4px', display: 'inline-block', padding: '2px 8px', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.45)' }}>
                 ธาตุ: <span style={{ color: '#64748b', letterSpacing: '0.12em' }}>???</span> — เปิดเผยที่ HP ≤75%
               </div>
             ) : bossElem !== 'neutral' && effInfo && (
-              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.32)', marginTop: '2px' }}>
+              <div style={{ fontSize: '10px', marginTop: '4px', display: 'inline-block', padding: '2px 8px', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.55)' }}>
                 แพ้ทาง: <span style={{ color: effInfo.color }}>{effInfo.emoji} {effInfo.label}</span>
               </div>
             )}
@@ -582,6 +591,16 @@ export default function BossBattleWidget() {
           )}
         </>
       )}
+
+      {/* Guide link — มุมล่างขวา เล็กๆ สำหรับผู้ชมที่อยากรู้วิธีเล่น */}
+      <div style={{
+        position: 'absolute', bottom: '6px', right: '8px', zIndex: 4,
+        fontSize: '9px', color: 'rgba(255,255,255,0.28)',
+        fontFamily: 'monospace', letterSpacing: '0.04em',
+        pointerEvents: 'none',
+      }}>
+        📖 ttsam.app/bossbattle-guide
+      </div>
 
       {/* Floating damage numbers */}
       {damages.map(d => (
