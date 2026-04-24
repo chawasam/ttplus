@@ -42,7 +42,7 @@ const MODE_OPTS = [
 // ===== SoundKey =====
 function SoundKey({
   keyChar, keyName, mode, store, pressing, editMode, theme,
-  isPlaying, recentlyPlayed, keyColor, isDragTarget,
+  isPlaying, recentlyPlayed, keyColor, isDragTarget, padMode,
   onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu,
   onDragOver, onDrop,
 }) {
@@ -102,12 +102,15 @@ function SoundKey({
   return (
     <div
       data-key={keyChar}
-      style={{ width: sizePx, height: sizePx, ...colorStyle }}
+      style={padMode
+        ? { aspectRatio: '1 / 1', ...colorStyle }
+        : { width: sizePx, height: sizePx, ...colorStyle }}
       className={clsx(
         'relative flex flex-col items-center justify-center rounded-xl select-none cursor-pointer',
         'transition-all duration-75 border font-medium',
+        padMode && 'w-full',
         isDown
-          ? 'bg-brand-500 border-brand-400 shadow-lg shadow-brand-500/30 scale-90'
+          ? 'bg-brand-500 border-brand-400 shadow-lg shadow-brand-500/30 scale-95'
           : isLit && !keyColor
             ? theme === 'dark'
               ? 'bg-gray-800 border-cyan-400 shadow-[0_0_10px_2px_rgba(34,211,238,0.45)]'
@@ -157,23 +160,45 @@ function SoundKey({
         </span>
       )}
 
-      {/* Icon */}
-      <span style={{ fontSize: Math.round(sizePx * 0.34) }} className="leading-none">
-        {editMode ? '📂' : (keyName ? '🔊' : '🔈')}
-      </span>
-
-      {/* ชื่อปุ่ม */}
-      <span
-        style={{ fontSize: Math.max(8, Math.round(sizePx * 0.14)) }}
-        className={clsx(
-          'mt-0.5 px-0.5 truncate max-w-full leading-none',
-          isDown ? 'text-white/80' : theme === 'dark' ? 'text-gray-400' : 'text-gray-500',
-          editMode && 'underline decoration-dotted cursor-text'
-        )}
-        onPointerDown={editMode ? (e) => { e.stopPropagation(); onRename(keyChar); } : undefined}
-      >
-        {keyName || (editMode ? '—' : '')}
-      </span>
+      {/* Center content — pad mode แสดงชื่อเด่น, keyboard mode แสดง icon */}
+      {padMode ? (
+        editMode ? (
+          <span style={{ fontSize: Math.round(sizePx * 0.28) }} className="leading-none">📂</span>
+        ) : (
+          <>
+            <span
+              style={{ fontSize: keyName ? Math.max(10, Math.round(sizePx * 0.20)) : Math.max(14, Math.round(sizePx * 0.38)) }}
+              className={clsx(
+                'px-1 text-center font-bold leading-tight break-all line-clamp-2 max-w-full',
+                isDown ? 'text-white' : theme === 'dark' ? 'text-gray-100' : 'text-gray-800',
+              )}
+              onPointerDown={editMode ? (e) => { e.stopPropagation(); onRename(keyChar); } : undefined}
+            >
+              {keyName || keyChar}
+            </span>
+            {hasCustom && <span className="text-[8px] mt-0.5 opacity-50">🎵</span>}
+          </>
+        )
+      ) : (
+        <>
+          {/* Icon */}
+          <span style={{ fontSize: Math.round(sizePx * 0.34) }} className="leading-none">
+            {editMode ? '📂' : (keyName ? '🔊' : '🔈')}
+          </span>
+          {/* ชื่อปุ่ม */}
+          <span
+            style={{ fontSize: Math.max(8, Math.round(sizePx * 0.14)) }}
+            className={clsx(
+              'mt-0.5 px-0.5 truncate max-w-full leading-none',
+              isDown ? 'text-white/80' : theme === 'dark' ? 'text-gray-400' : 'text-gray-500',
+              editMode && 'underline decoration-dotted cursor-text'
+            )}
+            onPointerDown={editMode ? (e) => { e.stopPropagation(); onRename(keyChar); } : undefined}
+          >
+            {keyName || (editMode ? '—' : '')}
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -228,6 +253,48 @@ function KeyboardLayout({
   );
 }
 
+// ===== PadLayout — grid ตาราง A-Z ชื่อเด่น ไม่มี stagger =====
+const ALL_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+function PadLayout({
+  store, names, pressing, editMode, theme,
+  playingKeys, recentlyPlayed, colors, dragOverKey,
+  isDesktop, isMobile,
+  onPress, onPreview, onRemove, onRename, onModeToggle, onContextMenu, onDragOver, onDrop,
+}) {
+  const scale  = store?.keySize ?? 1.0;
+  const sizePx = Math.round(KEY_BASE_PX * scale);
+  const gap    = Math.max(4, Math.round(sizePx * 0.10));
+  const cols   = isMobile ? 4 : 6;
+
+  const keyProps = (key) => ({
+    keyChar: key, keyName: names[key] || '',
+    mode: store?.modes?.[key] || 'poly',
+    store, pressing, editMode, theme,
+    isPlaying: playingKeys.has(key),
+    recentlyPlayed,
+    keyColor: colors?.[key] || '',
+    isDragTarget: dragOverKey === key,
+    padMode: true,
+    onPress, onPreview, onRemove, onRename, onModeToggle,
+    onContextMenu: isDesktop ? onContextMenu : undefined,
+    onDragOver:    !isMobile  ? onDragOver   : undefined,
+    onDrop:        !isMobile  ? onDrop       : undefined,
+  });
+
+  return (
+    <div
+      className="grid"
+      style={{
+        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gap,
+      }}
+    >
+      {ALL_ALPHA.map(key => <SoundKey key={key} {...keyProps(key)} />)}
+    </div>
+  );
+}
+
 // ===== Main =====
 export default function SoundboardPage({ theme, user, activePage: navPage, setActivePage }) {
   const [store,          setStore]          = useState(null);
@@ -260,6 +327,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const combinedFileInputRef = useRef(null);
   const recentTimers   = useRef({});
   const renameInputRef = useRef(null);
+  const swipeTouchX    = useRef(null);
+  const swipeTouchY    = useRef(null);
 
   const email = user?.email || null;
 
@@ -407,6 +476,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const handleKeyPress = useCallback((key) => {
     if (!effectiveStore) return;
     if (editMode) { setSelectedKey(k => k === key ? null : key); return; }
+    if (isMobile && navigator.vibrate) navigator.vibrate(22);
     getAudioContext();
     playKey(key, effectiveStore, page);
     flashKey(key);
@@ -586,7 +656,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const isDark      = theme === 'dark';
   const scale       = store.keySize ?? 1.0;
   const isVertical  = store.layout === 'v';
+  const isPadMode   = store.layout === 'pad';
   const customCount = Object.keys((page === 2 ? store.customs2 : store.customs) || {}).length;
+
+  const LAYOUT_CYCLE = { h: 'v', v: 'pad', pad: 'h' };
+  const LAYOUT_LABEL = { h: '↔ แนวนอน', v: '↕ แนวตั้ง', pad: '⊞ Pad' };
+  const curLayout    = store.layout || 'h';
 
   // Helper for mode button color in action sheet / context menu
   const modeActiveClass = (id) => {
@@ -671,7 +746,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               {store.enabled ? 'เปิด' : 'ปิด'}
             </button>
 
-            {/* Stop All */}
+            {/* Stop All + active sounds counter */}
             <button
               onClick={handleStopAll}
               className={clsx(
@@ -683,17 +758,28 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               title="หยุดทุกเสียงทันที (Escape)"
             >
               ⏹ หยุดทั้งหมด
+              {playingKeys.size > 0 && (
+                <span className={clsx(
+                  'ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold animate-pulse',
+                  isDark ? 'bg-red-500/30 text-red-300' : 'bg-red-200 text-red-600'
+                )}>
+                  {playingKeys.size}
+                </span>
+              )}
             </button>
 
-            {/* Layout */}
+            {/* Layout — cycle h → v → pad → h */}
             <button
-              onClick={() => patch({ layout: isVertical ? 'h' : 'v' })}
+              onClick={() => patch({ layout: LAYOUT_CYCLE[curLayout] || 'v' })}
               className={clsx(
                 'flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-sm transition-all',
-                isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                isPadMode
+                  ? isDark ? 'bg-brand-900/40 text-brand-300 border border-brand-800/50 hover:bg-brand-900/60' : 'bg-brand-50 text-brand-600 border border-brand-200 hover:bg-brand-100'
+                  : isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
               )}
+              title="สลับ Layout (แนวนอน / แนวตั้ง / Pad)"
             >
-              {isVertical ? '↔ แนวนอน' : '↕ แนวตั้ง'}
+              {LAYOUT_LABEL[curLayout] || '↔ แนวนอน'}
             </button>
 
             {/* Edit mode */}
@@ -795,9 +881,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             )}>
               <span className="mt-0.5">✏️</span>
               <div className="space-y-0.5 text-xs">
-                <p className="font-semibold text-sm">โหมดแก้ไข — Page {page}</p>
-                <p><b>กดสั้น</b> ที่ปุ่ม = เลือกไฟล์เสียง (.mp3 / .ogg / .wav ≤ 5 MB)</p>
-                <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview ก่อน | <b>คลิกชื่อ</b>ใต้ปุ่ม = ตั้งชื่อ</p>
+                <p className="font-semibold text-sm">โหมดแก้ไข — Page {page} ({LAYOUT_LABEL[curLayout]})</p>
+                <p><b>กดปุ่ม</b> = เปิด menu (อัปโหลด / ตั้งชื่อ / preview / สี / โหมด)</p>
+                {!isPadMode && <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview | <b>คลิกชื่อ</b>ใต้ปุ่ม = ตั้งชื่อ</p>}
                 <p>คลิก <b>∞/⏹/⏯/🔁</b> มุมล่างซ้าย = สลับโหมด | คลิก <b>✔</b> มุมบนขวา = ลบไฟล์</p>
                 {isDesktop && <p>🖱️ <b>Right-click</b> ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด)</p>}
                 {!isMobile && <p>🎵 <b>ลากไฟล์</b>จาก File Explorer มาวางบนปุ่มได้โดยตรง</p>}
@@ -830,43 +916,94 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             </div>
           </div>
 
-          {/* ===== Keyboard ===== */}
-          <div className={clsx(
-            'rounded-2xl p-4 overflow-auto',
-            isDark ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200 shadow-sm'
-          )}>
+          {/* ===== Keyboard / Pad ===== */}
+          <div
+            className={clsx(
+              'rounded-2xl p-4',
+              isPadMode ? '' : 'overflow-auto',
+              isDark ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200 shadow-sm'
+            )}
+            onTouchStart={isMobile ? (e) => {
+              swipeTouchX.current = e.touches[0].clientX;
+              swipeTouchY.current = e.touches[0].clientY;
+            } : undefined}
+            onTouchEnd={isMobile ? (e) => {
+              if (swipeTouchX.current === null) return;
+              if (renaming || selectedKey || ctxMenu || combinedKey) { swipeTouchX.current = null; return; }
+              const dx = e.changedTouches[0].clientX - swipeTouchX.current;
+              const dy = e.changedTouches[0].clientY - swipeTouchY.current;
+              if (Math.abs(dx) > 72 && Math.abs(dy) < Math.abs(dx) * 0.65) {
+                const newPage = dx < 0 ? 2 : 1;
+                if (newPage !== page) { clearCustomCache(); setPage(newPage); }
+              }
+              swipeTouchX.current = null;
+              swipeTouchY.current = null;
+            } : undefined}
+          >
             <div className="flex items-center justify-between mb-3">
-              <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full',
-                isDark ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500')}>
-                📄 Page {page}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full',
+                  isDark ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500')}>
+                  📄 Page {page}
+                </span>
+                {isPadMode && isMobile && (
+                  <span className={clsx('text-[10px]', isDark ? 'text-gray-600' : 'text-gray-400')}>
+                    ← ปัดซ้าย/ขวา สลับ Page →
+                  </span>
+                )}
+              </div>
               {page === 2 && (
                 <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
                   Page 2 มีเสียง default ครบ — อัปโหลดทับได้
                 </span>
               )}
             </div>
-            <KeyboardLayout
-              store={effectiveStore}
-              names={names}
-              pressing={pressing}
-              editMode={editMode}
-              theme={theme}
-              playingKeys={playingKeys}
-              recentlyPlayed={recentlyPlayed}
-              colors={effectiveStore?.colors || {}}
-              dragOverKey={dragOverKey}
-              isDesktop={isDesktop}
-              isMobile={isMobile}
-              onPress={handleKeyPress}
-              onPreview={handleKeyPreview}
-              onRemove={handleRemove}
-              onRename={handleRename}
-              onModeToggle={handleModeToggle}
-              onContextMenu={handleContextMenu}
-              onDragOver={setDragOverKey}
-              onDrop={handleKeyDrop}
-            />
+
+            {isPadMode ? (
+              <PadLayout
+                store={effectiveStore}
+                names={names}
+                pressing={pressing}
+                editMode={editMode}
+                theme={theme}
+                playingKeys={playingKeys}
+                recentlyPlayed={recentlyPlayed}
+                colors={effectiveStore?.colors || {}}
+                dragOverKey={dragOverKey}
+                isDesktop={isDesktop}
+                isMobile={isMobile}
+                onPress={handleKeyPress}
+                onPreview={handleKeyPreview}
+                onRemove={handleRemove}
+                onRename={handleRename}
+                onModeToggle={handleModeToggle}
+                onContextMenu={handleContextMenu}
+                onDragOver={setDragOverKey}
+                onDrop={handleKeyDrop}
+              />
+            ) : (
+              <KeyboardLayout
+                store={effectiveStore}
+                names={names}
+                pressing={pressing}
+                editMode={editMode}
+                theme={theme}
+                playingKeys={playingKeys}
+                recentlyPlayed={recentlyPlayed}
+                colors={effectiveStore?.colors || {}}
+                dragOverKey={dragOverKey}
+                isDesktop={isDesktop}
+                isMobile={isMobile}
+                onPress={handleKeyPress}
+                onPreview={handleKeyPreview}
+                onRemove={handleRemove}
+                onRename={handleRename}
+                onModeToggle={handleModeToggle}
+                onContextMenu={handleContextMenu}
+                onDragOver={setDragOverKey}
+                onDrop={handleKeyDrop}
+              />
+            )}
           </div>
 
           {/* ===== Help ===== */}
@@ -878,11 +1015,14 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             <div className="space-y-3 text-xs">
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🎵 เล่นเสียง</p>
-                <p>กดปุ่มตัวอักษรบน<b>คีย์บอร์ด</b> (Q–P / A–L / Z–M) หรือ<b>แตะปุ่มบนหน้าจอ</b> กดหลายปุ่มพร้อมกันได้ ปุ่มจะ<b>เรืองแสง</b>ขณะเสียงกำลังเล่น</p>
+                {isPadMode
+                  ? <p><b>แตะหรือคลิกปุ่ม</b>บนหน้าจอได้โดยตรง ปุ่มจะ<b>เรืองแสง</b>ขณะเสียงกำลังเล่น{isMobile ? ' | ปัดซ้าย/ขวา = สลับ Page' : ''}</p>
+                  : <p>กดปุ่มตัวอักษรบน<b>คีย์บอร์ด</b> (Q–P / A–L / Z–M) หรือ<b>แตะปุ่มบนหน้าจอ</b> กดหลายปุ่มพร้อมกันได้ ปุ่มจะ<b>เรืองแสง</b>ขณะเสียงกำลังเล่น</p>
+                }
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⏹ หยุดเสียง</p>
-                <p>กด <b>Escape</b> หรือปุ่ม "หยุดทั้งหมด" เพื่อตัดทุกเสียงที่กำลังเล่นทันที</p>
+                <p>กด <b>Escape</b> หรือปุ่ม "หยุดทั้งหมด" เพื่อตัดทุกเสียงที่กำลังเล่นทันที ตัวเลขสีแดงบนปุ่มแสดงจำนวนเสียงที่กำลังเล่น</p>
               </div>
               <div>
                 <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>🔁 โหมดกดซ้ำ 4 แบบ</p>
@@ -899,7 +1039,11 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 </div>
               )}
               <div>
-                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📄 2 Pages (Tab = สลับ)</p>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>⊞ Layout 3 แบบ</p>
+                <p><b>↔ แนวนอน</b> — QWERTY keyboard | <b>↕ แนวตั้ง</b> — QWERTY ตั้ง | <b>⊞ Pad</b> — ตารางสี่เหลี่ยม A–Z ชื่อเด่น เหมาะกับแตะหรือคลิก คลิกปุ่ม Layout เพื่อสลับ</p>
+              </div>
+              <div>
+                <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-300' : 'text-gray-600')}>📄 2 Pages (Tab = สลับ{isMobile ? ' | ปัดซ้าย/ขวา' : ''})</p>
                 <p>Page 1 และ Page 2 มีเสียง default พร้อมใช้ — อัปโหลดทับปุ่มไหนก็ได้เพื่อเปลี่ยนเสียง</p>
               </div>
               <div>
