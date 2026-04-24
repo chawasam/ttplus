@@ -169,6 +169,7 @@ export default function BossBattleWidget() {
   const [showStreak,   setShowStreak]  = useState(false);
   const [elemRevealed, setElemRevealed] = useState(false);
   const [sideAlign,    setSideAlign]   = useState('center'); // 'left' | 'center' | 'right'
+  const [lastDmgLabel, setLastDmgLabel] = useState(''); // e.g. "×2 -500" | "HEAL +50" | "×1 -100"
 
   // Flying gifts state: { id, emoji, elemEmoji, side, imageUrl }
   const [flyingGifts,  setFlyingGifts] = useState([]);
@@ -197,6 +198,7 @@ export default function BossBattleWidget() {
   const engineRef      = useRef(null);
   const runnerRef      = useRef(null);
   const physCanvasRef  = useRef(null);
+  const imageCacheRef  = useRef(new Map()); // imageUrl → HTMLImageElement
   const animFrameRef   = useRef(null);
   const giftBodiesRef  = useRef([]);   // [{body, emoji, elemColor}]
   const containerRef   = useRef(null);
@@ -216,7 +218,7 @@ export default function BossBattleWidget() {
   }, []);
 
   // ── Physics: add gift body ──────────────────────────────────
-  const addGiftToPhysics = useCallback((emoji, elemColor) => {
+  const addGiftToPhysics = useCallback((emoji, elemColor, imageUrl) => {
     const Matter = window.Matter;
     if (!Matter || !engineRef.current) return;
     const w = widthRef.current;
@@ -233,7 +235,14 @@ export default function BossBattleWidget() {
       y: 1.5 + Math.random() * 3,
     });
     Matter.Composite.add(engineRef.current.world, body);
-    giftBodiesRef.current.push({ body, emoji, elemColor });
+    giftBodiesRef.current.push({ body, emoji, elemColor, imageUrl: imageUrl || '' });
+    // Pre-load gift image for canvas rendering
+    if (imageUrl && !imageCacheRef.current.has(imageUrl)) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = imageUrl;
+      imageCacheRef.current.set(imageUrl, img);
+    }
     // Cap at MAX_GIFTS — remove oldest
     if (giftBodiesRef.current.length > MAX_GIFTS) {
       const old = giftBodiesRef.current.shift();
@@ -248,8 +257,8 @@ export default function BossBattleWidget() {
     setFlyingGifts(prev => [...prev.slice(-8), { id, emoji, elemEmoji: elemEmoji || '', side, imageUrl: imageUrl || '' }]);
     // Remove flying animation
     setTimeout(() => setFlyingGifts(prev => prev.filter(g => g.id !== id)), 750);
-    // Add to physics pile after gift arrives at boss
-    setTimeout(() => addGiftToPhysics(emoji, elemColor), 700);
+    // Add to physics pile after gift arrives at boss (pass imageUrl for canvas rendering)
+    setTimeout(() => addGiftToPhysics(emoji, elemColor, imageUrl), 700);
   }, [addGiftToPhysics]);
 
   const startBattle = useCallback((hp, rnd) => {
@@ -326,6 +335,7 @@ export default function BossBattleWidget() {
     setStreakCount(streakRef.current);
 
     let mult = dmgMultRef.current;
+    const elemMult = hitType === 'effective' ? (streakBonus ? 3 : 2) : 1; // element multiplier for display
     if (hitType === 'effective') { mult *= 2; if (streakBonus) mult *= 1.5; }
     const absDmg = Math.max(1, Math.round(baseDmg * mult));
 
@@ -339,6 +349,7 @@ export default function BossBattleWidget() {
       triggerFlash('rgba(34,197,94,0.28)');
       addDamageNum(healAmt, 25 + Math.random() * 50, 'wrong', displayEmoji);
       setLastHitter(hitter); setLastHitType('wrong');
+      setLastDmgLabel(`HEAL +${healAmt.toLocaleString()}`);
       playHeal();
       return;
     }
@@ -352,6 +363,7 @@ export default function BossBattleWidget() {
     const pct = newHp / maxHpRef.current;
     setHpColor(pct > 0.6 ? '#22c55e' : pct > 0.3 ? '#f59e0b' : '#ef4444');
     setLastHitter(hitter); setLastHitType(hitType);
+    setLastDmgLabel(`×${elemMult} -${absDmg.toLocaleString()}`);
 
     if (hideElemRef.current && pct <= 0.75) {
       setElemRevealed(true);
@@ -417,24 +429,35 @@ export default function BossBattleWidget() {
 
       const drawLoop = () => {
         ctx.clearRect(0, 0, w, PHYS_H);
-        for (const { body, emoji, elemColor } of giftBodiesRef.current) {
+        for (const { body, emoji, elemColor, imageUrl } of giftBodiesRef.current) {
           const { x, y } = body.position;
           if (y < -60 || y > PHYS_H + 60) continue;
           ctx.save();
           ctx.translate(x, y);
           ctx.rotate(body.angle);
-          // Subtle glow
-          if (elemColor) {
-            ctx.shadowColor = elemColor;
-            ctx.shadowBlur  = 10;
+
+          const R = 18; // radius for image circle
+          const cachedImg = imageUrl ? imageCacheRef.current.get(imageUrl) : null;
+          const imgReady  = cachedImg && cachedImg.complete && cachedImg.naturalWidth > 0;
+
+          if (imgReady) {
+            // Draw circular clipped gift image with element-color glow
+            ctx.beginPath();
+            ctx.arc(0, 0, R, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            if (elemColor) { ctx.shadowColor = elemColor; ctx.shadowBlur = 12; }
+            else { ctx.shadowColor = 'rgba(255,255,255,0.5)'; ctx.shadowBlur = 7; }
+            ctx.drawImage(cachedImg, -R, -R, R * 2, R * 2);
           } else {
-            ctx.shadowColor = 'rgba(255,255,255,0.4)';
-            ctx.shadowBlur  = 6;
+            // Fallback: emoji
+            if (elemColor) { ctx.shadowColor = elemColor; ctx.shadowBlur = 10; }
+            else { ctx.shadowColor = 'rgba(255,255,255,0.4)'; ctx.shadowBlur = 6; }
+            ctx.font = '26px serif';
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, 0, 0);
           }
-          ctx.font = '26px serif';
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(emoji, 0, 0);
           ctx.restore();
         }
         animFrameRef.current = requestAnimationFrame(drawLoop);
@@ -760,26 +783,35 @@ export default function BossBattleWidget() {
             </div>
 
             {/* Last hit + weakness hint */}
-            <div style={{ marginTop: '8px', minHeight: '38px', textAlign: 'center' }}>
+            <div style={{ marginTop: '8px', minHeight: '44px', textAlign: 'center' }}>
               {lastHitter && (
                 <div style={{
-                  display: 'inline-block',
-                  fontSize: '13px', padding: '3px 10px', borderRadius: '8px',
-                  background: lastHitType === 'effective' ? 'rgba(251,191,36,0.22)'
-                            : lastHitType === 'wrong'     ? 'rgba(34,197,94,0.22)'
-                            : 'rgba(0,0,0,0.55)',
+                  display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+                  padding: '4px 12px', borderRadius: '10px',
+                  background: lastHitType === 'effective' ? 'rgba(251,191,36,0.18)'
+                            : lastHitType === 'wrong'     ? 'rgba(34,197,94,0.18)'
+                            : 'rgba(0,0,0,0.52)',
                   border: lastHitType === 'effective' ? '1px solid rgba(251,191,36,0.35)'
                         : lastHitType === 'wrong'     ? '1px solid rgba(34,197,94,0.35)'
                         : '1px solid rgba(255,255,255,0.12)',
-                  color: lastHitType === 'wrong'     ? '#4ade80'
-                       : lastHitType === 'effective' ? '#fbbf24'
-                       : 'rgba(255,255,255,0.92)',
-                  textShadow: lastHitType === 'effective' ? '0 0 10px rgba(251,191,36,0.7)'
-                            : lastHitType === 'wrong'     ? '0 0 10px rgba(34,197,94,0.7)'
-                            : 'none',
                 }}>
-                  {lastHitType === 'effective' ? '⚡ EFFECTIVE! ' : lastHitType === 'wrong' ? '💚 HEALED! ' : '⚔️ '}
-                  {lastHitter}
+                  {/* Row 1: type label + damage info */}
+                  <div style={{
+                    fontSize: '13px', fontWeight: 700,
+                    color: lastHitType === 'wrong'     ? '#4ade80'
+                         : lastHitType === 'effective' ? '#fbbf24'
+                         : 'rgba(255,255,255,0.95)',
+                    textShadow: lastHitType === 'effective' ? '0 0 10px rgba(251,191,36,0.7)'
+                              : lastHitType === 'wrong'     ? '0 0 10px rgba(34,197,94,0.7)'
+                              : 'none',
+                  }}>
+                    {lastHitType === 'effective' ? '⚡ EFFECTIVE ' : lastHitType === 'wrong' ? '💚 HEAL ' : '⚔️ '}
+                    <span style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}>{lastDmgLabel}</span>
+                  </div>
+                  {/* Row 2: attacker name */}
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.58)', fontWeight: 500 }}>
+                    {lastHitter}
+                  </div>
                 </div>
               )}
               {isHidden ? (

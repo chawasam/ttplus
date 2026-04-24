@@ -515,6 +515,53 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                         isDark ? 'bg-blue-500/10 border-blue-500/25 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700')}>
                         💡 หลัง Copy URL แล้วกด Test เพื่อดูตัวอย่าง — กด <strong>R</strong> ในหน้า preview เพื่อ reset
                       </div>
+
+                      {/* Boss Battle: วิธีเล่น + ระบบธาตุ */}
+                      {w.id === 'bossbattle' && (
+                        <div className={clsx('rounded-xl border mt-2 overflow-hidden', isDark ? 'border-gray-700' : 'border-gray-200')}>
+                          <div className={clsx('px-3 py-2 text-xs font-bold tracking-wide', isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>
+                            📖 วิธีเล่น & ระบบธาตุ
+                          </div>
+                          <div className={clsx('px-3 py-3 space-y-3 text-xs', isDark ? 'bg-gray-900 text-gray-400' : 'bg-white text-gray-500')}>
+                            <div>
+                              <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>🎮 การเล่น</p>
+                              <p>ผู้ชม TikTok Live ส่งของขวัญ → ของขวัญทำดาเมจบอส ตาม <strong>diamond × ตัวคูณดาเมจ</strong></p>
+                              <p className="mt-1">ธาตุของขวัญถูกกำหนดจากชื่อ เช่น Rose/Heart = ไฟ, Ice/Fish = น้ำ</p>
+                            </div>
+                            <div>
+                              <p className={clsx('font-semibold mb-1.5', isDark ? 'text-gray-200' : 'text-gray-700')}>⚗️ ระบบธาตุ (ความสัมพันธ์วงกลม)</p>
+                              <div className="grid grid-cols-1 gap-1">
+                                {[
+                                  { beat: '🔥 ไฟ', vs: '🌍 ดิน', mult: '×2 dmg', hint: 'Rose, Heart, Fire, Star...' },
+                                  { beat: '💧 น้ำ', vs: '🔥 ไฟ',  mult: '×2 dmg', hint: 'Ice, Fish, Snow, Wave...' },
+                                  { beat: '🌪️ ลม', vs: '💧 น้ำ', mult: '×2 dmg', hint: 'Butterfly, Bird, Cloud...' },
+                                  { beat: '🌍 ดิน', vs: '🌪️ ลม', mult: '×2 dmg', hint: 'Panda, Diamond, Crown...' },
+                                ].map(r => (
+                                  <div key={r.beat} className={clsx('flex items-center gap-2 px-2 py-1.5 rounded-lg', isDark ? 'bg-gray-800' : 'bg-gray-50')}>
+                                    <span className="font-bold w-16 flex-shrink-0">{r.beat}</span>
+                                    <span className="text-gray-400">▶</span>
+                                    <span className="w-16 flex-shrink-0">{r.vs}</span>
+                                    <span className={clsx('font-bold', isDark ? 'text-yellow-400' : 'text-yellow-600')}>{r.mult}</span>
+                                    <span className={clsx('truncate ml-auto', isDark ? 'text-gray-600' : 'text-gray-400')}>{r.hint}</span>
+                                  </div>
+                                ))}
+                                <div className={clsx('flex items-center gap-2 px-2 py-1.5 rounded-lg', isDark ? 'bg-red-900/20 border border-red-800/30' : 'bg-red-50 border border-red-100')}>
+                                  <span className={clsx('font-semibold', isDark ? 'text-red-400' : 'text-red-600')}>⚠️ ผิดธาตุ</span>
+                                  <span className={clsx('text-xs ml-auto', isDark ? 'text-gray-500' : 'text-gray-400')}>ส่งธาตุที่อ่อนต่อบอส → Heal boss +50% dmg</span>
+                                </div>
+                                <div className={clsx('flex items-center gap-2 px-2 py-1.5 rounded-lg', isDark ? 'bg-gray-800' : 'bg-gray-50')}>
+                                  <span>⚪ กลาง</span>
+                                  <span className="ml-auto text-gray-400">ทุกของขวัญ ×1 dmg (ไม่มีธาตุ)</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>🔥 Streak Bonus</p>
+                              <p>ส่งธาตุที่ชนะ 3 ครั้งติดกัน → <strong className={isDark ? 'text-yellow-400' : 'text-yellow-600'}>×3 dmg</strong> (streak bonus ×1.5 เพิ่มเติม)</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <button
                           onClick={() => {
