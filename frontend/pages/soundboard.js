@@ -1035,6 +1035,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               isDark ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200 shadow-sm'
             )}
             onTouchStart={isMobile ? (e) => {
+              // ถ้า touch เริ่มบน key ตัวใดตัวหนึ่ง → ไม่ต้องทำ swipe tracking (ป้องกัน tap key แล้วเปลี่ยน Page โดยไม่ได้ตั้งใจ)
+              if (e.target.closest('[data-key]')) { swipeTouchX.current = null; return; }
               swipeTouchX.current = e.touches[0].clientX;
               swipeTouchY.current = e.touches[0].clientY;
             } : undefined}
@@ -1187,7 +1189,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       </main>
 
       <input ref={fileInputRef}         type="file" accept="audio/*"            className="hidden" onChange={handleFileChange} />
-      <input ref={combinedFileInputRef} type="file" accept="audio/*"            className="hidden" onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }} />
+      <input id="sb-combined-file-input" ref={combinedFileInputRef} type="file" accept="audio/*" className="hidden" onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }} />
       <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
 
       {/* ===== Drag & Drop Banner (เล็กๆ ลอยบนสุด ไม่บังปุ่ม) ===== */}
@@ -1600,10 +1602,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             </div>
             <div className="space-y-1">
               <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ไฟล์เสียง (ไม่บังคับ)</span>
-              <button
-                onClick={() => combinedFileInputRef.current?.click()}
+              <label
+                htmlFor="sb-combined-file-input"
                 className={clsx(
-                  'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition border',
+                  'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition border cursor-pointer',
                   combinedFile
                     ? isDark ? 'bg-green-900/30 border-green-700/50 text-green-300' : 'bg-green-50 border-green-200 text-green-700'
                     : isDark ? 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'
@@ -1612,12 +1614,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 <span className="text-lg">{combinedFile ? '🎵' : '📂'}</span>
                 <span className="truncate">{combinedFile ? combinedFile.name : 'เลือกไฟล์ mp3 / ogg / wav ≤ 5MB'}</span>
                 {combinedFile && (
-                  <button
-                    onClick={e => { e.stopPropagation(); setCombinedFile(null); }}
-                    className="ml-auto text-xs text-red-400 hover:text-red-300"
-                  >✕</button>
+                  <span
+                    onClick={e => { e.preventDefault(); e.stopPropagation(); setCombinedFile(null); }}
+                    className="ml-auto text-xs text-red-400 hover:text-red-300 cursor-pointer"
+                  >✕</span>
                 )}
-              </button>
+              </label>
             </div>
             <div className="flex gap-2">
               <button onClick={handleCombinedSubmit} className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition">

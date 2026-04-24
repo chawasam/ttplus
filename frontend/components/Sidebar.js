@@ -11,7 +11,7 @@ const navItems = [
   { id: 'faq',        icon: '❓',  label: 'FAQ'         },
 ];
 
-export default function Sidebar({ theme, user, activePage, setActivePage }) {
+export default function Sidebar({ theme, user, activePage, setActivePage, onSignOut }) {
   return (
     <aside className={clsx(
       'flex flex-col w-16 md:w-56 h-screen fixed left-0 top-0 z-40 border-r transition-all',
@@ -99,29 +99,46 @@ export default function Sidebar({ theme, user, activePage, setActivePage }) {
         </a>
       </div>
 
-      {/* User */}
+      {/* User + Logout */}
       {user && (
         <div className={clsx(
-          'border-t p-3 flex items-center gap-3',
+          'border-t p-3',
           theme === 'dark' ? 'border-gray-800' : 'border-gray-200'
         )}>
-          {user.photoURL && (
-            <img
-              src={user.photoURL}
-              alt="avatar"
-              referrerPolicy="no-referrer"
-              className="w-7 h-7 rounded-full flex-shrink-0"
-              onError={e => { e.target.style.display = 'none'; }}
-            />
-          )}
-          <div className="hidden md:block overflow-hidden">
-            <p className={clsx('text-xs font-medium truncate', theme === 'dark' ? 'text-white' : 'text-gray-900')}>
-              {user.displayName}
-            </p>
-            <p className={clsx('text-xs truncate', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
-              {user.email}
-            </p>
+          <div className="flex items-center gap-3">
+            {user.photoURL && (
+              <img
+                src={user.photoURL}
+                alt="avatar"
+                referrerPolicy="no-referrer"
+                className="w-7 h-7 rounded-full flex-shrink-0"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+            )}
+            <div className="hidden md:block overflow-hidden flex-1">
+              <p className={clsx('text-xs font-medium truncate', theme === 'dark' ? 'text-white' : 'text-gray-900')}>
+                {user.displayName}
+              </p>
+              <p className={clsx('text-xs truncate', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+                {user.email}
+              </p>
+            </div>
           </div>
+          {onSignOut && (
+            <button
+              onClick={onSignOut}
+              title="ออกจากระบบ"
+              className={clsx(
+                'mt-2 w-full flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-medium transition',
+                theme === 'dark'
+                  ? 'text-gray-500 hover:text-red-400 hover:bg-red-400/10'
+                  : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+              )}
+            >
+              <span>⬡</span>
+              <span className="hidden md:inline">ออกจากระบบ</span>
+            </button>
+          )}
         </div>
       )}
     </aside>

@@ -31,7 +31,7 @@ const WIDGETS = [
   {
     id: 'bossbattle', icon: '👾', name: 'Boss Battle',
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
-    size: '500 × 500', noStyle: true,
+    size: '380 × 675', noStyle: true,
     configFields: [
       { key: 'hp',        label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
       { key: 'bossname',  label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
@@ -39,7 +39,7 @@ const WIDGETS = [
       { key: 'element',   label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
       { key: 'hideelement', label: 'ซ่อนธาตุ Boss',                  type: 'toggle',  default: 0, onLabel: 'ซ่อน — เปิดเผยที่ HP ≤75%', offLabel: 'แสดงธาตุตั้งแต่ต้น' },
       { key: 'dmgmult',   label: 'ตัวคูณดาเมจ (1 coin = X dmg)',     type: 'number',  default: 1,            min: 0.1, max: 20,     step: 0.1 },
-      { key: 'taprate',   label: 'Like → Damage (0 = ปิด, X like = 1 dmg)', type: 'number', default: 0,     min: 0,   max: 1000,   step: 1 },
+      { key: 'taprate',   label: 'Like → Damage: กี่ like = 1 dmg (0 = ปิด)', type: 'number', default: 0,     min: 0,   max: 1000,   step: 1 },
       { key: 'wrongheal', label: 'ผิดธาตุ = Heal Boss',              type: 'toggle',  default: 1, onLabel: 'เปิด — ผิดธาตุ heal boss', offLabel: 'ปิด — ผิดธาตุ = 0 dmg' },
       { key: 'respawn',   label: 'Respawn Mode',                     type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
       { key: 'side',      label: 'ตำแหน่ง Widget',                   type: 'select',  default: 'center', options: [{ value:'center', label:'กลาง (ค่าเริ่มต้น)' }, { value:'left', label:'ซ้าย (ไม่บัง streamer ซ้าย)' }, { value:'right', label:'ขวา (ไม่บัง streamer ขวา)' }] },
@@ -191,6 +191,23 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       toast.success('✅ Copy URL แล้ว! วางใน TikTok Studio ได้เลย');
     });
   }, [user, getWidgetUrl]);
+
+  // Copy Boss Battle URL with specific side override (ไม่ต้องเปิด Customize)
+  const copyBossBattleSide = useCallback((side) => {
+    if (!user) { setShowLoginModal(true); return; }
+    if (!widgetCid || !baseUrl) return;
+    const w   = WIDGETS.find(ww => ww.id === 'bossbattle');
+    const cfg = customConfigs['bossbattle'] || {};
+    const params = w.configFields.map(f => {
+      const val = f.key === 'side' ? side : (cfg[f.key] ?? f.default);
+      return `${f.key}=${encodeURIComponent(val)}`;
+    }).join('&');
+    const url = `${baseUrl}/widget/bossbattle?cid=${widgetCid}&${params}`;
+    navigator.clipboard.writeText(url).then(() => {
+      const label = side === 'left' ? 'ซ้าย ◀' : side === 'right' ? 'ขวา ▶' : 'กลาง ■';
+      toast.success(`✅ Copy URL ${label} แล้ว!`);
+    });
+  }, [user, widgetCid, baseUrl, customConfigs]);
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
@@ -346,6 +363,29 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       📋 Copy URL
                     </button>
                   </div>
+
+                  {/* Boss Battle — quick side copy */}
+                  {w.id === 'bossbattle' && (
+                    <div className="flex gap-1.5 mb-2">
+                      {[
+                        { side: 'left',   label: '◀ ซ้าย' },
+                        { side: 'center', label: '■ กลาง' },
+                        { side: 'right',  label: 'ขวา ▶' },
+                      ].map(({ side, label }) => (
+                        <button
+                          key={side}
+                          onClick={() => copyBossBattleSide(side)}
+                          disabled={!tokenReady}
+                          className={clsx(
+                            'flex-1 py-1.5 rounded-lg text-xs font-semibold transition border disabled:opacity-40',
+                            isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-brand-500/50 hover:text-brand-300' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-brand-50 hover:border-brand-200 hover:text-brand-700'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <a href={getPreviewUrl(w.id)} target="_blank" rel="noreferrer"

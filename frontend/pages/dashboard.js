@@ -284,7 +284,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   return (
     <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} onSignOut={handleSignOut} />
 
       <main className="ml-16 md:ml-56 p-4 md:p-6">
 
