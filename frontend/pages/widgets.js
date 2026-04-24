@@ -22,7 +22,7 @@ const BOSS_ELEMENTS  = [
 const CREATURE_EMOJIS = ['🐉','🦋','🦄','🐣','🔥','🌟','👑','🐺'];
 
 const WIDGETS = [
-  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '600 × 600' },
+  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '800 × 600' },
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
   { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },

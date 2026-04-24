@@ -1,15 +1,15 @@
 // widget/coinjar.js — Gift Jar Physics Widget สำหรับ OBS / TikTok Studio
-// OBS Size แนะนำ: 600 × 600
+// OBS Size แนะนำ: 800 × 600  (กว้างขึ้น → ของขวัญล้นออกกองสองข้างสวยงาม)
 // เมื่อมีคนส่ง gift ใน TikTok Live → รูป gift ตกลงมาในโถพร้อม physics จริง
 // ของขวัญล้นออกนอกโถได้ — กองบนพื้นข้างขวดโหล
-// URL params: ?wt=TOKEN&jx=OFFSET(-150~150)&preview=1
+// URL params: ?wt=TOKEN&jx=OFFSET(-200~200)&preview=1
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 
-// ขนาด canvas (กว้างขึ้น → พื้นที่รอบขวดโหลมากขึ้น)
-const W = 600;
+// ขนาด canvas — W=800 ให้พื้นที่ 268px ทั้งสองข้างของโถ ของล้นออกกองสวย
+const W = 800;
 const H = 600;
 
 // รัศมี gift item base (px) — ปรับได้ผ่าน gs param (50-200%)
@@ -38,13 +38,12 @@ function getItemR(diamonds = 0, giftScale = 100) {
 // พื้น ground สำหรับ overflow — ของที่ล้นออกมากองที่นี่
 const GROUND_Y = H - 30;
 
-// พิกัดโถ base (offset = 0 → กลาง canvas W=600)
-// shift +100 จากเดิม (W=400 center=200 → W=600 center=300)
+// พิกัดโถ base (offset = 0 → กลาง canvas W=800, center=400)
 // ปรับ jarOffset จาก URL param ?jx=... (-200 ถึง +200)
 const JAR_BASE = {
-  nL: 228, nR: 372,   // เดิม 128/272 + 100
+  nL: 328, nR: 472,   // neck กว้าง 144px, center=400
   nT: 62,  nB: 158,
-  bL: 168, bR: 432,   // เดิม 68/332 + 100
+  bL: 268, bR: 532,   // body กว้าง 264px, center=400
   bB: 516,
   floor: 522,
 };
