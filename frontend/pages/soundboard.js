@@ -335,6 +335,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const [renameVal,      setRenameVal]      = useState('');
   // Combined upload+rename modal (mobile)
   const [combinedKey,    setCombinedKey]    = useState(null);
+  // Export confirm modal: null | { json, filename, sizeMB }
+  const [exportPending,  setExportPending]  = useState(null);
   const [combinedName,   setCombinedName]   = useState('');
   const [combinedFile,   setCombinedFile]   = useState(null);
   // Device type
@@ -709,21 +711,31 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   }, [store, page]);
 
   const handleExport = useCallback(async () => {
-    const toastId = toast.loading('กำลัง Export...');
+    const toastId = toast.loading('กำลังเตรียมไฟล์...');
     try {
-      const data = await exportSettings(email); // async — รวม audio จาก IndexedDB
-      const json = JSON.stringify(data, null, 2);
+      const data     = await exportSettings(email);
+      const json     = JSON.stringify(data, null, 2);
       const filename = `soundboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
-      const a   = document.createElement('a');
-      a.href     = uri;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      toast.success(`Export เรียบร้อย (${(json.length / 1024).toFixed(1)} KB)`, { id: toastId });
+      const sizeMB   = (json.length / (1024 * 1024)).toFixed(2);
+      toast.dismiss(toastId);
+      // แสดง modal ยืนยันก่อนดาวน์โหลด
+      setExportPending({ json, filename, sizeMB });
     } catch (err) { toast.error('Export ไม่สำเร็จ: ' + err.message, { id: toastId }); }
   }, [email]);
+
+  const confirmExportDownload = useCallback(() => {
+    if (!exportPending) return;
+    const { json, filename, sizeMB } = exportPending;
+    const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+    const a   = document.createElement('a');
+    a.href     = uri;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setExportPending(null);
+    toast.success(`Export เรียบร้อย (${sizeMB} MB)`);
+  }, [exportPending]);
 
   const handleImportFile = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -1596,6 +1608,59 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 className={clsx('px-5 py-2.5 rounded-xl font-semibold text-sm transition', isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
               >
                 ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Export Confirm Modal ===== */}
+      {exportPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className={clsx('absolute inset-0', isDark ? 'bg-black/60' : 'bg-black/40')}
+            onClick={() => setExportPending(null)} />
+          <div className={clsx(
+            'relative w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4',
+            isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+          )}>
+            <div className="flex items-center justify-between">
+              <span className={clsx('font-semibold text-base', isDark ? 'text-gray-100' : 'text-gray-800')}>
+                ⬇ ดาวน์โหลด Backup?
+              </span>
+              <button onClick={() => setExportPending(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            {/* File info */}
+            <div className={clsx('rounded-xl p-3 space-y-1.5', isDark ? 'bg-gray-800' : 'bg-gray-50')}>
+              <div className="flex justify-between text-sm">
+                <span className={clsx(isDark ? 'text-gray-400' : 'text-gray-500')}>ชื่อไฟล์</span>
+                <span className={clsx('font-mono text-xs', isDark ? 'text-gray-300' : 'text-gray-700')}>{exportPending.filename}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className={clsx(isDark ? 'text-gray-400' : 'text-gray-500')}>ขนาดไฟล์</span>
+                <span className={clsx('font-semibold', parseFloat(exportPending.sizeMB) > 5 ? 'text-amber-400' : isDark ? 'text-green-400' : 'text-green-600')}>
+                  {exportPending.sizeMB} MB
+                  {parseFloat(exportPending.sizeMB) > 5 && ' ⚠️'}
+                </span>
+              </div>
+            </div>
+            {parseFloat(exportPending.sizeMB) > 5 && (
+              <p className={clsx('text-xs', isDark ? 'text-amber-400/80' : 'text-amber-600')}>
+                ⚠️ ไฟล์ใหญ่เพราะมีเสียงหลายไฟล์ — ใช้เวลาดาวน์โหลดสักครู่
+              </p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setExportPending(null)}
+                className={clsx('flex-1 py-2.5 rounded-xl text-sm font-semibold border transition',
+                  isDark ? 'border-gray-700 text-gray-400 hover:bg-gray-800' : 'border-gray-200 text-gray-500 hover:bg-gray-50')}
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmExportDownload}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white transition"
+              >
+                ⬇ ดาวน์โหลด
               </button>
             </div>
           </div>
