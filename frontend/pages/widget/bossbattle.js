@@ -174,6 +174,23 @@ export default function BossBattleWidget() {
   // Flying gifts state: { id, emoji, elemEmoji, side, imageUrl }
   const [flyingGifts,  setFlyingGifts] = useState([]);
 
+  // ── ww: content width (px), carda: card background alpha (0-100) ──
+  // ── parsed once from URL so physics setup can also use them via ref ──
+  const [widgetWidth] = useState(() => {
+    if (typeof window === 'undefined') return 380;
+    const p = new URLSearchParams(window.location.search);
+    return Math.max(280, Math.min(800, parseInt(p.get('ww') ?? '380')));
+  });
+  const [cardAlpha] = useState(() => {
+    if (typeof window === 'undefined') return 58;
+    const p = new URLSearchParams(window.location.search);
+    return Math.max(0, Math.min(100, parseInt(p.get('carda') ?? '58')));
+  });
+  // ref สำหรับ physics setup effect (ต้องการก่อน state sync)
+  const widgetWidthRef = useRef(typeof window !== 'undefined'
+    ? Math.max(280, Math.min(800, parseInt(new URLSearchParams(window.location.search).get('ww') ?? '380')))
+    : 380);
+
   const hpRef          = useRef(1000);
   const maxHpRef       = useRef(1000);
   const roundRef       = useRef(1);
@@ -202,7 +219,6 @@ export default function BossBattleWidget() {
   const imageCacheRef  = useRef(new Map()); // imageUrl → HTMLImageElement
   const animFrameRef   = useRef(null);
   const giftBodiesRef  = useRef([]);   // [{body, emoji, elemColor}]
-  const containerRef   = useRef(null);
   const widthRef       = useRef(500);
   const flyIdRef       = useRef(0);
 
@@ -405,7 +421,7 @@ export default function BossBattleWidget() {
     script.async = true;
     script.onload = () => {
       const Matter = window.Matter;
-      const w = containerRef.current?.offsetWidth || window.innerWidth || 500;
+      const w = widgetWidthRef.current;
       widthRef.current = w;
 
       const engine = Matter.Engine.create({ gravity: { y: 2.8 } });
@@ -489,9 +505,9 @@ export default function BossBattleWidget() {
     const name      = params.get('bossname') ?? 'Dark Dragon';
     const respawn   = params.get('respawn') === '1';
     const elemParam = params.get('element') ?? 'neutral';
-    const dmgMult   = Math.max(0.1, parseFloat(params.get('dmgmult') ?? '1'));
-    const tapRate   = Math.max(0, parseInt(params.get('taprate') ?? '0'));
-    const tapDmg    = Math.max(1, parseInt(params.get('tapdmg')  ?? '1'));
+    const dmgMult   = Math.max(0.1, parseFloat(params.get('dmgmult') ?? '1') || 1);
+    const tapRate   = Math.max(0, parseInt(params.get('taprate') ?? '0') || 0);
+    const tapDmg    = Math.max(1, parseInt(params.get('tapdmg')  ?? '1') || 1);
     const wrongHeal = params.get('wrongheal') !== '0';
 
     const elem     = ELEMENTS[elemParam] ? elemParam : 'neutral';
@@ -610,11 +626,21 @@ export default function BossBattleWidget() {
   const textAlign = sideAlign === 'left' ? 'left' : sideAlign === 'right' ? 'right' : 'center';
 
   return (
-    <div ref={containerRef} style={{
+    <div style={{
       width: '100vw', height: '100vh',
-      display: 'flex', flexDirection: 'column', alignItems: hAlign,
+      display: 'flex', flexDirection: 'column',
+      alignItems: sideAlign === 'left' ? 'flex-start' : sideAlign === 'right' ? 'flex-end' : 'center',
       background: 'transparent', position: 'relative', overflow: 'hidden',
       fontFamily: '"Segoe UI", Arial, sans-serif', userSelect: 'none',
+    }}>
+    {/* ── inner content wrapper — ของขวัญและ content ไม่เกิน widgetWidth ── */}
+    {/* overflow: visible เพื่อให้ flying gifts animate เข้ามาจากนอกกรอบได้ */}
+    {/* outer div มี overflow: hidden แทน ป้องกัน scroll */}
+    <div style={{
+      width: widgetWidth,
+      height: '100%',
+      display: 'flex', flexDirection: 'column', alignItems: hAlign,
+      position: 'relative', overflow: 'visible',
       ...hPad,
     }}>
       <style>{`
@@ -697,7 +723,7 @@ export default function BossBattleWidget() {
           flex: 'none', width: '86%', maxWidth: '320px',
           marginTop: '18%',
           padding: '10px 14px 10px',
-          background: 'rgba(0,0,0,0.58)',
+          background: `rgba(0,0,0,${cardAlpha / 100})`,
           borderRadius: '14px',
           border: '1px solid rgba(255,255,255,0.10)',
           backdropFilter: 'blur(6px)',
@@ -792,9 +818,9 @@ export default function BossBattleWidget() {
                 <div style={{
                   display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
                   padding: '4px 12px', borderRadius: '10px',
-                  background: lastHitType === 'effective' ? 'rgba(251,191,36,0.18)'
-                            : lastHitType === 'wrong'     ? 'rgba(34,197,94,0.18)'
-                            : 'rgba(0,0,0,0.52)',
+                  background: lastHitType === 'effective' ? `rgba(251,191,36,${cardAlpha / 100 * 0.31})`
+                            : lastHitType === 'wrong'     ? `rgba(34,197,94,${cardAlpha / 100 * 0.31})`
+                            : `rgba(0,0,0,${cardAlpha / 100 * 0.9})`,
                   border: lastHitType === 'effective' ? '1px solid rgba(251,191,36,0.35)'
                         : lastHitType === 'wrong'     ? '1px solid rgba(34,197,94,0.35)'
                         : '1px solid rgba(255,255,255,0.12)',
@@ -823,7 +849,7 @@ export default function BossBattleWidget() {
                   ธาตุ: <span style={{ color: '#64748b', letterSpacing: '0.12em' }}>???</span> — เปิดเผยที่ HP ≤75%
                 </div>
               ) : bossElem !== 'neutral' && effInfo && (
-                <div style={{ fontSize: '10px', marginTop: '4px', display: 'inline-block', padding: '2px 8px', borderRadius: '6px', background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.55)' }}>
+                <div style={{ fontSize: '10px', marginTop: '4px', display: 'inline-block', padding: '2px 8px', borderRadius: '6px', background: `rgba(0,0,0,${cardAlpha / 100 * 0.86})`, color: 'rgba(255,255,255,0.55)' }}>
                   แพ้ทาง: <span style={{ color: effInfo.color }}>{effInfo.emoji} {effInfo.label}</span>
                 </div>
               )}
@@ -879,6 +905,7 @@ export default function BossBattleWidget() {
           {d.type === 'wrong' ? '+' : '-'}{Math.abs(d.amount).toLocaleString()}{d.type === 'effective' ? ' ✦' : ''}
         </div>
       ))}
-    </div>
+    </div>{/* end inner content wrapper */}
+    </div>{/* end outer 100vw container */}
   );
 }

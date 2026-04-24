@@ -44,6 +44,8 @@ const WIDGETS = [
       { key: 'wrongheal', label: 'ผิดธาตุ = Heal Boss',              type: 'toggle',  default: 1, onLabel: 'เปิด — ผิดธาตุ heal boss', offLabel: 'ปิด — ผิดธาตุ = 0 dmg' },
       { key: 'respawn',   label: 'Respawn Mode',                     type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
       { key: 'side',      label: 'ตำแหน่ง Widget',                   type: 'select',  default: 'center', options: [{ value:'center', label:'กลาง (ค่าเริ่มต้น)' }, { value:'left', label:'ซ้าย (ไม่บัง streamer ซ้าย)' }, { value:'right', label:'ขวา (ไม่บัง streamer ขวา)' }] },
+      { key: 'ww',        label: 'ความกว้าง Widget (px) — ตั้งให้ตรงกับ OBS Browser Source', type: 'number', default: 380, min: 280, max: 800, step: 10 },
+      { key: 'carda',     label: 'ความทึบแผง (Card Opacity) 0=โปร่งใส 100=ทึบ', type: 'number', default: 58,  min: 0,   max: 100, step: 5  },
     ],
   },
   {
@@ -489,6 +491,24 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                               >
                                 {val ? `✅ ${f.onLabel}` : `⬜ ${f.offLabel}`}
                               </button>
+                            )}
+                            {f.type === 'select' && (
+                              <div className="flex gap-2 flex-wrap">
+                                {f.options.map(opt => (
+                                  <button
+                                    key={opt.value}
+                                    onClick={() => setKey(f.key, opt.value)}
+                                    className={clsx(
+                                      'flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition',
+                                      val === opt.value
+                                        ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
+                                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                                    )}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
                             )}
                             {f.type === 'element' && (
                               <div className="space-y-1.5">

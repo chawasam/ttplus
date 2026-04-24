@@ -1,10 +1,11 @@
 // soundboardStore.js — จัดการ settings + custom audio สำหรับ Soundboard
-// ข้อมูลเก็บใน localStorage (ฝั่ง client ล้วนๆ — ไม่ส่ง server)
+// Settings (modes, colors, volumes ฯลฯ) → localStorage (ข้อมูลเล็ก)
+// Audio data (b64) → IndexedDB (ไม่มีลิมิต 5MB — รองรับทุกอุปกรณ์รวมมือถือ)
 
 import { SYNTHS } from './soundSynth';
 
 const STORE_KEY   = 'ttplus_soundboard';
-const MAX_FILE_MB = 5;
+const MAX_FILE_MB = 20; // IndexedDB รองรับได้มากกว่า localStorage มาก
 
 // ===== Defaults =====
 
@@ -39,6 +40,95 @@ function getDefaults() {
     // page 4
     customs4: {}, modes4: {}, colors4: {}, volumes4: {}, speeds4: {},
   };
+}
+
+// ===== IndexedDB helpers =====
+
+const IDB_NAME    = 'ttplus_audio';
+const IDB_VERSION = 1;
+const IDB_STORE   = 'clips';
+
+let _dbPromise = null;
+
+function openDB() {
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('IndexedDB ไม่รองรับในสภาพแวดล้อมนี้'));
+  }
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e => { e.target.result.createObjectStore(IDB_STORE); };
+    req.onsuccess  = e  => {
+      const db = e.target.result;
+      db.onclose = () => { _dbPromise = null; }; // reset เมื่อ connection ปิดตัวเอง → reopen ได้ครั้งต่อไป
+      resolve(db);
+    };
+    req.onerror    = e  => { _dbPromise = null; reject(e.target.error); };
+    req.onblocked  = () => { _dbPromise = null; reject(new Error('IndexedDB blocked')); };
+  });
+  return _dbPromise;
+}
+
+function idbGet(db, key) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+    req.onsuccess = e => resolve(e.target.result ?? null);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function idbPut(db, key, value) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).put(value, key);
+    req.onsuccess = () => resolve();
+    req.onerror   = e  => reject(e.target.error);
+  });
+}
+
+function idbDelete(db, key) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror   = e  => reject(e.target.error);
+  });
+}
+
+// ดึงทุก entry: returns { [idbKey]: { b64, mime, name } }
+function idbGetAll(db) {
+  return new Promise((resolve, reject) => {
+    const result = {};
+    const req    = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).openCursor();
+    req.onsuccess = e => {
+      const cur = e.target.result;
+      if (cur) { result[cur.key] = cur.value; cur.continue(); }
+      else resolve(result);
+    };
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+// ลบทุก clip ของ page ที่ระบุ (key format: "${page}_${keyChar}")
+function idbDeletePage(db, page) {
+  return new Promise((resolve, reject) => {
+    const prefix = `${page}_`;
+    const tx     = db.transaction(IDB_STORE, 'readwrite');
+    const req    = tx.objectStore(IDB_STORE).openCursor();
+    req.onsuccess = e => {
+      const cur = e.target.result;
+      if (cur) { if (String(cur.key).startsWith(prefix)) cur.delete(); cur.continue(); }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror    = e  => reject(e.target.error);
+  });
+}
+
+// ลบทุก clip (ทุก page)
+function idbClear(db) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).clear();
+    req.onsuccess = () => resolve();
+    req.onerror   = e  => reject(e.target.error);
+  });
 }
 
 // ===== localStorage helpers =====
@@ -83,8 +173,8 @@ export function getAudioContext() {
 
 // ===== Cache =====
 
-const _cache    = new Map(); // custom upload decode cache
-const _sfxCache = new Map(); // page 1 sfx decode cache
+const _cache     = new Map(); // custom upload decode cache (AudioBuffer)
+const _sfxCache  = new Map(); // page 1 sfx decode cache
 const _sfx2Cache = new Map(); // page 2 sfx decode cache
 
 export function clearCustomCache() { _cache.clear(); }
@@ -226,18 +316,50 @@ export async function playKey(key, store, page = 1) {
     g.connect(ctx.destination);
     src.connect(g);
     src.start(t);
-    // duration = 0 สำหรับ loop (ไม่จบ)
     const duration = mode === 'loop' ? 0 : buf.duration / speed;
     trackSource(key, src, g, t, duration);
   }
 
-  // 1. Custom upload
+  // 1. Custom upload — ตรวจ cache ก่อน
   const custom = store.customs?.[key];
-  if (custom?.b64) {
+  if (custom) {
     try {
       let buf = _cache.get(key);
-      if (!buf) { buf = await decodeB64(ctx, custom.b64); _cache.set(key, buf); }
-      playBuffer(buf); return;
+      if (!buf) {
+        let b64 = custom.b64; // รูปแบบเก่า: b64 อยู่ใน localStorage
+
+        if (b64) {
+          // === Auto-migrate เสียงเก่า (localStorage → IndexedDB) ===
+          try {
+            const db = await openDB();
+            await idbPut(db, `${page}_${key}`, { b64, mime: custom.mime, name: custom.name });
+            // ลบ b64 ออกจาก localStorage (ประหยัดพื้นที่)
+            const s = loadSettings();
+            const f = pageField('customs', page);
+            if (s[f]?.[key]) {
+              s[f][key] = { mime: custom.mime, name: custom.name }; // เก็บแค่ metadata
+              try {
+                localStorage.setItem(STORE_KEY, JSON.stringify(s));
+                // แจ้ง component ให้ reload store จาก localStorage (sync React state)
+                window.dispatchEvent(new CustomEvent('ttplus-sb-migrated'));
+              } catch {}
+            }
+          } catch {}
+        } else {
+          // รูปแบบใหม่: b64 อยู่ใน IndexedDB
+          try {
+            const db  = await openDB();
+            const clip = await idbGet(db, `${page}_${key}`);
+            b64 = clip?.b64 ?? null;
+          } catch {}
+        }
+
+        if (b64) {
+          buf = await decodeB64(ctx, b64);
+          _cache.set(key, buf);
+        }
+      }
+      if (buf) { playBuffer(buf); return; }
     } catch {}
   }
 
@@ -262,21 +384,26 @@ export function uploadCustom(key, file, page = 1) {
     if (!file) { reject(new Error('ไม่มีไฟล์')); return; }
     if (!file.type.startsWith('audio/')) { reject(new Error('ไฟล์ต้องเป็นเสียง (.mp3 .ogg .wav)')); return; }
     if (file.size > MAX_FILE_MB * 1024 * 1024) { reject(new Error(`ไฟล์ใหญ่เกิน ${MAX_FILE_MB} MB`)); return; }
+
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const b64   = e.target.result.split(',')[1];
-      const store = loadSettings();
-      const field = pageField('customs', page);
-      // ลบ entry เก่าของ key นี้ออกก่อน เพื่อเพิ่มพื้นที่สำหรับเสียงใหม่
-      delete store[field][key];
-      store[field][key] = { b64, mime: file.type, name: file.name };
-      _cache.delete(key);
+    reader.onload = async (e) => {
       try {
-        localStorage.setItem(STORE_KEY, JSON.stringify(store));
+        const b64 = e.target.result.split(',')[1];
+
+        // บันทึก audio data ลง IndexedDB (ไม่มีลิมิต 5 MB)
+        const db = await openDB();
+        await idbPut(db, `${page}_${key}`, { b64, mime: file.type, name: file.name });
+
+        // บันทึก metadata (ชื่อไฟล์ + mime) ลง localStorage (ข้อมูลเล็กมาก ไม่มีปัญหา)
+        const store = loadSettings();
+        const field = pageField('customs', page);
+        store[field][key] = { mime: file.type, name: file.name }; // ไม่เก็บ b64 ใน localStorage อีกต่อไป
+        _cache.delete(key);
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+
         resolve({ name: file.name });
       } catch (err) {
-        // QuotaExceededError — หน่วยความจำเต็ม
-        reject(new Error('หน่วยความจำเต็ม — กรุณาลบเสียงปุ่มอื่นก่อน หรือใช้ไฟล์ขนาดเล็กลง'));
+        reject(new Error('บันทึกไม่สำเร็จ: ' + (err?.message || 'ข้อผิดพลาด กรุณาลองใหม่')));
       }
     };
     reader.onerror = () => reject(new Error('อ่านไฟล์ไม่ได้'));
@@ -290,6 +417,8 @@ export function removeCustom(key, page = 1) {
   delete store[field][key];
   _cache.delete(key);
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+  // ลบออกจาก IndexedDB (fire-and-forget)
+  openDB().then(db => idbDelete(db, `${page}_${key}`)).catch(() => {});
 }
 
 export function removeAllCustom(page) {
@@ -298,6 +427,10 @@ export function removeAllCustom(page) {
   pages.forEach(p => { store[pageField('customs', p)] = {}; });
   _cache.clear();
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+  // ลบออกจาก IndexedDB (fire-and-forget)
+  openDB().then(async db => {
+    for (const p of pages) await idbDeletePage(db, p).catch(() => {});
+  }).catch(() => {});
 }
 
 // ===== Key names (per user email + page) =====
@@ -344,6 +477,18 @@ export function copyKey(key, fromPage, toPage, email) {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
   }
 
+  // copy audio ใน IndexedDB (fire-and-forget)
+  openDB().then(async db => {
+    let clip = await idbGet(db, `${fromPage}_${key}`);
+    if (!clip) {
+      // รองรับ format เก่า: b64 ยังอยู่ใน localStorage (ยังไม่ได้ play = ยังไม่ migrate)
+      const s    = loadSettings();
+      const old  = s[pageField('customs', fromPage)]?.[key];
+      if (old?.b64) clip = { b64: old.b64, mime: old.mime, name: old.name };
+    }
+    if (clip) await idbPut(db, `${toPage}_${key}`, clip);
+  }).catch(() => {});
+
   // copy name
   const srcName = loadNames(email, fromPage)[key];
   if (srcName) saveName(email, key, srcName, toPage);
@@ -353,23 +498,48 @@ export function copyKey(key, fromPage, toPage, email) {
 
 // ===== Export / Import =====
 
-export function exportSettings(email) {
+// export เป็น async แล้ว — ต้องใช้ await ใน soundboard.js
+export async function exportSettings(email) {
+  // รวบรวม audio data จาก IndexedDB
+  const audio = {};
+  try {
+    const db      = await openDB();
+    const entries = await idbGetAll(db);
+    Object.assign(audio, entries);
+  } catch {}
+
+  // รองรับ format เก่า: b64 ที่อาจยังอยู่ใน localStorage customs (auto-include)
+  const settings = loadSettings();
+  [1, 2, 3, 4].forEach(p => {
+    const field   = pageField('customs', p);
+    const customs = settings[field] || {};
+    Object.entries(customs).forEach(([k, v]) => {
+      const idbKey = `${p}_${k}`;
+      if (v.b64 && !audio[idbKey]) {
+        audio[idbKey] = { b64: v.b64, mime: v.mime, name: v.name };
+      }
+    });
+  });
+
   return {
-    version:    2,
+    version:    3,
     exportedAt: new Date().toISOString(),
-    settings:   loadSettings(),
+    settings,
     names: {
       1: loadNames(email, 1),
       2: loadNames(email, 2),
       3: loadNames(email, 3),
       4: loadNames(email, 4),
     },
+    audio, // audio data แยกออกมา ไม่ใช่ embed ใน settings.customs
   };
 }
 
-export function importSettings(data, email) {
+// import เป็น async แล้ว — ต้องใช้ await ใน soundboard.js
+export async function importSettings(data, email) {
   if (!data?.version || !data?.settings) throw new Error('ไฟล์ไม่ถูกต้อง');
   const s = data.settings;
+
   const restored = {
     ...getDefaults(),
     enabled:    s.enabled    ?? false,
@@ -378,13 +548,53 @@ export function importSettings(data, email) {
     layout:     s.layout     || 'h',
     showKbHint: s.showKbHint ?? true,
   };
-  PAGE_FIELDS.forEach(f => { restored[f] = s[f] || {}; });
+
+  PAGE_FIELDS.forEach(f => {
+    restored[f] = s[f] || {};
+    // ลบ b64 ออกจาก localStorage (จะเก็บใน IndexedDB แทน)
+    if (f.startsWith('customs')) {
+      Object.keys(restored[f]).forEach(k => {
+        const entry = restored[f][k];
+        if (entry && typeof entry === 'object' && entry.b64) {
+          restored[f][k] = { mime: entry.mime, name: entry.name };
+        }
+      });
+    }
+  });
+
   try { localStorage.setItem(STORE_KEY, JSON.stringify(restored)); } catch {}
   try {
     [1, 2, 3, 4].forEach(p => {
       localStorage.setItem(namesKey(email, p), JSON.stringify(data.names?.[p] || {}));
     });
   } catch {}
+
+  // Restore audio ลง IndexedDB
+  try {
+    const db        = await openDB();
+    const audioData = { ...(data.audio || {}) };
+
+    // รองรับ format เก่า (version 2): b64 ที่อยู่ใน settings.customs
+    if ((data.version ?? 2) < 3) {
+      [1, 2, 3, 4].forEach(p => {
+        const field   = pageField('customs', p);
+        const customs = s[field] || {};
+        Object.entries(customs).forEach(([k, v]) => {
+          const idbKey = `${p}_${k}`;
+          if (v?.b64 && !audioData[idbKey]) {
+            audioData[idbKey] = { b64: v.b64, mime: v.mime, name: v.name };
+          }
+        });
+      });
+    }
+
+    for (const [idbKey, clip] of Object.entries(audioData)) {
+      if (clip?.b64) {
+        try { await idbPut(db, idbKey, clip); } catch {}
+      }
+    }
+  } catch {}
+
   clearCustomCache();
   return restored;
 }

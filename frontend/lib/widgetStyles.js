@@ -232,8 +232,8 @@ export function rawToStyle(raw = {}, widgetId) {
   const ry  = clamp(parseInt(raw.ry   ?? (d.ry ?? 0)), -60, 60);
   const rz  = clamp(parseInt(raw.rz   ?? (d.rz ?? 0)), -30, 30);
   const jx  = clamp(parseInt(raw.jx   ?? (d.jx ?? 0)), -200, 200);
-  const mi  = clamp(parseInt(raw.mi   ?? (d.mi ?? 150)), 10, 300);
-  const gs  = clamp(parseInt(raw.gs   ?? (d.gs ?? 100)), 50, 200);
+  const mi  = clamp(parseInt(raw.mi   ?? (d.mi ?? 150)), 10, 600);
+  const gs  = clamp(parseInt(raw.gs   ?? (d.gs ?? 100)), 50, 300);
   const rawSkin = raw.skin ?? '';
   const skin = d.skin !== undefined
     ? (VALID_SKIN_IDS.includes(rawSkin) ? rawSkin : (d.skin || ''))

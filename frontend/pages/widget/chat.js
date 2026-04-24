@@ -183,9 +183,8 @@ export default function ChatWidget() {
                 borderLeft: `3px solid ${userColor}`,
                 cursor:     'pointer',
                 flexShrink: 0,
-                alignSelf:  styles.fullBubble ? 'stretch' : 'flex-start',
-                width:      styles.fullBubble ? '100%' : undefined,
-                maxWidth:   styles.fullBubble ? undefined : `${styles.bw ?? 100}%`,
+                alignSelf:  'flex-start',
+                width:      `${styles.bw ?? 100}%`,
                 boxSizing:  'border-box',
                 fontFamily: styles.lang === 'en' ? 'Arial, sans-serif' : '"Noto Sans Thai", "Sarabun", sans-serif',
                 lineHeight: styles.lang === 'en' ? 1.4 : 1.6,
@@ -201,7 +200,7 @@ export default function ChatWidget() {
                       className={activeSkin ? `skin-${activeSkin.id}-name` : undefined}
                       style={{
                         color: userColor, fontWeight: 700,
-                        fontSize: styles.fs, fontFamily: 'sans-serif',
+                        fontSize: styles.fs,
                         lineHeight: 1.3,
                         ...skinName,
                       }}
@@ -210,7 +209,7 @@ export default function ChatWidget() {
                     </div>
                     <div style={{
                       color: styles.tc,
-                      fontSize: styles.fs, fontFamily: 'sans-serif',
+                      fontSize: styles.fs,
                       lineHeight: 1.4, marginTop: 2,
                       ...skinText,
                     }}>
@@ -223,7 +222,7 @@ export default function ChatWidget() {
                       className={activeSkin ? `skin-${activeSkin.id}-name` : undefined}
                       style={{
                         color: userColor, fontWeight: 700,
-                        fontSize: styles.fs, fontFamily: 'sans-serif',
+                        fontSize: styles.fs,
                         ...skinName,
                       }}
                     >
@@ -231,7 +230,7 @@ export default function ChatWidget() {
                     </span>
                     <span style={{
                       color: styles.tc,
-                      fontSize: styles.fs, fontFamily: 'sans-serif', marginLeft: 6,
+                      fontSize: styles.fs, marginLeft: 6,
                       ...skinText,
                     }}>
                       {msg.comment}

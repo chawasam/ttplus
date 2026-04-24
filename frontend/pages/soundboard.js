@@ -51,7 +51,7 @@ function SoundKey({
   const startedAt = useRef(null);
 
   const isDown    = pressing.has(keyChar);
-  const hasCustom = !!store?.customs?.[keyChar]?.b64;
+  const hasCustom = !!store?.customs?.[keyChar]?.name; // เช็คแค่ name (b64 ย้ายไป IDB แล้ว)
   const custFile  = store?.customs?.[keyChar]?.name || '';
   const scale     = store?.keySize ?? 1.0;
   const sizePx    = Math.round(KEY_BASE_PX * scale);
@@ -361,9 +361,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   // Right-click context menu (desktop only)
   const [ctxMenu,        setCtxMenu]        = useState(null); // { key, x, y } | null
 
-  const fileInputRef         = useRef(null);
-  const importInputRef       = useRef(null);
-  const combinedFileInputRef = useRef(null);
+  const fileInputRef   = useRef(null);
+  const importInputRef = useRef(null);
   const recentTimers   = useRef({});
   const renameInputRef = useRef(null);
   const swipeTouchX    = useRef(null);
@@ -373,6 +372,13 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   useEffect(() => { setStore(loadSettings()); }, []);
   useEffect(() => { setNames(loadNames(email, page)); }, [email, page]);
+
+  // sync React state หลัง playKey migrate เสียงเก่า (localStorage → IndexedDB)
+  useEffect(() => {
+    const handler = () => setStore(loadSettings());
+    window.addEventListener('ttplus-sb-migrated', handler);
+    return () => window.removeEventListener('ttplus-sb-migrated', handler);
+  }, []);
 
   // Device detection
   useEffect(() => {
@@ -649,22 +655,36 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   const handleCombinedSubmit = useCallback(async () => {
     if (!combinedKey) return;
-    if (combinedName.trim()) {
-      const updated = saveName(email, combinedKey, combinedName.trim(), page);
-      setNames({ ...updated });
+    // capture ค่าตอน submit — ป้องกัน page เปลี่ยนระหว่างรอ async
+    const targetPage = page;
+    const targetKey  = combinedKey;
+
+    // ถ้าไม่มีทั้งไฟล์และชื่อ — แจ้งเตือน ไม่ปิด modal
+    if (!combinedFile && !combinedName.trim()) {
+      toast('กรุณาใส่ชื่อหรือเลือกไฟล์เสียงก่อน', { icon: '📂', duration: 2000 });
+      return;
     }
-    if (combinedFile) {
-      try {
-        const res = await uploadCustom(combinedKey, combinedFile, page);
+
+    try {
+      if (combinedName.trim()) {
+        const updated = saveName(email, targetKey, combinedName.trim(), targetPage);
+        setNames({ ...updated });
+      }
+      if (combinedFile) {
+        const res = await uploadCustom(targetKey, combinedFile, targetPage);
         setStore(loadSettings());
-        toast.success(`[${combinedKey}] อัปโหลด "${res.name}" — Page ${page}`);
-      } catch (err) { toast.error(err.message); }
-    } else if (combinedName.trim()) {
-      toast.success(`[${combinedKey}] ชื่อ "${combinedName.trim()}"`);
+        toast.success(`[${targetKey}] อัปโหลด "${res.name}" — Page ${targetPage}`);
+      } else {
+        toast.success(`[${targetKey}] ชื่อ "${combinedName.trim()}"`);
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      // ปิด modal เสมอ ไม่ว่าจะสำเร็จหรือ error
+      setCombinedKey(null);
+      setCombinedFile(null);
+      setCombinedName('');
     }
-    setCombinedKey(null);
-    setCombinedFile(null);
-    setCombinedName('');
   }, [combinedKey, combinedName, combinedFile, email, page]);
 
   const handleFileChange = useCallback(async (e) => {
@@ -703,9 +723,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     toast.success(`รีเซ็ต Page ${page} แล้ว (ลบ ${count} เสียง)`);
   }, [store, page]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
+    const toastId = toast.loading('กำลัง Export...');
     try {
-      const data = exportSettings(email);
+      const data = await exportSettings(email); // async — รวม audio จาก IndexedDB
       const json = JSON.stringify(data, null, 2);
       const filename = `soundboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
       const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
@@ -715,22 +736,23 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      toast.success(`Export เรียบร้อย (${(json.length / 1024).toFixed(1)} KB)`);
-    } catch (err) { toast.error('Export ไม่สำเร็จ: ' + err.message); }
+      toast.success(`Export เรียบร้อย (${(json.length / 1024).toFixed(1)} KB)`, { id: toastId });
+    } catch (err) { toast.error('Export ไม่สำเร็จ: ' + err.message, { id: toastId }); }
   }, [email]);
 
   const handleImportFile = useCallback(async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    const toastId = toast.loading('กำลัง Import...');
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      const restored = importSettings(data, email);
+      const restored = await importSettings(data, email); // async — restore audio ลง IndexedDB
       setStore(restored);
       setNames(loadNames(email, page));
-      toast.success('Import เรียบร้อย — โหลดการตั้งค่าแล้ว');
-    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message); }
+      toast.success('Import เรียบร้อย — โหลดการตั้งค่าแล้ว', { id: toastId });
+    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
   }, [email, page]);
 
   if (!store || !effectiveStore) return null;
@@ -954,6 +976,30 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             <span className={clsx('text-xs ml-1', isDark ? 'text-gray-600' : 'text-gray-400')}>
               Tab / 1–4 = สลับ Page {isMobile ? '| ปัดซ้าย/ขวา' : ''}
             </span>
+          </div>
+
+          {/* ===== Backup Warning Banner ===== */}
+          <div className={clsx(
+            'flex items-start gap-3 px-4 py-3 rounded-xl text-sm border',
+            isDark ? 'bg-blue-900/20 border-blue-700/40 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'
+          )}>
+            <span className="text-lg flex-shrink-0 mt-0.5">💾</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm mb-0.5">สำรองข้อมูลเสียงไว้ด้วยนะครับ</p>
+              <p className={clsx('text-xs leading-relaxed', isDark ? 'text-blue-400' : 'text-blue-600')}>
+                เสียง custom เก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น — ถ้า clear cache หรือเปลี่ยนเครื่อง/เบราว์เซอร์จะหาย
+                กด <b>Export ⬇</b> เพื่อบันทึกไฟล์ .json ไว้ backup และ <b>Import ⬆</b> เพื่อโหลดคืน
+              </p>
+            </div>
+            <button
+              onClick={handleExport}
+              className={clsx(
+                'flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg font-semibold text-xs transition',
+                isDark ? 'bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-600/40' : 'bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-200'
+              )}
+            >
+              ⬇ Export
+            </button>
           </div>
 
           {/* Disabled notice */}
@@ -1357,7 +1403,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             </div>
 
             {/* Remove custom */}
-            {effectiveStore?.customs?.[selectedKey]?.b64 && (
+            {effectiveStore?.customs?.[selectedKey]?.name && (
               <button
                 onClick={() => { handleRemove(selectedKey); setSelectedKey(null); }}
                 className={clsx(
@@ -1423,7 +1469,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                   {item.icon} {item.label}
                 </button>
               ))}
-              {effectiveStore?.customs?.[ctxMenu.key]?.b64 && (
+              {effectiveStore?.customs?.[ctxMenu.key]?.name && (
                 <button
                   onClick={() => { handleRemove(ctxMenu.key); setCtxMenu(null); }}
                   className={clsx(
@@ -1573,19 +1619,21 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
       {/* ===== Combined Upload + Rename Modal (Mobile) ===== */}
       {combinedKey && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center px-4" onClick={() => { setCombinedKey(null); setCombinedFile(null); }}>
+        <div className="fixed inset-0 z-50">
+          {/* backdrop — ไม่ปิด modal เมื่อ tap เพราะ iOS อาจ fire spurious click หลัง file picker ปิด */}
+          <div className={clsx('absolute inset-0', isDark ? 'bg-black/60' : 'bg-black/40')} />
+          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-6 px-4">
           <div
             className={clsx(
-              'w-full max-w-sm mb-6 rounded-2xl shadow-2xl border p-4 space-y-3',
+              'relative w-full max-w-sm rounded-2xl shadow-2xl border p-4 space-y-3',
               isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
             )}
-            onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
               <span className={clsx('font-semibold', isDark ? 'text-gray-100' : 'text-gray-800')}>
                 📂✏️ ปุ่ม [{combinedKey}] — Page {page}
               </span>
-              <button onClick={() => { setCombinedKey(null); setCombinedFile(null); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+              <button onClick={() => { setCombinedKey(null); setCombinedFile(null); setCombinedName(''); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
             </div>
             <div className="space-y-1">
               <span className={clsx('text-xs font-semibold', isDark ? 'text-gray-400' : 'text-gray-500')}>ชื่อปุ่ม</span>
@@ -1593,7 +1641,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 type="text"
                 value={combinedName}
                 onChange={e => setCombinedName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleCombinedSubmit(); if (e.key === 'Escape') { setCombinedKey(null); setCombinedFile(null); } }}
+                onKeyDown={e => { if (e.key === 'Enter') handleCombinedSubmit(); if (e.key === 'Escape') { setCombinedKey(null); setCombinedFile(null); setCombinedName(''); } }}
                 placeholder="ชื่อที่แสดงบนปุ่ม (เว้นว่างเพื่อลบชื่อ)"
                 maxLength={40}
                 className={clsx(
@@ -1634,12 +1682,13 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 บันทึก
               </button>
               <button
-                onClick={() => { setCombinedKey(null); setCombinedFile(null); }}
+                onClick={() => { setCombinedKey(null); setCombinedFile(null); setCombinedName(''); }}
                 className={clsx('px-5 py-2.5 rounded-xl font-semibold text-sm transition', isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
               >
                 ยกเลิก
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}

@@ -272,6 +272,30 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             </div>
           </div>
 
+          {/* Language toggle */}
+          <div className="space-y-2">
+            <span className={label}>ภาษาข้อความ (Font)</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 'th', icon: '🇹🇭', text: 'ไทย (Noto Sans Thai)' },
+                { val: 'en', icon: '🇺🇸', text: 'ENG (Arial)' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('lang', opt.val)}
+                  className={clsx(
+                    'py-2 px-2 rounded-lg text-xs font-semibold transition border text-left',
+                    (style.lang ?? 'th') === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
         </>
       )}
 
