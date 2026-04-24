@@ -44,17 +44,17 @@ export default function TtsMonitorWidget() {
       setToasts(prev => prev.map(t => t.id === id ? { ...t, entering: false } : t));
     }, 50);
 
-    // เริ่ม fade out หลัง 4.2 วิ
+    // เริ่ม fade out หลัง 6.5 วิ (เพิ่มจาก 4.2 — อ่านข้อความทัน)
     setTimeout(() => {
       if (!mountedRef.current) return;
       setToasts(prev => prev.map(t => t.id === id ? { ...t, leaving: true } : t));
-    }, 4200);
+    }, 6500);
 
     // ลบออกหลัง animation เสร็จ
     setTimeout(() => {
       if (!mountedRef.current) return;
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4800);
+    }, 7200);
   };
 
   // เชื่อม socket
@@ -131,6 +131,17 @@ export default function TtsMonitorWidget() {
           font-family: system-ui, sans-serif;
           margin-top: 1px;
         }
+        .toast-text {
+          font-size: 13px;
+          color: rgba(255,255,255,0.90);
+          font-family: system-ui, sans-serif;
+          margin-top: 5px;
+          line-height: 1.4;
+          max-width: 260px;
+          word-break: break-word;
+          border-top: 1px solid rgba(255,255,255,0.12);
+          padding-top: 5px;
+        }
 
         .container {
           position: fixed;
@@ -167,6 +178,9 @@ export default function TtsMonitorWidget() {
               </span>
               {t.personaLabel && (
                 <span className="toast-persona">{t.personaLabel}</span>
+              )}
+              {t.text && (
+                <span className="toast-text">💬 {t.text}</span>
               )}
             </div>
           </div>

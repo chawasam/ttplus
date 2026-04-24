@@ -51,6 +51,14 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   const [connected, setConnected]           = useState(false);
   const [connecting, setConnecting]         = useState(false);
 
+  // ── broadcast connection status → StatusBar ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('ttplus-conn', {
+      detail: { connected, username: tiktokUsername },
+    }));
+  }, [connected, tiktokUsername]);
+
   const [viewers, setViewers]           = useState(0);
   const [totalLikes, setTotalLikes]     = useState(0);
   const [totalComments, setTotalComments] = useState(0);

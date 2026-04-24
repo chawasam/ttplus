@@ -199,10 +199,15 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   const [playingKeys,    setPlayingKeys]    = useState(new Set());
   const [recentlyPlayed, setRecentlyPlayed] = useState(new Set());
   const [uploadKey,      setUploadKey]      = useState(null);
+  // Rename overlay (แทน window.prompt — ใช้ได้บนมือถือ)
+  const [selectedKey,    setSelectedKey]    = useState(null); // key ที่เลือกใน edit mode
+  const [renaming,       setRenaming]       = useState(null); // key กำลังตั้งชื่อ
+  const [renameVal,      setRenameVal]      = useState('');
 
   const fileInputRef   = useRef(null);
   const importInputRef = useRef(null);
   const recentTimers   = useRef({});   // key → timeout id
+  const renameInputRef = useRef(null);
 
   const email = user?.email || null;
 
@@ -294,7 +299,8 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   const handleKeyPress = useCallback((key) => {
     if (!effectiveStore) return;
-    if (editMode) { setUploadKey(key); fileInputRef.current?.click(); return; }
+    // Edit mode → เปิด action sheet เลือก Upload/Rename แทนการเปิด file picker ตรงๆ (แก้ bug มือถือ)
+    if (editMode) { setSelectedKey(k => k === key ? null : key); return; }
     getAudioContext();
     playKey(key, effectiveStore, page === 1);
     flashKey(key);
@@ -331,13 +337,19 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   }, [store, patch, page]);
 
   const handleRename = useCallback((key) => {
-    const current = names[key] || '';
-    const input   = window.prompt(`ตั้งชื่อปุ่ม [${key}] — Page ${page}\n(ลบข้อความออกเพื่อลบชื่อ):`, current);
-    if (input === null) return;
-    const updated = saveName(email, key, input, page);
+    setRenaming(key);
+    setRenameVal(names[key] || '');
+    setSelectedKey(null);
+    setTimeout(() => renameInputRef.current?.focus(), 60);
+  }, [names]);
+
+  const handleRenameConfirm = useCallback(() => {
+    if (!renaming) return;
+    const updated = saveName(email, renaming, renameVal, page);
     setNames({ ...updated });
-    toast.success(input.trim() ? `[${key}] ชื่อ "${input.trim()}"` : `[${key}] ลบชื่อแล้ว`);
-  }, [names, email, page]);
+    toast.success(renameVal.trim() ? `[${renaming}] ชื่อ "${renameVal.trim()}"` : `[${renaming}] ลบชื่อแล้ว`);
+    setRenaming(null);
+  }, [renaming, renameVal, email, page]);
 
   const handleFileChange = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -376,16 +388,16 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     try {
       const data = exportSettings(email);
       const json = JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = `soundboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = `soundboard-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      // ใช้ data URI (ทำงานได้ทั้ง mobile Safari + Android + Desktop)
+      const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+      const a   = document.createElement('a');
+      a.href     = uri;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Export เรียบร้อย');
+      toast.success(`Export เรียบร้อย (${(json.length / 1024).toFixed(1)} KB)`);
     } catch (err) { toast.error('Export ไม่สำเร็จ: ' + err.message); }
   }, [email]);
 
@@ -666,6 +678,140 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
       <input ref={fileInputRef}   type="file" accept="audio/*"       className="hidden" onChange={handleFileChange} />
       <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
+
+      {/* ===== Action Sheet (Edit Mode — เลือก key แล้วเลือก action) ===== */}
+      {editMode && selectedKey && (
+        <div className="fixed inset-0 z-40 flex items-end" onClick={() => setSelectedKey(null)}>
+          <div
+            className={clsx(
+              'w-full max-w-sm mx-auto mb-4 rounded-2xl shadow-2xl border p-4 space-y-3',
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            )}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className={clsx('font-bold text-base', isDark ? 'text-white' : 'text-gray-900')}>
+                ปุ่ม [{selectedKey}]
+                {names[selectedKey] && <span className={clsx('ml-2 font-normal text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>"{names[selectedKey]}"</span>}
+                {effectiveStore?.customs?.[selectedKey]?.name && (
+                  <span className={clsx('ml-2 text-xs', isDark ? 'text-green-400' : 'text-green-600')}>🎵 {effectiveStore.customs[selectedKey].name}</span>
+                )}
+              </span>
+              <button onClick={() => setSelectedKey(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {/* Upload */}
+              <button
+                onClick={() => { setUploadKey(selectedKey); setSelectedKey(null); fileInputRef.current?.click(); }}
+                className={clsx(
+                  'flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-sm transition',
+                  isDark ? 'bg-brand-600/20 border border-brand-500/40 text-brand-300 hover:bg-brand-600/30' : 'bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100'
+                )}
+              >
+                <span className="text-2xl">📂</span>
+                <span>อัปโหลดเสียง</span>
+                <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>mp3 / ogg / wav ≤ 2MB</span>
+              </button>
+              {/* Rename */}
+              <button
+                onClick={() => handleRename(selectedKey)}
+                className={clsx(
+                  'flex flex-col items-center gap-1.5 py-3 rounded-xl font-semibold text-sm transition',
+                  isDark ? 'bg-yellow-600/15 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-600/25' : 'bg-yellow-50 border border-yellow-200 text-yellow-700 hover:bg-yellow-100'
+                )}
+              >
+                <span className="text-2xl">✏️</span>
+                <span>ตั้งชื่อปุ่ม</span>
+                <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>ชื่อที่แสดงบนปุ่ม</span>
+              </button>
+              {/* Preview */}
+              <button
+                onClick={() => { handleKeyPreview(selectedKey); setSelectedKey(null); }}
+                className={clsx(
+                  'flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition',
+                  isDark ? 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 border border-gray-200 text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                🔊 ฟัง Preview
+              </button>
+              {/* Mode Toggle */}
+              <button
+                onClick={() => { handleModeToggle(selectedKey); setSelectedKey(null); }}
+                className={clsx(
+                  'flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition',
+                  (effectiveStore?.modes?.[selectedKey] || 'poly') === 'stop'
+                    ? isDark ? 'bg-orange-900/30 border border-orange-700/50 text-orange-300' : 'bg-orange-50 border border-orange-200 text-orange-700'
+                    : isDark ? 'bg-gray-800 border border-gray-700 text-gray-400' : 'bg-gray-100 border border-gray-200 text-gray-500'
+                )}
+              >
+                {(effectiveStore?.modes?.[selectedKey] || 'poly') === 'stop' ? '⏹ หยุดแล้วเล่น' : '∞ เล่นซ้อน'}
+              </button>
+            </div>
+            {/* Remove custom */}
+            {effectiveStore?.customs?.[selectedKey]?.b64 && (
+              <button
+                onClick={() => { handleRemove(selectedKey); setSelectedKey(null); }}
+                className={clsx(
+                  'w-full py-2.5 rounded-xl text-sm font-semibold transition',
+                  isDark ? 'bg-red-900/20 border border-red-800/40 text-red-400 hover:bg-red-900/30' : 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100'
+                )}
+              >
+                🗑️ ลบเสียง Custom
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== Rename Overlay (แทน window.prompt) ===== */}
+      {renaming && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-4" onClick={() => setRenaming(null)}>
+          <div
+            className={clsx(
+              'w-full max-w-sm mb-6 rounded-2xl shadow-2xl border p-4 space-y-3',
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            )}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className={clsx('font-semibold', isDark ? 'text-gray-100' : 'text-gray-800')}>
+                ✏️ ตั้งชื่อปุ่ม [{renaming}] — Page {page}
+              </span>
+              <button onClick={() => setRenaming(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameVal}
+              onChange={e => setRenameVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleRenameConfirm(); if (e.key === 'Escape') setRenaming(null); }}
+              placeholder="ชื่อปุ่ม (เว้นว่างเพื่อลบชื่อ)"
+              maxLength={40}
+              className={clsx(
+                'w-full px-4 py-3 rounded-xl text-sm border outline-none focus:ring-2 focus:ring-brand-400 transition',
+                isDark ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'
+              )}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleRenameConfirm}
+                className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition"
+              >
+                บันทึก
+              </button>
+              <button
+                onClick={() => setRenaming(null)}
+                className={clsx(
+                  'px-5 py-2.5 rounded-xl font-semibold text-sm transition',
+                  isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                )}
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

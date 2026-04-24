@@ -1,6 +1,5 @@
 // soundboardStore.js — จัดการ settings + custom audio สำหรับ Soundboard
 // ข้อมูลเก็บใน localStorage (ฝั่ง client ล้วนๆ — ไม่ส่ง server)
-// AudioContext singleton สำหรับ Web Audio API
 
 import { SYNTHS } from './soundSynth';
 
@@ -9,19 +8,18 @@ const MAX_FILE_MB = 2;
 
 // ===== Defaults =====
 
-// ครบ 26 ตัว — ทุก key มีไฟล์ MP3 ใน /public/sfx/ (page 1 เท่านั้น)
 export const SFX_KEYS = new Set(['Q','W','E','R','T','Y','U','I','O','P','A','S','D','F','G','H','J','K','L','Z','X','C','V','B','N','M']);
 
 function getDefaults() {
   return {
-    enabled:  false, // ปิดค่าเริ่มต้น
+    enabled:  false,
     volume:   0.75,
     keySize:  1.0,
-    layout:   'h',   // 'h' | 'v'
-    customs:  {},    // page 1: key → { b64, mime, name }
-    modes:    {},    // page 1: key → 'poly' | 'stop'
-    customs2: {},    // page 2: key → { b64, mime, name }
-    modes2:   {},    // page 2: key → 'poly' | 'stop'
+    layout:   'h',    // 'h' | 'v'
+    customs:  {},     // page 1: key → { b64, mime, name }
+    modes:    {},     // page 1: key → 'poly' | 'stop'
+    customs2: {},     // page 2
+    modes2:   {},     // page 2
   };
 }
 
@@ -32,79 +30,106 @@ export function loadSettings() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return getDefaults();
-    const parsed = JSON.parse(raw);
+    const p = JSON.parse(raw);
     return {
-      ...getDefaults(),
-      ...parsed,
-      customs:  parsed.customs  || {},
-      modes:    parsed.modes    || {},
-      customs2: parsed.customs2 || {},
-      modes2:   parsed.modes2   || {},
+      ...getDefaults(), ...p,
+      customs: p.customs || {}, modes: p.modes || {},
+      customs2: p.customs2 || {}, modes2: p.modes2 || {},
     };
-  } catch {
-    return getDefaults();
-  }
+  } catch { return getDefaults(); }
 }
 
 export function saveSettings(patch) {
   const cur  = loadSettings();
   const next = { ...cur, ...patch };
-  // ไม่เขียน object fields ทับถ้าไม่ได้ส่งมา
-  const guards = ['customs', 'modes', 'customs2', 'modes2'];
-  guards.forEach(f => {
+  ['customs','modes','customs2','modes2'].forEach(f => {
     if (!Object.prototype.hasOwnProperty.call(patch, f)) next[f] = cur[f];
   });
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch { /* quota */ }
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(next));
+    // broadcast soundboard enabled → StatusBar
+    if (typeof window !== 'undefined' && patch.enabled !== undefined) {
+      window.dispatchEvent(new CustomEvent('ttplus-sb', { detail: { enabled: next.enabled } }));
+    }
+  } catch {}
   return next;
 }
 
-// ===== AudioContext singleton =====
+// ===== AudioContext =====
 
 let _ctx = null;
 
 export function getAudioContext() {
   if (typeof window === 'undefined') return null;
-  if (!_ctx) {
-    _ctx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (_ctx.state === 'suspended') {
-    _ctx.resume().catch(() => {});
-  }
+  if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_ctx.state === 'suspended') _ctx.resume().catch(() => {});
   return _ctx;
 }
 
-// ===== Decoded buffer cache =====
+// ===== Cache =====
 
-const _cache    = new Map(); // key → AudioBuffer (custom upload — cleared on page switch)
-const _sfxCache = new Map(); // key → AudioBuffer | null (default /public/sfx/)
+const _cache    = new Map(); // custom upload decode cache
+const _sfxCache = new Map(); // default sfx decode cache
 
-export function clearCustomCache() {
-  _cache.clear();
-}
+export function clearCustomCache() { _cache.clear(); }
 
 // ===== Active source tracking =====
+// เก็บทั้ง src + gain เพื่อรองรับ fade out
 
-const _activeSources = new Map(); // key → AudioBufferSourceNode[]
+const _activeSources = new Map(); // key → Array<{ src, gain }>
 
-function trackSource(key, src) {
+function trackSource(key, src, gain) {
   if (!_activeSources.has(key)) _activeSources.set(key, []);
-  _activeSources.get(key).push(src);
+  const entry = { src, gain };
+  _activeSources.get(key).push(entry);
   src.onended = () => {
     const list = _activeSources.get(key);
-    if (list) _activeSources.set(key, list.filter(s => s !== src));
+    if (list) _activeSources.set(key, list.filter(e => e !== entry));
   };
 }
 
+// หยุดทันที — ใช้ใน mode 'stop' (restart)
 export function stopKeyAudio(key) {
   const list = _activeSources.get(key) || [];
-  list.forEach(src => { try { src.stop(); } catch {} });
+  list.forEach(({ src }) => { try { src.stop(); } catch {} });
   _activeSources.set(key, []);
 }
 
-export function stopAllAudio() {
-  for (const key of _activeSources.keys()) {
-    stopKeyAudio(key);
+// หยุดทุกเสียง + fade out — ใช้กับ Stop All button / Escape
+export function stopAllAudio(fadeMs = 300) {
+  const ctx = _ctx;
+  if (!ctx) {
+    for (const key of _activeSources.keys()) stopKeyAudio(key);
+    return;
   }
+  const now   = ctx.currentTime;
+  const fadeS = Math.max(0, fadeMs) / 1000;
+
+  for (const [key, list] of _activeSources) {
+    list.forEach(({ src, gain }) => {
+      try {
+        if (fadeS > 0 && gain) {
+          const cur = gain.gain.value;
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setValueAtTime(cur, now);
+          gain.gain.linearRampToValueAtTime(0, now + fadeS);
+          src.stop(now + fadeS);
+        } else {
+          src.stop();
+        }
+      } catch {}
+    });
+    _activeSources.set(key, []);
+  }
+}
+
+// ส่งคืน Set ของ key ที่กำลังเล่นอยู่ตอนนี้
+export function getPlayingKeys() {
+  const playing = new Set();
+  for (const [key, list] of _activeSources) {
+    if (list.length > 0) playing.add(key);
+  }
+  return playing;
 }
 
 // ===== SFX loader =====
@@ -117,10 +142,7 @@ async function loadSfxBuffer(ctx, key) {
     const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
     _sfxCache.set(key, buf);
     return buf;
-  } catch {
-    _sfxCache.set(key, null);
-    return null;
-  }
+  } catch { _sfxCache.set(key, null); return null; }
 }
 
 async function decodeB64(ctx, b64) {
@@ -131,15 +153,11 @@ async function decodeB64(ctx, b64) {
 }
 
 // ===== Play =====
-// store ที่ส่งมาควรเป็น effectiveStore (custom/modes ถูกเลือกตาม page แล้ว)
-// page 1 ใช้ SFX fallback, page 2 ไม่มี default SFX (fallback เป็น synth)
 
 export async function playKey(key, store, useSfx = true) {
   if (!store?.enabled) return;
-
   const ctx = getAudioContext();
   if (!ctx) return;
-
   if (ctx.state !== 'running') {
     try { await ctx.resume(); } catch { return; }
   }
@@ -158,24 +176,20 @@ export async function playKey(key, store, useSfx = true) {
     g.connect(ctx.destination);
     src.connect(g);
     src.start(t);
-    trackSource(key, src);
+    trackSource(key, src, g); // track ทั้ง src และ gain
   }
 
-  // 1. Custom upload (current page)
+  // 1. Custom upload
   const custom = store.customs?.[key];
   if (custom?.b64) {
     try {
       let buf = _cache.get(key);
-      if (!buf) {
-        buf = await decodeB64(ctx, custom.b64);
-        _cache.set(key, buf);
-      }
-      playBuffer(buf);
-      return;
+      if (!buf) { buf = await decodeB64(ctx, custom.b64); _cache.set(key, buf); }
+      playBuffer(buf); return;
     } catch {}
   }
 
-  // 2. Default SFX files (page 1 only)
+  // 2. Default SFX (page 1)
   if (useSfx && SFX_KEYS.has(key)) {
     const sfxBuf = await loadSfxBuffer(ctx, key);
     if (sfxBuf) { playBuffer(sfxBuf); return; }
@@ -185,19 +199,13 @@ export async function playKey(key, store, useSfx = true) {
   SYNTHS[key]?.(ctx, t, v);
 }
 
-// ===== Custom upload =====
+// ===== Custom upload/remove =====
 
 export function uploadCustom(key, file, page = 1) {
   return new Promise((resolve, reject) => {
     if (!file) { reject(new Error('ไม่มีไฟล์')); return; }
-    if (!file.type.startsWith('audio/')) {
-      reject(new Error('ไฟล์ต้องเป็นเสียง (.mp3 .ogg .wav)'));
-      return;
-    }
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      reject(new Error(`ไฟล์ใหญ่เกิน ${MAX_FILE_MB} MB`));
-      return;
-    }
+    if (!file.type.startsWith('audio/')) { reject(new Error('ไฟล์ต้องเป็นเสียง (.mp3 .ogg .wav)')); return; }
+    if (file.size > MAX_FILE_MB * 1024 * 1024) { reject(new Error(`ไฟล์ใหญ่เกิน ${MAX_FILE_MB} MB`)); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
       const b64   = e.target.result.split(',')[1];
@@ -251,4 +259,42 @@ export function saveName(email, key, name, page = 1) {
   else delete names[key];
   try { localStorage.setItem(namesKey(email, page), JSON.stringify(names)); } catch {}
   return names;
+}
+
+// ===== Export / Import =====
+
+export function exportSettings(email) {
+  return {
+    version:    1,
+    exportedAt: new Date().toISOString(),
+    settings:   loadSettings(),
+    names: {
+      1: loadNames(email, 1),
+      2: loadNames(email, 2),
+    },
+  };
+}
+
+export function importSettings(data, email) {
+  if (!data?.version || !data?.settings) throw new Error('ไฟล์ไม่ถูกต้อง');
+  const s = data.settings;
+  const restored = {
+    ...getDefaults(),
+    enabled:  s.enabled  ?? false,
+    volume:   typeof s.volume  === 'number' ? s.volume  : 0.75,
+    keySize:  typeof s.keySize === 'number' ? s.keySize : 1.0,
+    layout:   s.layout   || 'h',
+    customs:  s.customs  || {},
+    modes:    s.modes    || {},
+    customs2: s.customs2 || {},
+    modes2:   s.modes2   || {},
+  };
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(restored)); } catch {}
+  // restore names
+  try {
+    localStorage.setItem(namesKey(email, 1), JSON.stringify(data.names?.[1] || {}));
+    localStorage.setItem(namesKey(email, 2), JSON.stringify(data.names?.[2] || {}));
+  } catch {}
+  clearCustomCache();
+  return restored;
 }

@@ -16,7 +16,7 @@ export const WIDGET_DEFAULTS = {
   leaderboard: { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   goal:        { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
-  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, gs: 100 },
+  coinjar:     { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, gs: 100, showSender: 1 },
 };
 
 /** hex (6 chars no #) + alpha (0-100) -> rgba(r,g,b,a) */
@@ -104,6 +104,11 @@ export function parseWidgetStyles(params, widgetId) {
     ? (parseInt(params.get('showChat') ?? d.showChat) === 1 ? 1 : 0)
     : 0;
 
+  // showSender — 0 | 1 (coinjar เท่านั้น) — แสดง/ซ่อนชื่อผู้ส่ง gift ใน popup
+  const showSender = d.showSender !== undefined
+    ? (parseInt(params.get('showSender') ?? d.showSender) === 0 ? 0 : 1)
+    : 1;
+
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -114,9 +119,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat,
+    skin, bw, layout, orient, showChat, showSender,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender },
   };
 }
 
@@ -147,8 +152,9 @@ export function styleToParams(style, widgetId) {
   if (d.skin   !== undefined && style.skin   !== d.skin)   p.set('skin',   style.skin);
   if (d.bw     !== undefined && style.bw     !== d.bw)     p.set('bw',     style.bw);
   if (d.layout !== undefined && style.layout !== d.layout) p.set('layout', style.layout);
-  if (d.orient    !== undefined && style.orient    !== d.orient)    p.set('orient',   style.orient);
-  if (d.showChat  !== undefined && style.showChat  !== d.showChat)  p.set('showChat', style.showChat);
+  if (d.orient      !== undefined && style.orient      !== d.orient)      p.set('orient',     style.orient);
+  if (d.showChat    !== undefined && style.showChat    !== d.showChat)    p.set('showChat',   style.showChat);
+  if (d.showSender  !== undefined && style.showSender  !== d.showSender)  p.set('showSender', style.showSender);
   return p.toString();
 }
 
@@ -195,6 +201,9 @@ export function rawToStyle(raw = {}, widgetId) {
   const showChat = d.showChat !== undefined
     ? (parseInt(raw.showChat ?? d.showChat) === 1 ? 1 : 0)
     : 0;
+  const showSender = d.showSender !== undefined
+    ? (parseInt(raw.showSender ?? d.showSender) === 0 ? 0 : 1)
+    : 1;
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -202,8 +211,8 @@ export function rawToStyle(raw = {}, widgetId) {
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat,
+    skin, bw, layout, orient, showChat, showSender,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender },
   };
 }

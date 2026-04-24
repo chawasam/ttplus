@@ -298,6 +298,7 @@ io.on('connection', (socket) => {
       voice:        String(data?.voice        || '').slice(0, 60),
       voiceDesc:    String(data?.voiceDesc    || '').slice(0, 60),
       personaLabel: String(data?.personaLabel || '').slice(0, 40),
+      text:         String(data?.text         || '').slice(0, 300),
     };
     io.to(`widget_${socket.userId}`).emit('tts_status', safe);
   });

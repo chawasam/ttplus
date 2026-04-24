@@ -345,7 +345,7 @@ export default function BossBattleWidget() {
           </div>
 
           <div style={{ marginTop: '14px', minHeight: '18px' }}>
-            {lastHitter && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>⚔️ Last hit: {lastHitter}</span>}
+            {lastHitter && <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.88)', textShadow: '0 0 8px rgba(255,45,98,0.60)' }}>⚔️ Last hit: {lastHitter}</span>}
           </div>
         </>
       )}

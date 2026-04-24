@@ -248,6 +248,12 @@ function validateSettings(raw) {
         if (isNaN(v) || v < 10 || v > 600) throw new Error(`widgetStyles.${key}.mi must be 10-600`);
         clean.mi = Math.round(v);
       }
+      // showSender — 0 or 1 (coinjar เท่านั้น)
+      if (s.showSender !== undefined && key === 'coinjar') {
+        const v = Number(s.showSender);
+        if (v !== 0 && v !== 1) throw new Error(`widgetStyles.${key}.showSender must be 0 or 1`);
+        clean.showSender = v;
+      }
       cleanStyles[key] = clean;
     }
     allowed.widgetStyles = cleanStyles;

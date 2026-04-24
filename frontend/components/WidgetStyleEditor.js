@@ -376,6 +376,30 @@ export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) 
             )}
           </div>
 
+          {/* Show sender name toggle */}
+          <div className="space-y-2">
+            <span className={label}>แสดงชื่อผู้ส่งของขวัญ</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { val: 1, icon: '👤', text: 'แสดงชื่อ' },
+                { val: 0, icon: '🙈', text: 'ซ่อนชื่อ' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => set('showSender', opt.val)}
+                  className={clsx(
+                    'py-2 px-3 rounded-lg text-xs font-semibold transition border',
+                    (style.showSender ?? 1) === opt.val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  )}>
+                  {opt.icon} {opt.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
         </div>
       )}
 

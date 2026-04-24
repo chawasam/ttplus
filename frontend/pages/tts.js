@@ -172,6 +172,10 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           gemini25Shuffle: s.ttsGemini25Shuffle ?? gemini25Shuffle,
           enabledEngines:  s.ttsEnabledEngines || enabledEngines,
         });
+        // broadcast initial TTS status → StatusBar
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ttplus-tts', { detail: { enabled: loaded.enabled } }));
+        }
       } catch { /* ignore */ }
     })();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -208,6 +212,11 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     const next = { ...tts, [key]: val };
     setTts(next);
     configureTTS(next);
+
+    // broadcast TTS enabled ไปยัง StatusBar
+    if (key === 'enabled' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ttplus-tts', { detail: { enabled: val } }));
+    }
 
     // ยกเลิก timer เดิม — รอหยุดเลื่อนแล้วค่อย save ครั้งเดียว
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);

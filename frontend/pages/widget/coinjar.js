@@ -176,7 +176,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset }) {
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, engineRef, mRef, setJarOffset }) {
   // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
   const isCid   = /^\d{4,8}$/.test(cidOrWt);
   const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
@@ -204,10 +204,11 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
 
     if (popupTimer.current) clearTimeout(popupTimer.current);
     setPopup({
-      user:   safe.nickname || safe.uniqueId || 'ผู้ใช้',
-      gift:   safe.giftName || 'Gift',
-      emoji,  imgUrl,
-      rose:   isRose(safe.giftName || ''),
+      user:       safe.nickname || safe.uniqueId || 'ผู้ใช้',
+      gift:       safe.giftName || 'Gift',
+      emoji,      imgUrl,
+      rose:       isRose(safe.giftName || ''),
+      showSender: showSenderRef.current,
     });
     popupTimer.current = setTimeout(() => setPopup(null), 4500);
   });
@@ -243,6 +244,11 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
     if (style?.gs !== undefined) {
       giftScaleRef.current = Math.max(50, Math.min(200, parseInt(style.gs) || 100));
     }
+
+    // showSender — 0 | 1
+    if (style?.showSender !== undefined) {
+      showSenderRef.current = parseInt(style.showSender) === 0 ? 0 : 1;
+    }
   });
 
   socket.on('widget_error', () => socket.disconnect());
@@ -251,10 +257,11 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
 
 // ===================== Main Widget =====================
 export default function CoinJarWidget() {
-  const [items, setItems]         = useState([]);
-  const [popup, setPopup]         = useState(null);
-  const [styles, setStyles]       = useState(null);
-  const [jarOffset, setJarOffset] = useState(0);
+  const [items, setItems]           = useState([]);
+  const [popup, setPopup]           = useState(null);
+  const [styles, setStyles]         = useState(null);
+  const [jarOffset, setJarOffset]   = useState(0);
+  const showSenderRef               = useRef(1); // default: แสดงชื่อผู้ส่ง
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -358,6 +365,7 @@ export default function CoinJarWidget() {
       const ox = s.jx ?? 0;
       maxItemsRef.current  = s.mi ?? 150;
       giftScaleRef.current = s.gs ?? 100;
+      showSenderRef.current = s.showSender ?? 1;
       J = getJ(ox);
       setJarOffset(ox);
 
@@ -387,7 +395,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, engineRef, mRef, setJarOffset });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, engineRef, mRef, setJarOffset });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -453,9 +461,11 @@ export default function CoinJarWidget() {
             : <span style={{ fontSize: 30, lineHeight: 1, flexShrink: 0 }}>{popup.emoji}</span>
           }
           <div>
-            <p style={{ color: popup.rose ? '#ff8fa3' : styles.ac, fontWeight: 700, fontSize: styles.fs, margin: 0, lineHeight: 1.3 }}>
-              {popup.user}
-            </p>
+            {popup.showSender !== 0 && (
+              <p style={{ color: popup.rose ? '#ff8fa3' : styles.ac, fontWeight: 700, fontSize: styles.fs, margin: 0, lineHeight: 1.3 }}>
+                {popup.user}
+              </p>
+            )}
             <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: styles.fs - 2, margin: 0, lineHeight: 1.3 }}>
               {popup.gift}
             </p>
