@@ -12,6 +12,21 @@ import WidgetStyleEditor from '../components/WidgetStyleEditor';
 import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂','🐺','🦊','🐲','🦅'];
+
+// Boss presets — เพิ่ม boss ใหม่ที่นี่ (images host ใน /public/boss/)
+// frames: relative path 6 ไฟล์ คั่นด้วย comma (idle1,idle2,idle3,enrage1,enrage2,death)
+const BOSS_PRESETS = [
+  {
+    id:         'golem',
+    name:       'Stone Golem',
+    desc:       'ลุงหินพิกเซลอาร์ต • 6 frame animation',
+    emoji:      '🗿',
+    preview:    '/boss/golem1.png',
+    frames:     '/boss/golem1.png,/boss/golem2.png,/boss/golem3.png,/boss/golem4.png,/boss/golem5.png,/boss/golem6.png',
+  },
+  // เพิ่ม preset ใหม่ได้ที่นี่ เช่น:
+  // { id: 'dragon', name: 'Fire Dragon', emoji: '🐉', preview: '/boss/dragon1.png', frames: '/boss/dragon1.png,...' },
+];
 const BOSS_ELEMENTS  = [
   { val: 'neutral', label: '⚪ กลาง (ไม่มีธาตุ)', desc: 'ดาเมจปกติทุกของขวัญ' },
   { val: 'fire',    label: '🔥 ไฟ',               desc: 'แพ้น้ำ | ทน: ดิน' },
@@ -33,13 +48,14 @@ const WIDGETS = [
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
     size: '380 × 675', noStyle: true,
     configFields: [
-      { key: '_g1',       label: '🐉 Boss Setup',                    type: 'group' },
-      { key: 'hp',        label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
-      { key: 'bossname',  label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
-      { key: 'emoji',     label: 'Boss Emoji (ถ้าไม่ใส่รูป)',         type: 'emoji',   default: '🐉',          options: BOSS_EMOJIS },
-      { key: 'bossimg',    label: 'Boss Image URL (static PNG โปร่งใส 256×256)', type: 'url', default: '' },
-      { key: 'bossframes', label: '🎬 Boss Animation Frames (6 URL คั่นด้วย comma: idle1,idle2,idle3,โมโห1,โมโห2,ตาย)', type: 'text', default: '', maxLen: 2000 },
-      { key: 'element',   label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
+      { key: '_g1',        label: '🐉 Boss Setup',                    type: 'group' },
+      { key: 'hp',         label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
+      { key: 'bossname',   label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
+      { key: 'bosstype',   label: '🎨 Boss Sprite',                   type: 'bosstype', default: 'emoji' },
+      // bossimg + bossframes: hidden from UI — ถูก set อัตโนมัติโดย bosstype selector
+      { key: 'bossimg',    type: 'url',  default: '', hideInUI: true },
+      { key: 'bossframes', type: 'text', default: '', hideInUI: true, maxLen: 2000 },
+      { key: 'element',    label: 'ธาตุ Boss',                        type: 'element', default: 'neutral' },
       { key: 'hideelement', label: 'ซ่อนธาตุ Boss',                  type: 'toggle',  default: 0, onLabel: 'ซ่อน — เปิดเผยที่ HP ≤75%', offLabel: 'แสดงธาตุตั้งแต่ต้น' },
       { key: '_g2',       label: '⚔️ Gameplay',                      type: 'group' },
       { key: 'dmgmult',   label: 'ตัวคูณดาเมจ (1 coin = X dmg)',     type: 'number',  default: 1,            min: 0.1, max: 20,     step: 0.1 },
@@ -176,20 +192,20 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     }
   }, [user]);
 
-  const buildCustomParams = useCallback((w) => {
+  const buildCustomParams = useCallback((w, overrides = {}) => {
     const cfg = customConfigs[w.id] || {};
     const params = [];
     for (const f of w.configFields) {
-      if (f.type === 'group') continue; // section header — ไม่มี value
-      if (f.type === 'row') {           // row — encode แต่ละ sub-field
+      if (f.type === 'group' || f.type === 'bosstype') continue; // UI-only, ไม่ใส่ใน URL
+      if (f.type === 'row') {
         for (const sf of f.fields) {
-          const val = cfg[sf.key] ?? sf.default;
+          const val = overrides[sf.key] ?? cfg[sf.key] ?? sf.default;
           params.push(`${sf.key}=${encodeURIComponent(val)}`);
         }
         continue;
       }
-      const val = cfg[f.key] ?? f.default;
-      // ข้าม url/text fields ที่ว่าง — ไม่ต้องใส่ใน query string
+      const val = overrides[f.key] ?? cfg[f.key] ?? f.default;
+      // ข้าม url/text fields ที่ว่าง
       if ((f.type === 'url' || f.type === 'text') && !val) continue;
       params.push(`${f.key}=${encodeURIComponent(val)}`);
     }
@@ -216,22 +232,18 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     });
   }, [user, getWidgetUrl]);
 
-  // Copy Boss Battle URL with specific side override (ไม่ต้องเปิด Customize)
+  // Copy Boss Battle URL with specific side override
   const copyBossBattleSide = useCallback((side) => {
     if (!user) { setShowLoginModal(true); return; }
     if (!widgetCid || !baseUrl) return;
-    const w   = WIDGETS.find(ww => ww.id === 'bossbattle');
-    const cfg = customConfigs['bossbattle'] || {};
-    const params = w.configFields.map(f => {
-      const val = f.key === 'side' ? side : (cfg[f.key] ?? f.default);
-      return `${f.key}=${encodeURIComponent(val)}`;
-    }).join('&');
-    const url = `${baseUrl}/widget/bossbattle?cid=${widgetCid}&${params}`;
+    const w      = WIDGETS.find(ww => ww.id === 'bossbattle');
+    const params = buildCustomParams(w, { side });
+    const url    = `${baseUrl}/widget/bossbattle?cid=${widgetCid}&${params}`;
     navigator.clipboard.writeText(url).then(() => {
       const label = side === 'left' ? 'ซ้าย ◀' : side === 'right' ? 'ขวา ▶' : 'กลาง ■';
       toast.success(`✅ Copy URL ${label} แล้ว!`);
     });
-  }, [user, widgetCid, baseUrl, customConfigs]);
+  }, [user, widgetCid, baseUrl, buildCustomParams]);
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
@@ -456,6 +468,60 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                             <div className={clsx('flex-1 h-px', isDark ? 'bg-gray-700' : 'bg-gray-200')} />
                           </div>
                         );
+                        // ── Hidden fields (managed by bosstype selector) ──
+                        if (f.hideInUI) return null;
+                        // ── Boss Sprite preset selector ──
+                        if (f.type === 'bosstype') {
+                          const curType  = cfg['bosstype'] ?? f.default;
+                          const curEmoji = cfg['emoji'] ?? '🐉';
+                          return (
+                            <div key={f.key}>
+                              <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {/* Emoji option */}
+                                <button
+                                  onClick={() => { setKey('bosstype', 'emoji'); setKey('bossframes', ''); setKey('bossimg', ''); }}
+                                  className={clsx('p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition',
+                                    curType === 'emoji'
+                                      ? 'border-brand-500 bg-brand-500/15'
+                                      : isDark ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' : 'border-gray-200 hover:border-gray-300 bg-gray-50'
+                                  )}
+                                >
+                                  <span style={{ fontSize: 32, lineHeight: 1 }}>{curEmoji}</span>
+                                  <span className={clsx('text-xs font-medium leading-tight text-center', isDark ? 'text-gray-300' : 'text-gray-600')}>Emoji</span>
+                                </button>
+                                {/* Boss presets */}
+                                {BOSS_PRESETS.map(preset => (
+                                  <button
+                                    key={preset.id}
+                                    onClick={() => {
+                                      const absFrames = preset.frames.split(',').map(p => `${baseUrl}${p}`).join(',');
+                                      setKey('bosstype',   preset.id);
+                                      setKey('bossframes', absFrames);
+                                      setKey('bossimg',    '');
+                                    }}
+                                    className={clsx('p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition',
+                                      curType === preset.id
+                                        ? 'border-brand-500 bg-brand-500/15'
+                                        : isDark ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' : 'border-gray-200 hover:border-gray-300 bg-gray-50'
+                                    )}
+                                  >
+                                    <img src={preset.preview} alt={preset.name}
+                                      style={{ width: 42, height: 42, objectFit: 'contain', imageRendering: 'pixelated' }}
+                                    />
+                                    <span className={clsx('text-xs font-medium leading-tight text-center', isDark ? 'text-gray-300' : 'text-gray-600')}>{preset.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                              {/* Show selected preset desc */}
+                              {curType !== 'emoji' && BOSS_PRESETS.find(p => p.id === curType) && (
+                                <p className={clsx('text-xs mt-2', isDark ? 'text-gray-500' : 'text-gray-400')}>
+                                  {BOSS_PRESETS.find(p => p.id === curType).desc}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        }
                         // ── Side-by-side row (e.g. taprate + tapdmg) ──
                         if (f.type === 'row') return (
                           <div key={f.key}>
