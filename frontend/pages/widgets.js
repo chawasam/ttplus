@@ -31,7 +31,7 @@ const WIDGETS = [
   {
     id: 'bossbattle', icon: '👾', name: 'Boss Battle',
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
-    size: '400 × 380', noStyle: true,
+    size: '500 × 500', noStyle: true,
     configFields: [
       { key: 'hp',        label: 'Boss HP (รอบแรก)',                 type: 'number',  default: 1000,         min: 10,  max: 100000, step: 100 },
       { key: 'bossname',  label: 'ชื่อ Boss',                        type: 'text',    default: 'Dark Dragon', maxLen: 30 },
