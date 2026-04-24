@@ -916,17 +916,16 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
       <input ref={combinedFileInputRef} type="file" accept="audio/*"            className="hidden" onChange={e => { setCombinedFile(e.target.files?.[0] || null); e.target.value = ''; }} />
       <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
 
-      {/* ===== Drag & Drop Overlay ===== */}
+      {/* ===== Drag & Drop Banner (เล็กๆ ลอยบนสุด ไม่บังปุ่ม) ===== */}
       {isDragging && !isMobile && (
-        <div className="fixed inset-0 z-30 pointer-events-none flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
           <div className={clsx(
-            'relative z-10 flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed',
+            'flex items-center gap-2 px-4 py-2 rounded-full border border-dashed shadow-lg text-sm font-medium',
             isDark ? 'bg-gray-900/90 border-cyan-400 text-cyan-300' : 'bg-white/90 border-brand-400 text-brand-600'
           )}>
-            <span className="text-5xl">🎵</span>
-            <span className="text-xl font-bold">วางไฟล์บนปุ่มใดก็ได้</span>
-            <span className="text-sm opacity-70">.mp3 / .ogg / .wav ≤ 5 MB</span>
+            <span>🎵</span>
+            <span>วางไฟล์บนปุ่มใดก็ได้</span>
+            <span className="opacity-60 text-xs">(.mp3 / .ogg / .wav ≤ 5 MB)</span>
           </div>
         </div>
       )}
