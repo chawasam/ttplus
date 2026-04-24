@@ -42,6 +42,7 @@ const WIDGETS = [
       { key: 'taprate',   label: 'Like → Damage (0 = ปิด, X like = 1 dmg)', type: 'number', default: 0,     min: 0,   max: 1000,   step: 1 },
       { key: 'wrongheal', label: 'ผิดธาตุ = Heal Boss',              type: 'toggle',  default: 1, onLabel: 'เปิด — ผิดธาตุ heal boss', offLabel: 'ปิด — ผิดธาตุ = 0 dmg' },
       { key: 'respawn',   label: 'Respawn Mode',                     type: 'toggle',  default: 0, onLabel: 'เปิด — HP ×1.5 ต่อรอบ', offLabel: 'ปิด — จบแล้วจบเลย' },
+      { key: 'side',      label: 'ตำแหน่ง Widget',                   type: 'select',  default: 'center', options: [{ value:'center', label:'กลาง (ค่าเริ่มต้น)' }, { value:'left', label:'ซ้าย (ไม่บัง streamer ซ้าย)' }, { value:'right', label:'ขวา (ไม่บัง streamer ขวา)' }] },
     ],
   },
   {

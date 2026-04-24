@@ -784,7 +784,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
     </div>
   );
 
-  // Mode buttons (shared)
+  // Mode buttons (shared) — ใช้ onPointerDown เพื่อ fire ก่อน re-render
   const ModeBtns = ({ targetKey, compact = false }) => {
     const cur = effectiveStore?.modes?.[targetKey] || 'poly';
     return (
@@ -792,7 +792,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         {MODE_OPTS.map(opt => (
           <button
             key={opt.id}
-            onClick={() => handleModeSet(targetKey, opt.id)}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleModeSet(targetKey, opt.id);
+              toast(`${opt.icon} ${opt.label}`, { duration: 700 });
+            }}
             title={opt.label}
             className={clsx(
               'flex flex-col items-center py-1.5 rounded-lg transition border',
@@ -1434,7 +1439,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                   return (
                     <button
                       key={opt.id}
-                      onClick={() => {
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         handleModeSet(ctxMenu.key, opt.id);
                         toast(`[${ctxMenu.key}] ${opt.icon} ${opt.label}`, { duration: 900 });
                       }}

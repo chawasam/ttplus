@@ -1,5 +1,5 @@
 // widget/bossbattle.js — Boss Battle Overlay สำหรับ OBS
-// OBS Size แนะนำ: 500 × 500
+// OBS Size แนะนำ: 380 × 675 (แนวตั้ง 9:16)
 // URL params: ?cid=xxx&hp=1000&bossname=Dragon&emoji=🐉&element=fire&dmgmult=1&taprate=0&wrongheal=1&respawn=1
 // กด R ในเบราว์เซอร์เพื่อ reset
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -9,7 +9,7 @@ import { createWidgetSocket } from '../../lib/widgetSocket';
 const STORAGE_KEY   = 'ttplus_boss_hp';
 const STORAGE_ROUND = 'ttplus_boss_round';
 const RESPAWN_SECS  = 5;
-const PHYS_H        = 210;  // ความสูง physics canvas (gift pile area)
+const PHYS_H        = 190;  // ความสูง physics canvas (gift pile area)
 const MAX_GIFTS     = 30;   // จำนวนสูงสุดของขวัญในหน้าจอ
 
 // ───── Element system ─────────────────────────────────────────
@@ -168,8 +168,9 @@ export default function BossBattleWidget() {
   const [streakCount,  setStreakCount] = useState(0);
   const [showStreak,   setShowStreak]  = useState(false);
   const [elemRevealed, setElemRevealed] = useState(false);
+  const [sideAlign,    setSideAlign]   = useState('center'); // 'left' | 'center' | 'right'
 
-  // Flying gifts state
+  // Flying gifts state: { id, emoji, elemEmoji, side, imageUrl }
   const [flyingGifts,  setFlyingGifts] = useState([]);
 
   const hpRef          = useRef(1000);
@@ -241,14 +242,14 @@ export default function BossBattleWidget() {
   }, []);
 
   // ── Flying gift animation ──────────────────────────────────
-  const spawnFlyingGift = useCallback((emoji, elemColor) => {
+  const spawnFlyingGift = useCallback((emoji, elemColor, elemEmoji, imageUrl) => {
     const id = ++flyIdRef.current;
     const side = Math.random() < 0.5 ? 'left' : 'right';
-    setFlyingGifts(prev => [...prev.slice(-8), { id, emoji, side }]);
+    setFlyingGifts(prev => [...prev.slice(-8), { id, emoji, elemEmoji: elemEmoji || '', side, imageUrl: imageUrl || '' }]);
     // Remove flying animation
-    setTimeout(() => setFlyingGifts(prev => prev.filter(g => g.id !== id)), 720);
+    setTimeout(() => setFlyingGifts(prev => prev.filter(g => g.id !== id)), 750);
     // Add to physics pile after gift arrives at boss
-    setTimeout(() => addGiftToPhysics(emoji, elemColor), 680);
+    setTimeout(() => addGiftToPhysics(emoji, elemColor), 700);
   }, [addGiftToPhysics]);
 
   const startBattle = useCallback((hp, rnd) => {
@@ -295,7 +296,7 @@ export default function BossBattleWidget() {
     }
   }, [startBattle]);
 
-  const applyDamage = useCallback((baseDmg, hitter, giftElem, giftEmoji) => {
+  const applyDamage = useCallback((baseDmg, hitter, giftElem, giftEmoji, giftImageUrl) => {
     if (phaseRef.current !== 'battle') return;
     const bossEl  = bossElemRef.current;
     const giftEl  = giftElem || 'neutral';
@@ -304,7 +305,8 @@ export default function BossBattleWidget() {
     // Spawn flying gift animation (runs for both hit & heal)
     const displayEmoji = giftEmoji || ELEMENTS[giftEl]?.emoji || '🎁';
     const displayColor = ELEMENTS[giftEl]?.color;
-    spawnFlyingGift(displayEmoji, displayColor);
+    const elemEmoji    = giftEl !== 'neutral' ? ELEMENTS[giftEl]?.emoji : '';
+    spawnFlyingGift(displayEmoji, displayColor, elemEmoji, giftImageUrl || '');
 
     // Streak (effective gifts ติดกัน)
     let streakBonus = false;
@@ -469,6 +471,8 @@ export default function BossBattleWidget() {
 
     const elem     = ELEMENTS[elemParam] ? elemParam : 'neutral';
     const hideElem = params.get('hideelement') === '1';
+    const side     = params.get('side') || 'center'; // 'left' | 'center' | 'right'
+    setSideAlign(['left','center','right'].includes(side) ? side : 'center');
     bossElemRef.current  = elem;
     dmgMultRef.current   = dmgMult;
     tapRateRef.current   = tapRate;
@@ -522,11 +526,12 @@ export default function BossBattleWidget() {
     const socket = createWidgetSocket(wt, {
       gift: (data) => {
         if (!data) return;
-        const ev       = sanitizeEvent(data);
-        const baseDmg  = (ev.diamondCount || 1) * (ev.repeatCount || 1);
-        const giftName = ev.giftName || ev.gift_name || '';
-        const giftEl   = giftToElement(giftName);
-        applyDamage(baseDmg, ev.nickname || ev.uniqueId || 'Unknown', giftEl, ELEMENTS[giftEl]?.emoji || '🎁');
+        const ev          = sanitizeEvent(data);
+        const baseDmg     = (ev.diamondCount || 1) * (ev.repeatCount || 1);
+        const giftName    = ev.giftName || ev.gift_name || '';
+        const giftEl      = giftToElement(giftName);
+        const giftImgUrl  = ev.giftPictureUrl || ev.pictureUrl || ev.gift_picture_url || '';
+        applyDamage(baseDmg, ev.nickname || ev.uniqueId || 'Unknown', giftEl, ELEMENTS[giftEl]?.emoji || '🎁', giftImgUrl);
       },
       like: (data) => {
         if (!data || tapRateRef.current <= 0) return;
@@ -572,12 +577,18 @@ export default function BossBattleWidget() {
     return '#ff2d62';
   };
 
+  // align helper
+  const hAlign = sideAlign === 'left' ? 'flex-start' : sideAlign === 'right' ? 'flex-end' : 'center';
+  const hPad   = sideAlign === 'left' ? { paddingLeft: '12px' } : sideAlign === 'right' ? { paddingRight: '12px' } : {};
+  const textAlign = sideAlign === 'left' ? 'left' : sideAlign === 'right' ? 'right' : 'center';
+
   return (
     <div ref={containerRef} style={{
       width: '100vw', height: '100vh',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      display: 'flex', flexDirection: 'column', alignItems: hAlign,
       background: 'transparent', position: 'relative', overflow: 'hidden',
       fontFamily: '"Segoe UI", Arial, sans-serif', userSelect: 'none',
+      ...hPad,
     }}>
       <style>{`
         @keyframes floatDmg      { 0%{transform:translateX(-50%) translateY(0) scale(1);opacity:1;} 70%{transform:translateX(-50%) translateY(-70px) scale(1.05);opacity:0.9;} 100%{transform:translateX(-50%) translateY(-95px) scale(0.75);opacity:0;} }
@@ -610,56 +621,101 @@ export default function BossBattleWidget() {
       {flyingGifts.map(g => (
         <div key={g.id} style={{
           position: 'absolute',
-          left: '50%',
-          top: '38%',
-          fontSize: '30px',
-          lineHeight: 1,
+          left: sideAlign === 'left' ? '25%' : sideAlign === 'right' ? '75%' : '50%',
+          top: '46%',
           pointerEvents: 'none',
           zIndex: 25,
-          animation: `${g.side === 'left' ? 'giftFlyFromLeft' : 'giftFlyFromRight'} 0.72s cubic-bezier(0.25,0.46,0.45,0.94) forwards`,
+          animation: `${g.side === 'left' ? 'giftFlyFromLeft' : 'giftFlyFromRight'} 0.75s cubic-bezier(0.25,0.46,0.45,0.94) forwards`,
+          transform: 'translate(-50%, -50%)',
         }}>
-          {g.emoji}
+          {g.imageUrl ? (
+            /* TikTok gift image + element badge overlay */
+            <div style={{ position: 'relative', width: 56, height: 56 }}>
+              <img
+                src={g.imageUrl}
+                crossOrigin="anonymous"
+                style={{ width: 56, height: 56, objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.7))' }}
+              />
+              {g.elemEmoji && (
+                <span style={{
+                  position: 'absolute', bottom: -6, right: -6,
+                  fontSize: '20px', lineHeight: 1,
+                  filter: 'drop-shadow(0 0 5px rgba(0,0,0,0.9))',
+                }}>
+                  {g.elemEmoji}
+                </span>
+              )}
+            </div>
+          ) : (
+            /* Fallback: emoji */
+            <div style={{ position: 'relative' }}>
+              <span style={{ fontSize: '34px', lineHeight: 1 }}>{g.emoji}</span>
+              {g.elemEmoji && g.elemEmoji !== g.emoji && (
+                <span style={{
+                  position: 'absolute', bottom: -6, right: -6,
+                  fontSize: '18px', lineHeight: 1,
+                  filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))',
+                }}>
+                  {g.elemEmoji}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       ))}
 
-      {/* ── HP Bar section (battle only) ── */}
+      {/* ── HP Bar section (battle only) — dark card, pushed to ~20% from top ── */}
       {phase === 'battle' && (
-        <div style={{ flex: 'none', width: '88%', maxWidth: '420px', paddingTop: '12px' }}>
+        <div style={{
+          flex: 'none', width: '86%', maxWidth: '320px',
+          marginTop: '18%',
+          padding: '10px 14px 10px',
+          background: 'rgba(0,0,0,0.58)',
+          borderRadius: '14px',
+          border: '1px solid rgba(255,255,255,0.10)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          alignSelf: hAlign === 'center' ? 'center' : hAlign === 'flex-start' ? 'flex-start' : 'flex-end',
+        }}>
           {round > 1 && (
-            <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', letterSpacing: '0.15em', marginBottom: '5px', animation: 'roundBadge 0.5s ease both', textAlign: 'center' }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', letterSpacing: '0.15em', marginBottom: '5px', animation: 'roundBadge 0.5s ease both', textAlign }}>
               ⚔️ ROUND {round}
             </div>
           )}
           {/* Boss name row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px', flexWrap: 'wrap', justifyContent: hAlign }}>
             {bossElem !== 'neutral' && (
               <span style={{ fontSize: '13px', filter: `drop-shadow(0 0 6px ${elemInfo.color}99)` }}>
                 {elemInfo.emoji}
               </span>
             )}
-            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{bossEmoji} {bossName}</span>
+            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>{bossEmoji} {bossName}</span>
             {isHidden ? (
               <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: '#ffffff15', color: '#94a3b8', border: '1px solid #ffffff25', letterSpacing: '0.1em' }}>
                 ???
               </span>
             ) : bossElem !== 'neutral' && (
-              <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: elemInfo.color + '22', color: elemInfo.color, border: `1px solid ${elemInfo.color}44` }}>
+              <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: elemInfo.color + '33', color: elemInfo.color, border: `1px solid ${elemInfo.color}66` }}>
                 {elemInfo.emoji} {elemInfo.label}
               </span>
             )}
           </div>
           {/* HP bar */}
-          <div style={{ height: '10px', background: 'rgba(255,255,255,0.08)', borderRadius: '5px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', marginBottom: '3px' }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: hpColor, borderRadius: '5px', transition: 'width 0.35s ease, background 0.5s ease', boxShadow: `0 0 8px ${hpColor}bb` }} />
+          <div style={{ height: '11px', background: 'rgba(255,255,255,0.12)', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', marginBottom: '4px' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: hpColor, borderRadius: '6px', transition: 'width 0.35s ease, background 0.5s ease', boxShadow: `0 0 10px ${hpColor}cc` }} />
           </div>
-          <div style={{ textAlign: 'right', fontSize: '11px', color: 'rgba(255,255,255,0.65)', fontVariantNumeric: 'tabular-nums', animation: pct < 25 ? 'hpPulse 0.7s ease-in-out infinite' : 'none' }}>
-            {hp.toLocaleString()} / {maxHpNow.toLocaleString()}
+          {/* HP numbers */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>HP</span>
+            <span style={{ fontSize: '12px', color: '#fff', fontWeight: 700, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 8px ${hpColor}`, animation: pct < 25 ? 'hpPulse 0.7s ease-in-out infinite' : 'none' }}>
+              {hp.toLocaleString()} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>/ {maxHpNow.toLocaleString()}</span>
+            </span>
           </div>
         </div>
       )}
 
       {/* ── Main content area ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: hAlign, justifyContent: 'center', width: '100%', overflow: 'hidden', position: 'relative' }}>
 
         {/* ===== DEAD / WIN ===== */}
         {(phase === 'dead' || phase === 'countdown') && (
