@@ -571,18 +571,20 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   // Cycle through 4 modes: poly → stop → toggle → loop → poly
   const handleModeToggle = useCallback((key) => {
     const field = pf('modes');
-    const cur   = (store?.[field] || {})[key] || 'poly';
-    const next  = cur === 'poly' ? 'stop' : cur === 'stop' ? 'toggle' : cur === 'toggle' ? 'loop' : 'poly';
-    patch({ [field]: { ...(store?.[field] || {}), [key]: next } });
-    const opt = MODE_OPTS.find(m => m.id === next);
-    toast(`[${key}] ${opt?.icon} ${opt?.label}`, { duration: 1000 });
-  }, [store, patch, pf]);
+    patch((prev) => {
+      const cur  = (prev?.[field] || {})[key] || 'poly';
+      const next = cur === 'poly' ? 'stop' : cur === 'stop' ? 'toggle' : cur === 'toggle' ? 'loop' : 'poly';
+      const opt  = MODE_OPTS.find(m => m.id === next);
+      toast(`[${key}] ${opt?.icon} ${opt?.label}`, { duration: 1000 });
+      return { [field]: { ...(prev?.[field] || {}), [key]: next } };
+    });
+  }, [patch, pf]);
 
   // Set mode directly (for context menu / action sheet 4-button UI)
   const handleModeSet = useCallback((key, mode) => {
     const field = pf('modes');
-    patch({ [field]: { ...(store?.[field] || {}), [key]: mode } });
-  }, [store, patch, pf]);
+    patch((prev) => ({ [field]: { ...(prev?.[field] || {}), [key]: mode } }));
+  }, [patch, pf]);
 
   // Per-key color — ใช้ functional update เพื่อหลีกเลี่ยง stale closure
   const handleColorChange = useCallback((key, color) => {
