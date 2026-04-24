@@ -905,7 +905,7 @@ export default function BossBattleWidget() {
           {d.type === 'wrong' ? '+' : '-'}{Math.abs(d.amount).toLocaleString()}{d.type === 'effective' ? ' ✦' : ''}
         </div>
       ))}
-    </div>{/* end inner content wrapper */}
-    </div>{/* end outer 100vw container */}
+    </div>
+    </div>
   );
 }
