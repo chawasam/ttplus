@@ -582,6 +582,87 @@ const ITEMS = {
     stackable: true, maxStack: 5,
   },
 
+  // ===== ZONE BOSS UNIQUE DROPS (Crafting Materials) =====
+  // Town Outskirts Boss: Goblin King Grak
+  goblin_king_seal: {
+    itemId: 'goblin_king_seal', name: "Goblin King's Seal", emoji: '👑',
+    grade: 'UNCOMMON', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'ตราประทับของ Goblin King Grak — พิสูจน์ว่าคุณโค่นกษัตริย์โกบลิน ใช้ Craft อาวุธระดับ Uncommon',
+    sellPrice: 50, buyPrice: null,
+    stackable: true, maxStack: 5,
+  },
+
+  // Whispering Forest Boss: Elder Treant Monarch
+  treant_heartwood: {
+    itemId: 'treant_heartwood', name: 'Treant Heartwood', emoji: '🪵',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'แก่นไม้จากใจกลางของ Elder Treant — มีพลังชีวิตสูง ใช้ Craft Staff ระดับ Rare หรือ Armor ที่ฟื้นฟู HP',
+    sellPrice: 120, buyPrice: null,
+    stackable: true, maxStack: 5,
+  },
+
+  // Crystal Caves Boss: Crystal Troll Lord
+  troll_crystal_heart: {
+    itemId: 'troll_crystal_heart', name: 'Crystal Troll Heart', emoji: '💎',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'หัวใจคริสตัลของ Troll Lord — เปล่งแสงสั่นสะเทือน ใช้ Craft Shield หรือ Armor ที่มี DEF สูงพิเศษ',
+    sellPrice: 160, buyPrice: null,
+    stackable: true, maxStack: 5,
+  },
+
+  // Forgotten Ruins Boss: Iron Golem Prime
+  prime_golem_core: {
+    itemId: 'prime_golem_core', name: 'Prime Golem Core', emoji: '⚙️',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'แกนกลางของ Iron Golem Prime — ยังเต้นเป็นจังหวะ ใช้ Craft Heavy Armor หรือ Weapon ที่มีพิเศษ',
+    sellPrice: 200, buyPrice: null,
+    stackable: true, maxStack: 5,
+  },
+
+  // Mirewood Marsh Boss: Hydra of the Deep
+  hydra_venom_sac: {
+    itemId: 'hydra_venom_sac', name: 'Hydra Venom Sac', emoji: '🐍',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 20,
+    desc: 'ถุงพิษของ Hydra — เต็มไปด้วยพิษเข้มข้น ใช้ Craft Weapon ที่มี POISON effect หรือ Antidote ระดับ High',
+    sellPrice: 300, buyPrice: null,
+    stackable: true, maxStack: 5,
+  },
+
+  // Void Frontier Boss: Void Herald Azh'kal
+  void_herald_sigil: {
+    itemId: 'void_herald_sigil', name: "Void Herald's Sigil", emoji: '🌀',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 30,
+    desc: "ตราของ Void Herald Azh'kal — เปล่งพลังงาน Void อย่างต่อเนื่อง ใช้ Craft อาวุธ Legendary tier",
+    sellPrice: 400, buyPrice: null,
+    stackable: true, maxStack: 3,
+  },
+
+  // Shadowfell Depths Boss: Shadow Archon Vael
+  shadow_archon_essence: {
+    itemId: 'shadow_archon_essence', name: "Shadow Archon's Essence", emoji: '🌑',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 40,
+    desc: 'แก่นสารเงามืดของ Shadow Archon Vael — ควบคุมยาก แต่ทรงพลังสุดๆ ใช้ Craft Shadow Gear ระดับ Legendary',
+    sellPrice: 600, buyPrice: null,
+    stackable: true, maxStack: 3,
+  },
+
+  // Vorath's Citadel Boss: Avatar of Vorath
+  vorath_tear: {
+    itemId: 'vorath_tear', name: "Tear of Vorath", emoji: '👁️',
+    grade: 'LEGENDARY', type: 'MATERIAL',
+    classReq: [], levelReq: 50,
+    desc: 'น้ำตาของ Avatar of Vorath — วัตถุที่หายากที่สุดในโลก Ashenveil ใช้ Craft ชุด Mythic หรือ Legendary Relic',
+    sellPrice: 0, buyPrice: null, // ขายไม่ได้ — Legendary/Mythic crafting เท่านั้น
+    stackable: true, maxStack: 1,
+  },
+
   void_dagger: {
     itemId: 'void_dagger', name: 'Void Dagger', emoji: '🗡️',
     grade: 'EPIC', type: 'MAIN_HAND',

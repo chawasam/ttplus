@@ -19,6 +19,7 @@ const { generalLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRat
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection, hasConnection, getActiveConnectionCount } = require('./handlers/tiktok');
+const { cleanupStaleBattles } = require('./handlers/game/combat');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
 const {
@@ -470,6 +471,10 @@ server.listen(PORT, '0.0.0.0', () => {
   admin.auth().listUsers(1)
     .then(() => console.log('[Firebase] Auth connection OK ✅'))
     .catch(e  => console.error('[Firebase] Auth connection FAILED ❌:', e.code, e.message));
+
+  // ===== Cleanup stale battles every 30 minutes =====
+  cleanupStaleBattles().catch(() => {});
+  setInterval(() => cleanupStaleBattles().catch(() => {}), 30 * 60 * 1000);
 });
 
 function defaultSettings() {
