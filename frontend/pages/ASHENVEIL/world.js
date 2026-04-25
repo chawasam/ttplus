@@ -12,7 +12,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getQuestLog, acceptSideQuest,
          getRPShop, buyRPItem,
          getSkills, unlockSkill,
-         getCharacterProfile, allocateStat,
+         getCharacterProfile, allocateStat, equipTitle,
          getEnhanceInfo, enhanceItem,
          getWeeklyQuests, claimWeeklyReward,
          getAchievements,
@@ -173,9 +173,10 @@ export default function GameWorld() {
   const [weeklyData,     setWeeklyData]     = useState(null);   // { weekKey, quests, allCompleted, bonusClaimed, bonus }
   const [weeklyBadge,    setWeeklyBadge]    = useState(false);
 
-  // ── Achievements ──
-  const [achData,        setAchData]        = useState(null);   // { achievements, unlockedCount, totalCount }
+  // ── Achievements + Titles ──
+  const [achData,        setAchData]        = useState(null);   // { achievements, unlockedTitles, equippedTitle, ... }
   const [achLoading,     setAchLoading]     = useState(false);
+  const [equippedTitle,  setEquippedTitle]  = useState(null);   // ตำแหน่งที่ใส่อยู่ตอนนี้
 
   // ── Login Bonus ──
   const [loginBonusData,   setLoginBonusData]   = useState(null);  // { streak, reward, alreadyClaimed }
@@ -513,16 +514,28 @@ export default function GameWorld() {
     }
   }, [loadWeeklyQuests, addLog]);
 
-  // ===== Achievements =====
+  // ===== Achievements + Titles =====
   const loadAchievements = useCallback(async () => {
     setAchLoading(true);
     try {
       const { data } = await getAchievements();
       setAchData(data);
+      if (data.equippedTitle !== undefined) setEquippedTitle(data.equippedTitle);
     } catch (err) {
       toast.error(err.response?.data?.error || 'โหลด Achievements ไม่ได้');
     } finally {
       setAchLoading(false);
+    }
+  }, []);
+
+  const handleEquipTitle = useCallback(async (title) => {
+    try {
+      const { data } = await equipTitle(title);
+      setEquippedTitle(data.equippedTitle);
+      setAchData(prev => prev ? { ...prev, equippedTitle: data.equippedTitle } : prev);
+      toast.success(data.msg);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ใส่ตำแหน่งไม่ได้');
     }
   }, []);
 
@@ -1466,6 +1479,9 @@ export default function GameWorld() {
               {/* Row 1 — vitals + economy */}
               <div className="px-4 pt-2 pb-1 flex flex-wrap gap-4 text-xs">
                 <span className="text-amber-400 font-bold">{char?.name}</span>
+                {equippedTitle && (
+                  <span className="text-amber-600 text-[10px] border border-amber-900/60 px-1 rounded">🎖️ {equippedTitle}</span>
+                )}
                 <span className="text-gray-500">{char?.race} {char?.class} Lv.{char?.level}</span>
                 <span className="text-red-400">❤️ {char?.hp}/{char?.hpMax}</span>
                 <span className="text-blue-400">💧 {char?.mp}/{char?.mpMax}</span>
@@ -2609,8 +2625,8 @@ export default function GameWorld() {
 
               {/* ACHIEVEMENTS */}
               {screen === SCREENS.ACHIEVEMENTS && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="max-h-screen overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2 sticky top-0 bg-black/80 backdrop-blur py-1 z-10">
                     <p className="text-gray-400 text-xs">
                       [ 🏆 Achievements — ปลดล็อคแล้ว{' '}
                       <span className="text-amber-400">{achData?.unlockedCount ?? 0}</span>
@@ -2618,6 +2634,36 @@ export default function GameWorld() {
                     </p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
+
+                  {/* ── Title Collection ── */}
+                  {achData?.unlockedTitles?.length > 0 && (
+                    <div className="border border-amber-900/40 rounded p-2 mb-3 bg-amber-950/10">
+                      <p className="text-amber-600 text-xs font-bold mb-2">🎖️ ตำแหน่งที่ปลดล็อก</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {achData.unlockedTitles.map(t => {
+                          const isEquipped = (achData.equippedTitle || equippedTitle) === t;
+                          return (
+                            <button key={t}
+                              onClick={() => handleEquipTitle(isEquipped ? null : t)}
+                              className={`px-2 py-1 rounded border text-xs transition ${
+                                isEquipped
+                                  ? 'border-amber-500 text-amber-300 bg-amber-900/30'
+                                  : 'border-gray-700 text-gray-400 hover:border-amber-700 hover:text-amber-400'
+                              }`}>
+                              {isEquipped ? '✨ ' : ''}{t}
+                              {isEquipped && <span className="ml-1 text-[10px] text-amber-600">(ใส่อยู่)</span>}
+                            </button>
+                          );
+                        })}
+                        {(achData.equippedTitle || equippedTitle) && (
+                          <button onClick={() => handleEquipTitle(null)}
+                            className="px-2 py-1 rounded border border-gray-800 text-gray-600 text-xs hover:text-red-400 hover:border-red-900">
+                            ✕ ถอด
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {achLoading ? (
                     <p className="text-gray-400 text-xs">กำลังโหลด...</p>
@@ -2667,10 +2713,25 @@ export default function GameWorld() {
                                       </>
                                     )}
                                     {/* Reward info */}
-                                    <div className="flex gap-2 mt-0.5 text-yellow-900 text-xs">
+                                    <div className="flex flex-wrap gap-2 mt-0.5 text-yellow-900 text-xs items-center">
                                       {ach.reward?.gold > 0 && <span>💰 {ach.reward.gold}G</span>}
                                       {ach.reward?.xp   > 0 && <span>⭐ {ach.reward.xp} XP</span>}
-                                      {ach.reward?.title && <span className="text-amber-600">🎖️ "{ach.reward.title}"</span>}
+                                      {ach.reward?.title && (
+                                        ach.unlocked ? (
+                                          <button onClick={() => handleEquipTitle(
+                                            (achData?.equippedTitle || equippedTitle) === ach.reward.title ? null : ach.reward.title
+                                          )}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition ${
+                                              (achData?.equippedTitle || equippedTitle) === ach.reward.title
+                                                ? 'border-amber-500 text-amber-300 bg-amber-900/20'
+                                                : 'border-amber-900 text-amber-700 hover:border-amber-600 hover:text-amber-400'
+                                            }`}>
+                                            🎖️ "{ach.reward.title}"{(achData?.equippedTitle || equippedTitle) === ach.reward.title ? ' ✓' : ''}
+                                          </button>
+                                        ) : (
+                                          <span className="text-gray-700">🎖️ "{ach.reward.title}"</span>
+                                        )
+                                      )}
                                     </div>
                                   </div>
                                 </div>

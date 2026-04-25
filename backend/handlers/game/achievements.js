@@ -23,8 +23,11 @@ async function getAchievements(req, res) {
     if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
     const char = charDoc.data();
 
-    const unlockedIds = achDoc.exists ? (achDoc.data().unlockedIds || []) : [];
-    const stats       = await buildStats(uid, char, db);
+    const achDocData    = achDoc.exists ? achDoc.data() : {};
+    const unlockedIds   = achDocData.unlockedIds   || [];
+    const unlockedTitles= achDocData.unlockedTitles|| [];
+    const equippedTitle = char.equippedTitle || null;
+    const stats         = await buildStats(uid, char, db);
 
     const achievements = ACHIEVEMENTS.map(def => {
       const progress = Math.min(stats[def.type] || 0, def.target);
@@ -38,13 +41,14 @@ async function getAchievements(req, res) {
         progress,
         unlocked,
         reward:    def.reward,
+        category:  def.category,
       };
     });
 
     const total    = achievements.length;
     const done     = achievements.filter(a => a.unlocked).length;
 
-    return res.json({ achievements, done, total });
+    return res.json({ achievements, done, total, unlockedTitles, equippedTitle });
   } catch (err) {
     console.error('[Achievements] getAchievements:', err.message);
     return res.status(500).json({ error: 'Server error' });
@@ -114,10 +118,17 @@ async function checkAchievements(uid, eventType, value = 1) {
         const cRef = db.collection('game_characters').doc(charId);
         await cRef.update({ xp: admin.firestore.FieldValue.increment(def.reward.xp) });
       }
+      // Title reward — save to game_achievements.unlockedTitles
+      if (def.reward.title) {
+        await db.collection('game_achievements').doc(uid).set(
+          { unlockedTitles: admin.firestore.FieldValue.arrayUnion(def.reward.title) },
+          { merge: true }
+        );
+      }
       // Push game event for overlay
       await pushGameEvent(uid, {
         type: 'achievement',
-        msg:  `🏆 Achievement: ${def.name}`,
+        msg:  `🏆 Achievement: ${def.name}${def.reward.title ? ` · ได้ตำแหน่ง "${def.reward.title}"` : ''}`,
         char: char.name,
       });
       console.log(`[Achievements] uid=${uid} unlocked: ${def.id} (${def.name})`);

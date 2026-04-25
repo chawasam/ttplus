@@ -55,6 +55,7 @@ async function getCharacterProfile(req, res) {
       monstersKilled: char.monstersKilled || 0,
       deathCount:    char.deathCount || 0,
       location:      char.location || 'town_square',
+      equippedTitle: char.equippedTitle || null,
     });
   } catch (err) {
     console.error('[Character] getCharacterProfile:', err.message);
@@ -80,9 +81,11 @@ async function allocateStat(req, res) {
     const accountDoc = await db.collection('game_accounts').doc(uid).get();
     if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
     const charId = accountDoc.data().characterId;
+    if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
+    if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
     const char    = charDoc.data();
 
     const available = char.statPoints || 0;
@@ -134,4 +137,40 @@ async function allocateStat(req, res) {
   }
 }
 
-module.exports = { getCharacterProfile, allocateStat };
+// ===== EQUIP title =====
+async function equipTitle(req, res) {
+  const { title } = req.body;
+  const uid = req.user.uid;
+  const db  = admin.firestore();
+
+  try {
+    const accountDoc = await db.collection('game_accounts').doc(uid).get();
+    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const charId = accountDoc.data().characterId;
+    if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
+
+    // ตรวจว่า title นี้ unlock จริง (อยู่ใน game_achievements.unlockedTitles)
+    const achDoc = await db.collection('game_achievements').doc(uid).get();
+    const unlockedTitles = achDoc.exists ? (achDoc.data().unlockedTitles || []) : [];
+
+    if (title && !unlockedTitles.includes(title)) {
+      return res.status(403).json({ error: `ยังไม่ได้ unlock ตำแหน่ง "${title}"` });
+    }
+
+    // บันทึก (null = ถอด title)
+    await db.collection('game_characters').doc(charId).update({
+      equippedTitle: title || null,
+    });
+
+    return res.json({
+      success: true,
+      equippedTitle: title || null,
+      msg: title ? `✅ ใส่ตำแหน่ง "${title}" แล้ว` : '✅ ถอดตำแหน่งแล้ว',
+    });
+  } catch (err) {
+    console.error('[Character] equipTitle:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+module.exports = { getCharacterProfile, allocateStat, equipTitle };
