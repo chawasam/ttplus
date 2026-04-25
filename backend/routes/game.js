@@ -51,6 +51,7 @@ router.post('/account/verify-request',   account.requestVerifyCode);
 router.get ('/account/verify-status',    account.getVerifyStatus);
 router.post('/account/character/create', account.createCharacter);
 router.get ('/account/character',        account.loadCharacter);
+router.post('/account/character/delete', account.deleteCharacter);
 router.get ('/account/unlocked-races',   account.getUnlockedRaces);
 
 // ----- Currency -----

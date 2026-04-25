@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
-import { syncAccount, requestVerify, getVerifyStatus, createCharacter, getUnlockedRaces } from '../../lib/gameApi';
+import { syncAccount, requestVerify, getVerifyStatus, createCharacter, getUnlockedRaces, deleteCharacter } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import AshenveilSettings, { useAshenveilSettings } from '../../components/AshenveilSettings';
@@ -184,6 +184,24 @@ export default function GameIndex() {
     router.replace('/ASHENVEIL/world');
   }, []);
 
+  // ===== Delete character =====
+  const handleDeleteCharacter = useCallback(async () => {
+    try {
+      await deleteCharacter();
+      toast.success('ลบตัวละครสำเร็จ');
+      // Reset to creation state
+      setAccount(prev => ({ ...prev, characterId: null, charName: null, charRace: null, charClass: null, charLevel: null }));
+      // Load races for character creation
+      try {
+        const ur = await getUnlockedRaces();
+        setUnlockedRaces(ur.data.unlockedRaces || []);
+        setRaceProgress(ur.data.progress   || {});
+      } catch {}
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ลบไม่สำเร็จ กรุณาลองใหม่');
+    }
+  }, []);
+
   // ─────────────────────────────────────────────────────────────
   //  RENDER
   // ─────────────────────────────────────────────────────────────
@@ -270,7 +288,7 @@ export default function GameIndex() {
               {account.characterId ? (
                 /* ── มีตัวละครแล้ว — แสดง Character Card ── */
                 <Box title="🗡️ ตัวละครของคุณ">
-                  <CharacterCard account={account} onEnter={enterGame} />
+                  <CharacterCard account={account} onEnter={enterGame} onDelete={handleDeleteCharacter} />
                 </Box>
               ) : (
                 /* ── ยังไม่มีตัวละคร — แสดงฟอร์มสร้าง ── */
@@ -376,10 +394,34 @@ export default function GameIndex() {
 }
 
 // ── Character Card (shown when characterId exists) ──────────────────
-function CharacterCard({ account, onEnter }) {
-  // We only have characterId from syncAccount; show placeholder until world loads full data
+function CharacterCard({ account, onEnter, onDelete }) {
+  const [deleteStep, setDeleteStep] = useState(0); // 0=hidden 1=confirm1 2=confirm2 3=confirm3
+  const [deleting,   setDeleting]   = useState(false);
+
+  const CONFIRM_MSGS = [
+    'คุณต้องการลบตัวจริงๆใช่ไหม? 1/3',
+    'คุณต้องการลบตัวจริงๆใช่ไหม? 2/3',
+    'คุณต้องการลบตัวจริงๆใช่ไหม? 3/3',
+  ];
+
+  const handleDeleteClick = async () => {
+    if (deleteStep < 2) {
+      setDeleteStep(s => s + 1);
+      return;
+    }
+    // step === 2 → this is the 3rd click → execute
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
+      setDeleteStep(0);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {/* ── Character info card ── */}
       <div className="border border-amber-900/40 bg-amber-950/20 rounded p-4 flex items-center gap-4">
         <div className="text-4xl">
           {account.charRace ? (RACE_EMOJI[account.charRace] || '⚔️') : '⚔️'}
@@ -400,10 +442,46 @@ function CharacterCard({ account, onEnter }) {
         </div>
       </div>
 
+      {/* ── Enter game ── */}
       <button onClick={onEnter}
         className="w-full py-3 rounded border border-amber-500 text-amber-300 hover:bg-amber-900/20 transition font-bold tracking-wider text-sm">
         [ เข้าสู่ Ashenveil ]
       </button>
+
+      {/* ── Delete section ── */}
+      <div className="border-t border-gray-800 pt-3 space-y-2">
+        {deleteStep === 0 ? (
+          /* ── Initial delete button (muted, small) ── */
+          <button onClick={() => setDeleteStep(1)}
+            className="w-full py-1.5 text-gray-700 hover:text-red-700 transition text-xs">
+            🗑️ ลบตัวละคร
+          </button>
+        ) : (
+          /* ── Confirmation zone ── */
+          <div className="bg-red-950/20 border border-red-900/50 rounded p-3 space-y-2">
+            <p className="text-red-400 text-xs font-bold text-center">
+              ⚠️ การลบจะไม่สามารถย้อนกลับได้!
+            </p>
+            <p className="text-red-300 text-xs text-center">
+              {CONFIRM_MSGS[deleteStep - 1]}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteStep(0)}
+                disabled={deleting}
+                className="flex-1 py-1.5 border border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-600 transition text-xs rounded disabled:opacity-40">
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleDeleteClick}
+                disabled={deleting}
+                className="flex-1 py-1.5 border border-red-800 text-red-400 hover:bg-red-900/20 transition text-xs rounded disabled:opacity-40 font-bold">
+                {deleting ? 'กำลังลบ...' : `ยืนยัน (${deleteStep}/3)`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

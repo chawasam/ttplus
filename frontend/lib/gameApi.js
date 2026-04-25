@@ -7,6 +7,7 @@ export const requestVerify    = (tiktokUniqueId) => api.post('/api/game/account/
 export const getVerifyStatus  = ()               => api.get('/api/game/account/verify-status');
 export const createCharacter  = (data)           => api.post('/api/game/account/character/create', data);
 export const loadCharacter    = ()               => api.get('/api/game/account/character');
+export const deleteCharacter  = ()               => api.post('/api/game/account/character/delete');
 export const getUnlockedRaces = ()               => api.get('/api/game/account/unlocked-races');
 
 // ===== Currency =====
