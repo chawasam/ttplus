@@ -10,7 +10,9 @@ const BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
 
 const api = axios.create({
   baseURL: BASE,
-  timeout: 15000,
+  // Railway cold start ใช้เวลา 30-60 วินาที
+  // ตั้ง timeout ให้นานพอให้ backend ตื่นก่อน timeout
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -29,7 +31,7 @@ async function _fetchCsrfDirect() {
     const idToken = await user.getIdToken(false);
     const { data } = await axios.get(`${BASE}/api/csrf-token`, {
       headers: { Authorization: `Bearer ${idToken}` },
-      timeout: 8000,
+      timeout: 30000, // รอ Railway ตื่นก่อน
     });
     return typeof data.token === 'string' && data.token.length === 64
       ? data.token

@@ -122,24 +122,6 @@ async function attackWorldBoss(req, res) {
         [`attackLog.${uid}.name`]:        charName,
       });
 
-      // Real-time broadcast: push damage event so frontend can poll/listen
-      const updatedLog = { ...(boss.attackLog || {}), [uid]: { name: charName, totalDamage: prevDmg + actualDmg, attacks: prevAtks + 1 } };
-      const liveTopPlayers = Object.entries(updatedLog)
-        .map(([id, v]) => ({ uid: id, name: v.name || '???', damage: v.totalDamage || 0 }))
-        .sort((a, b) => b.damage - a.damage)
-        .slice(0, 5);
-      db.collection('game_global_events').add({
-        type:       'world_boss_damage',
-        bossId:     boss.bossId,
-        bossHp:     newHp,
-        bossHpMax:  boss.maxHp,
-        attacker:   charName,
-        attackerUid: uid,
-        damage:     actualDmg,
-        topPlayers: liveTopPlayers,
-        ts:         now,
-      }).catch(() => {});
-
       // Random boss counter-attack message
       const bossData = getBoss(boss.bossId);
       const counterMsg = bossData?.attackMsgs[Math.floor(Math.random() * bossData.attackMsgs.length)] || '';
@@ -151,7 +133,6 @@ async function attackWorldBoss(req, res) {
         bossHp:   newHp,
         bossHpMax: boss.maxHp,
         counterMsg,
-        topPlayers: liveTopPlayers,
         msg: `⚔️ คุณโจมตี ${boss.nameTH} เสียหาย ${actualDmg} HP! (HP เหลือ ${newHp.toLocaleString()}/${boss.maxHp.toLocaleString()})`,
       });
     }
@@ -172,18 +153,6 @@ async function attackWorldBoss(req, res) {
       .sort((a, b) => b.damage - a.damage);
 
     await bossRef.update({ currentHp: 0, status: 'dead', killedAt: now, attackLog });
-
-    // Real-time broadcast: boss death event
-    db.collection('game_global_events').add({
-      type:        'world_boss_killed',
-      bossId:      boss.bossId,
-      bossName:    boss.nameTH,
-      emoji:       boss.emoji,
-      killedBy:    charName,
-      killedByUid: uid,
-      topPlayers:  sorted.slice(0, 5),
-      ts:          now,
-    }).catch(() => {});
 
     // Grant rewards
     const bossData = getBoss(boss.bossId);

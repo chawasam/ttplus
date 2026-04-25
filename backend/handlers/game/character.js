@@ -80,11 +80,9 @@ async function allocateStat(req, res) {
     const accountDoc = await db.collection('game_accounts').doc(uid).get();
     if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
     const charId = accountDoc.data().characterId;
-    if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
-    if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
     const char    = charDoc.data();
 
     const available = char.statPoints || 0;

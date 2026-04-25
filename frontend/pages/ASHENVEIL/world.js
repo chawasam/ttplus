@@ -18,24 +18,11 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getAchievements,
          getLoginBonusStatus, claimLoginBonus,
          getLeaderboard,
-         getWorldBoss, attackWorldBoss,
-         getCraftingRecipes, craftItem } from '../../lib/gameApi';
+         getWorldBoss, attackWorldBoss } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
 import { connectSocket, getSocket } from '../../lib/socket';
-
-// Zone boss ID map (mirrors maps.js ZONE_LIST bossId)
-const ZONE_BOSSES = {
-  town_outskirts:    'outskirts_boss',
-  forest_path:       'forest_boss',
-  dark_cave:         'cave_boss',
-  city_ruins:        'ruins_boss',
-  cursed_marshlands: 'marsh_boss',
-  void_frontier:     'void_boss',
-  shadowfell_depths: 'shadow_boss',
-  vorath_citadel:    'vorath_boss',
-};
 
 const SCREENS = {
   WORLD:          'world',
@@ -59,7 +46,6 @@ const SCREENS = {
   ACHIEVEMENTS:   'achievements',
   WORLD_BOSS:     'world_boss',
   LEADERBOARD:    'leaderboard',
-  CRAFTING:       'crafting',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -96,9 +82,7 @@ const ZONE_LIST = [
   { id: 'dark_cave',         name: '🕳️ ถ้ำมืด',            lv: 'Lv.5+',   minLevel: 5  },
   { id: 'city_ruins',        name: '🏚️ ซากเมือง',          lv: 'Lv.10+',  minLevel: 10 },
   { id: 'cursed_marshlands', name: '🌿 หนองสาปแช่ง',       lv: 'Lv.18+',  minLevel: 18 },
-  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',        lv: 'Lv.28+',  minLevel: 28 },
-  { id: 'shadowfell_depths', name: '🌑 ห้วงลึกแห่งเงา',    lv: 'Lv.38+',  minLevel: 38 },
-  { id: 'vorath_citadel',    name: '🏰 ป้อมปราการ Vorath',  lv: 'Lv.50+',  minLevel: 50 },
+  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',       lv: 'Lv.28+',  minLevel: 28 },
 ];
 
 const GRADE_COLOR = {
@@ -131,9 +115,6 @@ export default function GameWorld() {
   const [shopItems,  setShopItems]  = useState([]);
   const [npcs,       setNPCs]       = useState([]);
   const [activeNPC,  setActiveNPC]  = useState(null);
-  const [npcLineIdx,  setNpcLineIdx]  = useState(0);   // typewriter: which line we're on
-  const [npcTyped,    setNpcTyped]    = useState('');   // typewriter: chars revealed so far
-  const [npcTyping,   setNpcTyping]   = useState(false); // typewriter: animation running
   const [busy,          setBusy]         = useState(false);
   const [atmosphere,    setAtmosphere]   = useState('');
   const [dungeonList,   setDungeonList]  = useState([]);
@@ -190,12 +171,6 @@ export default function GameWorld() {
   const [leaderboardTab,   setLeaderboardTab]   = useState('level'); // 'level' | 'kills' | 'achievements'
   const [leaderboardLoad,  setLeaderboardLoad]  = useState(false);
 
-  // ── Crafting ──
-  const [craftingRecipes,  setCraftingRecipes]  = useState([]);
-  const [craftingLoad,     setCraftingLoad]     = useState(false);
-  const [craftingTab,      setCraftingTab]      = useState('all'); // 'all' | category filter
-  const [craftingBusy,     setCraftingBusy]     = useState(false);
-
   // ── Quest Popup (real-time progress via socket) ──
   const [questPopup,      setQuestPopup]       = useState(null);  // { type, questName, hint, progress, total, rewards, ... }
   const questPopupTimer   = useRef(null);
@@ -224,7 +199,7 @@ export default function GameWorld() {
   // ===== Init =====
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) { router.replace('/ashenveil'); return; }
+      if (!u) { router.replace('/ASHENVEIL'); return; }
 
       // ── Ensure socket is connected + authenticated ──────────────────────────
       // กรณีผู้เล่นเปิด /ASHENVEIL/world ตรงๆ โดยไม่ผ่าน dashboard
@@ -244,27 +219,23 @@ export default function GameWorld() {
 
       try {
         const { data } = await loadCharacter();
-        if (!data.hasCharacter) { router.replace('/ashenveil'); return; }
+        if (!data.hasCharacter) { router.replace('/ASHENVEIL'); return; }
         setChar(data.character);
         setGold(data.character.gold || 0);
         setRP(data.character.realmPoints || 0);
         setZone(data.character.location || 'town_square');
         addLog(`👤 ${data.character.name} (${data.character.race} ${data.character.class} Lv.${data.character.level})`);
         addLog(`📍 ${getZoneName(data.character.location || 'town_square')}`);
-        // Auto-load daily quests + quest log (for progression visibility + badge)
-        loadQuests().catch(() => {});
-        loadQuestLog().catch(() => {});
-
-        // Auto-check login bonus — backend returns canClaim not alreadyClaimed
+        // Auto-check login bonus
         try {
           const { data: lb } = await getLoginBonusStatus();
-          if (lb.canClaim) {
+          if (!lb.alreadyClaimed) {
             setLoginBonusData(lb);
             setShowLoginBonus(true);
           }
         } catch {}
       } catch {
-        router.replace('/ashenveil');
+        router.replace('/ASHENVEIL');
       } finally {
         setLoading(false);
       }
@@ -345,7 +316,7 @@ export default function GameWorld() {
       setRPShopItems(data.items || []);
       setRP(data.rp || 0);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลด RP Shop ไม่ได้');
+      toast.error('โหลด RP Shop ไม่ได้');
     } finally {
       setRPShopLoading(false);
     }
@@ -382,7 +353,7 @@ export default function GameWorld() {
       const { data } = await getSkills();
       setSkillsData(data);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลด Skills ไม่ได้');
+      toast.error('โหลด Skills ไม่ได้');
     } finally {
       setSkillsLoading(false);
     }
@@ -413,7 +384,7 @@ export default function GameWorld() {
       const { data } = await getCharacterProfile();
       setCharProfile(data);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลด Character ไม่ได้');
+      toast.error('โหลด Character ไม่ได้');
     } finally {
       setCharLoading(false);
     }
@@ -449,7 +420,7 @@ export default function GameWorld() {
       const { data } = await getEnhanceInfo(instanceId);
       setEnhanceInfo(data);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลดข้อมูล Enhance ไม่ได้');
+      toast.error('โหลดข้อมูล Enhance ไม่ได้');
     } finally {
       setEnhanceLoading(false);
     }
@@ -520,7 +491,7 @@ export default function GameWorld() {
       const { data } = await getAchievements();
       setAchData(data);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลด Achievements ไม่ได้');
+      toast.error('โหลด Achievements ไม่ได้');
     } finally {
       setAchLoading(false);
     }
@@ -589,34 +560,6 @@ export default function GameWorld() {
     } catch { toast.error('โหลด Leaderboard ไม่ได้'); }
     finally { setLeaderboardLoad(false); }
   }, []);
-
-  // ===== Crafting =====
-  const openCrafting = useCallback(async () => {
-    setScreen(SCREENS.CRAFTING);
-    setCraftingLoad(true);
-    try {
-      const { data } = await getCraftingRecipes();
-      setCraftingRecipes(data.recipes || []);
-    } catch { toast.error('โหลด Crafting ไม่ได้'); }
-    finally { setCraftingLoad(false); }
-  }, []);
-
-  const handleCraft = useCallback(async (recipeId) => {
-    if (craftingBusy) return;
-    setCraftingBusy(true);
-    try {
-      const { data } = await craftItem(recipeId);
-      toast.success(data.msg || 'Craft สำเร็จ!');
-      // Refresh recipes (inventory changed)
-      const { data: fresh } = await getCraftingRecipes();
-      setCraftingRecipes(fresh.recipes || []);
-      // Refresh gold
-      const { data: bal } = await getBalance();
-      setGold(bal.gold); setRP(bal.rp);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Craft ล้มเหลว');
-    } finally { setCraftingBusy(false); }
-  }, [craftingBusy]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -888,9 +831,7 @@ export default function GameWorld() {
       setBattleSkills(data.availableSkills || []);
       setScreen(SCREENS.BATTLE);
     } catch (err) {
-      const msg = err.response?.data?.error || 'เริ่ม Battle ไม่ได้';
-      addLog(`⛔ ${msg}`);
-      toast.error(msg);
+      addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
     } finally {
       setBusy(false);
     }
@@ -902,7 +843,7 @@ export default function GameWorld() {
     try {
       const { data } = await battleAction(battle.battleId, action, opts);
       setBattle(data.state);
-      setBattleLog(prev => [...prev, '─────', ...(data.log || [])]);
+      setBattleLog(prev => [...prev, '─────', ...data.log]);
 
       if (data.result === 'victory') {
         const rewards = data.rewards || {};
@@ -987,19 +928,11 @@ export default function GameWorld() {
 
   // ===== Inventory =====
   const loadInventory = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const { data } = await getInventory();
-      setInventory(data.items || []);
-      setEquipment(data.equipment || {});
-      setScreen(SCREENS.INVENTORY);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลด Inventory ไม่ได้');
-    } finally {
-      setBusy(false);
-    }
-  }, [busy]);
+    const { data } = await getInventory();
+    setInventory(data.items);
+    setEquipment(data.equipment);
+    setScreen(SCREENS.INVENTORY);
+  }, []);
 
   const handleEquip = useCallback(async (instanceId, slot) => {
     try {
@@ -1020,7 +953,7 @@ export default function GameWorld() {
       toast.success(data.msg);
       setGold(g => g + data.gold);
       const inv = await getInventory();
-      setInventory(inv.data.items || []);
+      setInventory(inv.data.items);
     } catch (err) {
       toast.error(err.response?.data?.error || 'ขายไม่ได้');
     }
@@ -1028,18 +961,10 @@ export default function GameWorld() {
 
   // ===== Shop =====
   const loadShop = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const { data } = await getShopItems();
-      setShopItems(data.items || []);
-      setScreen(SCREENS.SHOP);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลดร้านค้าไม่ได้');
-    } finally {
-      setBusy(false);
-    }
-  }, [busy]);
+    const { data } = await getShopItems();
+    setShopItems(data.items);
+    setScreen(SCREENS.SHOP);
+  }, []);
 
   const handleBuy = useCallback(async (itemId, name, price) => {
     if (!confirm(`ซื้อ ${name} ราคา ${price} Gold?`)) return;
@@ -1054,46 +979,16 @@ export default function GameWorld() {
 
   // ===== NPC =====
   const loadNPCs = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const { data } = await getNPCs();
-      setNPCs(data.npcs || []);
-      setScreen(SCREENS.NPC);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'โหลด NPC ไม่ได้');
-    } finally {
-      setBusy(false);
-    }
-  }, [busy]);
-
-  const handleTalkNPC = useCallback(async (npcId) => {
-    try {
-      const { data } = await talkNPC(npcId);
-      setActiveNPC(data);
-      setNpcLineIdx(0);
-      setNpcTyped('');
-      setNpcTyping(true);
-      setScreen(SCREENS.NPC_TALK);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'คุยกับ NPC ไม่ได้');
-    }
+    const { data } = await getNPCs();
+    setNPCs(data.npcs);
+    setScreen(SCREENS.NPC);
   }, []);
 
-  // ── Typewriter effect ──────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!npcTyping || !activeNPC) return;
-    const lines = activeNPC.lines || [activeNPC.dialog || ''];
-    const currentLine = lines[npcLineIdx] || '';
-    if (npcTyped.length >= currentLine.length) {
-      setNpcTyping(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      setNpcTyped(currentLine.slice(0, npcTyped.length + 1));
-    }, 28); // ~35 chars/sec
-    return () => clearTimeout(timer);
-  }, [npcTyping, npcTyped, npcLineIdx, activeNPC]);
+  const handleTalkNPC = useCallback(async (npcId) => {
+    const { data } = await talkNPC(npcId);
+    setActiveNPC(data);
+    setScreen(SCREENS.NPC_TALK);
+  }, []);
 
   const handleGiveGift = useCallback(async (npcId, instanceId, itemName) => {
     try {
@@ -1108,7 +1003,7 @@ export default function GameWorld() {
       setActiveNPC(npc.data);
       // Refresh inventory
       const inv = await getInventory();
-      setInventory(inv.data.items || []);
+      setInventory(inv.data.items);
     } catch (err) {
       toast.error(err.response?.data?.error || 'ให้ของไม่ได้');
     }
@@ -1238,9 +1133,7 @@ export default function GameWorld() {
       setBattleSkills(data.availableSkills || []);
       setScreen(SCREENS.BATTLE);
     } catch (err) {
-      const msg = err.response?.data?.error || 'เริ่ม Battle ไม่ได้';
-      addLog(`⛔ ${msg}`);
-      toast.error(msg);
+      addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
     } finally {
       setBusy(false);
     }
@@ -1353,53 +1246,18 @@ export default function GameWorld() {
 
       {/* ── LOGIN BONUS POPUP ── */}
       {showLoginBonus && loginBonusData && (
-        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4"
-          style={{ backdropFilter: 'blur(2px)' }}>
-          <div className="bg-gray-950 border border-amber-700/60 rounded-2xl p-6 max-w-xs w-full text-center shadow-2xl"
-            style={{
-              fontFamily: "'Courier New', Courier, monospace",
-              boxShadow: '0 0 40px #92400e40',
-              animation: 'ash-slide-up 0.3s ease',
-            }}>
-            <style>{`@keyframes ash-slide-up{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
-
-            {/* Header */}
-            <div className="mb-1">
-              <p className="text-2xl mb-1">🌅</p>
-              <p className="text-amber-400 text-base font-bold">Login Bonus</p>
-              <p className="text-gray-500 text-xs">{loginBonusData.reward?.label || 'ยินดีต้อนรับกลับมา!'}</p>
-            </div>
-
-            {/* Streak dots — แสดง 7 วันล่าสุด */}
-            <div className="flex justify-center gap-1.5 my-3">
-              {[...Array(7)].map((_, i) => {
-                const s = loginBonusData.streak || 1;
-                const filled = i < Math.min(s, 7);
-                const isToday = i === Math.min(s - 1, 6);
-                return (
-                  <div key={i}
-                    className="flex flex-col items-center gap-0.5">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]"
-                      style={{
-                        background: filled ? (isToday ? '#f59e0b' : '#92400e80') : '#1f2937',
-                        border: isToday ? '2px solid #f59e0b' : '1px solid #374151',
-                        boxShadow: isToday ? '0 0 8px #f59e0b60' : 'none',
-                      }}>
-                      {filled ? (isToday ? '★' : '✓') : ''}
-                    </div>
-                    <span className="text-[8px] text-gray-700">วัน{i + 1}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-amber-500 text-xs mb-3 font-bold">
-              Streak: {loginBonusData.streak} วัน
-              {loginBonusData.nextRewardAt &&
-                <span className="text-gray-500 font-normal"> · อีก {loginBonusData.nextRewardAt - loginBonusData.streak} วัน = Milestone!</span>}
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-950 border border-amber-700 rounded-lg p-6 max-w-sm w-full text-center"
+            style={{ fontFamily: "'Courier New', Courier, monospace" }}>
+            <p className="text-amber-400 text-lg font-bold mb-1">🎁 Login Bonus!</p>
+            <p className="text-gray-400 text-xs mb-4">
+              Day Streak: <span className="text-amber-300 font-bold">{loginBonusData.streak}</span>
+              {loginBonusData.nextMilestone && (
+                <span className="text-gray-400"> → Milestone ที่ {loginBonusData.nextMilestone} วัน</span>
+              )}
             </p>
-
-            {/* Rewards */}
-            <div className="bg-gray-900/80 border border-amber-900/40 rounded-xl p-3 mb-4 space-y-1">
+            {/* Reward preview */}
+            <div className="bg-gray-900 border border-gray-800 rounded p-3 mb-4 space-y-1">
               {loginBonusData.reward?.gold > 0 && (
                 <p className="text-yellow-400 text-sm">💰 +{loginBonusData.reward.gold} Gold</p>
               )}
@@ -1413,14 +1271,13 @@ export default function GameWorld() {
                 <p className="text-amber-300 text-xs">🎖️ ตำแหน่ง: "{loginBonusData.reward.title}"</p>
               )}
             </div>
-
             <div className="grid grid-cols-2 gap-2">
               <button onClick={handleClaimLoginBonus}
-                className="px-4 py-2.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded-xl text-sm font-bold transition">
+                className="px-4 py-2 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-sm font-bold transition">
                 🎁 รับเลย!
               </button>
               <button onClick={() => setShowLoginBonus(false)}
-                className="px-4 py-2.5 border border-gray-800 text-gray-600 hover:text-gray-400 rounded-xl text-sm transition">
+                className="px-4 py-2 border border-gray-700 text-gray-500 hover:text-gray-400 rounded text-sm transition">
                 ทีหลัง
               </button>
             </div>
@@ -1429,98 +1286,46 @@ export default function GameWorld() {
       )}
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col"
         style={{
-          fontFamily:      "'Courier New', Courier, monospace",
-          fontSize:        fontPx,
-          filter:          ashFilter,
-          transform:       ashSettings.scale !== 1.0 ? `scale(${ashSettings.scale})` : undefined,
-          transformOrigin: 'top center',
+          fontFamily: "'Courier New', Courier, monospace",
+          fontSize:   fontPx,
+          filter:     ashFilter,
         }}>
 
         {/* ── STATUS BAR ── */}
-        {(() => {
-          // XP progress
-          const xp       = char?.xp       || 0;
-          const xpToNext = char?.xpToNext || 100;
-          const xpPct    = Math.min(100, Math.round((xp / xpToNext) * 100));
-
-          // Daily quest count
-          const dqTotal  = questData?.quests?.length || 0;
-          const dqDone   = questData?.quests?.filter(q => q.completed).length || 0;
-          const dqBadge  = dqDone > 0;
-
-          // Active story quest hint (first active)
-          const activeStory = questLog?.story?.find(q => q.status === 'active');
-          const storyHint   = activeStory?.currentStep?.hint;
-          const storyName   = activeStory?.name;
-
-          return (
-            <div className="border-b border-gray-800 bg-gray-950">
-              {/* Row 1 — vitals + economy */}
-              <div className="px-4 pt-2 pb-1 flex flex-wrap gap-4 text-xs">
-                <span className="text-amber-400 font-bold">{char?.name}</span>
-                <span className="text-gray-500">{char?.race} {char?.class} Lv.{char?.level}</span>
-                <span className="text-red-400">❤️ {char?.hp}/{char?.hpMax}</span>
-                <span className="text-blue-400">💧 {char?.mp}/{char?.mpMax}</span>
-                <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
-                <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
-                <span className="text-purple-400">🌀 {rp} RP</span>
-                <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
-                <div className="flex items-center gap-1 ml-2">
-                  <button onClick={toggleBgm}
-                    title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
-                    className={`px-1.5 py-0.5 border rounded transition select-none text-xs ${
-                      bgmEnabled ? 'border-amber-800 text-amber-500 hover:text-amber-300 hover:border-amber-600'
-                                 : 'border-gray-800 text-gray-700 hover:text-gray-500'}`}
-                    style={{ lineHeight: 1 }}>
-                    {bgmEnabled ? '🎵' : '🔇'}
-                  </button>
-                  {bgmEnabled && (
-                    <input type="range" min="0" max="1" step="0.05"
-                      value={bgmVolume} onChange={handleVolumeChange}
-                      title={`Volume: ${Math.round(bgmVolume * 100)}%`}
-                      className="w-14 h-1 accent-amber-600 cursor-pointer"
-                      style={{ verticalAlign: 'middle' }} />
-                  )}
-                </div>
-              </div>
-
-              {/* Row 2 — XP bar + quest progress + story hint */}
-              <div className="px-4 pb-1.5 flex items-center gap-3 text-[10px]">
-                {/* XP bar */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-purple-500">⭐</span>
-                  <div className="w-20 h-1 bg-gray-800 rounded overflow-hidden">
-                    <div className="h-full bg-purple-700 rounded transition-all duration-500"
-                      style={{ width: `${xpPct}%` }} />
-                  </div>
-                  <span className="text-gray-600">{xp}/{xpToNext}</span>
-                  {xpPct >= 90 && <span className="text-purple-400 animate-pulse">↑ ใกล้ Level Up!</span>}
-                </div>
-
-                {/* Daily quest count */}
-                {dqTotal > 0 && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className={dqDone === dqTotal ? 'text-green-500' : 'text-gray-500'}>📋</span>
-                    <span className={dqDone === dqTotal ? 'text-green-400' : 'text-gray-500'}>
-                      {dqDone}/{dqTotal}
-                    </span>
-                    {questBadge && <span className="text-green-400 animate-pulse">✦ รับรางวัล</span>}
-                  </div>
-                )}
-
-                {/* Active story quest hint */}
-                {storyHint && (
-                  <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-                    <span className="text-amber-700 shrink-0">📖</span>
-                    <span className="text-gray-600 truncate" title={`${storyName}: ${storyHint}`}>
-                      {storyHint}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
+        <div className="border-b border-gray-800 bg-gray-950 px-4 py-2 flex flex-wrap gap-4 text-xs">
+          <span className="text-amber-400 font-bold">{char?.name}</span>
+          <span className="text-gray-500">{char?.race} {char?.class} Lv.{char?.level}</span>
+          <span className="text-red-400">❤️ {char?.hp}/{char?.hpMax}</span>
+          <span className="text-blue-400">💧 {char?.mp}/{char?.mpMax}</span>
+          <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
+          <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
+          <span className="text-purple-400">🌀 {rp} RP</span>
+          <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
+          <div className="flex items-center gap-1 ml-2">
+            {/* BGM quick toggle in HUD */}
+            <button
+              onClick={toggleBgm}
+              title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
+              className={`px-1.5 py-0.5 border rounded transition select-none text-xs ${
+                bgmEnabled
+                  ? 'border-amber-800 text-amber-500 hover:text-amber-300 hover:border-amber-600'
+                  : 'border-gray-800 text-gray-700 hover:text-gray-500'
+              }`}
+              style={{ lineHeight: 1 }}>
+              {bgmEnabled ? '🎵' : '🔇'}
+            </button>
+            {bgmEnabled && (
+              <input
+                type="range" min="0" max="1" step="0.05"
+                value={bgmVolume}
+                onChange={handleVolumeChange}
+                title={`Volume: ${Math.round(bgmVolume * 100)}%`}
+                className="w-14 h-1 accent-amber-600 cursor-pointer"
+                style={{ verticalAlign: 'middle' }}
+              />
+            )}
+          </div>
+        </div>
 
         <div className="flex flex-1 overflow-hidden">
 
@@ -1552,12 +1357,8 @@ export default function GameWorld() {
                     {zone !== 'town_square' && (
                       <Btn onClick={handleExplore}  disabled={busy}>🔍 สำรวจ</Btn>
                     )}
-                    {zone !== 'town_square' && ZONE_BOSSES[zone] && (
-                      <Btn
-                        onClick={() => handleStartBattle(zone, ZONE_BOSSES[zone])}
-                        disabled={busy}
-                        title="สู้ Zone Boss (24h cooldown)"
-                      >💀 Zone Boss</Btn>
+                    {zone !== 'town_square' && (
+                      <Btn onClick={() => handleStartBattle(zone)} disabled={busy}>⚔️ ออกหาบอส</Btn>
                     )}
                     <Btn onClick={handleRest}     disabled={busy}>💤 พักผ่อน</Btn>
                     <Btn onClick={loadInventory}  disabled={busy}>🎒 Inventory</Btn>
@@ -1582,7 +1383,6 @@ export default function GameWorld() {
                     <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
                     <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
                     <Btn onClick={openWorldBoss}    disabled={busy}>💀 World Boss</Btn>
-                    <Btn onClick={openCrafting}     disabled={busy}>⚒️ Crafting</Btn>
                     <button onClick={() => { setLoginBonusData(null); getLoginBonusStatus().then(r => { setLoginBonusData(r.data); setShowLoginBonus(true); }).catch(() => {}); }} disabled={busy}
                       className="px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
                       🎁 Login Bonus
@@ -1955,12 +1755,11 @@ export default function GameWorld() {
                     <>
                       {/* Group by category */}
                       {[
-                        { key: 'consumable',  label: '🧪 Boost & ของใช้' },
-                        { key: 'premium_box', label: '📦 กล่องพรีเมียม' },
-                        { key: 'upgrade',     label: '⬆️ Permanent Upgrade' },
-                        { key: 'service',     label: '⚗️ Character Service' },
+                        { key: 'consumable',  label: '🧪 ของใช้' },
+                        { key: 'premium_box', label: '📦 กล่องสุ่ม' },
+                        { key: 'material',    label: '📜 วัตถุดิบ' },
                         { key: 'race_unlock', label: '🧬 Race Unlock' },
-                        { key: 'cosmetic',    label: '🎖️ Title / Cosmetic' },
+                        { key: 'cosmetic',    label: '🎖️ ตำแหน่ง' },
                       ].map(cat => {
                         const catItems = rpShopItems.filter(i => i.category === cat.key);
                         if (!catItems.length) return null;
@@ -2085,122 +1884,72 @@ export default function GameWorld() {
                     </div>
                   ) : (
                     /* ── SIDE QUESTS TAB ── */
-                    (() => {
-                      const CAT = {
-                        town:        { emoji: '🏘️', label: 'เมือง',     color: 'text-green-400',  border: 'border-green-900',  bg: 'bg-green-900/10'  },
-                        bounty:      { emoji: '⚔️', label: 'ล่ารางวัล', color: 'text-red-400',    border: 'border-red-900',    bg: 'bg-red-900/10'    },
-                        exploration: { emoji: '🗺️', label: 'สำรวจ',     color: 'text-blue-400',   border: 'border-blue-900',   bg: 'bg-blue-900/10'   },
-                        personal:    { emoji: '❤️', label: 'NPC story', color: 'text-pink-400',   border: 'border-pink-900',   bg: 'bg-pink-900/10'   },
-                      };
-                      const catBadge = (cat) => {
-                        const c = CAT[cat] || { emoji: '📜', label: cat, color: 'text-gray-400', border: '', bg: '' };
-                        return <span className={`${c.color} text-xs`}>{c.emoji} {c.label}</span>;
-                      };
-                      return (
-                      <div className="space-y-3">
-
-                        {/* Active side quests */}
-                        {questLog.sideActive.length > 0 && (
-                          <div>
-                            <p className="text-amber-500 text-xs font-bold mb-1">▶ กำลังดำเนินการ</p>
-                            {questLog.sideActive.map(q => (
-                              <div key={q.id} className={`border rounded p-2 mb-1 text-xs ${(CAT[q.category]||{}).border||'border-amber-800'} ${(CAT[q.category]||{}).bg||'bg-amber-900/10'}`}>
-                                <div className="flex items-center gap-1 mb-0.5">
-                                  {catBadge(q.category)}
-                                  <span className="text-amber-300 font-bold ml-1">{q.name}</span>
+                    <div className="space-y-2">
+                      {/* Active side quests */}
+                      {questLog.sideActive.length > 0 && (
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">[ กำลังดำเนินการ ]</p>
+                          {questLog.sideActive.map(q => (
+                            <div key={q.id} className="border border-amber-800 rounded p-2 mb-1 text-xs bg-amber-900/10">
+                              <p className="text-amber-300 font-bold">{q.name}
+                                <span className="text-gray-400 font-normal ml-1">[{q.category}]</span>
+                              </p>
+                              <p className="text-gray-400 leading-relaxed mt-0.5">{q.currentStep.hint}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <div className="flex-1 h-0.5 bg-gray-800 rounded">
+                                  <div className="h-0.5 bg-amber-600 rounded transition-all"
+                                    style={{ width: `${Math.min(100, (q.currentStep.progress / q.currentStep.count) * 100)}%` }} />
                                 </div>
-                                <p className="text-gray-400 leading-relaxed">{q.currentStep.hint}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div className="flex-1 h-1 bg-gray-800 rounded-full">
-                                    <div className="h-1 bg-amber-500 rounded-full transition-all"
-                                      style={{ width: `${Math.min(100, (q.currentStep.progress / (q.currentStep.count||1)) * 100)}%` }} />
-                                  </div>
-                                  <span className="text-gray-400 shrink-0 text-xs">{q.currentStep.progress}/{q.currentStep.count}</span>
-                                </div>
-                                <p className="text-gray-500 text-xs mt-0.5">ขั้น {q.currentStep.stepIndex + 1}/{q.currentStep.totalSteps}</p>
-                                <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}</p>
+                                <span className="text-gray-400 shrink-0">
+                                  {q.currentStep.progress}/{q.currentStep.count}
+                                </span>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                        {/* Available side quests */}
-                        {questLog.sideAvailable.length > 0 && (
-                          <div>
-                            <p className="text-gray-400 text-xs font-bold mb-1">📋 รับได้เลย</p>
-                            {questLog.sideAvailable.map(q => (
-                              <div key={q.id} className={`border rounded p-2 mb-1 text-xs ${(CAT[q.category]||{}).border||'border-gray-700'}`}>
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1 mb-0.5 flex-wrap">
-                                      {catBadge(q.category)}
-                                      <span className="text-amber-200 font-bold">{q.name}</span>
-                                      {q.giverNpc && <span className="text-gray-500">· {q.giverNpc}</span>}
-                                    </div>
-                                    <p className="text-gray-300 leading-relaxed">{q.desc}</p>
-                                    <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}</p>
-                                  </div>
-                                  <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
-                                    className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
-                                    รับ
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Locked personal quests — show affection progress to hint */}
-                        {(questLog.lockedPersonal||[]).length > 0 && (
-                          <div>
-                            <p className="text-pink-800 text-xs font-bold mb-1">🔒 ต้องสร้างความสัมพันธ์ก่อน</p>
-                            {(questLog.lockedPersonal||[]).map(q => (
-                              <div key={q.id} className="border border-pink-950 rounded p-2 mb-1 text-xs opacity-70">
-                                <div className="flex items-center gap-1 mb-0.5">
-                                  <span className="text-pink-600">❤️ NPC story</span>
-                                  <span className="text-gray-500 font-bold ml-1">{q.name}</span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div className="flex-1 h-1 bg-gray-900 rounded-full">
-                                    <div className="h-1 bg-pink-800 rounded-full transition-all"
-                                      style={{ width: `${Math.min(100, (q.currentAffection / q.minAffection.amount) * 100)}%` }} />
-                                  </div>
-                                  <span className="text-pink-700 shrink-0">{q.currentAffection}/{q.minAffection.amount} ❤️ กับ {q.giverNpc}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Completed side quests */}
-                        {questLog.sideCompleted.length > 0 && (
-                          <div>
-                            <p className="text-gray-600 text-xs font-bold mb-1">✅ เสร็จแล้ว</p>
-                            {questLog.sideCompleted.map(q => (
-                              <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-50">
-                                <div className="flex items-center gap-1">
-                                  {catBadge(q.category)}
-                                  <span className="text-gray-500 ml-1">✅ {q.name}</span>
-                                </div>
-                                {q.completionText && (
-                                  <p className="text-gray-600 italic leading-relaxed mt-0.5">
-                                    "{q.completionText.substring(0, 80)}{q.completionText.length > 80 ? '...' : ''}"
+                      {/* Available side quests */}
+                      {questLog.sideAvailable.length > 0 && (
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">[ รับได้เลย ]</p>
+                          {questLog.sideAvailable.map(q => (
+                            <div key={q.id} className="border border-gray-700 rounded p-2 mb-1 text-xs">
+                              <div className="flex items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-amber-200 font-bold">{q.name}
+                                    <span className="text-gray-400 font-normal ml-1">[{q.category}]</span>
                                   </p>
-                                )}
+                                  <p className="text-gray-300 leading-relaxed mt-0.5">{q.desc}</p>
+                                  <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
+                                </div>
+                                <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
+                                  className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                                  รับ
+                                </button>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                        {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 &&
-                         questLog.sideCompleted.length === 0 && (questLog.lockedPersonal||[]).length === 0 && (
-                          <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้<br/>
-                            <span className="text-gray-600">คุยกับ NPC และสำรวจโลก Ashenveil เพื่อ unlock ภารกิจ</span>
-                          </p>
-                        )}
-                      </div>
-                      );
-                    })()
+                      {/* Completed side quests */}
+                      {questLog.sideCompleted.length > 0 && (
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">[ เสร็จแล้ว ]</p>
+                          {questLog.sideCompleted.map(q => (
+                            <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-40">
+                              <p className="text-gray-500">✅ {q.name}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 && questLog.sideCompleted.length === 0 && (
+                        <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้</p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -2811,204 +2560,32 @@ export default function GameWorld() {
                 </div>
               )}
 
-              {/* CRAFTING */}
-              {screen === SCREENS.CRAFTING && (
-                <div className="max-h-[500px] overflow-y-auto space-y-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ ⚒️ Crafting Workshop ]</p>
-                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+              {/* NPC TALK */}
+              {screen === SCREENS.NPC_TALK && activeNPC && (
+                <div>
+                  <div className="text-xs text-gray-400 mb-2">
+                    {activeNPC.emoji} <span className="text-amber-400">{activeNPC.name}</span>
+                    {' '}❤️ {activeNPC.affection}/100
+                    {' '}· ให้ของได้ {activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้ง
                   </div>
-
-                  {/* Category filter */}
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {['all', 'weapon', 'armor', 'consumable', 'material', 'relic'].map(cat => (
-                      <button key={cat} onClick={() => setCraftingTab(cat)}
-                        className={`px-2 py-1 text-xs rounded border transition ${
-                          craftingTab === cat
-                            ? 'border-amber-600 text-amber-300 bg-amber-900/20'
-                            : 'border-gray-700 text-gray-500 hover:text-gray-300'
-                        }`}>
-                        {cat === 'all' ? '📋 ทั้งหมด' :
-                         cat === 'weapon' ? '⚔️ อาวุธ' :
-                         cat === 'armor' ? '🛡️ เกราะ' :
-                         cat === 'consumable' ? '🧪 ยา' :
-                         cat === 'material' ? '💠 วัสดุ' : '🔮 Relic'}
+                  <p className="text-gray-300 text-sm italic mb-3">"{activeNPC.dialog}"</p>
+                  <p className="text-gray-400 text-xs mb-2">เลือก item จาก inventory เพื่อให้ของขวัญ:</p>
+                  <div className="max-h-28 overflow-y-auto mb-2">
+                    {inventory.filter(i => i.type === 'MATERIAL' || i.type === 'JUNK' || i.type === 'CONSUMABLE').map(item => (
+                      <button key={item.instanceId}
+                        onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
+                        className="w-full flex items-center gap-2 py-1 text-xs border-b border-gray-900 hover:text-amber-300 text-left">
+                        <span>{item.emoji}</span>
+                        <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
                       </button>
                     ))}
+                    {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
+                      <p className="text-gray-500 text-xs">ไม่มี item ที่จะให้ได้</p>
+                    )}
                   </div>
-
-                  {craftingLoad ? (
-                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
-                  ) : craftingRecipes.length === 0 ? (
-                    <p className="text-gray-500 text-xs text-center py-4">ยังไม่มี Recipe ที่ใช้ได้</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {craftingRecipes
-                        .filter(r => craftingTab === 'all' || r.category === craftingTab)
-                        .map(recipe => {
-                          const gradeColor = {
-                            COMMON: 'text-gray-400', UNCOMMON: 'text-green-400',
-                            RARE: 'text-blue-400', EPIC: 'text-purple-400',
-                            LEGENDARY: 'text-orange-400', MYTHIC: 'text-red-400',
-                          }[recipe.resultGrade] || 'text-gray-400';
-
-                          return (
-                            <div key={recipe.recipeId}
-                              className={`border rounded p-3 space-y-2 ${
-                                recipe.canCraft
-                                  ? 'border-amber-800/50 bg-amber-900/5'
-                                  : 'border-gray-800 opacity-60'
-                              }`}>
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="text-sm">{recipe.emoji}</span>
-                                    <span className={`font-bold text-xs ${gradeColor}`}>{recipe.name}</span>
-                                    <span className={`text-xs ${gradeColor} opacity-70`}>[{recipe.resultGrade}]</span>
-                                  </div>
-                                  <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">{recipe.desc}</p>
-                                </div>
-                                <button
-                                  onClick={() => handleCraft(recipe.recipeId)}
-                                  disabled={!recipe.canCraft || craftingBusy}
-                                  className={`shrink-0 px-3 py-1.5 text-xs rounded border transition ${
-                                    recipe.canCraft
-                                      ? 'border-amber-600 text-amber-300 hover:bg-amber-900/20'
-                                      : 'border-gray-800 text-gray-600 cursor-not-allowed'
-                                  } disabled:opacity-40`}>
-                                  {craftingBusy ? '⏳' : '⚒️ Craft'}
-                                </button>
-                              </div>
-
-                              {/* Ingredients */}
-                              <div className="flex flex-wrap gap-1">
-                                {recipe.ingredients.map(ing => (
-                                  <span key={ing.itemId}
-                                    className={`text-xs px-1.5 py-0.5 rounded border ${
-                                      ing.have >= ing.qty
-                                        ? 'border-green-900 text-green-400 bg-green-900/10'
-                                        : 'border-red-900 text-red-400 bg-red-900/10'
-                                    }`}>
-                                    {ing.emoji} {ing.name} {ing.have}/{ing.qty}
-                                  </span>
-                                ))}
-                                {recipe.goldCost > 0 && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded border border-yellow-900 text-yellow-400 bg-yellow-900/10">
-                                    💰 {recipe.goldCost.toLocaleString()} Gold
-                                  </span>
-                                )}
-                              </div>
-
-                              {!recipe.canCraft && recipe.missing.length > 0 && (
-                                <p className="text-red-600 text-xs">
-                                  ขาด: {recipe.missing.map(m => `${m.emoji} ${m.name} ×${m.need - m.have}`).join(', ')}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
+                  <Btn onClick={() => setScreen(SCREENS.NPC)}>← กลับ</Btn>
                 </div>
               )}
-
-              {/* NPC TALK */}
-              {screen === SCREENS.NPC_TALK && activeNPC && (() => {
-                const npcLines = activeNPC.lines || [activeNPC.dialog || ''];
-                const totalLines = npcLines.length;
-                const isLast = npcLineIdx >= totalLines - 1;
-                const currentLineFull = npcLines[npcLineIdx] || '';
-                const isDoneTyping = !npcTyping && npcTyped.length >= currentLineFull.length;
-
-                // Advance to next line or skip typewriter
-                const handleAdvance = () => {
-                  if (npcTyping) {
-                    // Skip — show full line instantly
-                    setNpcTyped(currentLineFull);
-                    setNpcTyping(false);
-                  } else if (!isLast) {
-                    const next = npcLineIdx + 1;
-                    setNpcLineIdx(next);
-                    setNpcTyped('');
-                    setNpcTyping(true);
-                  }
-                };
-
-                return (
-                  <div>
-                    {/* NPC header */}
-                    <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-                      <span>
-                        {activeNPC.emoji} <span className="text-amber-400 font-semibold">{activeNPC.name}</span>
-                        {activeNPC.title && <span className="text-gray-600 ml-1">— {activeNPC.title}</span>}
-                      </span>
-                      <span>❤️ {activeNPC.affection}/100</span>
-                    </div>
-
-                    {/* Quest badge */}
-                    {activeNPC.isQuestDialog && activeNPC.questContext && (
-                      <div className="mb-2 px-2 py-0.5 rounded text-[10px] inline-block"
-                        style={{ background: '#92400e22', border: '1px solid #92400e', color: '#fbbf24' }}>
-                        📜 {activeNPC.questContext.questName}
-                      </div>
-                    )}
-
-                    {/* Dialog box — typewriter */}
-                    <div
-                      className="relative rounded-lg border p-3 mb-3 cursor-pointer select-none"
-                      style={{ borderColor: activeNPC.isQuestDialog ? '#92400e' : '#374151',
-                               background: activeNPC.isQuestDialog ? '#0f0a0022' : '#0a0a0a',
-                               minHeight: '72px' }}
-                      onClick={handleAdvance}
-                    >
-                      {/* Past lines (dimmed) */}
-                      {npcLineIdx > 0 && npcLines.slice(0, npcLineIdx).map((l, i) => (
-                        <p key={i} className="text-gray-600 text-xs italic mb-1">"{l}"</p>
-                      ))}
-                      {/* Current line */}
-                      <p className="text-gray-200 text-sm italic leading-relaxed">
-                        "{npcTyped}<span className="opacity-60 animate-pulse">{npcTyping ? '▌' : ''}</span>"
-                      </p>
-                      {/* Line counter + advance hint */}
-                      <div className="flex justify-between items-center mt-2">
-                        {totalLines > 1 && (
-                          <span className="text-gray-700 text-[10px]">{npcLineIdx + 1}/{totalLines}</span>
-                        )}
-                        {isDoneTyping && !isLast && (
-                          <span className="text-amber-700 text-[10px] animate-pulse ml-auto">แตะเพื่ออ่านต่อ ▶</span>
-                        )}
-                        {isDoneTyping && isLast && (
-                          <span className="text-gray-700 text-[10px] ml-auto">— จบบทสนทนา —</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Gift section — แสดงเมื่ออ่านจบ หรือ NPC ไม่ใช่ quest dialog */}
-                    {(isDoneTyping && isLast) || !activeNPC.isQuestDialog ? (
-                      <>
-                        <p className="text-gray-400 text-xs mb-2">
-                          ให้ของขวัญได้ {activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้ง
-                        </p>
-                        <div className="max-h-28 overflow-y-auto mb-2">
-                          {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).map(item => (
-                            <button key={item.instanceId}
-                              onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
-                              className="w-full flex items-center gap-2 py-1 text-xs border-b border-gray-900 hover:text-amber-300 text-left">
-                              <span>{item.emoji}</span>
-                              <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
-                            </button>
-                          ))}
-                          {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
-                            <p className="text-gray-500 text-xs">ไม่มี item ที่จะให้ได้</p>
-                          )}
-                        </div>
-                      </>
-                    ) : null}
-
-                    <Btn onClick={() => setScreen(SCREENS.NPC)}>← กลับ</Btn>
-                  </div>
-                );
-              })()}
 
             </div>
           </div>

@@ -11,6 +11,7 @@ const MONSTERS = {
     desc: 'สุนัขจรจัดที่หิวโหย ดวงตาดุดัน',
     attackMsg: ['กัดข้อเท้า', 'พุ่งเข้าหา', 'ขย้ำแขน'],
     drops: [
+      { itemId: null, chance: 0.7 },
       { itemId: 'bread', chance: 0.1 },
     ],
     flee_chance: 0.8,
@@ -104,6 +105,7 @@ const MONSTERS = {
     desc: 'ค้างคาวถ้ำตัวใหญ่ บินวนซ้ำหลอกทิศทาง',
     attackMsg: ['โฉบเฉี่ยวข้ามหัว', 'ฝูงบินพุ่งเข้าหา', 'ส่งเสียงอัลตราโซนิก'],
     drops: [
+      { itemId: null, chance: 0.5 },
       { itemId: 'monster_fang', chance: 0.4 },
     ],
     flee_chance: 0.7,
@@ -362,273 +364,6 @@ const MONSTERS = {
     flee_chance: 0.5,
   },
 
-  // ===== ZONE: shadowfell_depths (Lv 38-55) =====
-  shadow_wraith: {
-    monsterId: 'shadow_wraith', name: 'Shadow Wraith', emoji: '👻',
-    zone: 'shadowfell_depths',
-    level: 38, xpReward: 580, goldReward: [200, 340],
-    hp: 480, atk: 140, def: 32, spd: 20,
-    statusAttack: { type: 'POISON', chance: 0.3, duration: 2, dmgPerTurn: 20 },
-    desc: 'ผีร้ายจากมิติเงา ร่างกายทำจากความมืดล้วนๆ',
-    attackMsg: ['กรงเล็บเงา', 'ดูดชีพ', 'ขยายความมืด'],
-    drops: [
-      { itemId: 'shadow_cloth', chance: 0.8 },
-      { itemId: 'wraith_essence', chance: 0.5 },
-      { itemId: 'soul_gem', chance: 0.15 },
-    ],
-    flee_chance: 0.5,
-  },
-
-  dark_knight: {
-    monsterId: 'dark_knight', name: 'Dark Knight', emoji: '🖤',
-    zone: 'shadowfell_depths',
-    level: 42, xpReward: 700, goldReward: [250, 420],
-    hp: 650, atk: 170, def: 55, spd: 12,
-    desc: 'อัศวินผู้ถูกสาปให้รับใช้ความมืดชั่วนิรันดร์ ไม่รู้จักความเจ็บปวด',
-    attackMsg: ['ฟัน Dark Slash', 'ชาร์จ Void Strike', 'โล่ Shadow Bash'],
-    drops: [
-      { itemId: 'dark_steel', chance: 0.7 },
-      { itemId: 'void_crystal', chance: 0.4 },
-      { itemId: 'shadow_cloth', chance: 0.5 },
-    ],
-    flee_chance: 0.35,
-  },
-
-  nightmare_hound: {
-    monsterId: 'nightmare_hound', name: 'Nightmare Hound', emoji: '🐕‍🦺',
-    zone: 'shadowfell_depths',
-    level: 40, xpReward: 630, goldReward: [210, 360],
-    hp: 520, atk: 160, def: 28, spd: 25,
-    statusAttack: { type: 'SLEEP', chance: 0.25, duration: 1, dmgPerTurn: 0 },
-    desc: 'สุนัขนรกจากฝันร้าย ส่งเสียงหอนที่ทำให้ผู้ได้ยินหยุดนิ่ง',
-    attackMsg: ['กัดคอ', 'เล็บฉีก', 'หอน Nightmare'],
-    drops: [
-      { itemId: 'monster_fang', chance: 0.9 },
-      { itemId: 'shadow_cloth', chance: 0.3 },
-      { itemId: 'void_essence', chance: 0.2 },
-    ],
-    flee_chance: 0.55,
-  },
-
-  // ===== ZONE: vorath_citadel (Lv 50+) =====
-  citadel_sentinel: {
-    monsterId: 'citadel_sentinel', name: 'Citadel Sentinel', emoji: '🗿',
-    zone: 'vorath_citadel',
-    level: 52, xpReward: 900, goldReward: [350, 600],
-    hp: 900, atk: 200, def: 80, spd: 8,
-    regen: 15,
-    desc: 'ผู้พิทักษ์หินยักษ์แห่ง Vorath Citadel ฟื้นร่างไม่หยุด',
-    attackMsg: ['กระแทกกำปั้นหิน', 'กวาดแขนพลังสูง', 'ปล่อยพลังงาน Void'],
-    drops: [
-      { itemId: 'void_crystal', chance: 0.9 },
-      { itemId: 'titan_core', chance: 0.3 },
-      { itemId: 'dark_steel', chance: 0.6 },
-    ],
-    flee_chance: 0.6,
-  },
-
-  void_priest: {
-    monsterId: 'void_priest', name: 'Void Priest', emoji: '🧙‍♂️',
-    zone: 'vorath_citadel',
-    level: 55, xpReward: 1100, goldReward: [400, 700],
-    hp: 720, atk: 230, def: 45, spd: 22,
-    statusAttack: { type: 'POISON', chance: 0.4, duration: 3, dmgPerTurn: 40 },
-    desc: 'นักบวชแห่ง Void ผู้ศรัทธาในพลังงานมืดสูงสุด เวทมนตร์รุนแรงมาก',
-    attackMsg: ['ขับ Void Bolt', 'ระเบิด Dark Nova', 'สาป Corruption'],
-    drops: [
-      { itemId: 'void_essence', chance: 0.8 },
-      { itemId: 'chaos_shard', chance: 0.5 },
-      { itemId: 'ancient_scroll', chance: 0.4 },
-      { itemId: 'soul_gem', chance: 0.25 },
-    ],
-    flee_chance: 0.4,
-  },
-
-  abyssal_dragon: {
-    monsterId: 'abyssal_dragon', name: 'Abyssal Dragon', emoji: '🐉',
-    zone: 'vorath_citadel',
-    level: 58, xpReward: 1400, goldReward: [500, 900],
-    hp: 1100, atk: 260, def: 70, spd: 18,
-    statusAttack: { type: 'BURN', chance: 0.45, duration: 3, dmgPerTurn: 35 },
-    desc: 'มังกรเหวลึกแห่ง Void ผู้ถูกปลุกโดย Vorath เป็นผู้พิทักษ์ขั้นสุดท้าย',
-    attackMsg: ['หายใจไฟ Void', 'เขียวหางฟาด', 'บินโฉบโจมตี'],
-    drops: [
-      { itemId: 'dragon_scale', chance: 0.6 },
-      { itemId: 'chaos_shard', chance: 0.6 },
-      { itemId: 'void_crystal', chance: 0.9 },
-      { itemId: 'soul_gem', chance: 0.35 },
-    ],
-    flee_chance: 0.3,
-    special: 'mini_boss',
-  },
-
-  // ===== ZONE BOSSES (1 per zone, 24h cooldown) =====
-  outskirts_boss: {
-    monsterId: 'outskirts_boss', name: 'Goblin King Grak', emoji: '👑',
-    zone: 'town_outskirts',
-    level: 6, xpReward: 350, goldReward: [80, 150],
-    hp: 450, atk: 26, def: 14, spd: 7,
-    desc: '👑 ราชาโกบลิน Grak — ครองพื้นที่ชานเมืองด้วยกำลังและความโหดร้าย แกนนำกองกำลังโกบลินทั้งหมด',
-    attackMsg: ['ฟันกระบี่ทองคำ', 'ตะโกนให้ลูกน้องช่วย', 'กระแทกโล่สูง', 'พุ่งเต็มแรง'],
-    drops: [
-      { itemId: 'goblin_ear',           chance: 1.0 },
-      { itemId: 'iron_ore',             chance: 0.9 },
-      { itemId: 'health_potion_medium', chance: 0.7 },
-      { itemId: 'ancient_scroll',       chance: 0.2 },
-      { itemId: 'goblin_king_seal',     chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.03,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  forest_boss: {
-    monsterId: 'forest_boss', name: 'Elder Treant Monarch', emoji: '🌳',
-    zone: 'forest_path',
-    level: 10, xpReward: 700, goldReward: [150, 280],
-    hp: 900, atk: 42, def: 30, spd: 2,
-    desc: '🌳 Treant ผู้เฒ่าแห่งป่า — อายุกว่า 2000 ปี ตื่นขึ้นเพราะป่าของมันถูกทำลาย พลังธรรมชาติมหาศาล',
-    attackMsg: ['กิ่งยักษ์กวาด', 'รากดึงลงดิน', 'ปล่อยสปอร์พิษ', 'เรียกพาย'],
-    drops: [
-      { itemId: 'rotten_wood',     chance: 1.0 },
-      { itemId: 'wild_flower',     chance: 0.9 },
-      { itemId: 'honey_jar',       chance: 0.6 },
-      { itemId: 'crystal_shard',   chance: 0.4 },
-      { itemId: 'ancient_scroll',  chance: 0.25 },
-      { itemId: 'treant_heartwood', chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.02,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  cave_boss: {
-    monsterId: 'cave_boss', name: 'Crystal Troll Lord', emoji: '💎',
-    zone: 'dark_cave',
-    level: 14, xpReward: 1000, goldReward: [200, 400],
-    hp: 1200, atk: 58, def: 40, spd: 4,
-    regen: 20,
-    desc: '💎 ท่านเจ้าแห่งถ้ำ — ทรอลล์ผู้ฟื้นฟูตัวเองด้วยพลังคริสตัล ผิวหนังกลายเป็นผลึกแข็งระดับเพชร',
-    attackMsg: ['กำปั้นคริสตัล', 'คลื่นพลังฟื้นฟู', 'เซาะผลึกพิษ', 'กระแทกพื้น'],
-    drops: [
-      { itemId: 'crystal_shard',     chance: 1.0 },
-      { itemId: 'iron_ore',          chance: 0.9 },
-      { itemId: 'void_crystal',      chance: 0.35 },
-      { itemId: 'ancient_scroll',    chance: 0.3 },
-      { itemId: 'troll_crystal_heart', chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.02,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  ruins_boss: {
-    monsterId: 'ruins_boss', name: 'Iron Golem Prime', emoji: '🤖',
-    zone: 'city_ruins',
-    level: 20, xpReward: 1500, goldReward: [350, 600],
-    hp: 1800, atk: 85, def: 65, spd: 5,
-    desc: '🤖 Golem ต้นแบบของ Ashenveil — สร้างขึ้นเพื่อปกป้องเมือง แต่ถูก Void ปรับแต่งให้เป็นผู้ทำลาย',
-    attackMsg: ['ชกพลังไอน้ำ', 'ยิงลูกเหล็ก', 'กระแทกพื้น Shockwave', 'เปลี่ยนโหมดโจมตี'],
-    drops: [
-      { itemId: 'steel_ingot',        chance: 1.0 },
-      { itemId: 'iron_ore',           chance: 0.9 },
-      { itemId: 'chainmail_fragment', chance: 0.5 },
-      { itemId: 'void_crystal',       chance: 0.3 },
-      { itemId: 'ancient_scroll',     chance: 0.35 },
-      { itemId: 'prime_golem_core',   chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.01,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  marsh_boss: {
-    monsterId: 'marsh_boss', name: 'Hydra of the Deep', emoji: '🐍',
-    zone: 'cursed_marshlands',
-    level: 28, xpReward: 2200, goldReward: [500, 900],
-    hp: 2500, atk: 115, def: 55, spd: 10,
-    regen: 30,
-    statusAttack: { type: 'POISON', chance: 0.5, duration: 4, dmgPerTurn: 25 },
-    desc: '🐍 Hydra แห่งหนองลึก — 7 หัวที่ฟื้นคืนตัวเองได้ พิษรุนแรงพอจะฆ่าคนได้ภายในนาที',
-    attackMsg: ['กัดพิษสามทาง', 'หัวหักพื้น', 'ฉีดพิษกรด', 'พันด้วยหาง', 'ฟื้นหัวใหม่'],
-    drops: [
-      { itemId: 'bog_scale',       chance: 1.0 },
-      { itemId: 'poison_vial',     chance: 0.8 },
-      { itemId: 'void_crystal',    chance: 0.5 },
-      { itemId: 'soul_gem',        chance: 0.25 },
-      { itemId: 'ancient_scroll',  chance: 0.4 },
-      { itemId: 'hydra_venom_sac', chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.01,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  void_boss: {
-    monsterId: 'void_boss', name: 'Void Herald Azh\'kal', emoji: '🌌',
-    zone: 'void_frontier',
-    level: 38, xpReward: 3500, goldReward: [800, 1400],
-    hp: 3500, atk: 175, def: 70, spd: 22,
-    statusAttack: { type: 'POISON', chance: 0.4, duration: 3, dmgPerTurn: 50 },
-    desc: '🌌 ผู้ส่งสารจาก The Void — Azh\'kal มาก่อนการทำลายล้างครั้งใหญ่เสมอ พลังงาน Void ไหลออกจากร่างกายตลอดเวลา',
-    attackMsg: ['Void Beam เต็มพลัง', 'ดึงผู้เล่นเข้า Void', 'ระเบิด Null Field', 'เปิดประตูมิติ'],
-    drops: [
-      { itemId: 'void_crystal',      chance: 1.0 },
-      { itemId: 'void_essence',      chance: 0.8 },
-      { itemId: 'soul_gem',          chance: 0.5 },
-      { itemId: 'chaos_shard',       chance: 0.4 },
-      { itemId: 'ancient_scroll',    chance: 0.5 },
-      { itemId: 'void_herald_sigil', chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.01,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  shadow_boss: {
-    monsterId: 'shadow_boss', name: 'Shadow Archon Vael', emoji: '🌑',
-    zone: 'shadowfell_depths',
-    level: 48, xpReward: 5500, goldReward: [1200, 2000],
-    hp: 5000, atk: 240, def: 90, spd: 28,
-    statusAttack: { type: 'POISON', chance: 0.45, duration: 3, dmgPerTurn: 60 },
-    desc: '🌑 Archon แห่ง Shadowfell — Vael ผู้ปกครองมิติเงา เคยเป็นมนุษย์ก่อนจะขายวิญญาณเพื่อพลังสูงสุด',
-    attackMsg: ['Shadow Strike ทั้งสาม', 'ดูดวิญญาณ', 'ความมืดกลืนกิน', 'Clone จากเงา'],
-    drops: [
-      { itemId: 'shadow_cloth',         chance: 1.0 },
-      { itemId: 'void_essence',         chance: 0.9 },
-      { itemId: 'soul_gem',             chance: 0.6 },
-      { itemId: 'chaos_shard',          chance: 0.55 },
-      { itemId: 'ancient_scroll',       chance: 0.6 },
-      { itemId: 'shadow_archon_essence', chance: 1.0 }, // Unique guaranteed drop
-    ],
-    flee_chance: 0.01,
-    special: 'zone_boss',
-    cooldownHours: 24,
-  },
-
-  vorath_boss: {
-    monsterId: 'vorath_boss', name: 'Avatar of Vorath', emoji: '👁️',
-    zone: 'vorath_citadel',
-    level: 60, xpReward: 9999, goldReward: [2000, 4000],
-    hp: 8000, atk: 320, def: 120, spd: 30,
-    regen: 50,
-    statusAttack: { type: 'POISON', chance: 0.5, duration: 3, dmgPerTurn: 80 },
-    desc: '👁️ อวตารของ Vorath — ไม่ใช่ตัว Vorath จริงๆ แต่เป็นเศษพลังงานที่เขาทิ้งไว้ ยังคงทรงพลังมหาศาล ความพ่ายแพ้ที่นี่ไม่ใช่จุดจบ แต่เป็นการทดสอบ',
-    attackMsg: ['พลัง The Sundering', 'Void Annihilation', 'ตา Vorath เปิด', 'ดึงกลับก่อนมีชีวิต', 'ปลดพลัง Shard-Anchor'],
-    drops: [
-      { itemId: 'void_crystal',  chance: 1.0 },
-      { itemId: 'void_essence',  chance: 1.0 },
-      { itemId: 'soul_gem',      chance: 0.8 },
-      { itemId: 'chaos_shard',   chance: 0.8 },
-      { itemId: 'ancient_scroll', chance: 0.8 },
-      { itemId: 'titan_core',    chance: 0.5 },
-      { itemId: 'vorath_tear',   chance: 1.0 }, // Unique guaranteed drop — rarest item in game
-    ],
-    flee_chance: 0.0,
-    special: 'zone_boss',
-    cooldownHours: 48,
-  },
-
 };
 
 // Zone monster pools
@@ -639,8 +374,6 @@ const ZONE_MONSTERS = {
   city_ruins:         ['ruined_knight', 'plague_rat', 'city_ghoul', 'shadow_rogue', 'iron_golem_shard'],
   cursed_marshlands:  ['bog_lurker', 'swamp_wraith', 'giant_leech', 'marsh_basilisk'],
   void_frontier:      ['void_stalker', 'soul_harvester', 'void_titan', 'chaos_elemental'],
-  shadowfell_depths:  ['shadow_wraith', 'dark_knight', 'nightmare_hound'],
-  vorath_citadel:     ['citadel_sentinel', 'void_priest', 'abyssal_dragon'],
 };
 
 function getMonster(monsterId) {

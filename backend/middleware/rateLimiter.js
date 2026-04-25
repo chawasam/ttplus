@@ -5,21 +5,11 @@ const rateLimit = require('express-rate-limit');
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 นาที
-  max: 300,                  // เพิ่มจาก 100 → 300 รองรับ game actions (~1/3s)
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
   skip: (req) => req.path === '/health',
-});
-
-// Tight limiter สำหรับ unauthenticated endpoints (login, csrf-token, widget-styles)
-// ป้องกัน flood ก่อน auth โดยไม่กระทบ game routes ที่มี verifyToken แล้ว
-const unauthLimiter = rateLimit({
-  windowMs: 60 * 1000,  // 1 นาที
-  max: 20,              // 20 req / min per IP — เพียงพอสำหรับ login/widget load
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests. Slow down.' },
 });
 
 const connectLimiter = rateLimit({
@@ -99,7 +89,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 module.exports = {
-  generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter,
+  generalLimiter, connectLimiter, settingsLimiter, tokenLimiter,
   socketRateLimit, socketRateLimitByUser,
   clearSocketLimit, clearUserLimit,
 };
