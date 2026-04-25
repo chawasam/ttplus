@@ -14,11 +14,12 @@ const navItems = [
 export default function Sidebar({ theme, user, activePage, setActivePage, onSignOut }) {
   return (
     <aside className={clsx(
-      'flex flex-col w-16 md:w-56 h-screen fixed left-0 top-0 z-40 border-r transition-all',
+      'flex flex-col w-16 md:w-56 fixed left-0 z-40 border-r transition-all',
       theme === 'dark'
         ? 'bg-gray-900 border-gray-800'
         : 'bg-white border-gray-200'
-    )}>
+    )}
+    style={{ top: 26, height: 'calc(100vh - 26px)' }}>
       {/* Logo */}
       <div className={clsx('flex items-center gap-3 px-3 md:px-4 py-5 border-b', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
         <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center flex-shrink-0">
