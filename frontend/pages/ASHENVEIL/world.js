@@ -1104,7 +1104,7 @@ export default function GameWorld() {
             <p className="text-gray-400 text-xs mb-4">
               Day Streak: <span className="text-amber-300 font-bold">{loginBonusData.streak}</span>
               {loginBonusData.nextMilestone && (
-                <span className="text-gray-600"> → Milestone ที่ {loginBonusData.nextMilestone} วัน</span>
+                <span className="text-gray-400"> → Milestone ที่ {loginBonusData.nextMilestone} วัน</span>
               )}
             </p>
             {/* Reward preview */}
@@ -1147,7 +1147,7 @@ export default function GameWorld() {
           <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
           <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
           <span className="text-purple-400">🌀 {rp} RP</span>
-          <span className="text-gray-600 ml-auto">📍 {getZoneName(zone)}</span>
+          <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
           <div className="flex items-center gap-1 ml-2">
             <button
               onClick={() => setFontSize(prev => { const n = prev === 'base' ? 'sm' : 'xs'; localStorage.setItem('game_fontSize', n); return n; })}
@@ -1207,12 +1207,12 @@ export default function GameWorld() {
             </div>
 
             {/* ── ACTION PANEL ── */}
-            <div className="border-t border-gray-800 p-4">
+            <div className="border-t border-gray-800 p-4" style={{ fontFamily: 'system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif' }}>
 
               {/* WORLD HUB */}
               {screen === SCREENS.WORLD && (
                 <div>
-                  <p className="text-gray-600 text-xs mb-3">[ เลือกการกระทำ ]</p>
+                  <p className="text-gray-400 text-xs mb-3">[ เลือกการกระทำ ]</p>
                   <div className="grid grid-cols-2 gap-2">
                     {zone !== 'town_square' && (
                       <Btn onClick={handleExplore}  disabled={busy}>🔍 สำรวจ</Btn>
@@ -1255,7 +1255,7 @@ export default function GameWorld() {
               {/* TRAVEL */}
               {screen === 'travel' && (
                 <div>
-                  <p className="text-gray-600 text-xs mb-3">[ เลือก Zone — Lv.{char?.level || 1} ]</p>
+                  <p className="text-gray-400 text-xs mb-3">[ เลือก Zone — Lv.{char?.level || 1} ]</p>
                   <div className="grid grid-cols-2 gap-2">
                     {ZONE_LIST.map(z => {
                       const locked   = (char?.level || 1) < z.minLevel;
@@ -1270,7 +1270,7 @@ export default function GameWorld() {
                                          'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 disabled:opacity-40'
                           }`}>
                           <div>{z.name}</div>
-                          <div className={`text-xs mt-0.5 ${locked ? 'text-red-700' : 'text-gray-600'}`}>
+                          <div className={`text-xs mt-0.5 ${locked ? 'text-red-600' : 'text-gray-400'}`}>
                             {locked ? `🔒 ต้อง Lv.${z.minLevel}` : isCurrent ? '📍 อยู่ที่นี่' : z.lv}
                           </div>
                         </button>
@@ -1337,8 +1337,8 @@ export default function GameWorld() {
               {/* INVENTORY */}
               {screen === SCREENS.INVENTORY && (
                 <div className="max-h-60 overflow-y-auto">
-                  <p className="text-gray-600 text-xs mb-2">[ Inventory — คลิกเพื่อจัดการ ]</p>
-                  {inventory.length === 0 && <p className="text-gray-700 text-xs">ว่างเปล่า...</p>}
+                  <p className="text-gray-400 text-xs mb-2">[ Inventory — คลิกเพื่อจัดการ ]</p>
+                  {inventory.length === 0 && <p className="text-gray-500 text-xs">ว่างเปล่า...</p>}
                   {inventory.map(item => (
                     <div key={item.instanceId} className="flex items-center gap-2 py-1 border-b border-gray-900 text-xs">
                       <span>{item.emoji}</span>
@@ -1356,7 +1356,7 @@ export default function GameWorld() {
                       )}
                       {!item.equipped && (
                         <button onClick={() => handleSell(item.instanceId, item.name)}
-                          className="text-gray-600 hover:text-gray-400 text-xs">{item.sellPrice}G ขาย</button>
+                          className="text-gray-400 hover:text-gray-200 text-xs">{item.sellPrice}G ขาย</button>
                       )}
                     </div>
                   ))}
@@ -1367,7 +1367,7 @@ export default function GameWorld() {
               {/* SHOP */}
               {screen === SCREENS.SHOP && (
                 <div className="max-h-60 overflow-y-auto">
-                  <p className="text-gray-600 text-xs mb-2">[ ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
+                  <p className="text-gray-400 text-xs mb-2">[ ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
                   {shopItems.map(item => (
                     <div key={item.itemId} className="flex items-center gap-2 py-1 border-b border-gray-900 text-xs">
                       <span>{item.emoji}</span>
@@ -1385,12 +1385,12 @@ export default function GameWorld() {
               {/* NPC LIST */}
               {screen === SCREENS.NPC && (
                 <div>
-                  <p className="text-gray-600 text-xs mb-2">[ NPC ในเมือง ]</p>
+                  <p className="text-gray-400 text-xs mb-2">[ NPC ในเมือง ]</p>
                   {npcs.map(n => (
                     <button key={n.npcId} onClick={() => handleTalkNPC(n.npcId)}
                       className="w-full flex items-center gap-2 py-1 border-b border-gray-900 text-xs text-left hover:text-amber-300">
                       <span>{n.emoji}</span>
-                      <span className="flex-1">{n.name} <span className="text-gray-600">— {n.title}</span></span>
+                      <span className="flex-1">{n.name} <span className="text-gray-400">— {n.title}</span></span>
                       <span className="text-pink-600">❤️ {n.affection}</span>
                     </button>
                   ))}
@@ -1401,7 +1401,7 @@ export default function GameWorld() {
               {/* DUNGEON LIST */}
               {screen === SCREENS.DUNGEON_LIST && (
                 <div className="max-h-72 overflow-y-auto">
-                  <p className="text-gray-600 text-xs mb-3">[ 🏰 เลือก Dungeon ]</p>
+                  <p className="text-gray-400 text-xs mb-3">[ 🏰 เลือก Dungeon ]</p>
                   {dungeonList.map(d => (
                     <div key={d.id} className="border border-gray-800 rounded p-2 mb-2">
                       <div className="flex items-center gap-2 mb-1">
@@ -1413,10 +1413,10 @@ export default function GameWorld() {
                       </div>
                       <p className="text-gray-500 text-xs mb-1 leading-relaxed">{d.desc.substring(0, 80)}...</p>
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-gray-600">Lv.{d.minLevel}+ · {d.totalRooms} ห้อง</span>
+                        <span className="text-gray-400">Lv.{d.minLevel}+ · {d.totalRooms} ห้อง</span>
                         {d.levelLocked && <span className="text-red-600 ml-auto">🔒 ต้อง Lv.{d.minLevel}</span>}
                         {d.onCooldown && <span className="text-orange-600 ml-auto">⏳ {d.cooldownHoursLeft} ชั่วโมง</span>}
-                        {d.blockedByOtherRun && <span className="text-gray-600 ml-auto">⛔ มี run อื่นค้างอยู่</span>}
+                        {d.blockedByOtherRun && <span className="text-gray-400 ml-auto">⛔ มี run อื่นค้างอยู่</span>}
                         {d.canEnter && (
                           <button onClick={() => handleEnterDungeon(d.id)} disabled={busy}
                             className="ml-auto px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-40">
@@ -1455,7 +1455,7 @@ export default function GameWorld() {
                   </div>
 
                   {/* Progress bar */}
-                  <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                  <div className="flex items-center gap-2 text-xs text-gray-400 mb-2">
                     <span>{dungeonInfo?.emoji} {dungeonInfo?.nameTH}</span>
                     <span className="ml-auto">ห้อง {(dungeonRun?.currentRoom || 0) + 1}/{dungeonRun?.totalRooms}</span>
                   </div>
@@ -1530,12 +1530,12 @@ export default function GameWorld() {
               {screen === SCREENS.QUESTS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-600 text-xs">[ 📋 ภารกิจประจำวัน ]</p>
-                    {questData?.date && <p className="text-gray-700 text-xs">{questData.date}</p>}
+                    <p className="text-gray-400 text-xs">[ 📋 ภารกิจประจำวัน ]</p>
+                    {questData?.date && <p className="text-gray-500 text-xs">{questData.date}</p>}
                   </div>
 
                   {!questData ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : (
                     <>
                       {questData.quests.map(q => (
@@ -1547,17 +1547,17 @@ export default function GameWorld() {
                           <div className="flex items-center gap-2">
                             <span className="flex-1 text-amber-200">{q.name}</span>
                             {q.claimed ? (
-                              <span className="text-gray-600">✓ รับแล้ว</span>
+                              <span className="text-gray-400">✓ รับแล้ว</span>
                             ) : q.completed ? (
                               <button onClick={() => handleClaimQuest(q.id)}
                                 className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
                                 รับรางวัล
                               </button>
                             ) : (
-                              <span className="text-gray-600">{q.progress}/{q.target}</span>
+                              <span className="text-gray-400">{q.progress}/{q.target}</span>
                             )}
                           </div>
-                          <p className="text-gray-600 mt-0.5">{q.desc}</p>
+                          <p className="text-gray-400 mt-0.5">{q.desc}</p>
                           {/* Progress bar */}
                           {!q.claimed && (
                             <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
@@ -1566,7 +1566,7 @@ export default function GameWorld() {
                             </div>
                           )}
                           {!q.claimed && (
-                            <p className="text-yellow-700 mt-0.5">💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP</p>
+                            <p className="text-yellow-500 mt-0.5">💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP</p>
                           )}
                         </div>
                       ))}
@@ -1580,17 +1580,17 @@ export default function GameWorld() {
                         <div className="flex items-center gap-2">
                           <span className="flex-1 text-amber-300">{questData.bonus?.label || '🎁 ครบทุกภารกิจ'}</span>
                           {questData.bonusClaimed ? (
-                            <span className="text-gray-600">✓ รับแล้ว</span>
+                            <span className="text-gray-400">✓ รับแล้ว</span>
                           ) : questData.allCompleted ? (
                             <button onClick={() => handleClaimQuest('bonus')}
                               className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
                               🎁 รับ!
                             </button>
                           ) : (
-                            <span className="text-gray-700">ยังไม่ครบ</span>
+                            <span className="text-gray-500">ยังไม่ครบ</span>
                           )}
                         </div>
-                        <p className="text-yellow-700 mt-0.5">
+                        <p className="text-yellow-500 mt-0.5">
                           💰 {questData.bonus?.gold}G · ⭐ {questData.bonus?.xp} XP · 🧪 Potion
                         </p>
                       </div>
@@ -1605,12 +1605,12 @@ export default function GameWorld() {
               {screen === SCREENS.RP_SHOP && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">[ 💎 RP Shop — Realm Points: <span className="text-purple-400">{rp}</span> ]</p>
+                    <p className="text-gray-400 text-xs">[ 💎 RP Shop — Realm Points: <span className="text-purple-400">{rp}</span> ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {rpShopLoading ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : (
                     <>
                       {/* Group by category */}
@@ -1625,7 +1625,7 @@ export default function GameWorld() {
                         if (!catItems.length) return null;
                         return (
                           <div key={cat.key}>
-                            <p className="text-gray-700 text-xs mb-1">{cat.label}</p>
+                            <p className="text-gray-500 text-xs mb-1">{cat.label}</p>
                             {catItems.map(item => (
                               <div key={item.id} className={`border rounded p-2 mb-1 text-xs ${
                                 item.alreadyBought ? 'border-gray-900 opacity-40' :
@@ -1635,12 +1635,12 @@ export default function GameWorld() {
                                 <div className="flex items-start gap-2">
                                   <div className="flex-1 min-w-0">
                                     <p className="text-amber-200 font-bold">{item.name}</p>
-                                    <p className="text-gray-500 leading-relaxed mt-0.5">{item.desc}</p>
+                                    <p className="text-gray-300 leading-relaxed mt-0.5">{item.desc}</p>
                                   </div>
                                   <div className="shrink-0 text-right">
                                     <p className="text-purple-400 font-bold">{item.rpPrice} RP</p>
                                     {item.alreadyBought ? (
-                                      <span className="text-gray-600 text-xs">✓ ซื้อแล้ว</span>
+                                      <span className="text-gray-400 text-xs">✓ ซื้อแล้ว</span>
                                     ) : (
                                       <button
                                         onClick={() => handleBuyRPItem(item.id, item.name, item.rpPrice)}
@@ -1675,7 +1675,7 @@ export default function GameWorld() {
                         className={`px-3 py-1 text-xs rounded border transition ${
                           questLogTab === tab
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
-                            : 'border-gray-800 text-gray-600 hover:text-gray-400'
+                            : 'border-gray-700 text-gray-400 hover:text-gray-200'
                         }`}>
                         {tab === 'story' ? '📖 เนื้อเรื่อง' : '⚔️ ภารกิจพิเศษ'}
                       </button>
@@ -1684,7 +1684,7 @@ export default function GameWorld() {
                   </div>
 
                   {!questLog ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : questLogTab === 'story' ? (
                     /* ── STORY TAB ── */
                     <div className="space-y-2">
@@ -1698,14 +1698,14 @@ export default function GameWorld() {
                             <span className={`text-xs font-bold shrink-0 ${
                               q.status === 'completed' ? 'text-green-600' :
                               q.status === 'active'    ? 'text-amber-400' :
-                                                         'text-gray-700'
+                                                         'text-gray-500'
                             }`}>
                               {q.status === 'completed' ? '✅' : q.status === 'active' ? '▶' : '🔒'}
                             </span>
                             <div className="flex-1 min-w-0">
                               <p className={`font-bold ${q.status === 'active' ? 'text-amber-300' : 'text-gray-400'}`}>
                                 {q.name}
-                                <span className="text-gray-700 font-normal ml-1 text-xs">[{q.chapter}]</span>
+                                <span className="text-gray-500 font-normal ml-1 text-xs">[{q.chapter}]</span>
                               </p>
                               {q.status === 'active' && q.currentStep && (
                                 <div className="mt-1">
@@ -1716,11 +1716,11 @@ export default function GameWorld() {
                                       <div className="h-0.5 bg-amber-600 rounded transition-all"
                                         style={{ width: `${Math.min(100, (q.currentStep.progress / q.currentStep.count) * 100)}%` }} />
                                     </div>
-                                    <span className="text-gray-600 shrink-0">
+                                    <span className="text-gray-400 shrink-0">
                                       {q.currentStep.progress}/{q.currentStep.count}
                                     </span>
                                   </div>
-                                  <p className="text-gray-700 mt-0.5">
+                                  <p className="text-gray-500 mt-0.5">
                                     ขั้น {q.currentStep.stepIndex + 1}/{q.currentStep.totalSteps}
                                   </p>
                                 </div>
@@ -1731,10 +1731,10 @@ export default function GameWorld() {
                                 </p>
                               )}
                               {q.status === 'locked' && (
-                                <p className="text-gray-700 leading-relaxed mt-0.5">{q.desc}</p>
+                                <p className="text-gray-400 leading-relaxed mt-0.5">{q.desc}</p>
                               )}
                               {/* Rewards */}
-                              <p className="text-yellow-800 mt-0.5 text-xs">
+                              <p className="text-yellow-600 mt-0.5 text-xs">
                                 🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.join(', ')}` : ''}
                               </p>
                             </div>
@@ -1748,11 +1748,11 @@ export default function GameWorld() {
                       {/* Active side quests */}
                       {questLog.sideActive.length > 0 && (
                         <div>
-                          <p className="text-gray-600 text-xs mb-1">[ กำลังดำเนินการ ]</p>
+                          <p className="text-gray-400 text-xs mb-1">[ กำลังดำเนินการ ]</p>
                           {questLog.sideActive.map(q => (
                             <div key={q.id} className="border border-amber-800 rounded p-2 mb-1 text-xs bg-amber-900/10">
                               <p className="text-amber-300 font-bold">{q.name}
-                                <span className="text-gray-600 font-normal ml-1">[{q.category}]</span>
+                                <span className="text-gray-400 font-normal ml-1">[{q.category}]</span>
                               </p>
                               <p className="text-gray-400 leading-relaxed mt-0.5">{q.currentStep.hint}</p>
                               <div className="flex items-center gap-2 mt-1">
@@ -1760,11 +1760,11 @@ export default function GameWorld() {
                                   <div className="h-0.5 bg-amber-600 rounded transition-all"
                                     style={{ width: `${Math.min(100, (q.currentStep.progress / q.currentStep.count) * 100)}%` }} />
                                 </div>
-                                <span className="text-gray-600 shrink-0">
+                                <span className="text-gray-400 shrink-0">
                                   {q.currentStep.progress}/{q.currentStep.count}
                                 </span>
                               </div>
-                              <p className="text-yellow-800 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
+                              <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
                             </div>
                           ))}
                         </div>
@@ -1773,16 +1773,16 @@ export default function GameWorld() {
                       {/* Available side quests */}
                       {questLog.sideAvailable.length > 0 && (
                         <div>
-                          <p className="text-gray-600 text-xs mb-1">[ รับได้เลย ]</p>
+                          <p className="text-gray-400 text-xs mb-1">[ รับได้เลย ]</p>
                           {questLog.sideAvailable.map(q => (
                             <div key={q.id} className="border border-gray-700 rounded p-2 mb-1 text-xs">
                               <div className="flex items-start gap-2">
                                 <div className="flex-1 min-w-0">
                                   <p className="text-amber-200 font-bold">{q.name}
-                                    <span className="text-gray-600 font-normal ml-1">[{q.category}]</span>
+                                    <span className="text-gray-400 font-normal ml-1">[{q.category}]</span>
                                   </p>
-                                  <p className="text-gray-500 leading-relaxed mt-0.5">{q.desc}</p>
-                                  <p className="text-yellow-800 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
+                                  <p className="text-gray-300 leading-relaxed mt-0.5">{q.desc}</p>
+                                  <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
                                 </div>
                                 <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
                                   className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
@@ -1797,7 +1797,7 @@ export default function GameWorld() {
                       {/* Completed side quests */}
                       {questLog.sideCompleted.length > 0 && (
                         <div>
-                          <p className="text-gray-600 text-xs mb-1">[ เสร็จแล้ว ]</p>
+                          <p className="text-gray-400 text-xs mb-1">[ เสร็จแล้ว ]</p>
                           {questLog.sideCompleted.map(q => (
                             <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-40">
                               <p className="text-gray-500">✅ {q.name}</p>
@@ -1807,7 +1807,7 @@ export default function GameWorld() {
                       )}
 
                       {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 && questLog.sideCompleted.length === 0 && (
-                        <p className="text-gray-700 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้</p>
+                        <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้</p>
                       )}
                     </div>
                   )}
@@ -1818,24 +1818,24 @@ export default function GameWorld() {
               {screen === SCREENS.SKILLS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">[ ✨ Skills — Skill Points: <span className="text-amber-400">{char?.skillPoints || 0}</span> ]</p>
+                    <p className="text-gray-400 text-xs">[ ✨ Skills — Skill Points: <span className="text-amber-400">{char?.skillPoints || 0}</span> ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {skillsLoading ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : !skillsData ? null : (
                     <>
                       {/* Passive skill */}
                       {skillsData.passive && (
                         <div className="border border-green-900 rounded p-2 text-xs bg-green-900/10">
                           <p className="text-green-400 font-bold">🌿 {skillsData.passive.name}: {skillsData.passive.desc}</p>
-                          <p className="text-gray-600 mt-0.5">ทำงานอัตโนมัติทุก Battle (ไม่ต้องปลดล็อค)</p>
+                          <p className="text-gray-400 mt-0.5">ทำงานอัตโนมัติทุก Battle (ไม่ต้องปลดล็อค)</p>
                         </div>
                       )}
 
                       {/* Active skills */}
-                      <p className="text-gray-700 text-xs">[ Active Skills ]</p>
+                      <p className="text-gray-500 text-xs">[ Active Skills ]</p>
                       {(skillsData.skills || []).map(sk => (
                         <div key={sk.id} className={`border rounded p-2 text-xs ${
                           sk.unlocked    ? 'border-blue-800 bg-blue-900/10' :
@@ -1849,8 +1849,8 @@ export default function GameWorld() {
                                 {sk.unlocked && <span className="text-blue-600 font-normal ml-1 text-xs">✓ ปลดแล้ว</span>}
                                 {sk.levelLocked && !sk.unlocked && <span className="text-red-700 font-normal ml-1 text-xs">🔒 Lv.{sk.minLevel}</span>}
                               </p>
-                              <p className="text-gray-500 mt-0.5 leading-relaxed">{sk.desc}</p>
-                              <div className="flex gap-3 mt-1 text-gray-600">
+                              <p className="text-gray-300 mt-0.5 leading-relaxed">{sk.desc}</p>
+                              <div className="flex gap-3 mt-1 text-gray-400">
                                 <span>💧 {sk.mpCost} MP</span>
                                 <span>Lv.{sk.minLevel}+</span>
                                 <span>⚡ {sk.skillPointCost} SP</span>
@@ -1876,12 +1876,12 @@ export default function GameWorld() {
               {screen === SCREENS.CHARACTER && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">[ 📊 ตัวละคร — Stat Points: <span className="text-amber-400">{charProfile?.statPoints ?? char?.statPoints ?? 0}</span> ]</p>
+                    <p className="text-gray-400 text-xs">[ 📊 ตัวละคร — Stat Points: <span className="text-amber-400">{charProfile?.statPoints ?? char?.statPoints ?? 0}</span> ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {charLoading ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : !charProfile ? null : (
                     <>
                       {/* Level / XP */}
@@ -1905,7 +1905,7 @@ export default function GameWorld() {
 
                       {/* Combat stats */}
                       <div className="border border-gray-800 rounded p-2 text-xs">
-                        <p className="text-gray-600 mb-1">[ Combat Stats ]</p>
+                        <p className="text-gray-400 mb-1">[ Combat Stats ]</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-gray-400">
                           <span>❤️ HP {charProfile.hp}/{charProfile.hpMax}</span>
                           <span>💧 MP {charProfile.mp}/{charProfile.mpMax}</span>
@@ -1919,7 +1919,7 @@ export default function GameWorld() {
 
                       {/* Stat allocation */}
                       <div className="border border-gray-800 rounded p-2 text-xs">
-                        <p className="text-gray-600 mb-1">[ Allocate Stat Points — มี {charProfile.statPoints} points ]</p>
+                        <p className="text-gray-400 mb-1">[ Allocate Stat Points — มี {charProfile.statPoints} points ]</p>
                         {[
                           { key: 'str', label: 'STR ⚔️', desc: '+2 ATK/point', val: charProfile.allocatedStats?.str || 0 },
                           { key: 'int', label: 'INT ✨', desc: '+3 MAG, +5 MP/point', val: charProfile.allocatedStats?.int || 0 },
@@ -1928,7 +1928,7 @@ export default function GameWorld() {
                         ].map(s => (
                           <div key={s.key} className="flex items-center gap-2 py-0.5 border-b border-gray-900 last:border-0">
                             <span className="w-16 text-amber-200 font-bold">{s.label}</span>
-                            <span className="flex-1 text-gray-600">{s.desc}</span>
+                            <span className="flex-1 text-gray-400">{s.desc}</span>
                             <span className="text-gray-500 w-6 text-right">{s.val}</span>
                             <button
                               onClick={() => handleAllocateStat(s.key, s.label)}
@@ -1954,16 +1954,16 @@ export default function GameWorld() {
               {screen === SCREENS.ENHANCE && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">[ 🔨 Enhance: {enhanceTarget?.name} ]</p>
+                    <p className="text-gray-400 text-xs">[ 🔨 Enhance: {enhanceTarget?.name} ]</p>
                     <Btn onClick={() => { setScreen(SCREENS.INVENTORY); }}>← กลับ</Btn>
                   </div>
 
                   {enhanceLoading ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : !enhanceInfo ? null : enhanceInfo.maxEnhanced ? (
                     <div className="text-center py-4">
                       <p className="text-amber-400 text-sm">🌟 Enhance MAX (+10)</p>
-                      <p className="text-gray-600 text-xs mt-1">อุปกรณ์นี้ Enhance สูงสุดแล้ว</p>
+                      <p className="text-gray-400 text-xs mt-1">อุปกรณ์นี้ Enhance สูงสุดแล้ว</p>
                     </div>
                   ) : (
                     <>
@@ -1981,7 +1981,7 @@ export default function GameWorld() {
                             enhanceInfo.recipe?.successRate >= 0.6 ? 'text-yellow-400' : 'text-red-400'
                           }>{Math.round((enhanceInfo.recipe?.successRate || 0) * 100)}%</span></p>
                           {enhanceInfo.recipe?.successRate < 1 && (
-                            <p className="text-gray-700">⚠️ ล้มเหลว → item ยังอยู่ที่ +{enhanceInfo.currentEnhance} (ไม่หาย)</p>
+                            <p className="text-gray-500">⚠️ ล้มเหลว → item ยังอยู่ที่ +{enhanceInfo.currentEnhance} (ไม่หาย)</p>
                           )}
                         </div>
                       </div>
@@ -2001,13 +2001,13 @@ export default function GameWorld() {
               {screen === SCREENS.WEEKLY_QUESTS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-600 text-xs">[ 📅 Weekly Quests ]</p>
-                    {weeklyData?.weekKey && <p className="text-gray-700 text-xs">สัปดาห์ {weeklyData.weekKey}</p>}
+                    <p className="text-gray-400 text-xs">[ 📅 Weekly Quests ]</p>
+                    {weeklyData?.weekKey && <p className="text-gray-500 text-xs">สัปดาห์ {weeklyData.weekKey}</p>}
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {!weeklyData ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : (
                     <>
                       {weeklyData.quests.map(q => (
@@ -2019,17 +2019,17 @@ export default function GameWorld() {
                           <div className="flex items-center gap-2">
                             <span className="flex-1 text-amber-200">{q.name}</span>
                             {q.claimed ? (
-                              <span className="text-gray-600">✓ รับแล้ว</span>
+                              <span className="text-gray-400">✓ รับแล้ว</span>
                             ) : q.completed ? (
                               <button onClick={() => handleClaimWeekly(q.id)}
                                 className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
                                 รับรางวัล
                               </button>
                             ) : (
-                              <span className="text-gray-600">{q.progress}/{q.target}</span>
+                              <span className="text-gray-400">{q.progress}/{q.target}</span>
                             )}
                           </div>
-                          <p className="text-gray-600 mt-0.5">{q.desc}</p>
+                          <p className="text-gray-400 mt-0.5">{q.desc}</p>
                           {!q.claimed && (
                             <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
                               <div className="h-0.5 bg-purple-700 rounded transition-all"
@@ -2037,7 +2037,7 @@ export default function GameWorld() {
                             </div>
                           )}
                           {!q.claimed && (
-                            <p className="text-purple-800 mt-0.5">
+                            <p className="text-purple-500 mt-0.5">
                               💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP{q.reward.items?.length ? ` · 📦 x${q.reward.items.length}` : ''}
                             </p>
                           )}
@@ -2053,17 +2053,17 @@ export default function GameWorld() {
                         <div className="flex items-center gap-2">
                           <span className="flex-1 text-amber-300">{weeklyData.bonus?.label || '🏆 ครบทุก Weekly Quest!'}</span>
                           {weeklyData.bonusClaimed ? (
-                            <span className="text-gray-600">✓ รับแล้ว</span>
+                            <span className="text-gray-400">✓ รับแล้ว</span>
                           ) : weeklyData.allCompleted ? (
                             <button onClick={() => handleClaimWeekly('bonus')}
                               className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
                               🏆 รับ!
                             </button>
                           ) : (
-                            <span className="text-gray-700">ยังไม่ครบ</span>
+                            <span className="text-gray-500">ยังไม่ครบ</span>
                           )}
                         </div>
-                        <p className="text-purple-800 mt-0.5">
+                        <p className="text-purple-500 mt-0.5">
                           💰 {weeklyData.bonus?.gold}G · ⭐ {weeklyData.bonus?.xp} XP · 📦 ของพิเศษ
                         </p>
                       </div>
@@ -2076,7 +2076,7 @@ export default function GameWorld() {
               {screen === SCREENS.ACHIEVEMENTS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">
+                    <p className="text-gray-400 text-xs">
                       [ 🏆 Achievements — ปลดล็อคแล้ว{' '}
                       <span className="text-amber-400">{achData?.unlockedCount ?? 0}</span>
                       /{achData?.totalCount ?? 0} ]
@@ -2085,7 +2085,7 @@ export default function GameWorld() {
                   </div>
 
                   {achLoading ? (
-                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : !achData ? null : (
                     <>
                       {/* Group by category */}
@@ -2104,7 +2104,7 @@ export default function GameWorld() {
                         const catUnlocked = catAchs.filter(a => a.unlocked).length;
                         return (
                           <div key={cat.key}>
-                            <p className="text-gray-700 text-xs mb-1">
+                            <p className="text-gray-500 text-xs mb-1">
                               {cat.label}{' '}
                               <span className="text-gray-800">({catUnlocked}/{catAchs.length})</span>
                             </p>
@@ -2120,7 +2120,7 @@ export default function GameWorld() {
                                       {ach.unlocked ? '✅ ' : '🔒 '}
                                       {ach.name}
                                     </p>
-                                    <p className="text-gray-600 mt-0.5 leading-relaxed">{ach.desc}</p>
+                                    <p className="text-gray-400 mt-0.5 leading-relaxed">{ach.desc}</p>
                                     {/* Progress bar (show if not unlocked) */}
                                     {!ach.unlocked && ach.target > 0 && (
                                       <>
@@ -2128,14 +2128,14 @@ export default function GameWorld() {
                                           <div className="h-0.5 bg-amber-800 rounded transition-all"
                                             style={{ width: `${Math.min(100, ((ach.progress || 0) / ach.target) * 100)}%` }} />
                                         </div>
-                                        <p className="text-gray-700 mt-0.5">{ach.progress || 0}/{ach.target}</p>
+                                        <p className="text-gray-500 mt-0.5">{ach.progress || 0}/{ach.target}</p>
                                       </>
                                     )}
                                     {/* Reward info */}
                                     <div className="flex gap-2 mt-0.5 text-yellow-900 text-xs">
                                       {ach.reward?.gold > 0 && <span>💰 {ach.reward.gold}G</span>}
                                       {ach.reward?.xp   > 0 && <span>⭐ {ach.reward.xp} XP</span>}
-                                      {ach.reward?.title && <span className="text-amber-800">🎖️ "{ach.reward.title}"</span>}
+                                      {ach.reward?.title && <span className="text-amber-600">🎖️ "{ach.reward.title}"</span>}
                                     </div>
                                   </div>
                                 </div>
@@ -2152,14 +2152,14 @@ export default function GameWorld() {
               {/* SETTINGS */}
               {screen === SCREENS.SETTINGS && (
                 <div className="max-h-80 overflow-y-auto space-y-3">
-                  <p className="text-gray-600 text-xs">[ ⚙️ ตั้งค่า ]</p>
+                  <p className="text-gray-400 text-xs">[ ⚙️ ตั้งค่า ]</p>
 
                   {/* ── STATUS STEP ── */}
                   {settingsStep === 'status' && (
                     <div className="space-y-2">
                       {/* Verify badge */}
                       {verifyStatus === null ? (
-                        <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                        <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                       ) : verifyStatus.verified ? (
                         <div className="border border-green-800 rounded p-2 text-xs space-y-0.5">
                           <p className="text-green-400 font-bold">✅ ยืนยัน TikTok แล้ว</p>
@@ -2181,7 +2181,7 @@ export default function GameWorld() {
                       ) : (
                         <div className="border border-gray-800 rounded p-2 text-xs space-y-1">
                           <p className="text-gray-500">❌ ยังไม่ได้ยืนยัน TikTok</p>
-                          <p className="text-gray-600 leading-relaxed">
+                          <p className="text-gray-400 leading-relaxed">
                             ยืนยัน TikTok เพื่อรับ Gold จาก Gift ใน Live ได้
                           </p>
                           <button
@@ -2203,7 +2203,7 @@ export default function GameWorld() {
                         <span className="text-amber-400">ttsam.app</span> และกำลัง Live อยู่
                       </p>
                       <div className="flex gap-2">
-                        <span className="text-gray-600 text-xs self-center">@</span>
+                        <span className="text-gray-400 text-xs self-center">@</span>
                         <input
                           type="text"
                           value={settingsTiktok}
@@ -2241,7 +2241,7 @@ export default function GameWorld() {
                           <span>รอการยืนยัน... (ตรวจสอบทุก 3 วินาที)</span>
                         </div>
                       )}
-                      <p className="text-gray-600 text-xs">
+                      <p className="text-gray-400 text-xs">
                         💡 tip: กด copy ข้อความในกล่องแล้วไป paste ใน comment TikTok Live
                       </p>
                       <div className="grid grid-cols-2 gap-2">
@@ -2263,16 +2263,16 @@ export default function GameWorld() {
               {screen === SCREENS.WORLD_BOSS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">[ 💀 World Boss — Community Event ]</p>
+                    <p className="text-gray-400 text-xs">[ 💀 World Boss — Community Event ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {!worldBossData ? (
-                    <p className="text-gray-600 text-xs animate-pulse">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
                   ) : !worldBossData.active ? (
                     <div className="text-center py-6 space-y-2">
-                      <p className="text-gray-600 text-sm">ไม่มี World Boss ในขณะนี้</p>
-                      <p className="text-gray-700 text-xs leading-relaxed">
+                      <p className="text-gray-400 text-sm">ไม่มี World Boss ในขณะนี้</p>
+                      <p className="text-gray-500 text-xs leading-relaxed">
                         Boss จะถูก spawn เมื่อ VJ เริ่ม Event<br />
                         หรือเมื่อมีการส่ง Gift มากพอ
                       </p>
@@ -2325,10 +2325,10 @@ export default function GameWorld() {
                       {/* Top 5 damage */}
                       {worldBossData.topPlayers?.length > 0 && (
                         <div className="border border-gray-800 rounded p-2 text-xs">
-                          <p className="text-gray-600 mb-1">[ Top Damage ]</p>
+                          <p className="text-gray-400 mb-1">[ Top Damage ]</p>
                           {worldBossData.topPlayers.map((p, i) => (
                             <div key={p.uid} className="flex items-center gap-2 py-0.5">
-                              <span className={`w-5 text-right font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-700'}`}>
+                              <span className={`w-5 text-right font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-500'}`}>
                                 {i + 1}.
                               </span>
                               <span className="flex-1 text-amber-200">{p.name}</span>
@@ -2346,7 +2346,7 @@ export default function GameWorld() {
               {screen === SCREENS.LEADERBOARD && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-600 text-xs">[ 🥇 Leaderboard ]</p>
+                    <p className="text-gray-400 text-xs">[ 🥇 Leaderboard ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -2361,7 +2361,7 @@ export default function GameWorld() {
                         className={`flex-1 px-2 py-1 text-xs rounded border transition ${
                           leaderboardTab === tab.key
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
-                            : 'border-gray-800 text-gray-600 hover:text-gray-400'
+                            : 'border-gray-700 text-gray-400 hover:text-gray-200'
                         }`}>
                         {tab.label}
                       </button>
@@ -2369,7 +2369,7 @@ export default function GameWorld() {
                   </div>
 
                   {leaderboardLoad ? (
-                    <p className="text-gray-600 text-xs animate-pulse">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
                   ) : !leaderboardData ? null : (
                     <div className="space-y-1">
                       {(leaderboardData[leaderboardTab] || []).map((p, i) => (
@@ -2380,12 +2380,12 @@ export default function GameWorld() {
                                     'border-gray-900'
                         }`}>
                           <span className={`w-6 text-center font-bold text-sm ${
-                            i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-700'
+                            i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-500'
                           }`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</span>
                           <div className="flex-1 min-w-0">
                             <span className="text-amber-200 font-bold truncate">{p.name}</span>
                             {p.title && <span className="text-amber-700 text-xs ml-1">"{p.title}"</span>}
-                            <div className="text-gray-600 text-xs">{p.race} {p.class} Lv.{p.level}</div>
+                            <div className="text-gray-400 text-xs">{p.race} {p.class} Lv.{p.level}</div>
                           </div>
                           <div className="text-right shrink-0">
                             <span className={`font-bold ${
@@ -2400,7 +2400,7 @@ export default function GameWorld() {
                         </div>
                       ))}
                       {(leaderboardData[leaderboardTab] || []).length === 0 && (
-                        <p className="text-gray-700 text-xs text-center py-4">ยังไม่มีข้อมูล</p>
+                        <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีข้อมูล</p>
                       )}
                       <p className="text-gray-800 text-xs text-center pt-1">
                         อัปเดตล่าสุด: {leaderboardData.updatedAt ? new Date(leaderboardData.updatedAt).toLocaleTimeString('th-TH') : '—'}
@@ -2419,7 +2419,7 @@ export default function GameWorld() {
                     {' '}· ให้ของได้ {activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้ง
                   </div>
                   <p className="text-gray-300 text-sm italic mb-3">"{activeNPC.dialog}"</p>
-                  <p className="text-gray-600 text-xs mb-2">เลือก item จาก inventory เพื่อให้ของขวัญ:</p>
+                  <p className="text-gray-400 text-xs mb-2">เลือก item จาก inventory เพื่อให้ของขวัญ:</p>
                   <div className="max-h-28 overflow-y-auto mb-2">
                     {inventory.filter(i => i.type === 'MATERIAL' || i.type === 'JUNK' || i.type === 'CONSUMABLE').map(item => (
                       <button key={item.instanceId}
@@ -2430,7 +2430,7 @@ export default function GameWorld() {
                       </button>
                     ))}
                     {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
-                      <p className="text-gray-700 text-xs">ไม่มี item ที่จะให้ได้</p>
+                      <p className="text-gray-500 text-xs">ไม่มี item ที่จะให้ได้</p>
                     )}
                   </div>
                   <Btn onClick={() => setScreen(SCREENS.NPC)}>← กลับ</Btn>
@@ -2448,7 +2448,7 @@ export default function GameWorld() {
 function Btn({ onClick, disabled, children, className = '' }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 disabled:cursor-not-allowed rounded ${className}`}>
+      className={`px-3 py-2.5 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-sm disabled:opacity-40 disabled:cursor-not-allowed rounded ${className}`}>
       {children}
     </button>
   );
