@@ -2,6 +2,10 @@
 // hook เข้า tiktok.js gift event (เรียกจาก tiktok.js)
 const admin  = require('firebase-admin');
 const { addGold, addRealmPoints } = require('./currency');
+const { triggerBossFromGift }     = require('./worldBoss');
+
+// World Boss spawn threshold: ทุก 500 diamonds สะสม (ต่อ VJ session) จะ spawn boss
+const BOSS_SPAWN_THRESHOLD = 500;
 
 // RP conversion rate: 10 diamonds = 1 RP (premium currency, harder to get)
 const DIAMONDS_PER_RP = 10;
@@ -106,6 +110,34 @@ async function processGift({ vjUid, tiktokUniqueId, giftName, diamondCount, repe
     console.log(`[TikTokCurrency] ✅ @${tiktokUniqueId} → uid=${viewerUid} +${result.added} gold${rpAmount > 0 ? ` +${rpAmount} RP` : ''} (${giftName} ×${repeatCount})`);
   } else {
     console.warn(`[TikTokCurrency] ⚠️ addGold failed uid=${viewerUid}: ${result.error}`);
+  }
+
+  // ── World Boss auto-spawn: สะสม diamonds ต่อ VJ ──────────────────────────
+  // ทุก BOSS_SPAWN_THRESHOLD diamonds จาก viewers จะ spawn World Boss ใหม่
+  try {
+    const trackerRef = db.collection('game_boss_tracker').doc(vjUid);
+    await db.runTransaction(async tx => {
+      const trackerDoc = await tx.get(trackerRef);
+      const prev = trackerDoc.exists ? (trackerDoc.data().diamonds || 0) : 0;
+      const next = prev + totalDiamonds;
+      tx.set(trackerRef, {
+        diamonds:  next,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      // เช็คว่าข้ามเกณฑ์ threshold หรือเปล่า
+      if (Math.floor(next / BOSS_SPAWN_THRESHOLD) > Math.floor(prev / BOSS_SPAWN_THRESHOLD)) {
+        console.log(`[TikTokCurrency] 🐉 Boss threshold crossed! Total: ${next} diamonds`);
+        // trigger หลัง transaction เพื่อไม่ block
+        setImmediate(() => {
+          triggerBossFromGift(next).catch(e =>
+            console.error('[TikTokCurrency] boss trigger failed:', e.message)
+          );
+        });
+      }
+    });
+  } catch (bossErr) {
+    console.error('[TikTokCurrency] boss tracker error:', bossErr.message);
   }
 
   return { ...result, rpAdded: rpAmount };
