@@ -79,7 +79,7 @@ async function equipItem(req, res) {
 
     // ตรวจ class requirement
     const charDoc = await getCharDoc(uid, db);
-    if (!charDoc) return res.status(400).json({ error: 'ไม่พบ Character' });
+    if (!charDoc || !charDoc.exists) return res.status(400).json({ error: 'ไม่พบ Character' });
     const charData = charDoc.data();
 
     if (def.classReq?.length > 0 && !def.classReq.includes(charData.class)) {

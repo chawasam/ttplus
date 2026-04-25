@@ -345,7 +345,7 @@ export default function GameWorld() {
       setRPShopItems(data.items || []);
       setRP(data.rp || 0);
     } catch (err) {
-      toast.error('โหลด RP Shop ไม่ได้');
+      toast.error(err.response?.data?.error || 'โหลด RP Shop ไม่ได้');
     } finally {
       setRPShopLoading(false);
     }
@@ -382,7 +382,7 @@ export default function GameWorld() {
       const { data } = await getSkills();
       setSkillsData(data);
     } catch (err) {
-      toast.error('โหลด Skills ไม่ได้');
+      toast.error(err.response?.data?.error || 'โหลด Skills ไม่ได้');
     } finally {
       setSkillsLoading(false);
     }
@@ -413,7 +413,7 @@ export default function GameWorld() {
       const { data } = await getCharacterProfile();
       setCharProfile(data);
     } catch (err) {
-      toast.error('โหลด Character ไม่ได้');
+      toast.error(err.response?.data?.error || 'โหลด Character ไม่ได้');
     } finally {
       setCharLoading(false);
     }
@@ -449,7 +449,7 @@ export default function GameWorld() {
       const { data } = await getEnhanceInfo(instanceId);
       setEnhanceInfo(data);
     } catch (err) {
-      toast.error('โหลดข้อมูล Enhance ไม่ได้');
+      toast.error(err.response?.data?.error || 'โหลดข้อมูล Enhance ไม่ได้');
     } finally {
       setEnhanceLoading(false);
     }
@@ -520,7 +520,7 @@ export default function GameWorld() {
       const { data } = await getAchievements();
       setAchData(data);
     } catch (err) {
-      toast.error('โหลด Achievements ไม่ได้');
+      toast.error(err.response?.data?.error || 'โหลด Achievements ไม่ได้');
     } finally {
       setAchLoading(false);
     }
@@ -888,7 +888,9 @@ export default function GameWorld() {
       setBattleSkills(data.availableSkills || []);
       setScreen(SCREENS.BATTLE);
     } catch (err) {
-      addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
+      const msg = err.response?.data?.error || 'เริ่ม Battle ไม่ได้';
+      addLog(`⛔ ${msg}`);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -1236,7 +1238,9 @@ export default function GameWorld() {
       setBattleSkills(data.availableSkills || []);
       setScreen(SCREENS.BATTLE);
     } catch (err) {
-      addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
+      const msg = err.response?.data?.error || 'เริ่ม Battle ไม่ได้';
+      addLog(`⛔ ${msg}`);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

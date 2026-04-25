@@ -240,6 +240,7 @@ async function roomAction(req, res) {
       if (room.type !== 'trap') return res.status(400).json({ error: 'ห้องนี้ไม่ใช่ Trap' });
 
       const charDoc  = await db.collection('game_characters').doc(run.charId).get();
+      if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
       const char     = charDoc.data();
       const statVal  = char[room.dodgeStat] || 0;
       const dodged   = statVal >= room.dodgeThreshold;
@@ -304,6 +305,7 @@ async function roomAction(req, res) {
       if (room.type !== 'rest') return res.status(400).json({ error: 'ห้องนี้ไม่ใช่ Rest' });
 
       const charDoc = await db.collection('game_characters').doc(run.charId).get();
+      if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
       const char    = charDoc.data();
       const healed  = Math.floor((char.hpMax || char.hp) * (room.healPercent || 0.25));
       const newHp   = Math.min(char.hpMax || 9999, char.hp + healed);
@@ -369,18 +371,21 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
 
     // XP reward
     const charDoc = await db.collection('game_characters').doc(run.charId).get();
+    if (!charDoc.exists) throw new Error('Character ไม่พบ');
     const char    = charDoc.data();
     const newXp   = (char.xp || 0) + (cr.xp || 0);
     const charUpdate = { xp: newXp };
     // Level-up check — ใช้ xpToNext เดียวกับ combat.js
     if (newXp >= (char.xpToNext || 100)) {
+      const hpMax = char.hpMax || 100;
+      const mpMax = char.mpMax || 50;
       charUpdate.level    = (char.level || 1) + 1;
       charUpdate.xp       = newXp - (char.xpToNext || 100);
       charUpdate.xpToNext = Math.floor((char.xpToNext || 100) * 1.5);
-      charUpdate.hpMax    = char.hpMax + 10;
-      charUpdate.hp       = char.hpMax + 10;
-      charUpdate.mpMax    = char.mpMax + 5;
-      charUpdate.mp       = char.mpMax + 5;
+      charUpdate.hpMax    = hpMax + 10;
+      charUpdate.hp       = hpMax + 10;
+      charUpdate.mpMax    = mpMax + 5;
+      charUpdate.mp       = mpMax + 5;
       charUpdate.statPoints  = (char.statPoints  || 0) + 3;
       charUpdate.skillPoints = (char.skillPoints || 0) + 1;
       log.push(`🎉 Level Up! → Level ${charUpdate.level}`);
@@ -491,19 +496,22 @@ async function onDungeonBattleWin(uid, runId) {
       await addGold(uid, goldBonus);
 
       const charDoc = await db.collection('game_characters').doc(run.charId).get();
+      if (!charDoc.exists) return null;
       const char = charDoc.data();
       const newXp = (char.xp || 0) + (cr.xp || 0);
       const charUpdate = { xp: newXp };
       let newLevel = null;
       if (newXp >= (char.xpToNext || 100)) {
+        const hpMax = char.hpMax || 100;
+        const mpMax = char.mpMax || 50;
         newLevel = (char.level || 1) + 1;
         charUpdate.level    = newLevel;
         charUpdate.xp       = newXp - (char.xpToNext || 100);
         charUpdate.xpToNext = Math.floor((char.xpToNext || 100) * 1.5);
-        charUpdate.hpMax    = char.hpMax + 10;
-        charUpdate.hp       = char.hpMax + 10;
-        charUpdate.mpMax    = char.mpMax + 5;
-        charUpdate.mp       = char.mpMax + 5;
+        charUpdate.hpMax    = hpMax + 10;
+        charUpdate.hp       = hpMax + 10;
+        charUpdate.mpMax    = mpMax + 5;
+        charUpdate.mp       = mpMax + 5;
         charUpdate.statPoints  = (char.statPoints  || 0) + 3;
         charUpdate.skillPoints = (char.skillPoints || 0) + 1;
       }

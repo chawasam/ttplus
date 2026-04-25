@@ -11,7 +11,6 @@ const MONSTERS = {
     desc: 'สุนัขจรจัดที่หิวโหย ดวงตาดุดัน',
     attackMsg: ['กัดข้อเท้า', 'พุ่งเข้าหา', 'ขย้ำแขน'],
     drops: [
-      { itemId: null, chance: 0.7 },
       { itemId: 'bread', chance: 0.1 },
     ],
     flee_chance: 0.8,
@@ -105,7 +104,6 @@ const MONSTERS = {
     desc: 'ค้างคาวถ้ำตัวใหญ่ บินวนซ้ำหลอกทิศทาง',
     attackMsg: ['โฉบเฉี่ยวข้ามหัว', 'ฝูงบินพุ่งเข้าหา', 'ส่งเสียงอัลตราโซนิก'],
     drops: [
-      { itemId: null, chance: 0.5 },
       { itemId: 'monster_fang', chance: 0.4 },
     ],
     flee_chance: 0.7,
