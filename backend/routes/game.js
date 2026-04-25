@@ -14,6 +14,7 @@ const npc       = require('../handlers/game/npc');
 const dungeon   = require('../handlers/game/dungeon');
 const quests       = require('../handlers/game/quests');
 const questEngine  = require('../handlers/game/quest_engine');
+const rpShop       = require('../handlers/game/rpShop');
 
 // ===== Game-specific rate limiters =====
 const gameLimiter = rateLimit({
@@ -78,6 +79,10 @@ router.post('/quests/claim', quests.claimReward);
 // ----- Quest Log (Story + Side) -----
 router.get ('/quest-log',          questEngine.getQuestLog);
 router.post('/quest-log/accept',   questEngine.acceptSideQuest);
+
+// ----- RP Shop -----
+router.get ('/rp-shop',            shopLimiter, rpShop.getRPShop);
+router.post('/rp-shop/buy',        shopLimiter, rpShop.buyRPItem);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);

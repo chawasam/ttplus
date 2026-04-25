@@ -1,7 +1,10 @@
-// handlers/game/tiktokCurrency.js — TikTok gift → Gold pipeline
+// handlers/game/tiktokCurrency.js — TikTok gift → Gold + RP pipeline
 // hook เข้า tiktok.js gift event (เรียกจาก tiktok.js)
 const admin  = require('firebase-admin');
-const { addGold } = require('./currency');
+const { addGold, addRealmPoints } = require('./currency');
+
+// RP conversion rate: 10 diamonds = 1 RP (premium currency, harder to get)
+const DIAMONDS_PER_RP = 10;
 
 // Idempotency cache (in-memory, ครอบ reconnect window)
 // txId → true (เก็บ 1 ชั่วโมง)
@@ -18,7 +21,9 @@ async function processGift({ vjUid, tiktokUniqueId, giftName, diamondCount, repe
   if (!vjUid || !tiktokUniqueId || !giftName || diamondCount <= 0) return;
 
   const db         = admin.firestore();
-  const goldAmount = diamondCount * repeatCount; // 1 diamond = 1 gold
+  const totalDiamonds = diamondCount * repeatCount;
+  const goldAmount    = totalDiamonds;                              // 1 diamond = 1 gold
+  const rpAmount      = Math.floor(totalDiamonds / DIAMONDS_PER_RP); // 10 diamonds = 1 RP
 
   // Idempotency key
   const txId = `tx_${tiktokUniqueId}_${Math.floor(serverTime / 1000)}_${giftName}_${repeatCount}_${diamondCount}`;
@@ -74,11 +79,22 @@ async function processGift({ vjUid, tiktokUniqueId, giftName, diamondCount, repe
   // Add gold
   const result = await addGold(viewerUid, goldAmount, 'tiktok_gift');
 
+  // Add RP (if earned)
+  let rpResult = { success: false, added: 0 };
+  if (rpAmount > 0) {
+    rpResult = await addRealmPoints(viewerUid, rpAmount);
+    if (rpResult.success) {
+      console.log(`[TikTokCurrency] 💎 @${tiktokUniqueId} → uid=${viewerUid} +${rpAmount} RP (${totalDiamonds} diamonds)`);
+    }
+  }
+
   // อัปเดต transaction เป็น processed
   try {
     await txRef.update({
       processed:    result.success,
       goldActual:   result.added || 0,
+      rpEarned:     rpAmount,
+      rpGranted:    rpResult.success ? rpAmount : 0,
       processedAt:  admin.firestore.FieldValue.serverTimestamp(),
       error:        result.error || null,
     });
@@ -87,12 +103,12 @@ async function processGift({ vjUid, tiktokUniqueId, giftName, diamondCount, repe
   }
 
   if (result.success) {
-    console.log(`[TikTokCurrency] ✅ @${tiktokUniqueId} → uid=${viewerUid} +${result.added} gold (${giftName} ×${repeatCount})`);
+    console.log(`[TikTokCurrency] ✅ @${tiktokUniqueId} → uid=${viewerUid} +${result.added} gold${rpAmount > 0 ? ` +${rpAmount} RP` : ''} (${giftName} ×${repeatCount})`);
   } else {
     console.warn(`[TikTokCurrency] ⚠️ addGold failed uid=${viewerUid}: ${result.error}`);
   }
 
-  return result;
+  return { ...result, rpAdded: rpAmount };
 }
 
 module.exports = { processGift };

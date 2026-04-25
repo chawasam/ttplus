@@ -47,6 +47,10 @@ export const claimQuestReward = (questId)        => api.post('/api/game/quests/c
 export const getQuestLog      = ()               => api.get('/api/game/quest-log');
 export const acceptSideQuest  = (questId)        => api.post('/api/game/quest-log/accept', { questId });
 
+// ===== RP Shop =====
+export const getRPShop        = ()               => api.get('/api/game/rp-shop');
+export const buyRPItem        = (itemId)         => api.post('/api/game/rp-shop/buy', { itemId });
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

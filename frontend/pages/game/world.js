@@ -9,7 +9,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee,
          requestVerify, getVerifyStatus,
          getQuests, claimQuestReward,
-         getQuestLog, acceptSideQuest } from '../../lib/gameApi';
+         getQuestLog, acceptSideQuest,
+         getRPShop, buyRPItem } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -27,6 +28,7 @@ const SCREENS = {
   SETTINGS:       'settings',
   QUESTS:         'quests',
   QUEST_LOG:      'quest_log',
+  RP_SHOP:        'rp_shop',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -98,6 +100,10 @@ export default function GameWorld() {
   // ── Quest Log (Story + Side) ──
   const [questLog,       setQuestLog]       = useState(null);   // { story, sideActive, sideCompleted, sideAvailable }
   const [questLogTab,    setQuestLogTab]    = useState('story');  // 'story' | 'side'
+
+  // ── RP Shop ──
+  const [rpShopItems,    setRPShopItems]    = useState([]);
+  const [rpShopLoading,  setRPShopLoading]  = useState(false);
 
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
@@ -206,6 +212,44 @@ export default function GameWorld() {
       toast.error(err.response?.data?.error || 'รับภารกิจไม่ได้');
     }
   }, [loadQuestLog]);
+
+  // ===== RP Shop =====
+  const loadRPShop = useCallback(async () => {
+    setRPShopLoading(true);
+    try {
+      const { data } = await getRPShop();
+      setRPShopItems(data.items || []);
+      setRP(data.rp || 0);
+    } catch (err) {
+      toast.error('โหลด RP Shop ไม่ได้');
+    } finally {
+      setRPShopLoading(false);
+    }
+  }, []);
+
+  const openRPShop = useCallback(async () => {
+    setScreen(SCREENS.RP_SHOP);
+    await loadRPShop();
+  }, [loadRPShop]);
+
+  const handleBuyRPItem = useCallback(async (itemId, itemName, rpPrice) => {
+    if (!confirm(`ซื้อ ${itemName} ราคา ${rpPrice} RP?`)) return;
+    try {
+      const { data } = await buyRPItem(itemId);
+      toast.success(data.msg || 'ซื้อสำเร็จ!');
+      setRP(data.newRP || 0);
+      // Log granted items
+      (data.granted || []).forEach(g => {
+        if (g.type === 'item') addLog(`📦 ได้รับ ${g.emoji || ''} ${g.name}`);
+        if (g.type === 'race') addLog(`🧬 ปลดล็อค Race: ${g.name}`);
+        if (g.type === 'title') addLog(`🎖️ ปลดล็อค Title: ${g.name}`);
+      });
+      // Refresh list
+      await loadRPShop();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ซื้อไม่ได้');
+    }
+  }, [loadRPShop, addLog]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -820,6 +864,7 @@ export default function GameWorld() {
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
                     <Btn onClick={openQuestLog}   disabled={busy}>📖 เนื้อเรื่อง</Btn>
+                    <Btn onClick={openRPShop}     disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSettings}   disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
@@ -1134,6 +1179,70 @@ export default function GameWorld() {
                   )}
 
                   <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                </div>
+              )}
+
+              {/* RP SHOP */}
+              {screen === SCREENS.RP_SHOP && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">[ 💎 RP Shop — Realm Points: <span className="text-purple-400">{rp}</span> ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {rpShopLoading ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : (
+                    <>
+                      {/* Group by category */}
+                      {[
+                        { key: 'consumable',  label: '🧪 ของใช้' },
+                        { key: 'premium_box', label: '📦 กล่องสุ่ม' },
+                        { key: 'material',    label: '📜 วัตถุดิบ' },
+                        { key: 'race_unlock', label: '🧬 Race Unlock' },
+                        { key: 'cosmetic',    label: '🎖️ ตำแหน่ง' },
+                      ].map(cat => {
+                        const catItems = rpShopItems.filter(i => i.category === cat.key);
+                        if (!catItems.length) return null;
+                        return (
+                          <div key={cat.key}>
+                            <p className="text-gray-700 text-xs mb-1">{cat.label}</p>
+                            {catItems.map(item => (
+                              <div key={item.id} className={`border rounded p-2 mb-1 text-xs ${
+                                item.alreadyBought ? 'border-gray-900 opacity-40' :
+                                !item.canAfford   ? 'border-gray-800 opacity-60' :
+                                                    'border-purple-900 bg-purple-900/10'
+                              }`}>
+                                <div className="flex items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-amber-200 font-bold">{item.name}</p>
+                                    <p className="text-gray-500 leading-relaxed mt-0.5">{item.desc}</p>
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <p className="text-purple-400 font-bold">{item.rpPrice} RP</p>
+                                    {item.alreadyBought ? (
+                                      <span className="text-gray-600 text-xs">✓ ซื้อแล้ว</span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleBuyRPItem(item.id, item.name, item.rpPrice)}
+                                        disabled={!item.canAfford}
+                                        className="mt-1 px-2 py-0.5 border border-purple-700 text-purple-400 hover:bg-purple-900/20 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                                        ซื้อ
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+
+                      <div className="border border-gray-800 rounded p-2 text-xs text-gray-600 text-center">
+                        💎 RP ได้จาก: Gift ใน TikTok Live (10 💎 = 1 RP) · ดูสตรีม (1 RP/5 นาที)
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
