@@ -142,6 +142,23 @@ async function syncAccount(req, res) {
 
     await ref.update({ lastLoginAt: admin.firestore.FieldValue.serverTimestamp(), dailyStreak: newStreak });
 
+    // ── Fetch character preview (name, race, class, level) for Lobby screen ──
+    let charPreview = {};
+    if (data.characterId) {
+      try {
+        const charDoc = await db.collection('game_characters').doc(data.characterId).get();
+        if (charDoc.exists) {
+          const c = charDoc.data();
+          charPreview = {
+            charName:  c.name  || '',
+            charRace:  c.race  || '',
+            charClass: c.class || '',
+            charLevel: c.level || 1,
+          };
+        }
+      } catch {}
+    }
+
     return res.json({
       account: {
         uid,
@@ -153,6 +170,7 @@ async function syncAccount(req, res) {
         gold:           data.gold || 0,
         realmPoints:    data.realmPoints || 0,
         dailyStreak:    newStreak,
+        ...charPreview,  // charName, charRace, charClass, charLevel
       },
       isNew: false,
     });
