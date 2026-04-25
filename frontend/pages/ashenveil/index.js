@@ -279,10 +279,10 @@ export default function GameIndex() {
                 {account.tiktokVerified ? (
                   /* ✅ Linked */
                   <div className="flex items-center gap-3">
-                    <span className="text-green-400 text-xl">✅</span>
+                    <span className="text-green-400 text-2xl">✅</span>
                     <div className="flex-1">
-                      <p className="text-green-300 text-sm font-bold">@{account.tiktokUniqueId}</p>
-                      <p className="text-gray-500 text-xs">เชื่อม TikTok สำเร็จ — Gift จะแปลงเป็น RP อัตโนมัติ</p>
+                      <p className="text-green-300 text-base font-bold">@{account.tiktokUniqueId}</p>
+                      <p className="text-gray-400 text-sm">เชื่อม TikTok สำเร็จ — Gift จะแปลงเป็น RP อัตโนมัติ</p>
                     </div>
                   </div>
                 ) : (
@@ -290,7 +290,7 @@ export default function GameIndex() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-gray-500 text-lg">⬜</span>
-                      <p className="text-gray-400 text-xs">ยังไม่ได้ผูก TikTok — Gift จะไม่แปลงเป็น RP</p>
+                      <p className="text-gray-400 text-sm">ยังไม่ได้ผูก TikTok — Gift จะไม่แปลงเป็น RP</p>
                     </div>
                     <div className="flex gap-2">
                       <input
@@ -298,14 +298,14 @@ export default function GameIndex() {
                         onChange={e => setTiktokInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleRequestCode()}
                         placeholder="@tiktok_username"
-                        className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-amber-200 text-xs focus:border-amber-600 outline-none"
+                        className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-amber-200 text-sm focus:border-amber-600 outline-none"
                       />
                       <button onClick={handleRequestCode} disabled={tikBusy}
-                        className="px-3 py-2 border border-amber-700 text-amber-400 hover:bg-amber-900/20 transition text-xs rounded disabled:opacity-40">
+                        className="px-4 py-2 border border-amber-700 text-amber-400 hover:bg-amber-900/20 transition text-sm rounded disabled:opacity-40">
                         {tikBusy ? '...' : 'ผูก'}
                       </button>
                     </div>
-                    <p className="text-gray-600 text-xs">ไม่บังคับ — สามารถผูกทีหลังได้ในหน้าตั้งค่าเกม</p>
+                    <p className="text-gray-500 text-xs">ไม่บังคับ — สามารถผูกทีหลังได้ในหน้าตั้งค่าเกม</p>
                   </div>
                 )}
               </Box>
@@ -507,21 +507,21 @@ function CharacterCard({ account, onEnter, onDelete }) {
     <div className="space-y-4">
       {/* ── Character info card ── */}
       <div className="border border-amber-900/40 bg-amber-950/20 rounded p-4 flex items-center gap-4">
-        <div className="text-4xl">
+        <div className="text-5xl">
           {account.charRace ? (RACE_EMOJI[account.charRace] || '⚔️') : '⚔️'}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-amber-300 font-bold text-base">
+          <p className="text-amber-300 font-bold text-lg">
             {account.charName || 'ตัวละครของคุณ'}
           </p>
-          <p className="text-gray-400 text-xs mt-0.5">
+          <p className="text-gray-400 text-sm mt-0.5">
             {account.charRace || account.charClass
               ? `${account.charRace || '?'} ${account.charClass || '?'} · Lv.${account.charLevel || '?'}`
               : account.charName
                 ? `Lv.${account.charLevel || '?'}`
-                : '...'}
+                : '—'}
           </p>
-          <div className="flex gap-3 mt-1 text-xs text-gray-500">
+          <div className="flex gap-3 mt-1 text-sm text-gray-400">
             <span>💰 {(account.gold || 0).toLocaleString()} Gold</span>
             <span>💎 {(account.realmPoints || 0).toLocaleString()} RP</span>
           </div>
@@ -530,7 +530,7 @@ function CharacterCard({ account, onEnter, onDelete }) {
 
       {/* ── Enter game ── */}
       <button onClick={onEnter}
-        className="w-full py-3 rounded border border-amber-500 text-amber-300 hover:bg-amber-900/20 transition font-bold tracking-wider text-sm">
+        className="w-full py-3 rounded border border-amber-500 text-amber-300 hover:bg-amber-900/20 transition font-bold tracking-wider text-base">
         [ เข้าสู่ Ashenveil ]
       </button>
 
@@ -539,29 +539,29 @@ function CharacterCard({ account, onEnter, onDelete }) {
         {deleteStep === 0 ? (
           /* ── Initial delete button (muted, small) ── */
           <button onClick={() => setDeleteStep(1)}
-            className="w-full py-1.5 text-gray-700 hover:text-red-700 transition text-xs">
+            className="w-full py-2 text-gray-600 hover:text-red-700 transition text-sm">
             🗑️ ลบตัวละคร
           </button>
         ) : (
           /* ── Confirmation zone ── */
           <div className="bg-red-950/20 border border-red-900/50 rounded p-3 space-y-2">
-            <p className="text-red-400 text-xs font-bold text-center">
+            <p className="text-red-400 text-sm font-bold text-center">
               ⚠️ การลบจะไม่สามารถย้อนกลับได้!
             </p>
-            <p className="text-red-300 text-xs text-center">
+            <p className="text-red-300 text-sm text-center">
               {CONFIRM_MSGS[deleteStep - 1]}
             </p>
 
             {/* Countdown bar — แสดงเฉพาะ step สุดท้าย */}
             {deleteStep === 2 && countdown > 0 && (
               <div className="space-y-1">
-                <div className="w-full bg-gray-800 rounded-full h-1 overflow-hidden">
+                <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="bg-red-600 h-1 rounded-full transition-all duration-1000 ease-linear"
+                    className="bg-red-600 h-1.5 rounded-full transition-all duration-1000 ease-linear"
                     style={{ width: `${(countdown / DELETE_COUNTDOWN) * 100}%` }}
                   />
                 </div>
-                <p className="text-gray-600 text-[10px] text-center">
+                <p className="text-gray-500 text-xs text-center">
                   รอ {countdown} วินาที...
                 </p>
               </div>
@@ -571,13 +571,13 @@ function CharacterCard({ account, onEnter, onDelete }) {
               <button
                 onClick={() => setDeleteStep(0)}
                 disabled={deleting}
-                className="flex-1 py-1.5 border border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-600 transition text-xs rounded disabled:opacity-40">
+                className="flex-1 py-2 border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition text-sm rounded disabled:opacity-40">
                 ยกเลิก
               </button>
               <button
                 onClick={handleDeleteClick}
                 disabled={deleting || (deleteStep === 2 && countdown > 0)}
-                className="flex-1 py-1.5 border border-red-800 text-red-400 hover:bg-red-900/20 transition text-xs rounded disabled:opacity-40 font-bold"
+                className="flex-1 py-2 border border-red-800 text-red-400 hover:bg-red-900/20 transition text-sm rounded disabled:opacity-40 font-bold"
                 style={deleteStep === 2 && countdown > 0 ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}>
                 {deleting
                   ? 'กำลังลบ...'
