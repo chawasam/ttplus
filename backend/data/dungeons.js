@@ -961,8 +961,6 @@ const DUNGEON_MONSTERS = {
     flee_chance: 0.4,
   },
 
-};
-
   // — City Ruins —
   abandoned_sentinel: {
     monsterId: 'abandoned_sentinel', name: 'Abandoned Sentinel', emoji: '⚙️',
