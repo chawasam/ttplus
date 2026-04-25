@@ -1,6 +1,7 @@
 // handlers/game/combat.js — Server-side battle logic
 const admin  = require('firebase-admin');
 const { getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
+const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
 
@@ -9,10 +10,26 @@ const activeBattles = new Map();
 
 // ===== Start battle =====
 async function startBattle(req, res) {
-  const { zone, monsterId } = req.body;
+  // dungeonRunId: ถ้าอยู่ใน Dungeon ให้ส่ง runId มาด้วย
+  // bossData: ข้อมูล boss inline จาก dungeon room (สำหรับ boss rooms)
+  const { zone, monsterId, dungeonRunId, bossData } = req.body;
   const uid = req.user.uid;
 
-  const monster = monsterId ? getMonster(monsterId) : getRandomMonster(zone || 'town_outskirts');
+  let monster;
+  if (bossData) {
+    // Inline boss (dungeon boss rooms)
+    monster = {
+      ...bossData,
+      goldReward:  bossData.goldReward || [0, 0],
+      flee_chance: bossData.flee_chance ?? 0.1,
+      drops:       bossData.drops || [],
+      attackMsg:   bossData.attackMsg || ['โจมตี'],
+    };
+  } else if (monsterId) {
+    monster = getMonster(monsterId) || getDungeonMonster(monsterId);
+  } else {
+    monster = getRandomMonster(zone || 'town_outskirts');
+  }
   if (!monster) return res.status(400).json({ error: 'ไม่พบมอนสเตอร์' });
 
   const db = admin.firestore();
@@ -34,6 +51,7 @@ async function startBattle(req, res) {
       battleId,
       uid,
       charId,
+      dungeonRunId: dungeonRunId || null, // track dungeon context
       turn: 1,
       result: null,
       player: {
@@ -134,7 +152,16 @@ async function processAction(req, res) {
     log.push(...rewards.log);
     state.result = 'victory';
     activeBattles.delete(battleId);
-    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory', rewards } });
+
+    // Advance dungeon room if in a dungeon run
+    if (state.dungeonRunId) {
+      const { onDungeonBattleWin } = require('./dungeon');
+      await onDungeonBattleWin(uid, state.dungeonRunId).catch(e =>
+        console.error('[Combat] dungeon advance failed:', e.message)
+      );
+    }
+
+    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory', rewards }, dungeonRunId: state.dungeonRunId });
   }
 
   // ===== Enemy turn =====
@@ -167,9 +194,21 @@ async function processAction(req, res) {
   if (state.player.hp <= 0) {
     log.push('💀 คุณพ่ายแพ้... Respawn ที่ Town Square');
     await handlePlayerDeath(uid, state);
+
+    // Fail dungeon run if in a dungeon
+    if (state.dungeonRunId) {
+      const db = admin.firestore();
+      await db.collection('game_dungeons').doc(state.dungeonRunId).update({
+        status:   'failed',
+        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        fleeRoom: state.dungeonRunId,
+      }).catch(() => {});
+      log.push('🏚️ Dungeon run ล้มเหลว...');
+    }
+
     state.result = 'defeat';
     activeBattles.delete(battleId);
-    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' } });
+    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
   }
 
   state.turn++;

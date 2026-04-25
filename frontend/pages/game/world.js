@@ -5,19 +5,25 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, rest,
          getInventory, getShopItems, buyItem, sellItem, equipItem, unequipItem,
-         getNPCs, talkNPC, giveGift } from '../../lib/gameApi';
+         getNPCs, talkNPC, giveGift,
+         getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
 const SCREENS = {
-  WORLD:     'world',
-  EXPLORE:   'explore',
-  BATTLE:    'battle',
-  INVENTORY: 'inventory',
-  SHOP:      'shop',
-  NPC:       'npc',
-  NPC_TALK:  'npc_talk',
+  WORLD:          'world',
+  EXPLORE:        'explore',
+  BATTLE:         'battle',
+  INVENTORY:      'inventory',
+  SHOP:           'shop',
+  NPC:            'npc',
+  NPC_TALK:       'npc_talk',
+  DUNGEON_LIST:   'dungeon_list',
+  DUNGEON_ROOM:   'dungeon_room',
+  DUNGEON_CLEAR:  'dungeon_clear',
 };
+
+const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
 
 const GRADE_COLOR = {
   COMMON:    'text-gray-400',
@@ -46,8 +52,15 @@ export default function GameWorld() {
   const [shopItems,  setShopItems]  = useState([]);
   const [npcs,       setNPCs]       = useState([]);
   const [activeNPC,  setActiveNPC]  = useState(null);
-  const [busy,       setBusy]       = useState(false);
-  const [atmosphere, setAtmosphere] = useState('');
+  const [busy,          setBusy]         = useState(false);
+  const [atmosphere,    setAtmosphere]   = useState('');
+  const [dungeonList,   setDungeonList]  = useState([]);
+  const [dungeonRun,    setDungeonRun]   = useState(null);  // current run state
+  const [dungeonRoom,   setDungeonRoom]  = useState(null);  // current room data
+  const [dungeonInfo,   setDungeonInfo]  = useState(null);  // dungeon meta
+  const [dungeonLog,    setDungeonLog]   = useState([]);    // room-specific log
+  const [dungeonReward, setDungeonReward]= useState(null);  // clear rewards
+  const [dungeonRunId,  setDungeonRunId] = useState(null);  // active dungeon run ID (for battle)
   const [fontSize,   setFontSize]   = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('game_fontSize') || 'sm';
     return 'sm';
@@ -167,9 +180,44 @@ export default function GameWorld() {
         const rewards = data.rewards || {};
         if (rewards.gold) setGold(g => g + rewards.gold);
         if (rewards.levelUp) setChar(c => c ? { ...c, level: rewards.levelUp } : c);
-        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1200);
-      } else if (data.result === 'defeat' || data.result === 'fled') {
-        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1200);
+
+        // Was this a dungeon battle?
+        if (data.dungeonRunId) {
+          setTimeout(async () => {
+            setBattle(null);
+            try {
+              const runRes = await getDungeonRun();
+              if (runRes.data.run?.status === 'completed') {
+                setDungeonReward({ gold: rewards.gold || 0, xp: rewards.xp || 0, items: rewards.items || [] });
+                setDungeonRun(null);
+                setDungeonRunId(null);
+                setScreen(SCREENS.DUNGEON_CLEAR);
+              } else if (runRes.data.run) {
+                setDungeonRun(runRes.data.run);
+                setDungeonRoom(runRes.data.room);
+                const idx = runRes.data.run.currentRoom;
+                setDungeonLog(prev => [...prev, '─────────────────────────', `✅ ชนะ! → ห้องที่ ${idx + 1}/${runRes.data.run.totalRooms}: ${runRes.data.room?.name || ''}`, runRes.data.room?.desc || '']);
+                setScreen(SCREENS.DUNGEON_ROOM);
+              } else {
+                setScreen(SCREENS.WORLD);
+              }
+            } catch {
+              setScreen(SCREENS.WORLD);
+            }
+          }, 1200);
+        } else {
+          setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1200);
+        }
+      } else if (data.result === 'defeat') {
+        // Was dungeon? Run is already failed by backend
+        if (data.dungeonRunId) {
+          setDungeonRun(null);
+          setDungeonRunId(null);
+          setDungeonRoom(null);
+        }
+        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1500);
+      } else if (data.result === 'fled') {
+        setTimeout(() => { setBattle(null); setScreen(dungeonRunId ? SCREENS.DUNGEON_ROOM : SCREENS.WORLD); }, 1000);
       } else {
         setChar(c => c ? { ...c, hp: data.state.player.hp, mp: data.state.player.mp } : c);
       }
@@ -278,6 +326,135 @@ export default function GameWorld() {
     }
   }, []);
 
+  // ===== Dungeon =====
+  const loadDungeons = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await getDungeons();
+      setDungeonList(data.dungeons || []);
+      // If there's an active run, go directly to it
+      if (data.activeRun) {
+        const runRes = await getDungeonRun();
+        if (runRes.data.run) {
+          setDungeonRun(runRes.data.run);
+          setDungeonRoom(runRes.data.room);
+          setDungeonInfo(runRes.data.dungeon);
+          setDungeonRunId(runRes.data.run.id);
+          setDungeonLog([`🔄 กลับสู่ ${runRes.data.dungeon?.nameTH || 'Dungeon'} (ห้องที่ ${runRes.data.run.currentRoom + 1}/${runRes.data.run.totalRooms})`]);
+          setScreen(SCREENS.DUNGEON_ROOM);
+          return;
+        }
+      }
+      setScreen(SCREENS.DUNGEON_LIST);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'โหลด Dungeon ไม่ได้');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
+
+  const handleEnterDungeon = useCallback(async (dungeonId) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await enterDungeon(dungeonId);
+      setDungeonRun(data.run);
+      setDungeonRoom(data.room);
+      setDungeonInfo(data.dungeon);
+      setDungeonRunId(data.run.id);
+      setDungeonLog([
+        `🏰 เข้าสู่ ${data.dungeon.nameTH}`,
+        `📍 ห้องที่ 1/${data.run.totalRooms}: ${data.room.name}`,
+        `─────────────────────────`,
+        data.room.desc,
+      ]);
+      setScreen(SCREENS.DUNGEON_ROOM);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'เข้า Dungeon ไม่ได้');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
+
+  const handleDungeonAction = useCallback(async (action) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await dungeonAction(action);
+      const newLog = [...dungeonLog, '─────────────────────────', ...(data.log || [])];
+
+      if (data.cleared) {
+        setDungeonReward(data.clearRewards);
+        setDungeonRun(null);
+        setDungeonRunId(null);
+        setDungeonLog([...newLog, '🏆 Dungeon Cleared!']);
+        setScreen(SCREENS.DUNGEON_CLEAR);
+        if (data.newLevel) setChar(c => c ? { ...c, level: data.newLevel } : c);
+        return;
+      }
+
+      if (data.advanced && data.nextRoom) {
+        const nextLog = [
+          ...newLog,
+          `📍 ห้องที่ ${data.nextRoomIndex + 1}/${dungeonRun?.totalRooms}: ${data.nextRoom.name}`,
+          data.nextRoom.desc,
+        ];
+        setDungeonRoom(data.nextRoom);
+        setDungeonRun(r => r ? { ...r, currentRoom: data.nextRoomIndex } : r);
+        setDungeonLog(nextLog);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Action ไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, dungeonLog, dungeonRun]);
+
+  const handleDungeonFlee = useCallback(async () => {
+    if (!confirm('ถอยออกจาก Dungeon? (เสีย progress ทั้งหมด)')) return;
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await dungeonFlee();
+      toast.success(data.message);
+      setDungeonRun(null);
+      setDungeonRunId(null);
+      setDungeonRoom(null);
+      setScreen(SCREENS.WORLD);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Flee ไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
+
+  // Start battle inside a dungeon (combat or boss room)
+  const handleDungeonBattle = useCallback(async () => {
+    if (!dungeonRoom || busy) return;
+    setBusy(true);
+    try {
+      const isBoss    = dungeonRoom.type === 'boss';
+      const payload   = {
+        dungeonRunId: dungeonRunId,
+        ...(isBoss
+          ? { bossData: dungeonRoom.boss }
+          : { monsterId: dungeonRoom.monsterId }),
+      };
+      const { data } = await startBattle(null, payload.monsterId, payload.dungeonRunId, payload.bossData);
+      setBattle(data.state);
+      setBattleLog([
+        `🏰 [Dungeon] ${dungeonInfo?.nameTH} — ห้อง ${(dungeonRun?.currentRoom || 0) + 1}`,
+        ...(data.state.log || [])
+      ]);
+      setScreen(SCREENS.BATTLE);
+    } catch (err) {
+      addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [dungeonRoom, dungeonRunId, dungeonInfo, dungeonRun, busy]);
+
   if (loading) return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
       <p className="text-amber-600 animate-pulse" style={{ fontFamily: 'monospace' }}>กำลังโหลดโลก Ashenveil...</p>
@@ -351,6 +528,7 @@ export default function GameWorld() {
                     <Btn onClick={loadInventory}  disabled={busy}>🎒 Inventory</Btn>
                     <Btn onClick={loadShop}       disabled={busy}>🏪 ร้านค้า</Btn>
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
+                    <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
                     <Btn onClick={() => setScreen('travel')} disabled={busy}>🗺️ เดินทาง</Btn>
                   </div>
                 </div>
@@ -462,6 +640,133 @@ export default function GameWorld() {
                     </button>
                   ))}
                   <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-2">← กลับ</Btn>
+                </div>
+              )}
+
+              {/* DUNGEON LIST */}
+              {screen === SCREENS.DUNGEON_LIST && (
+                <div className="max-h-72 overflow-y-auto">
+                  <p className="text-gray-600 text-xs mb-3">[ 🏰 เลือก Dungeon ]</p>
+                  {dungeonList.map(d => (
+                    <div key={d.id} className="border border-gray-800 rounded p-2 mb-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{d.emoji}</span>
+                        <span className="text-amber-300 text-xs font-bold">{d.nameTH}</span>
+                        <span className={`text-xs ml-auto ${DIFFICULTY_COLOR[d.difficulty] || 'text-gray-400'}`}>
+                          ★{'★'.repeat(d.difficulty - 1)}{'☆'.repeat(3 - d.difficulty)} {d.difficultyLabel}
+                        </span>
+                      </div>
+                      <p className="text-gray-500 text-xs mb-1 leading-relaxed">{d.desc.substring(0, 80)}...</p>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-gray-600">Lv.{d.minLevel}+ · {d.totalRooms} ห้อง</span>
+                        {d.levelLocked && <span className="text-red-600 ml-auto">🔒 ต้อง Lv.{d.minLevel}</span>}
+                        {d.onCooldown && <span className="text-orange-600 ml-auto">⏳ {d.cooldownHoursLeft} ชั่วโมง</span>}
+                        {d.canEnter && (
+                          <button onClick={() => handleEnterDungeon(d.id)} disabled={busy}
+                            className="ml-auto px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-40">
+                            เข้า Dungeon →
+                          </button>
+                        )}
+                        {d.hasActiveRun && (
+                          <button onClick={() => handleEnterDungeon(d.id)} disabled={busy}
+                            className="ml-auto px-2 py-0.5 border border-blue-700 text-blue-400 hover:bg-blue-900/20 rounded text-xs disabled:opacity-40">
+                            กลับเข้า →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-1">← กลับ</Btn>
+                </div>
+              )}
+
+              {/* DUNGEON ROOM */}
+              {screen === SCREENS.DUNGEON_ROOM && dungeonRoom && (
+                <div>
+                  {/* Room log */}
+                  <div className="max-h-28 overflow-y-auto mb-2">
+                    {dungeonLog.slice(-12).map((line, i) => (
+                      <p key={i} className={`text-xs leading-relaxed ${
+                        line.startsWith('─') ? 'text-gray-700' :
+                        line.startsWith('✅') || line.startsWith('🏆') ? 'text-green-400' :
+                        line.startsWith('💀') || line.startsWith('🩸') ? 'text-red-400' :
+                        line.startsWith('💰') ? 'text-yellow-400' :
+                        line.startsWith('💚') ? 'text-green-400' :
+                        line.startsWith('📍') ? 'text-amber-400' :
+                        'text-amber-100/80'
+                      }`}>{line}</p>
+                    ))}
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                    <span>{dungeonInfo?.emoji} {dungeonInfo?.nameTH}</span>
+                    <span className="ml-auto">ห้อง {(dungeonRun?.currentRoom || 0) + 1}/{dungeonRun?.totalRooms}</span>
+                  </div>
+                  <div className="w-full h-1 bg-gray-800 rounded mb-3">
+                    <div className="h-1 bg-amber-700 rounded transition-all"
+                      style={{ width: `${((dungeonRun?.currentRoom || 0) / (dungeonRun?.totalRooms || 1)) * 100}%` }} />
+                  </div>
+
+                  {/* Room type actions */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* COMBAT / BOSS */}
+                    {(dungeonRoom.type === 'combat' || dungeonRoom.type === 'boss') && (
+                      <>
+                        <Btn onClick={handleDungeonBattle} disabled={busy}
+                          className={dungeonRoom.type === 'boss' ? 'border-red-800 text-red-400' : ''}>
+                          {dungeonRoom.type === 'boss' ? '💀 สู้ Boss' : '⚔️ เข้าสู้'}
+                        </Btn>
+                        {dungeonRoom.type !== 'boss' && (
+                          <Btn onClick={handleDungeonFlee} disabled={busy}>🏃 Flee</Btn>
+                        )}
+                      </>
+                    )}
+                    {/* TRAP */}
+                    {dungeonRoom.type === 'trap' && (
+                      <>
+                        <Btn onClick={() => handleDungeonAction('resolve_trap')} disabled={busy}>
+                          ⚡ รับมือกับดัก
+                        </Btn>
+                        <Btn onClick={handleDungeonFlee} disabled={busy}>🏃 Flee</Btn>
+                      </>
+                    )}
+                    {/* TREASURE */}
+                    {dungeonRoom.type === 'treasure' && (
+                      <>
+                        <Btn onClick={() => handleDungeonAction('loot_treasure')} disabled={busy}>
+                          💰 ค้นหาสมบัติ
+                        </Btn>
+                        <Btn onClick={handleDungeonFlee} disabled={busy}>🏃 Flee</Btn>
+                      </>
+                    )}
+                    {/* REST */}
+                    {dungeonRoom.type === 'rest' && (
+                      <>
+                        <Btn onClick={() => handleDungeonAction('rest')} disabled={busy}>
+                          💚 พักฟื้น
+                        </Btn>
+                        <Btn onClick={handleDungeonFlee} disabled={busy}>🏃 Flee</Btn>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* DUNGEON CLEAR */}
+              {screen === SCREENS.DUNGEON_CLEAR && (
+                <div className="text-center">
+                  <p className="text-green-400 text-sm mb-1">🏆 Dungeon Clear!</p>
+                  {dungeonReward && (
+                    <div className="text-xs text-gray-400 mb-2 space-y-0.5">
+                      {dungeonReward.gold > 0 && <p className="text-yellow-400">💰 +{dungeonReward.gold} Gold</p>}
+                      {dungeonReward.xp  > 0 && <p className="text-purple-400">⭐ +{dungeonReward.xp} XP</p>}
+                      {dungeonReward.items?.map((it, i) => (
+                        <p key={i} className="text-blue-400">📦 {it.emoji || ''} {it.name || it}</p>
+                      ))}
+                    </div>
+                  )}
+                  <Btn onClick={() => { setScreen(SCREENS.WORLD); setDungeonReward(null); }}>← กลับ Town</Btn>
                 </div>
               )}
 

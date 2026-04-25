@@ -18,7 +18,8 @@ export const explore          = (zone)           => api.post('/api/game/explore'
 export const travel           = (zone)           => api.post('/api/game/travel', { zone });
 
 // ===== Combat =====
-export const startBattle      = (zone, monsterId) => api.post('/api/game/battle/start', { zone, monsterId });
+export const startBattle      = (zone, monsterId, dungeonRunId, bossData) =>
+  api.post('/api/game/battle/start', { zone, monsterId, dungeonRunId, bossData });
 export const battleAction     = (battleId, action, opts = {}) =>
   api.post('/api/game/battle/action', { battleId, action, ...opts });
 export const rest             = ()               => api.post('/api/game/battle/rest');
@@ -37,3 +38,10 @@ export const buyItem          = (itemId)         => api.post('/api/game/shop/buy
 export const getNPCs          = ()               => api.get('/api/game/npcs');
 export const talkNPC          = (npcId)          => api.get(`/api/game/npc/${npcId}`);
 export const giveGift         = (npcId, instanceId) => api.post('/api/game/npc/gift', { npcId, instanceId });
+
+// ===== Dungeon =====
+export const getDungeons      = ()               => api.get('/api/game/dungeons');
+export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');
+export const enterDungeon     = (dungeonId)      => api.post('/api/game/dungeon/enter', { dungeonId });
+export const dungeonAction    = (action)         => api.post('/api/game/dungeon/action', { action });
+export const dungeonFlee      = ()               => api.post('/api/game/dungeon/flee');

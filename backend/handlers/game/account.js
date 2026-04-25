@@ -13,7 +13,8 @@ const WORD_POOL = [
   'ป่า','ถ้ำ','ภูเขา','ทะเล','ทะเลทราย','หิมะ','หมอก','พระจันทร์',
 ];
 
-const VERIFY_TTL_MS    = 10 * 60 * 1000; // 10 นาที
+const VERIFY_TTL_MS          = 10 * 60 * 1000;  // 10 นาที
+const VJ_CHANGE_COOLDOWN_MS  = 7 * 24 * 3600_000; // 7 วัน
 const RACES = ['HUMAN', 'ELVEN', 'DWARF', 'SHADE', 'REVENANT', 'VOIDBORN', 'BEASTKIN'];
 const LOCKED_RACES = new Set(['REVENANT', 'VOIDBORN', 'BEASTKIN']);
 
@@ -149,9 +150,27 @@ async function requestVerifyCode(req, res) {
   const clean = tiktokUniqueId.replace(/[^a-zA-Z0-9._]/g, '').replace(/^@/, '').slice(0, 50);
   if (!clean) return res.status(400).json({ error: 'Username ไม่ถูกต้อง' });
 
-  // ตรวจว่า username นี้มีคนใช้แล้วหรือยัง
   const db = admin.firestore();
   try {
+    // ตรวจ cooldown การเปลี่ยน VJ
+    const myDoc = await db.collection('game_accounts').doc(req.user.uid).get();
+    if (myDoc.exists) {
+      const myData = myDoc.data();
+      if (myData.tiktokVerified && myData.tiktokUniqueId && myData.tiktokUniqueId !== clean) {
+        // ผู้เล่นต้องการเปลี่ยน VJ — ตรวจ cooldown
+        const vjChangedAt = myData.vjChangedAt?.toMillis?.() || myData.tiktokLinkedAt?.toMillis?.() || 0;
+        const elapsed     = Date.now() - vjChangedAt;
+        if (elapsed < VJ_CHANGE_COOLDOWN_MS) {
+          const daysLeft = Math.ceil((VJ_CHANGE_COOLDOWN_MS - elapsed) / 86400_000);
+          return res.status(429).json({
+            error: `การเปลี่ยน VJ มี Cooldown 7 วัน — รออีก ${daysLeft} วัน`,
+            cooldownDaysLeft: daysLeft,
+          });
+        }
+      }
+    }
+
+    // ตรวจว่า username นี้มีคนใช้แล้วหรือยัง
     const existing = await db.collection('game_accounts')
       .where('tiktokUniqueId', '==', clean)
       .where('tiktokVerified', '==', true)
@@ -196,11 +215,22 @@ async function checkChatVerify(uniqueId, comment) {
     console.log(`[Game/Verify] ✅ uid=${uid} @${uniqueId} verified!`);
 
     try {
-      await db.collection('game_accounts').doc(uid).update({
-        tiktokUniqueId:  pending.tiktokUniqueId,
-        tiktokVerified:  true,
-        tiktokLinkedAt:  admin.firestore.FieldValue.serverTimestamp(),
-      });
+      const existingDoc = await db.collection('game_accounts').doc(uid).get();
+      const isVJChange  = existingDoc.exists && existingDoc.data().tiktokVerified &&
+                          existingDoc.data().tiktokUniqueId !== pending.tiktokUniqueId;
+
+      const updatePayload = {
+        tiktokUniqueId: pending.tiktokUniqueId,
+        tiktokVerified: true,
+        tiktokLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (isVJChange) {
+        // บันทึกเวลาเปลี่ยน VJ สำหรับ cooldown
+        updatePayload.vjChangedAt = admin.firestore.FieldValue.serverTimestamp();
+        console.log(`[Game/Verify] VJ changed: uid=${uid} old=@${existingDoc.data().tiktokUniqueId} new=@${pending.tiktokUniqueId}`);
+      }
+
+      await db.collection('game_accounts').doc(uid).update(updatePayload);
     } catch (err) {
       console.error('[Game/Verify] Firestore update error:', err.message);
     }
@@ -217,9 +247,13 @@ async function getVerifyStatus(req, res) {
     const doc = await db.collection('game_accounts').doc(req.user.uid).get();
     if (!doc.exists) return res.json({ verified: false });
     const data = doc.data();
+    const vjChangedAt    = data.vjChangedAt?.toMillis?.() || data.tiktokLinkedAt?.toMillis?.() || 0;
+    const vjCooldownLeft = Math.max(0, vjChangedAt + VJ_CHANGE_COOLDOWN_MS - Date.now());
     return res.json({
-      verified:       data.tiktokVerified || false,
-      tiktokUniqueId: data.tiktokUniqueId || null,
+      verified:          data.tiktokVerified || false,
+      tiktokUniqueId:    data.tiktokUniqueId || null,
+      vjCooldownDaysLeft: vjCooldownLeft > 0 ? Math.ceil(vjCooldownLeft / 86400_000) : 0,
+      canChangeVJ:       vjCooldownLeft === 0,
     });
   } catch (err) {
     console.error('[Game/Account] getVerifyStatus:', err.message);
