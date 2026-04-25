@@ -229,10 +229,14 @@ export default function GameWorld() {
         setZone(data.character.location || 'town_square');
         addLog(`👤 ${data.character.name} (${data.character.race} ${data.character.class} Lv.${data.character.level})`);
         addLog(`📍 ${getZoneName(data.character.location || 'town_square')}`);
-        // Auto-check login bonus
+        // Auto-load daily quests + quest log (for progression visibility + badge)
+        loadQuests().catch(() => {});
+        loadQuestLog().catch(() => {});
+
+        // Auto-check login bonus — backend returns canClaim not alreadyClaimed
         try {
           const { data: lb } = await getLoginBonusStatus();
-          if (!lb.alreadyClaimed) {
+          if (lb.canClaim) {
             setLoginBonusData(lb);
             setShowLoginBonus(true);
           }
@@ -1267,18 +1271,53 @@ export default function GameWorld() {
 
       {/* ── LOGIN BONUS POPUP ── */}
       {showLoginBonus && loginBonusData && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-950 border border-amber-700 rounded-lg p-6 max-w-sm w-full text-center"
-            style={{ fontFamily: "'Courier New', Courier, monospace" }}>
-            <p className="text-amber-400 text-lg font-bold mb-1">🎁 Login Bonus!</p>
-            <p className="text-gray-400 text-xs mb-4">
-              Day Streak: <span className="text-amber-300 font-bold">{loginBonusData.streak}</span>
-              {loginBonusData.nextMilestone && (
-                <span className="text-gray-400"> → Milestone ที่ {loginBonusData.nextMilestone} วัน</span>
-              )}
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(2px)' }}>
+          <div className="bg-gray-950 border border-amber-700/60 rounded-2xl p-6 max-w-xs w-full text-center shadow-2xl"
+            style={{
+              fontFamily: "'Courier New', Courier, monospace",
+              boxShadow: '0 0 40px #92400e40',
+              animation: 'ash-slide-up 0.3s ease',
+            }}>
+            <style>{`@keyframes ash-slide-up{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+            {/* Header */}
+            <div className="mb-1">
+              <p className="text-2xl mb-1">🌅</p>
+              <p className="text-amber-400 text-base font-bold">Login Bonus</p>
+              <p className="text-gray-500 text-xs">{loginBonusData.reward?.label || 'ยินดีต้อนรับกลับมา!'}</p>
+            </div>
+
+            {/* Streak dots — แสดง 7 วันล่าสุด */}
+            <div className="flex justify-center gap-1.5 my-3">
+              {[...Array(7)].map((_, i) => {
+                const s = loginBonusData.streak || 1;
+                const filled = i < Math.min(s, 7);
+                const isToday = i === Math.min(s - 1, 6);
+                return (
+                  <div key={i}
+                    className="flex flex-col items-center gap-0.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]"
+                      style={{
+                        background: filled ? (isToday ? '#f59e0b' : '#92400e80') : '#1f2937',
+                        border: isToday ? '2px solid #f59e0b' : '1px solid #374151',
+                        boxShadow: isToday ? '0 0 8px #f59e0b60' : 'none',
+                      }}>
+                      {filled ? (isToday ? '★' : '✓') : ''}
+                    </div>
+                    <span className="text-[8px] text-gray-700">วัน{i + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-amber-500 text-xs mb-3 font-bold">
+              Streak: {loginBonusData.streak} วัน
+              {loginBonusData.nextRewardAt &&
+                <span className="text-gray-500 font-normal"> · อีก {loginBonusData.nextRewardAt - loginBonusData.streak} วัน = Milestone!</span>}
             </p>
-            {/* Reward preview */}
-            <div className="bg-gray-900 border border-gray-800 rounded p-3 mb-4 space-y-1">
+
+            {/* Rewards */}
+            <div className="bg-gray-900/80 border border-amber-900/40 rounded-xl p-3 mb-4 space-y-1">
               {loginBonusData.reward?.gold > 0 && (
                 <p className="text-yellow-400 text-sm">💰 +{loginBonusData.reward.gold} Gold</p>
               )}
@@ -1292,13 +1331,14 @@ export default function GameWorld() {
                 <p className="text-amber-300 text-xs">🎖️ ตำแหน่ง: "{loginBonusData.reward.title}"</p>
               )}
             </div>
+
             <div className="grid grid-cols-2 gap-2">
               <button onClick={handleClaimLoginBonus}
-                className="px-4 py-2 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-sm font-bold transition">
+                className="px-4 py-2.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded-xl text-sm font-bold transition">
                 🎁 รับเลย!
               </button>
               <button onClick={() => setShowLoginBonus(false)}
-                className="px-4 py-2 border border-gray-700 text-gray-500 hover:text-gray-400 rounded text-sm transition">
+                className="px-4 py-2.5 border border-gray-800 text-gray-600 hover:text-gray-400 rounded-xl text-sm transition">
                 ทีหลัง
               </button>
             </div>
@@ -1313,40 +1353,90 @@ export default function GameWorld() {
         }}>
 
         {/* ── STATUS BAR ── */}
-        <div className="border-b border-gray-800 bg-gray-950 px-4 py-2 flex flex-wrap gap-4 text-xs">
-          <span className="text-amber-400 font-bold">{char?.name}</span>
-          <span className="text-gray-500">{char?.race} {char?.class} Lv.{char?.level}</span>
-          <span className="text-red-400">❤️ {char?.hp}/{char?.hpMax}</span>
-          <span className="text-blue-400">💧 {char?.mp}/{char?.mpMax}</span>
-          <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
-          <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
-          <span className="text-purple-400">🌀 {rp} RP</span>
-          <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
-          <div className="flex items-center gap-1 ml-2">
-            {/* BGM quick toggle in HUD */}
-            <button
-              onClick={toggleBgm}
-              title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
-              className={`px-1.5 py-0.5 border rounded transition select-none text-xs ${
-                bgmEnabled
-                  ? 'border-amber-800 text-amber-500 hover:text-amber-300 hover:border-amber-600'
-                  : 'border-gray-800 text-gray-700 hover:text-gray-500'
-              }`}
-              style={{ lineHeight: 1 }}>
-              {bgmEnabled ? '🎵' : '🔇'}
-            </button>
-            {bgmEnabled && (
-              <input
-                type="range" min="0" max="1" step="0.05"
-                value={bgmVolume}
-                onChange={handleVolumeChange}
-                title={`Volume: ${Math.round(bgmVolume * 100)}%`}
-                className="w-14 h-1 accent-amber-600 cursor-pointer"
-                style={{ verticalAlign: 'middle' }}
-              />
-            )}
-          </div>
-        </div>
+        {(() => {
+          // XP progress
+          const xp       = char?.xp       || 0;
+          const xpToNext = char?.xpToNext || 100;
+          const xpPct    = Math.min(100, Math.round((xp / xpToNext) * 100));
+
+          // Daily quest count
+          const dqTotal  = questData?.quests?.length || 0;
+          const dqDone   = questData?.quests?.filter(q => q.completed).length || 0;
+          const dqBadge  = dqDone > 0;
+
+          // Active story quest hint (first active)
+          const activeStory = questLog?.story?.find(q => q.status === 'active');
+          const storyHint   = activeStory?.currentStep?.hint;
+          const storyName   = activeStory?.name;
+
+          return (
+            <div className="border-b border-gray-800 bg-gray-950">
+              {/* Row 1 — vitals + economy */}
+              <div className="px-4 pt-2 pb-1 flex flex-wrap gap-4 text-xs">
+                <span className="text-amber-400 font-bold">{char?.name}</span>
+                <span className="text-gray-500">{char?.race} {char?.class} Lv.{char?.level}</span>
+                <span className="text-red-400">❤️ {char?.hp}/{char?.hpMax}</span>
+                <span className="text-blue-400">💧 {char?.mp}/{char?.mpMax}</span>
+                <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
+                <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
+                <span className="text-purple-400">🌀 {rp} RP</span>
+                <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
+                <div className="flex items-center gap-1 ml-2">
+                  <button onClick={toggleBgm}
+                    title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
+                    className={`px-1.5 py-0.5 border rounded transition select-none text-xs ${
+                      bgmEnabled ? 'border-amber-800 text-amber-500 hover:text-amber-300 hover:border-amber-600'
+                                 : 'border-gray-800 text-gray-700 hover:text-gray-500'}`}
+                    style={{ lineHeight: 1 }}>
+                    {bgmEnabled ? '🎵' : '🔇'}
+                  </button>
+                  {bgmEnabled && (
+                    <input type="range" min="0" max="1" step="0.05"
+                      value={bgmVolume} onChange={handleVolumeChange}
+                      title={`Volume: ${Math.round(bgmVolume * 100)}%`}
+                      className="w-14 h-1 accent-amber-600 cursor-pointer"
+                      style={{ verticalAlign: 'middle' }} />
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2 — XP bar + quest progress + story hint */}
+              <div className="px-4 pb-1.5 flex items-center gap-3 text-[10px]">
+                {/* XP bar */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-purple-500">⭐</span>
+                  <div className="w-20 h-1 bg-gray-800 rounded overflow-hidden">
+                    <div className="h-full bg-purple-700 rounded transition-all duration-500"
+                      style={{ width: `${xpPct}%` }} />
+                  </div>
+                  <span className="text-gray-600">{xp}/{xpToNext}</span>
+                  {xpPct >= 90 && <span className="text-purple-400 animate-pulse">↑ ใกล้ Level Up!</span>}
+                </div>
+
+                {/* Daily quest count */}
+                {dqTotal > 0 && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={dqDone === dqTotal ? 'text-green-500' : 'text-gray-500'}>📋</span>
+                    <span className={dqDone === dqTotal ? 'text-green-400' : 'text-gray-500'}>
+                      {dqDone}/{dqTotal}
+                    </span>
+                    {questBadge && <span className="text-green-400 animate-pulse">✦ รับรางวัล</span>}
+                  </div>
+                )}
+
+                {/* Active story quest hint */}
+                {storyHint && (
+                  <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                    <span className="text-amber-700 shrink-0">📖</span>
+                    <span className="text-gray-600 truncate" title={`${storyName}: ${storyHint}`}>
+                      {storyHint}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="flex flex-1 overflow-hidden">
 
