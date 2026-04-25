@@ -59,8 +59,9 @@ async function explore(req, res) {
     };
 
     const updates = {
-      stamina:      char.stamina - STAMINA_COST,
-      lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+      stamina:          char.stamina - STAMINA_COST,
+      lastActiveAt:     admin.firestore.FieldValue.serverTimestamp(),
+      explorationCount: admin.firestore.FieldValue.increment(1),
     };
 
     // Process event

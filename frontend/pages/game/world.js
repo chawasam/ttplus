@@ -48,6 +48,18 @@ export default function GameWorld() {
   const [activeNPC,  setActiveNPC]  = useState(null);
   const [busy,       setBusy]       = useState(false);
   const [atmosphere, setAtmosphere] = useState('');
+  const [fontSize,   setFontSize]   = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('game_fontSize') || 'sm';
+    return 'sm';
+  });
+
+  const cycleFontSize = useCallback(() => {
+    setFontSize(prev => {
+      const next = prev === 'xs' ? 'sm' : prev === 'sm' ? 'base' : 'xs';
+      if (typeof window !== 'undefined') localStorage.setItem('game_fontSize', next);
+      return next;
+    });
+  }, []);
 
   // ===== Init =====
   useEffect(() => {
@@ -295,6 +307,13 @@ export default function GameWorld() {
           <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
           <span className="text-purple-400">🌀 {rp} RP</span>
           <span className="text-gray-600 ml-auto">📍 {getZoneName(zone)}</span>
+          <button onClick={cycleFontSize}
+            title={`ขนาดตัวอักษร: ${fontSize === 'xs' ? 'เล็ก' : fontSize === 'sm' ? 'กลาง' : 'ใหญ่'} → คลิกเปลี่ยน`}
+            className="text-gray-600 hover:text-amber-500 transition font-bold select-none ml-1"
+            style={{ fontSize: '14px', lineHeight: 1 }}>
+            {fontSize === 'xs' ? 'A' : fontSize === 'sm' ? 'A' : 'A'}
+            <sup style={{ fontSize: '8px' }}>{fontSize === 'xs' ? '-' : fontSize === 'sm' ? '·' : '+'}</sup>
+          </button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
@@ -303,7 +322,7 @@ export default function GameWorld() {
           <div className="flex-1 flex flex-col">
             <div className="flex-1 overflow-y-auto p-4 space-y-1">
               {(screen === SCREENS.BATTLE ? battleLog : gameLog).map((line, i) => (
-                <p key={i} className={`text-sm leading-relaxed ${
+                <p key={i} className={`text-${fontSize} leading-relaxed ${
                   line.startsWith('─') ? 'text-gray-700' :
                   line.startsWith('💀') ? 'text-red-400' :
                   line.startsWith('🎉') || line.startsWith('✅') ? 'text-green-400' :

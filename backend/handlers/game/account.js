@@ -14,12 +14,24 @@ const WORD_POOL = [
 ];
 
 const VERIFY_TTL_MS    = 10 * 60 * 1000; // 10 นาที
-const RACES = ['HUMAN', 'ELVEN', 'DWARF', 'SHADE'];
+const RACES = ['HUMAN', 'ELVEN', 'DWARF', 'SHADE', 'REVENANT', 'VOIDBORN', 'BEASTKIN'];
+const LOCKED_RACES = new Set(['REVENANT', 'VOIDBORN', 'BEASTKIN']);
+
+// เงื่อนไข unlock ของแต่ละเผ่า
+const RACE_UNLOCK = {
+  REVENANT: { stat: 'deathCount',       required: 50,  label: 'ตาย 50 ครั้ง' },
+  VOIDBORN: { stat: 'explorationCount', required: 100, label: 'สำรวจ 100 ครั้ง' },
+  BEASTKIN: { stat: 'monstersKilled',   required: 200, label: 'สังหาร 200 มอนสเตอร์' },
+};
+
 const CLASSES_BY_RACE = {
-  HUMAN: ['WARRIOR', 'ROGUE', 'CLERIC'],
-  ELVEN: ['RANGER', 'MAGE', 'BARD'],
-  DWARF: ['BERSERKER', 'ENGINEER', 'RUNESMITH'],
-  SHADE: ['ASSASSIN', 'HEXBLADE', 'PHANTOM'],
+  HUMAN:    ['WARRIOR', 'ROGUE', 'CLERIC'],
+  ELVEN:    ['RANGER', 'MAGE', 'BARD'],
+  DWARF:    ['BERSERKER', 'ENGINEER', 'RUNESMITH'],
+  SHADE:    ['ASSASSIN', 'HEXBLADE', 'PHANTOM'],
+  REVENANT: ['DEATHKNIGHT', 'NECROMANCER', 'GRAVECALLER'],
+  VOIDBORN: ['VOIDWALKER', 'RIFTER', 'SOULSEER'],
+  BEASTKIN: ['WILDGUARD', 'TRACKER', 'SHAMAN'],
 };
 
 // Class base stats
@@ -33,9 +45,19 @@ const CLASS_BASE_STATS = {
   BERSERKER:  { hp: 170, mp: 30,  atk: 28, def: 14, spd: 6,  mag: 3  },
   ENGINEER:   { hp: 130, mp: 60,  atk: 18, def: 20, spd: 6,  mag: 12 },
   RUNESMITH:  { hp: 120, mp: 80,  atk: 16, def: 18, spd: 7,  mag: 18 },
-  ASSASSIN:   { hp: 100, mp: 70,  atk: 25, def: 10, spd: 18, mag: 8  },
-  HEXBLADE:   { hp: 105, mp: 100, atk: 18, def: 12, spd: 12, mag: 22 },
-  PHANTOM:    { hp: 95,  mp: 110, atk: 15, def: 8,  spd: 15, mag: 25 },
+  ASSASSIN:    { hp: 100, mp: 70,  atk: 25, def: 10, spd: 18, mag: 8  },
+  HEXBLADE:    { hp: 105, mp: 100, atk: 18, def: 12, spd: 12, mag: 22 },
+  PHANTOM:     { hp: 95,  mp: 110, atk: 15, def: 8,  spd: 15, mag: 25 },
+  // Locked races
+  DEATHKNIGHT: { hp: 140, mp: 60,  atk: 22, def: 16, spd: 8,  mag: 12 },
+  NECROMANCER: { hp: 95,  mp: 130, atk: 10, def: 8,  spd: 8,  mag: 32 },
+  GRAVECALLER: { hp: 110, mp: 110, atk: 12, def: 10, spd: 9,  mag: 25 },
+  VOIDWALKER:  { hp: 100, mp: 100, atk: 18, def: 10, spd: 16, mag: 20 },
+  RIFTER:      { hp: 105, mp: 90,  atk: 24, def: 8,  spd: 14, mag: 15 },
+  SOULSEER:    { hp: 90,  mp: 120, atk: 8,  def: 9,  spd: 12, mag: 30 },
+  WILDGUARD:   { hp: 145, mp: 50,  atk: 24, def: 16, spd: 10, mag: 5  },
+  TRACKER:     { hp: 115, mp: 65,  atk: 20, def: 12, spd: 16, mag: 8  },
+  SHAMAN:      { hp: 110, mp: 100, atk: 14, def: 12, spd: 10, mag: 22 },
 };
 
 // Race modifiers
@@ -43,7 +65,10 @@ const RACE_MOD = {
   HUMAN:  { hp: 0,   atk: 2,  def: 2,  spd: 2,  mag: 2  }, // balanced
   ELVEN:  { hp: -10, atk: 0,  def: -2, spd: 5,  mag: 5  }, // fast + magic
   DWARF:  { hp: 20,  atk: 3,  def: 5,  spd: -3, mag: -2 }, // tank
-  SHADE:  { hp: -15, atk: 3,  def: -3, spd: 6,  mag: 3  }, // agile + sneaky
+  SHADE:    { hp: -15, atk: 3,  def: -3, spd: 6,  mag: 3  }, // agile + sneaky
+  REVENANT: { hp: 10,  atk: 2,  def: 0,  spd: -2, mag: 5  }, // undead durability
+  VOIDBORN: { hp: -20, atk: 0,  def: -4, spd: 8,  mag: 8  }, // glass cannon void
+  BEASTKIN: { hp: 20,  atk: 4,  def: 2,  spd: 4,  mag: -3 }, // physical powerhouse
 };
 
 function generateVerifyCode() {
@@ -227,10 +252,26 @@ async function createCharacter(req, res) {
   try {
     // ตรวจ account ไม่มี character แล้ว
     const accountRef = db.collection('game_accounts').doc(uid);
+
     const accountDoc = await accountRef.get();
     if (!accountDoc.exists) return res.status(400).json({ error: 'Account ไม่พบ' });
     if (accountDoc.data().characterId) {
       return res.status(400).json({ error: 'มี Character อยู่แล้ว' });
+    }
+
+    // ตรวจ locked race — ต้อง unlock ก่อนถึงเลือกได้
+    if (LOCKED_RACES.has(race)) {
+      const cond = RACE_UNLOCK[race];
+      // ดึง character เดิมเพื่อเช็ค (ถ้าไม่มี character เลยยังเลือก locked race ไม่ได้)
+      const existingChar = accountDoc.data().characterId
+        ? (await db.collection('game_characters').doc(accountDoc.data().characterId).get()).data()
+        : null;
+      const statVal = existingChar?.[cond.stat] || 0;
+      if (statVal < cond.required) {
+        return res.status(403).json({
+          error: `🔒 เผ่านี้ยังล็อคอยู่ — ${cond.label} (ปัจจุบัน: ${statVal}/${cond.required})`,
+        });
+      }
     }
 
     // ตรวจชื่อซ้ำ
@@ -377,8 +418,44 @@ async function loadCharacter(req, res) {
   }
 }
 
+// ===== Get Unlocked Races + Progress =====
+async function getUnlockedRaces(req, res) {
+  const uid = req.user.uid;
+  const db  = admin.firestore();
+  try {
+    const accountDoc = await db.collection('game_accounts').doc(uid).get();
+    if (!accountDoc.exists) return res.json({ unlockedRaces: [], progress: {} });
+    const charId = accountDoc.data().characterId;
+
+    // ถ้ายังไม่มี character ก็ยังปลดล็อคไม่ได้ทั้งหมด
+    const progress = {};
+    const unlockedRaces = [];
+
+    if (charId) {
+      const charDoc = await db.collection('game_characters').doc(charId).get();
+      const char    = charDoc.exists ? charDoc.data() : {};
+      for (const [race, cond] of Object.entries(RACE_UNLOCK)) {
+        const current  = Math.min(char[cond.stat] || 0, cond.required);
+        const unlocked = current >= cond.required;
+        progress[race] = { current, required: cond.required, label: cond.label, unlocked };
+        if (unlocked) unlockedRaces.push(race);
+      }
+    } else {
+      for (const [race, cond] of Object.entries(RACE_UNLOCK)) {
+        progress[race] = { current: 0, required: cond.required, label: cond.label, unlocked: false };
+      }
+    }
+
+    return res.json({ unlockedRaces, progress });
+  } catch (err) {
+    console.error('[Game/Account] getUnlockedRaces:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+}
+
 module.exports = {
   syncAccount, requestVerifyCode, getVerifyStatus,
   createCharacter, loadCharacter,
+  getUnlockedRaces,
   checkChatVerify, pendingVerifications,
 };

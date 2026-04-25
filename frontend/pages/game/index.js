@@ -3,37 +3,59 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
-import { syncAccount, requestVerify, getVerifyStatus, createCharacter, loadCharacter } from '../../lib/gameApi';
+import { syncAccount, requestVerify, getVerifyStatus, createCharacter, loadCharacter, getUnlockedRaces } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
 const RACES = [
-  { id: 'HUMAN',  name: 'Human',  th: 'มนุษย์',  desc: 'คนธรรมดาจากดินแดนกลาง สมดุลในทุกด้าน', emoji: '👤' },
-  { id: 'ELVEN',  name: 'Elven',  th: 'เอลฟ์',   desc: 'เผ่าพันธุ์โบราณ อายุยืน ปัญญาสูง เร็วกว่าคนทั่วไป', emoji: '🧝' },
-  { id: 'DWARF',  name: 'Dwarf',  th: 'ดวาร์ฟ',  desc: 'แห่งขุนเขา ร่างกายแกร่งที่สุด มือทอง', emoji: '⛏️' },
-  { id: 'SHADE',  name: 'Shade',  th: 'เชด',     desc: 'ลูกหลานเงา ปริศนา ไม่มีใครรู้ต้นกำเนิด', emoji: '🌑' },
+  { id: 'HUMAN',    th: 'มนุษย์',    desc: 'สมดุลทุกด้าน เหมาะกับมือใหม่', emoji: '👤' },
+  { id: 'ELVEN',    th: 'เอลฟ์',     desc: 'อายุยืน ปัญญาสูง เร็วกว่าคนทั่วไป', emoji: '🧝' },
+  { id: 'DWARF',    th: 'ดวาร์ฟ',    desc: 'ร่างแกร่งที่สุด มือทอง', emoji: '⛏️' },
+  { id: 'SHADE',    th: 'เชด',       desc: 'ลูกหลานเงา ปริศนา ต้นกำเนิดไม่ทราบ', emoji: '🌑' },
+  // Locked races
+  { id: 'REVENANT', th: 'เรเวแนนท์', desc: 'ผู้ที่ตายแล้วฟื้น ทนทาน ไม่กลัว death penalty', emoji: '💀',
+    locked: true, unlockHint: 'ตาย 50 ครั้ง', unlockKey: 'REVENANT' },
+  { id: 'VOIDBORN', th: 'วอยด์บอร์น', desc: 'สิ่งมีชีวิตจาก The Void เร็ว เวทย์สูงสุด', emoji: '🌀',
+    locked: true, unlockHint: 'สำรวจ 100 ครั้ง', unlockKey: 'VOIDBORN' },
+  { id: 'BEASTKIN', th: 'บีสท์คิน',  desc: 'ลูกหลานสัตว์ป่า พลังแกร่ง Stamina ฟื้นเร็ว', emoji: '🐾',
+    locked: true, unlockHint: 'สังหาร 200 มอนสเตอร์', unlockKey: 'BEASTKIN' },
 ];
 
 const CLASSES_BY_RACE = {
   HUMAN: [
-    { id: 'WARRIOR',  name: 'Warrior',  th: 'นักรบ',     desc: 'ดาบและโล่ แนวหน้า ทนทาน', emoji: '⚔️' },
-    { id: 'ROGUE',    name: 'Rogue',    th: 'โจร',       desc: 'เร็ว คม เน้น Crit', emoji: '🗡️' },
-    { id: 'CLERIC',   name: 'Cleric',   th: 'พระ',       desc: 'เวทย์ศักดิ์สิทธิ์ ฮีล', emoji: '✨' },
+    { id: 'WARRIOR',     th: 'นักรบ',         desc: 'ดาบโล่ แนวหน้า ทนทาน', emoji: '⚔️' },
+    { id: 'ROGUE',       th: 'โจร',           desc: 'เร็ว คม เน้น Crit', emoji: '🗡️' },
+    { id: 'CLERIC',      th: 'พระ',           desc: 'เวทย์ศักดิ์สิทธิ์ ฮีล', emoji: '✨' },
   ],
   ELVEN: [
-    { id: 'RANGER',   name: 'Ranger',   th: 'นักล่า',    desc: 'ธนู ป่า ไว', emoji: '🏹' },
-    { id: 'MAGE',     name: 'Mage',     th: 'นักเวทย์',  desc: 'พลังเวทย์สูงสุด', emoji: '🪄' },
-    { id: 'BARD',     name: 'Bard',     th: 'บาร์ด',     desc: 'เพลงเวทย์ support + attack', emoji: '🎵' },
+    { id: 'RANGER',      th: 'นักล่า',         desc: 'ธนู ป่า ไว', emoji: '🏹' },
+    { id: 'MAGE',        th: 'นักเวทย์',       desc: 'พลังเวทย์สูงสุด', emoji: '🪄' },
+    { id: 'BARD',        th: 'บาร์ด',          desc: 'เพลงเวทย์ support + attack', emoji: '🎵' },
   ],
   DWARF: [
-    { id: 'BERSERKER',name: 'Berserker',th: 'บีเซอร์เกอร์','desc': 'พลังสูงสุด ไม่กลัวตาย', emoji: '🪓' },
-    { id: 'ENGINEER', name: 'Engineer', th: 'วิศวกร',    desc: '罠 และกลไก', emoji: '⚙️' },
-    { id: 'RUNESMITH',name: 'Runesmith',th: 'รูนสมิธ',   desc: 'แกะรูนบนอาวุธ', emoji: '🔨' },
+    { id: 'BERSERKER',   th: 'บีเซอร์เกอร์',   desc: 'พลังสูงสุด ไม่กลัวตาย', emoji: '🪓' },
+    { id: 'ENGINEER',    th: 'วิศวกร',         desc: 'กับดักและกลไก', emoji: '⚙️' },
+    { id: 'RUNESMITH',   th: 'รูนสมิธ',        desc: 'แกะรูนบนอาวุธ', emoji: '🔨' },
   ],
   SHADE: [
-    { id: 'ASSASSIN', name: 'Assassin', th: 'นักฆ่า',   desc: 'ฆ่าทีเดียวจบ', emoji: '🌙' },
-    { id: 'HEXBLADE', name: 'Hexblade', th: 'เฮกซ์เบลด','desc': 'ดาบสีดำ + สาปแช่ง', emoji: '🔮' },
-    { id: 'PHANTOM',  name: 'Phantom',  th: 'แฟนทอม',   desc: 'เวทย์เงา ล่องหนได้', emoji: '👻' },
+    { id: 'ASSASSIN',    th: 'นักฆ่า',         desc: 'ฆ่าทีเดียวจบ', emoji: '🌙' },
+    { id: 'HEXBLADE',    th: 'เฮกซ์เบลด',      desc: 'ดาบสีดำ + สาปแช่ง', emoji: '🔮' },
+    { id: 'PHANTOM',     th: 'แฟนทอม',        desc: 'เวทย์เงา ล่องหนได้', emoji: '👻' },
+  ],
+  REVENANT: [
+    { id: 'DEATHKNIGHT', th: 'เดธไนท์',        desc: 'ดาบมืด ดูดชีวิตศัตรู', emoji: '🗡️' },
+    { id: 'NECROMANCER', th: 'เนโครแมนเซอร์',  desc: 'ปลุกอันเดด เวทย์มืด', emoji: '💀' },
+    { id: 'GRAVECALLER', th: 'เกรฟคอลเลอร์',   desc: 'เรียกวิญญาณ ฮีลมืด', emoji: '👻' },
+  ],
+  VOIDBORN: [
+    { id: 'VOIDWALKER',  th: 'วอยด์วอล์กเกอร์', desc: 'เทเลพอร์ต เวทย์ Void', emoji: '🌀' },
+    { id: 'RIFTER',      th: 'ริฟเตอร์',        desc: 'ตัดมิติ พลังสูง', emoji: '⚡' },
+    { id: 'SOULSEER',    th: 'โซลเซียร์',       desc: 'มองเห็นวิญญาณ เวทย์สูง', emoji: '👁️' },
+  ],
+  BEASTKIN: [
+    { id: 'WILDGUARD',   th: 'ไวลด์การ์ด',      desc: 'โล่ธรรมชาติ กำแพงเนื้อ', emoji: '🛡️' },
+    { id: 'TRACKER',     th: 'แทร็กเกอร์',      desc: 'ล่าเป้าหมาย Crit สูง', emoji: '🐾' },
+    { id: 'SHAMAN',      th: 'ชาแมน',           desc: 'วิญญาณสัตว์ เวทย์ธรรมชาติ', emoji: '🌿' },
   ],
 };
 
@@ -49,8 +71,10 @@ export default function GameIndex() {
   const [charName,    setCharName]    = useState('');
   const [race,        setRace]        = useState('');
   const [charClass,   setCharClass]   = useState('');
-  const [creating,    setCreating]    = useState(false);
-  const [account,     setAccount]     = useState(null);
+  const [creating,      setCreating]      = useState(false);
+  const [account,       setAccount]       = useState(null);
+  const [unlockedRaces, setUnlockedRaces] = useState([]);
+  const [raceProgress,  setRaceProgress]  = useState({});
 
   // ===== Auth state =====
   useEffect(() => {
@@ -64,6 +88,12 @@ export default function GameIndex() {
         if (!data.account.tiktokVerified) {
           setStep(STEP.VERIFY);
         } else if (!data.account.characterId) {
+          // โหลด unlocked races ก่อนแสดงหน้าสร้าง character
+          try {
+            const ur = await getUnlockedRaces();
+            setUnlockedRaces(ur.data.unlockedRaces || []);
+            setRaceProgress(ur.data.progress || {});
+          } catch {}
           setStep(STEP.CREATE_CHAR);
         } else {
           router.replace('/game/world');
@@ -194,7 +224,10 @@ export default function GameIndex() {
                 className="w-full py-2 rounded border border-amber-600 text-amber-400 hover:bg-amber-900/20 transition text-sm mb-2">
                 [ ขอ Code ยืนยัน ]
               </button>
-              <button onClick={() => setStep(STEP.CREATE_CHAR)}
+              <button onClick={async () => {
+                  try { const ur = await getUnlockedRaces(); setUnlockedRaces(ur.data.unlockedRaces||[]); setRaceProgress(ur.data.progress||{}); } catch {}
+                  setStep(STEP.CREATE_CHAR);
+                }}
                 className="w-full py-2 text-gray-600 hover:text-gray-400 transition text-xs">
                 ข้ามขั้นตอนนี้
               </button>
@@ -237,14 +270,31 @@ export default function GameIndex() {
               {/* เลือก Race */}
               <label className="text-amber-600 text-xs mb-2 block">เลือกเผ่า</label>
               <div className="grid grid-cols-2 gap-2 mb-4">
-                {RACES.map(r => (
-                  <button key={r.id} onClick={() => { setRace(r.id); setCharClass(''); }}
-                    className={`p-2 border rounded text-left transition text-xs ${race === r.id ? 'border-amber-500 bg-amber-900/20 text-amber-300' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}>
-                    <div className="text-lg mb-1">{r.emoji}</div>
-                    <div className="font-bold">{r.th}</div>
-                    <div className="text-gray-600 text-xs mt-1 leading-tight">{r.desc}</div>
-                  </button>
-                ))}
+                {RACES.map(r => {
+                  const isUnlocked = !r.locked || unlockedRaces.includes(r.id);
+                  const prog = r.locked ? raceProgress[r.id] : null;
+                  return (
+                    <button key={r.id}
+                      onClick={() => { if (isUnlocked) { setRace(r.id); setCharClass(''); } }}
+                      disabled={!isUnlocked}
+                      title={r.locked && !isUnlocked ? `🔒 ${r.unlockHint}${prog ? ` (${prog.current}/${prog.required})` : ''}` : ''}
+                      className={`p-2 border rounded text-left transition text-xs relative ${
+                        race === r.id ? 'border-amber-500 bg-amber-900/20 text-amber-300' :
+                        !isUnlocked ? 'border-gray-800 text-gray-700 cursor-not-allowed opacity-60' :
+                        'border-gray-700 text-gray-400 hover:border-gray-500'
+                      }`}>
+                      <div className="text-lg mb-1">{r.emoji}{!isUnlocked && ' 🔒'}</div>
+                      <div className="font-bold">{r.th}</div>
+                      {isUnlocked
+                        ? <div className="text-gray-600 text-xs mt-1 leading-tight">{r.desc}</div>
+                        : <div className="text-gray-700 text-xs mt-1 leading-tight">
+                            {r.unlockHint}
+                            {prog && <span className="block text-gray-800">{prog.current}/{prog.required}</span>}
+                          </div>
+                      }
+                    </button>
+                  );
+                })}
               </div>
 
               {/* เลือก Class */}

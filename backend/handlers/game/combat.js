@@ -254,7 +254,7 @@ async function grantRewards(uid, state) {
     log.push(`⭐ ได้รับ ${state.enemy.xpReward} XP`);
 
     // Level up check
-    const updates = { xp: newXp, hp: state.player.hp, mp: state.player.mp };
+    const updates = { xp: newXp, hp: state.player.hp, mp: state.player.mp, monstersKilled: admin.firestore.FieldValue.increment(1) };
     if (newXp >= char.xpToNext) {
       const newLevel = char.level + 1;
       updates.level    = newLevel;
@@ -303,11 +303,12 @@ async function handlePlayerDeath(uid, state) {
     // เสีย 10% XP
     const xpLoss = Math.floor((char.xp || 0) * 0.1);
     await charRef.update({
-      hp:       char.hpMax,     // respawn full HP
-      mp:       char.mpMax,
-      xp:       Math.max(0, (char.xp || 0) - xpLoss),
-      location: 'town_square',  // respawn ที่ town
-      status:   [],
+      hp:         char.hpMax,     // respawn full HP
+      mp:         char.mpMax,
+      xp:         Math.max(0, (char.xp || 0) - xpLoss),
+      location:   'town_square',  // respawn ที่ town
+      status:     [],
+      deathCount: admin.firestore.FieldValue.increment(1),
     });
   } catch (err) {
     console.error('[Combat] handlePlayerDeath:', err.message);
