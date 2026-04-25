@@ -269,13 +269,39 @@ async function processAction(req, res) {
   const log = [];
   let result = null;
 
+  // ===== Check Player STUN before action =====
+  const isPlayerStunned = state.player.status.some(s => s.type === 'STUN');
+  if (isPlayerStunned) {
+    log.push('😵 คุณถูกสตัน — ไม่สามารถโจมตีได้เทิร์นนี้!');
+    // Tick stun duration
+    state.player.status = state.player.status.map(s =>
+      s.type === 'STUN' ? { ...s, duration: s.duration - 1 } : s
+    ).filter(s => s.duration > 0);
+  }
+
   // ===== Player action =====
-  if (action === 'attack') {
+  if (isPlayerStunned && (action === 'attack' || action === 'skill')) {
+    // attack/skill blocked by stun — do nothing (stun already ticked above)
+
+  } else if (action === 'attack') {
+    // Apply SLOW debuff on player ATK
+    const playerSlow = state.player.status.find(s => s.type === 'SLOW');
+    const playerAtk  = playerSlow ? Math.floor(state.player.atk * (playerSlow.atkMult || 0.6)) : state.player.atk;
+    // Tick SLOW duration
+    if (playerSlow) {
+      state.player.status = state.player.status.map(s =>
+        s.type === 'SLOW' ? { ...s, duration: s.duration - 1 } : s
+      ).filter(s => s.duration > 0);
+    }
+    // Apply MARKED: ลด DEF ของศัตรูเมื่อ marked
+    const markedBuff = state.enemy.status.find(s => s.type === 'MARKED');
+    const effectiveDef = markedBuff ? Math.floor(state.enemy.def * (markedBuff.defMult || 1.0)) : state.enemy.def;
     const isCrit = Math.random() < (state.player.critChance || 0.1);
-    let dmg = calcDamage(state.player.atk, state.enemy.def);
+    let dmg = calcDamage(playerAtk, effectiveDef);
+    if (markedBuff?.dmgMultiplier > 1) dmg = Math.floor(dmg * markedBuff.dmgMultiplier);
     if (isCrit) { dmg = Math.floor(dmg * 2); log.push('💥 CRITICAL HIT!'); }
     state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
-    log.push(`⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage${isCrit ? ' (Critical!)' : ''}`);
+    log.push(`⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage${isCrit ? ' (Critical!)' : ''}${playerSlow ? ' (ช้าลง ⚠️)' : ''}${markedBuff ? ' (🎯 Marked!)' : ''}`);
 
   } else if (action === 'skill') {
     // ─── USE SKILL ───
@@ -300,11 +326,11 @@ async function processAction(req, res) {
     }
 
   } else if (action === 'item') {
-    // ใช้ item consumable
+    // ใช้ item consumable (ใช้ได้แม้ถูก stun)
     const itemResult = await useItem(uid, itemInstanceId, state, log);
     if (!itemResult.success) return res.status(400).json({ error: itemResult.error });
 
-  } else {
+  } else if (!isPlayerStunned) {
     return res.status(400).json({ error: 'action ไม่ถูกต้อง' });
   }
 
@@ -548,13 +574,38 @@ function applySkill(state, skillId, log) {
         log.push(`😵 ${state.enemy.name} ถูกสตัน ${ef.duration} เทิร์น!`);
       } else if (ef.type === 'SLOW') {
         state.enemy.status.push({ type: 'SLOW', atkMult: ef.atkMult, duration: ef.duration });
-        log.push(`❄️ ${state.enemy.name} ถูกชะลอ ATK -${Math.round((1 - ef.atkMult) * 100)}% ${ef.duration} เทิร์น!`);
+        log.push(`❄️ ${state.enemy.name} ถูกชะลอ ATK -${Math.round((1 - ef.atkMult) * 100)}% เป็นเวลา ${ef.duration} เทิร์น!`);
       } else if (ef.type === 'POISON') {
         state.enemy.status.push({ type: 'POISON', dmgPerTurn: ef.dmgPerTurn, duration: ef.duration });
         log.push(`☠️ ${state.enemy.name} ถูกพิษ! ${ef.dmgPerTurn}/เทิร์น เป็นเวลา ${ef.duration} เทิร์น`);
+      } else if (ef.type === 'BURN') {
+        state.enemy.status.push({ type: 'BURN', dmgPerTurn: ef.dmgPerTurn, duration: ef.duration });
+        log.push(`🔥 ${state.enemy.name} ถูกเผา! ${ef.dmgPerTurn}/เทิร์น เป็นเวลา ${ef.duration} เทิร์น`);
+      } else if (ef.type === 'BLEED') {
+        state.enemy.status.push({ type: 'BLEED', dmgPerTurn: ef.dmgPerTurn, duration: ef.duration });
+        log.push(`🩸 ${state.enemy.name} เลือดออก! ${ef.dmgPerTurn}/เทิร์น เป็นเวลา ${ef.duration} เทิร์น`);
+      } else if (ef.type === 'CURSE') {
+        // Curse: deals dmgPerTurn like poison (dark/magic damage)
+        state.enemy.status.push({ type: 'CURSE', dmgPerTurn: ef.dmgPerTurn || 0, duration: ef.duration });
+        log.push(`💜 ${state.enemy.name} ถูกสาป! ${ef.dmgPerTurn || 0}/เทิร์น เป็นเวลา ${ef.duration} เทิร์น`);
+      } else if (ef.type === 'MARKED') {
+        // Marked: เพิ่ม incoming damage multiplier หรือลด DEF เมื่อถูกโจมตี
+        state.enemy.status.push({
+          type:          'MARKED',
+          duration:      ef.duration,
+          dmgMultiplier: ef.dmgMultiplier || 1.0,
+          defMult:       ef.defMult       || 1.0,
+        });
+        log.push(`🎯 ${state.enemy.name} ถูก Mark! รับ Damage เพิ่ม ${ef.dmgMultiplier ? Math.round((ef.dmgMultiplier - 1) * 100) : 0}% เป็นเวลา ${ef.duration} เทิร์น`);
       }
+    } else if (ef.type !== 'MARKED') {
+      // MARKED สามารถรีเฟรชได้ แต่ status อื่นไม่ stack
+      log.push(`⚠️ ${state.enemy.name} มีสถานะ ${ef.type} อยู่แล้ว`);
     } else {
-      log.push(`⚠️ ${state.enemy.name} มีสถานะนี้อยู่แล้ว`);
+      // Refresh MARKED
+      state.enemy.status = state.enemy.status.filter(s => s.type !== 'MARKED');
+      state.enemy.status.push({ type: 'MARKED', duration: ef.duration, dmgMultiplier: ef.dmgMultiplier || 1.0, defMult: ef.defMult || 1.0 });
+      log.push(`🎯 รีเฟรช Mark บน ${state.enemy.name}!`);
     }
   }
 
@@ -588,13 +639,40 @@ function processBuff(player, log) {
 }
 
 function processStatusEffects(entity, log, who) {
+  const label    = who === 'player' ? 'คุณ' : entity.name;
   const remaining = [];
+
   for (const s of entity.status) {
+    // ── POISON: ดีลเดม dmgPerTurn ──
     if (s.type === 'POISON' && s.dmgPerTurn > 0) {
       entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
-      log.push(`☠️ ${who === 'player' ? 'คุณ' : entity.name} ได้รับพิษ ${s.dmgPerTurn} damage`);
+      log.push(`☠️ ${label} ได้รับพิษ ${s.dmgPerTurn} damage`);
     }
+
+    // ── BURN: เหมือน Poison แต่ไฟ (dmgPerTurn สูงกว่า, duration สั้น) ──
+    if (s.type === 'BURN' && s.dmgPerTurn > 0) {
+      entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
+      log.push(`🔥 ${label} ถูกเผาไหม้ ${s.dmgPerTurn} damage`);
+    }
+
+    // ── BLEED: เลือดออก (dmgPerTurn เล็กน้อย, duration ยาว) ──
+    if (s.type === 'BLEED' && s.dmgPerTurn > 0) {
+      entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
+      log.push(`🩸 ${label} เลือดออก ${s.dmgPerTurn} damage`);
+    }
+
+    // ── CURSE: เหมือน Poison แต่ magic damage ──
+    if (s.type === 'CURSE' && s.dmgPerTurn > 0) {
+      entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
+      log.push(`💜 ${label} ถูกสาป ${s.dmgPerTurn} damage`);
+    }
+
+    // ── STUN/SLOW/MARKED: ไม่มีผล per-turn damage — จัดการใน caller ──
+
     if (s.duration > 1) remaining.push({ ...s, duration: s.duration - 1 });
+    else if (s.duration === 1) {
+      log.push(`✨ ${label} หาย ${s.type}`);
+    }
   }
   entity.status = remaining;
 }

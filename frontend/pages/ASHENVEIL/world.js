@@ -110,6 +110,23 @@ const GRADE_COLOR = {
   MYTHIC:    'text-red-400',
 };
 
+const GRADE_BORDER = {
+  COMMON:    'border-l-gray-700',
+  UNCOMMON:  'border-l-green-700',
+  RARE:      'border-l-blue-600',
+  EPIC:      'border-l-purple-600',
+  LEGENDARY: 'border-l-orange-500',
+  MYTHIC:    'border-l-red-500',
+};
+
+const GRADE_LABEL = {
+  UNCOMMON:  'UC',
+  RARE:      'R',
+  EPIC:      'EP',
+  LEGENDARY: 'LEG',
+  MYTHIC:    'MYT',
+};
+
 export default function GameWorld() {
   const router    = useRouter();
   const logEndRef = useRef(null);
@@ -1704,11 +1721,16 @@ export default function GameWorld() {
                   <p className="text-gray-400 text-xs mb-2">[ Inventory — คลิกเพื่อจัดการ ]</p>
                   {inventory.length === 0 && <p className="text-gray-500 text-xs">ว่างเปล่า...</p>}
                   {inventory.map(item => (
-                    <div key={item.instanceId} className="flex items-center gap-2 py-1 border-b border-gray-900 text-xs">
+                    <div key={item.instanceId} className={`flex items-center gap-2 py-1 border-b border-gray-900 border-l-2 pl-2 text-xs ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
                         {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
                       </span>
+                      {item.grade && GRADE_LABEL[item.grade] && (
+                        <span className={`text-[9px] px-1 py-0.5 rounded border ${GRADE_COLOR[item.grade]} border-current opacity-60 shrink-0`}>
+                          {GRADE_LABEL[item.grade]}
+                        </span>
+                      )}
                       {item.equipped && <span className="text-amber-600 text-xs">[ใส่อยู่]</span>}
                       {!item.equipped && ['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (
                         <button onClick={() => handleEquip(item.instanceId, item.type)}
@@ -1733,7 +1755,7 @@ export default function GameWorld() {
                 <div className="max-h-60 overflow-y-auto">
                   <p className="text-gray-400 text-xs mb-2">[ ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
                   {shopItems.map(item => (
-                    <div key={item.itemId} className="flex items-center gap-2 py-1 border-b border-gray-900 text-xs">
+                    <div key={item.itemId} className={`flex items-center gap-2 py-1 border-b border-gray-900 border-l-2 pl-2 text-xs ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>{item.name}</span>
                       <span className="text-yellow-600">{item.buyPrice}G</span>
@@ -3051,15 +3073,12 @@ export default function GameWorld() {
                       {craftingRecipes
                         .filter(r => craftingTab === 'all' || r.category === craftingTab)
                         .map(recipe => {
-                          const gradeColor = {
-                            COMMON: 'text-gray-400', UNCOMMON: 'text-green-400',
-                            RARE: 'text-blue-400', EPIC: 'text-purple-400',
-                            LEGENDARY: 'text-orange-400', MYTHIC: 'text-red-400',
-                          }[recipe.resultGrade] || 'text-gray-400';
+                          const gradeColor = GRADE_COLOR[recipe.resultGrade] || 'text-gray-400';
+                          const gradeBorder = GRADE_BORDER[recipe.resultGrade] || 'border-l-gray-700';
 
                           return (
                             <div key={recipe.recipeId}
-                              className={`border rounded p-3 space-y-2 ${
+                              className={`border border-l-4 rounded p-3 space-y-2 ${gradeBorder} ${
                                 recipe.canCraft
                                   ? 'border-amber-800/50 bg-amber-900/5'
                                   : 'border-gray-800 opacity-60'
