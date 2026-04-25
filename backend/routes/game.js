@@ -23,6 +23,7 @@ const ach          = require('../handlers/game/achievements');
 const loginBonus   = require('../handlers/game/loginBonus');
 const leaderboard  = require('../handlers/game/leaderboard');
 const worldBoss    = require('../handlers/game/worldBoss');
+const crafting     = require('../handlers/game/crafting');
 
 // ===== Game-specific rate limiters =====
 const gameLimiter = rateLimit({
@@ -89,8 +90,15 @@ router.get ('/quest-log',          questEngine.getQuestLog);
 router.post('/quest-log/accept',   questEngine.acceptSideQuest);
 
 // ----- RP Shop -----
-router.get ('/rp-shop',            shopLimiter, rpShop.getRPShop);
-router.post('/rp-shop/buy',        shopLimiter, rpShop.buyRPItem);
+router.get ('/rp-shop',                  shopLimiter, rpShop.getRPShop);
+router.post('/rp-shop/buy',              shopLimiter, rpShop.buyRPItem);
+router.post('/rp-shop/class-change',     shopLimiter, rpShop.executeClassChange);
+router.post('/rp-shop/name-change',      shopLimiter, rpShop.executeNameChange);
+router.get ('/rp-shop/active-boosts',    rpShop.getActiveBoosts);
+
+// ----- Crafting -----
+router.get ('/crafting',           crafting.getCraftingRecipes);
+router.post('/crafting/craft',     gameLimiter, crafting.craftItem);
 
 // ----- Skills -----
 router.get ('/skills',             skills.getSkills);

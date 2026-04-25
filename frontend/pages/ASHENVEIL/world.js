@@ -18,7 +18,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getAchievements,
          getLoginBonusStatus, claimLoginBonus,
          getLeaderboard,
-         getWorldBoss, attackWorldBoss } from '../../lib/gameApi';
+         getWorldBoss, attackWorldBoss,
+         getCraftingRecipes, craftItem } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
@@ -58,6 +59,7 @@ const SCREENS = {
   ACHIEVEMENTS:   'achievements',
   WORLD_BOSS:     'world_boss',
   LEADERBOARD:    'leaderboard',
+  CRAFTING:       'crafting',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -187,6 +189,12 @@ export default function GameWorld() {
   const [leaderboardData,  setLeaderboardData]  = useState(null);  // { level, kills, achievements }
   const [leaderboardTab,   setLeaderboardTab]   = useState('level'); // 'level' | 'kills' | 'achievements'
   const [leaderboardLoad,  setLeaderboardLoad]  = useState(false);
+
+  // ── Crafting ──
+  const [craftingRecipes,  setCraftingRecipes]  = useState([]);
+  const [craftingLoad,     setCraftingLoad]     = useState(false);
+  const [craftingTab,      setCraftingTab]      = useState('all'); // 'all' | category filter
+  const [craftingBusy,     setCraftingBusy]     = useState(false);
 
   // ── Quest Popup (real-time progress via socket) ──
   const [questPopup,      setQuestPopup]       = useState(null);  // { type, questName, hint, progress, total, rewards, ... }
@@ -581,6 +589,34 @@ export default function GameWorld() {
     } catch { toast.error('โหลด Leaderboard ไม่ได้'); }
     finally { setLeaderboardLoad(false); }
   }, []);
+
+  // ===== Crafting =====
+  const openCrafting = useCallback(async () => {
+    setScreen(SCREENS.CRAFTING);
+    setCraftingLoad(true);
+    try {
+      const { data } = await getCraftingRecipes();
+      setCraftingRecipes(data.recipes || []);
+    } catch { toast.error('โหลด Crafting ไม่ได้'); }
+    finally { setCraftingLoad(false); }
+  }, []);
+
+  const handleCraft = useCallback(async (recipeId) => {
+    if (craftingBusy) return;
+    setCraftingBusy(true);
+    try {
+      const { data } = await craftItem(recipeId);
+      toast.success(data.msg || 'Craft สำเร็จ!');
+      // Refresh recipes (inventory changed)
+      const { data: fresh } = await getCraftingRecipes();
+      setCraftingRecipes(fresh.recipes || []);
+      // Refresh gold
+      const { data: bal } = await getBalance();
+      setGold(bal.gold); setRP(bal.rp);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Craft ล้มเหลว');
+    } finally { setCraftingBusy(false); }
+  }, [craftingBusy]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -1512,6 +1548,7 @@ export default function GameWorld() {
                     <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
                     <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
                     <Btn onClick={openWorldBoss}    disabled={busy}>💀 World Boss</Btn>
+                    <Btn onClick={openCrafting}     disabled={busy}>⚒️ Crafting</Btn>
                     <button onClick={() => { setLoginBonusData(null); getLoginBonusStatus().then(r => { setLoginBonusData(r.data); setShowLoginBonus(true); }).catch(() => {}); }} disabled={busy}
                       className="px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
                       🎁 Login Bonus
@@ -2685,6 +2722,107 @@ export default function GameWorld() {
                       <p className="text-gray-800 text-xs text-center pt-1">
                         อัปเดตล่าสุด: {leaderboardData.updatedAt ? new Date(leaderboardData.updatedAt).toLocaleTimeString('th-TH') : '—'}
                       </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* CRAFTING */}
+              {screen === SCREENS.CRAFTING && (
+                <div className="max-h-[500px] overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-xs">[ ⚒️ Crafting Workshop ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {/* Category filter */}
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {['all', 'weapon', 'armor', 'consumable', 'material', 'relic'].map(cat => (
+                      <button key={cat} onClick={() => setCraftingTab(cat)}
+                        className={`px-2 py-1 text-xs rounded border transition ${
+                          craftingTab === cat
+                            ? 'border-amber-600 text-amber-300 bg-amber-900/20'
+                            : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                        }`}>
+                        {cat === 'all' ? '📋 ทั้งหมด' :
+                         cat === 'weapon' ? '⚔️ อาวุธ' :
+                         cat === 'armor' ? '🛡️ เกราะ' :
+                         cat === 'consumable' ? '🧪 ยา' :
+                         cat === 'material' ? '💠 วัสดุ' : '🔮 Relic'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {craftingLoad ? (
+                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
+                  ) : craftingRecipes.length === 0 ? (
+                    <p className="text-gray-500 text-xs text-center py-4">ยังไม่มี Recipe ที่ใช้ได้</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {craftingRecipes
+                        .filter(r => craftingTab === 'all' || r.category === craftingTab)
+                        .map(recipe => {
+                          const gradeColor = {
+                            COMMON: 'text-gray-400', UNCOMMON: 'text-green-400',
+                            RARE: 'text-blue-400', EPIC: 'text-purple-400',
+                            LEGENDARY: 'text-orange-400', MYTHIC: 'text-red-400',
+                          }[recipe.resultGrade] || 'text-gray-400';
+
+                          return (
+                            <div key={recipe.recipeId}
+                              className={`border rounded p-3 space-y-2 ${
+                                recipe.canCraft
+                                  ? 'border-amber-800/50 bg-amber-900/5'
+                                  : 'border-gray-800 opacity-60'
+                              }`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-sm">{recipe.emoji}</span>
+                                    <span className={`font-bold text-xs ${gradeColor}`}>{recipe.name}</span>
+                                    <span className={`text-xs ${gradeColor} opacity-70`}>[{recipe.resultGrade}]</span>
+                                  </div>
+                                  <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">{recipe.desc}</p>
+                                </div>
+                                <button
+                                  onClick={() => handleCraft(recipe.recipeId)}
+                                  disabled={!recipe.canCraft || craftingBusy}
+                                  className={`shrink-0 px-3 py-1.5 text-xs rounded border transition ${
+                                    recipe.canCraft
+                                      ? 'border-amber-600 text-amber-300 hover:bg-amber-900/20'
+                                      : 'border-gray-800 text-gray-600 cursor-not-allowed'
+                                  } disabled:opacity-40`}>
+                                  {craftingBusy ? '⏳' : '⚒️ Craft'}
+                                </button>
+                              </div>
+
+                              {/* Ingredients */}
+                              <div className="flex flex-wrap gap-1">
+                                {recipe.ingredients.map(ing => (
+                                  <span key={ing.itemId}
+                                    className={`text-xs px-1.5 py-0.5 rounded border ${
+                                      ing.have >= ing.qty
+                                        ? 'border-green-900 text-green-400 bg-green-900/10'
+                                        : 'border-red-900 text-red-400 bg-red-900/10'
+                                    }`}>
+                                    {ing.emoji} {ing.name} {ing.have}/{ing.qty}
+                                  </span>
+                                ))}
+                                {recipe.goldCost > 0 && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded border border-yellow-900 text-yellow-400 bg-yellow-900/10">
+                                    💰 {recipe.goldCost.toLocaleString()} Gold
+                                  </span>
+                                )}
+                              </div>
+
+                              {!recipe.canCraft && recipe.missing.length > 0 && (
+                                <p className="text-red-600 text-xs">
+                                  ขาด: {recipe.missing.map(m => `${m.emoji} ${m.name} ×${m.need - m.have}`).join(', ')}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
                 </div>

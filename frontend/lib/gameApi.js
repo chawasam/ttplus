@@ -82,6 +82,10 @@ export const getWorldBoss     = ()               => api.get('/api/game/world-bos
 export const attackWorldBoss  = ()               => api.post('/api/game/world-boss/attack');
 export const spawnWorldBoss   = (bossId, reason) => api.post('/api/game/world-boss/spawn', { bossId, reason });
 
+// ===== Crafting =====
+export const getCraftingRecipes = ()            => api.get('/api/game/crafting');
+export const craftItem          = (recipeId)    => api.post('/api/game/crafting/craft', { recipeId });
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

@@ -10,8 +10,35 @@ const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill }              = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 
-// Active battles in memory (battleId → state)
-const activeBattles = new Map();
+// Active battles — persisted in Firestore (game_battles collection)
+// Each document: { battleId, uid, state: <JSON>, createdAt, updatedAt }
+// We keep a local 1-minute write-through cache to avoid redundant reads inside a single request.
+const _battleCache = new Map();  // battleId → state (in-request cache only)
+
+async function saveBattle(db, battleId, state) {
+  await db.collection('game_battles').doc(battleId).set({
+    battleId,
+    uid:       state.uid,
+    state:     JSON.stringify(state),  // Firestore can't store complex nested Maps
+    createdAt: state.createdAt || Date.now(),
+    updatedAt: Date.now(),
+  });
+  _battleCache.set(battleId, state);
+}
+
+async function loadBattle(db, battleId) {
+  if (_battleCache.has(battleId)) return _battleCache.get(battleId);
+  const doc = await db.collection('game_battles').doc(battleId).get();
+  if (!doc.exists) return null;
+  const parsed = JSON.parse(doc.data().state);
+  _battleCache.set(battleId, parsed);
+  return parsed;
+}
+
+async function deleteBattle(db, battleId) {
+  _battleCache.delete(battleId);
+  await db.collection('game_battles').doc(battleId).delete().catch(() => {});
+}
 
 // ===== Start battle =====
 async function startBattle(req, res) {
@@ -126,10 +153,7 @@ async function startBattle(req, res) {
       createdAt: Date.now(),
     };
 
-    activeBattles.set(battleId, state);
-    for (const [k, v] of activeBattles.entries()) {
-      if (Date.now() - v.createdAt > 3600_000) activeBattles.delete(k);
-    }
+    await saveBattle(db, battleId, state);
 
     // Build skill info for frontend
     const { getClassSkills } = require('../../data/skills');
@@ -146,8 +170,9 @@ async function startBattle(req, res) {
 async function processAction(req, res) {
   const { battleId, action, skillId, itemInstanceId } = req.body;
   const uid = req.user.uid;
+  const db  = admin.firestore();
 
-  const state = activeBattles.get(battleId);
+  const state = await loadBattle(db, battleId);
   if (!state || state.uid !== uid) {
     return res.status(404).json({ error: 'ไม่พบ Battle หรือหมดเวลา' });
   }
@@ -180,7 +205,7 @@ async function processAction(req, res) {
     if (fleeRoll < state.enemy.flee_chance) {
       log.push('🏃 คุณหนีออกมาได้!');
       state.result = 'fled';
-      activeBattles.delete(battleId);
+      await deleteBattle(db, battleId);
       return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'fled' } });
     } else {
       log.push('❌ หนีไม่ได้! ' + state.enemy.name + ' ขวางทางอยู่');
@@ -201,7 +226,7 @@ async function processAction(req, res) {
     const rewards = await grantRewards(uid, state);
     log.push(...rewards.log);
     state.result = 'victory';
-    activeBattles.delete(battleId);
+    await deleteBattle(db, battleId);
 
     // Track daily + weekly + story/side quest step
     trackQuestProgress(uid, 'kill', 1).catch(() => {});
@@ -300,7 +325,6 @@ async function processAction(req, res) {
 
     // Fail dungeon run if in a dungeon
     if (state.dungeonRunId) {
-      const db = admin.firestore();
       await db.collection('game_dungeons').doc(state.dungeonRunId).update({
         status:   'failed',
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -309,13 +333,14 @@ async function processAction(req, res) {
     }
 
     state.result = 'defeat';
-    activeBattles.delete(battleId);
+    await deleteBattle(db, battleId);
     // Achievement check for death
     checkAchievements(uid, 'death', 1).catch(() => {});
     return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
   }
 
   state.turn++;
+  await saveBattle(db, battleId, state);
   return res.json({ battleId, state: { ...sanitizeState(state), log, result: null } });
 }
 
@@ -483,24 +508,42 @@ async function grantRewards(uid, state) {
   const log     = [];
   const rewards = { xp: state.enemy.xpReward, gold: 0, items: [] };
 
-  // Gold reward
+  // Load account (needed for active boosts + charId)
+  const accountDoc    = await db.collection('game_accounts').doc(uid).get();
+  const accountData   = accountDoc.data() || {};
+  const activeBoosts  = accountData.activeBoosts || {};
+  const now           = Date.now();
+
+  // Gold reward (with optional boost)
   const [minG, maxG] = state.enemy.goldReward || [0, 0];
-  const gold = Math.floor(Math.random() * (maxG - minG + 1)) + minG;
+  let gold = Math.floor(Math.random() * (maxG - minG + 1)) + minG;
+  const goldBoost = activeBoosts.gold_boost;
+  if (goldBoost && goldBoost.expiresAt > now && gold > 0) {
+    gold = Math.floor(gold * (goldBoost.multiplier || 2));
+    log.push(`💰 Gold Boost ×${goldBoost.multiplier || 2} ใช้งานอยู่!`);
+  }
   if (gold > 0) {
     await addGold(uid, gold, 'combat_drop');
     rewards.gold = gold;
     log.push(`💰 ได้รับ ${gold} Gold`);
   }
 
-  // XP
-  const accountDoc = await db.collection('game_accounts').doc(uid).get();
-  const charId     = accountDoc.data()?.characterId;
+  // XP (with optional boost)
+  const charId = accountData.characterId;
   if (charId) {
+    let xpGained = state.enemy.xpReward;
+    const xpBoost = activeBoosts.xp_boost;
+    if (xpBoost && xpBoost.expiresAt > now) {
+      xpGained = Math.floor(xpGained * (xpBoost.multiplier || 2));
+      log.push(`⭐ XP Boost ×${xpBoost.multiplier || 2} ใช้งานอยู่!`);
+    }
+    rewards.xp = xpGained;
+
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
-    const newXp   = (char.xp || 0) + state.enemy.xpReward;
-    log.push(`⭐ ได้รับ ${state.enemy.xpReward} XP`);
+    const newXp   = (char.xp || 0) + xpGained;
+    log.push(`⭐ ได้รับ ${xpGained} XP`);
 
     // Level up check
     const updates = { xp: newXp, hp: state.player.hp, mp: state.player.mp, monstersKilled: admin.firestore.FieldValue.increment(1) };
@@ -632,4 +675,26 @@ async function rest(req, res) {
   }
 }
 
-module.exports = { startBattle, processAction, rest };
+// ===== Cleanup stale battles (> 2 hours old) =====
+// Call periodically from server.js or on startup
+async function cleanupStaleBattles() {
+  try {
+    const db  = admin.firestore();
+    const cutoff = Date.now() - 2 * 3600 * 1000; // 2 hours ago
+    const snap = await db.collection('game_battles')
+      .where('updatedAt', '<', cutoff)
+      .limit(50)
+      .get();
+    if (snap.empty) return;
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    console.log(`[Combat] 🧹 Cleaned up ${snap.size} stale battles`);
+    // Also clear local cache entries that are gone
+    for (const doc of snap.docs) _battleCache.delete(doc.id);
+  } catch (err) {
+    console.error('[Combat] cleanupStaleBattles:', err.message);
+  }
+}
+
+module.exports = { startBattle, processAction, rest, cleanupStaleBattles };
