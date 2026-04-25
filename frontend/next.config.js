@@ -51,15 +51,23 @@ const nextConfig = {
     minimumCacheTTL: 3600,
   },
 
-  // ===== URL redirects (case-insensitive aliases) =====
+  // ===== Rewrites: /ashenveil → serves /ASHENVEIL content (URL ไม่เปลี่ยน) =====
+  async rewrites() {
+    return [
+      { source: '/ashenveil',       destination: '/ASHENVEIL'       },
+      { source: '/ashenveil/world', destination: '/ASHENVEIL/world' },
+    ];
+  },
+
+  // ===== Redirects: ทุก alias → /ashenveil (canonical URL) =====
   async redirects() {
     return [
-      // lowercase → uppercase (Linux filesystem is case-sensitive)
-      { source: '/ashenveil',       destination: '/ASHENVEIL',       permanent: false },
-      { source: '/ashenveil/world', destination: '/ASHENVEIL/world', permanent: false },
-      // /game/* ← legacy alias (in case bookmarks exist)
-      { source: '/game',            destination: '/ASHENVEIL',       permanent: false },
-      { source: '/game/world',      destination: '/ASHENVEIL/world', permanent: false },
+      // uppercase → canonical lowercase
+      { source: '/ASHENVEIL',       destination: '/ashenveil',       permanent: false },
+      { source: '/ASHENVEIL/world', destination: '/ashenveil/world', permanent: false },
+      // /game/* legacy alias
+      { source: '/game',            destination: '/ashenveil',       permanent: false },
+      { source: '/game/world',      destination: '/ashenveil/world', permanent: false },
     ];
   },
 
