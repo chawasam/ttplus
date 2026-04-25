@@ -881,14 +881,13 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               title="หยุดทุกเสียงทันที (Escape)"
             >
               ⏹ หยุดทั้งหมด
-              {playingKeys.size > 0 && (
-                <span className={clsx(
-                  'ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold animate-pulse',
-                  isDark ? 'bg-red-500/30 text-red-300' : 'bg-red-200 text-red-600'
-                )}>
-                  {playingKeys.size}
-                </span>
-              )}
+              <span className={clsx(
+                'ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold transition-opacity',
+                isDark ? 'bg-red-500/30 text-red-300' : 'bg-red-200 text-red-600',
+                playingKeys.size > 0 ? 'opacity-100 animate-pulse' : 'opacity-0'
+              )}>
+                {playingKeys.size || 0}
+              </span>
             </button>
 
             {/* Layout — cycle h → v → pad → h */}
