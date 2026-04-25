@@ -308,6 +308,185 @@ const SIDE_QUESTS = [
     completionText: 'Pita ตาเป็นประกาย "เจอไหม? โอ้โห แม้ไม่เจอทั้งหมดก็ยังดี ตำนานนี้... อาจจริงก็ได้!"',
   },
 
+  // ══════════════════════════════════════════
+  //  CATEGORY: PERSONAL — เรื่องส่วนตัว NPC
+  //  (ต้องการ minAffection — ต้องสร้างความสัมพันธ์ก่อน)
+  // ══════════════════════════════════════════
+
+  {
+    id:        'SSQ_301',
+    category:  'personal',
+    name:      'บาดแผลของนักรบเก่า',
+    desc:      'Dakan ไม่เคยเล่าว่าทำไมถึงออกจากกองทัพมาอยู่เมืองเล็กๆ แบบนี้ หลังจากที่คุณได้รับความไว้วางใจจากเขา เขาเริ่มบอกเล่าความจริง',
+    giverNpc:  'dakan',
+    prereqs:   [],
+    minLevel:  3,
+    minAffection: { npcId: 'dakan', amount: 40 },
+    steps: [
+      {
+        id:    'listen_dakan',
+        type:  'talk',
+        target: 'dakan',
+        count: 1,
+        hint:  'นั่งฟัง Dakan เล่าเรื่องราวอดีตของเขา',
+      },
+      {
+        id:    'avenge_dakan',
+        type:  'kill',
+        monsterId: null,
+        zone:  'city_ruins',
+        count: 10,
+        hint:  'ไปที่ซากเมืองซึ่ง Dakan เคยสูญเสียเพื่อน — กำจัดสิ่งที่ยังอยู่ 10 ตัว',
+      },
+      {
+        id:    'return_dakan',
+        type:  'talk',
+        target: 'dakan',
+        count: 1,
+        hint:  'กลับมาบอก Dakan ว่าคุณไปให้แล้ว',
+      },
+    ],
+    rewards: { xp: 400, gold: 300, items: ['ancient_scroll'] },
+    completionText: 'Dakan เงียบนานมาก แล้วถามเบาๆ ว่า "คุณจะไม่ตัดสินข้าไหม?" เขาหัวเราะอย่างเขินๆ "พวกเราน้อยคนนักที่จะทำแบบนี้ให้กัน ขอบใจ"',
+  },
+
+  {
+    id:        'SSQ_302',
+    category:  'personal',
+    name:      'เปลวไฟในใจ Mira',
+    desc:      'Mira มีความฝันที่ซ่อนเอาไว้ เธออยากสร้างอาวุธชิ้นหนึ่งเพื่ออุทิศให้พ่อที่จากไป แต่ขาดวัสดุหายาก ช่วยเธอสักครั้งหนึ่งได้ไหม',
+    giverNpc:  'mira',
+    prereqs:   [],
+    minLevel:  5,
+    minAffection: { npcId: 'mira', amount: 40 },
+    steps: [
+      {
+        id:    'talk_mira_dream',
+        type:  'talk',
+        target: 'mira',
+        count: 1,
+        hint:  'ฟัง Mira เล่าถึงความฝันและพ่อของเธอ',
+      },
+      {
+        id:    'collect_for_mira',
+        type:  'kill',
+        monsterId: null,
+        zone:  'dark_cave',
+        count: 8,
+        hint:  'ล่าสัตว์ประหลาดในถ้ำมืด 8 ตัว — วัสดุที่ต้องการตกอยู่กับพวกมัน',
+      },
+      {
+        id:    'explore_cave_mira',
+        type:  'explore',
+        zone:  'dark_cave',
+        count: 3,
+        hint:  'ค้นหาแร่หายากในถ้ำมืดอีก 3 ครั้ง',
+      },
+      {
+        id:    'return_mira_dream',
+        type:  'talk',
+        target: 'mira',
+        count: 1,
+        hint:  'นำของที่ได้มากลับไปให้ Mira',
+      },
+    ],
+    rewards: { xp: 500, gold: 400 },
+    completionText: 'Mira รับวัสดุไปด้วยมือสั่นเล็กน้อย "ข้าจะทำมันให้เสร็จคืนนี้" เธอหันมาพร้อมรอยยิ้มที่แทบไม่เคยเห็น "ถ้าคุณต้องการอาวุธที่ดีที่สุดในชีวิต... มาหาข้า ข้าจะทำให้"',
+  },
+
+  {
+    id:        'SSQ_303',
+    category:  'personal',
+    name:      'ความลับของ Pita',
+    desc:      'ร้านขนมปังของ Pita ไม่ได้เปิดขายเพื่อเงินเพียงอย่างเดียว มีเรื่องที่เธอไม่เคยบอกใครว่าทำไมถึงยังอยู่ที่เมืองนี้ทั้งที่สามารถไปได้',
+    giverNpc:  'pita',
+    prereqs:   ['SSQ_001'],
+    minLevel:  2,
+    minAffection: { npcId: 'pita', amount: 60 },
+    steps: [
+      {
+        id:    'talk_pita_secret',
+        type:  'talk',
+        target: 'pita',
+        count: 1,
+        hint:  'ถาม Pita เกี่ยวกับเรื่องที่เธอไม่เคยเล่า',
+      },
+      {
+        id:    'deliver_pita_letter',
+        type:  'travel',
+        zone:  'forest_path',
+        count: 1,
+        hint:  'Pita ขอให้คุณไปที่ทางป่า — มีบางอย่างที่เธอทิ้งไว้',
+      },
+      {
+        id:    'explore_pita_memory',
+        type:  'explore',
+        zone:  'forest_path',
+        count: 2,
+        hint:  'ค้นหาสิ่งที่ Pita อธิบายไว้ในทางป่า',
+      },
+      {
+        id:    'return_pita_final',
+        type:  'talk',
+        target: 'pita',
+        count: 1,
+        hint:  'กลับมาหา Pita ด้วยสิ่งที่พบ',
+      },
+    ],
+    rewards: { xp: 350, gold: 250, items: ['health_potion', 'mana_potion'] },
+    completionText: 'Pita กอดสิ่งที่คุณนำมาไว้แน่น ร้องไห้เงียบๆ ก่อนจะหัวเราะอย่างอบอุ่น "ขอบคุณที่ช่วยข้าจำ ว่าเหตุผลที่อยู่ที่นี่คืออะไร" ตั้งแต่วันนั้น ขนมปังของ Pita อร่อยขึ้นผิดปกติ',
+  },
+
+  {
+    id:        'SSQ_304',
+    category:  'personal',
+    name:      'นิมิตของ Lyra',
+    desc:      'Lyra เห็นนิมิตที่น่ากลัวมาหลายคืน เธอไม่กล้าบอกใคร แต่ไว้ใจคุณพอที่จะเล่า นิมิตนั้นอาจเป็นเบาะแสสำคัญเกี่ยวกับ The Void',
+    giverNpc:  'lyra',
+    prereqs:   ['SSQ_003'],
+    minLevel:  4,
+    minAffection: { npcId: 'lyra', amount: 60 },
+    steps: [
+      {
+        id:    'talk_lyra_nightmare',
+        type:  'talk',
+        target: 'lyra',
+        count: 1,
+        hint:  'ฟัง Lyra เล่านิมิตที่หลอกหลอนเธอ',
+      },
+      {
+        id:    'investigate_marsh_lyra',
+        type:  'travel',
+        zone:  'cursed_marshlands',
+        count: 1,
+        hint:  'Lyra เห็นหนองน้ำในนิมิต — ไปดูว่าจริงไหม',
+      },
+      {
+        id:    'search_marsh_lyra',
+        type:  'explore',
+        zone:  'cursed_marshlands',
+        count: 4,
+        hint:  'ค้นหาสัญลักษณ์ที่ Lyra เห็นในหนอง 4 ครั้ง',
+      },
+      {
+        id:    'tell_maren_lyra',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'บอก Elder Maren เรื่องนิมิตของ Lyra',
+      },
+      {
+        id:    'comfort_lyra',
+        type:  'talk',
+        target: 'lyra',
+        count: 1,
+        hint:  'กลับมาหา Lyra และบอกว่านิมิตของเธอมีความหมาย',
+      },
+    ],
+    rewards: { xp: 600, gold: 450, items: ['mana_potion', 'mana_potion'] },
+    completionText: 'Lyra ยิ้มเป็นครั้งแรกในรอบหลายสัปดาห์ "ข้าไม่บ้าใช่ไหม?" เธอพยักหน้าเบาๆ "ขอบคุณที่เชื่อข้า ถ้าจำเป็น... ข้าจะใช้นิมิตนี้ช่วยคุณ"',
+  },
+
 ];
 
 function getSideQuest(id) {
@@ -318,12 +497,18 @@ function getSideQuestsByCategory(category) {
   return SIDE_QUESTS.filter(q => q.category === category);
 }
 
-function getAvailableSideQuests(completedIds, activeIds, charLevel) {
+// affectionMap: { npcId: currentAffectionScore }
+function getAvailableSideQuests(completedIds, activeIds, charLevel, affectionMap = {}) {
   return SIDE_QUESTS.filter(q => {
     if (completedIds.includes(q.id)) return false;
     if (activeIds.includes(q.id)) return false;
     if ((q.minLevel || 1) > charLevel) return false;
     if (q.prereqs.some(p => !completedIds.includes(p))) return false;
+    // affection gate: personal quests require minimum affection with giverNpc
+    if (q.minAffection) {
+      const current = affectionMap[q.minAffection.npcId] || 0;
+      if (current < q.minAffection.amount) return false;
+    }
     return true;
   });
 }

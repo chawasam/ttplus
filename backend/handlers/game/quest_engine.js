@@ -80,6 +80,13 @@ async function getQuestLog(req, res) {
     const completedSideIds = data.sideCompleted || [];
     const activeSideIds    = Object.keys(data.sideActive || {});
 
+    // Load NPC affection scores for side quest gating
+    let affectionMap = {};
+    try {
+      const affSnap = await db.collection('game_npc_affection').doc(uid).get();
+      if (affSnap.exists) affectionMap = affSnap.data() || {};
+    } catch (_) {}
+
     // Build story quest list
     const storyQuests = STORY_QUESTS.map(q => {
       const isCompleted = (data.storyCompleted || []).includes(q.id);
@@ -135,16 +142,17 @@ async function getQuestLog(req, res) {
       .filter(q => completedSideIds.includes(q.id))
       .map(q => ({ id: q.id, category: q.category, name: q.name, status: 'completed', rewards: q.rewards }));
 
-    // Build available (not yet accepted) side quests
-    const availableSideQuests = getAvailableSideQuests(completedSideIds, activeSideIds, charLevel)
+    // Build available (not yet accepted) side quests — pass affectionMap for personal quest gating
+    const availableSideQuests = getAvailableSideQuests(completedSideIds, activeSideIds, charLevel, affectionMap)
       .map(q => ({
-        id:       q.id,
-        category: q.category,
-        name:     q.name,
-        desc:     q.desc,
-        status:   'available',
-        giverNpc: q.giverNpc,
-        rewards:  q.rewards,
+        id:           q.id,
+        category:     q.category,
+        name:         q.name,
+        desc:         q.desc,
+        status:       'available',
+        giverNpc:     q.giverNpc,
+        minAffection: q.minAffection || null,
+        rewards:      q.rewards,
       }));
 
     return res.json({
