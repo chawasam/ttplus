@@ -24,6 +24,7 @@ const loginBonus   = require('../handlers/game/loginBonus');
 const leaderboard  = require('../handlers/game/leaderboard');
 const worldBoss    = require('../handlers/game/worldBoss');
 const crafting     = require('../handlers/game/crafting');
+const audit        = require('../handlers/game/audit');
 
 // ===== Game-specific rate limiters (per UID, ไม่ใช่ per IP) =====
 // keyGenerator ใช้ uid หลัง verifyToken รันแล้ว
@@ -155,6 +156,12 @@ router.get ('/leaderboard',         leaderboard.getLeaderboard);
 router.get ('/world-boss',            worldBoss.getWorldBossStatus);
 router.post('/world-boss/attack',     battleLimiter, worldBoss.attackWorldBoss);
 router.post('/world-boss/spawn',      worldBoss.spawnWorldBoss);
+
+// ----- Admin Audit (ADMIN_UID only) -----
+router.get ('/audit/summary',                audit.requireAdmin, audit.getSummary);
+router.get ('/audit/flags',                  audit.requireAdmin, audit.getFlags);
+router.post('/audit/flags/:flagId/resolve',  audit.requireAdmin, audit.resolveFlag);
+router.get ('/audit/player/:uid',            audit.requireAdmin, audit.getPlayerHistory);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);

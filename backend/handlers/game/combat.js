@@ -9,6 +9,7 @@ const { trackStoryStep }        = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill }              = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
+const { logReward } = require('../../utils/anticheat');
 
 // Active battles — persisted in Firestore (game_battles collection)
 // Each document: { battleId, uid, state: <JSON>, createdAt, updatedAt }
@@ -52,21 +53,30 @@ async function deleteBattle(db, battleId) {
 
 // ===== Start battle =====
 async function startBattle(req, res) {
-  // dungeonRunId: ถ้าอยู่ใน Dungeon ให้ส่ง runId มาด้วย
-  // bossData: ข้อมูล boss inline จาก dungeon room (สำหรับ boss rooms)
-  const { zone, monsterId, dungeonRunId, bossData } = req.body;
+  // bossData จาก client ถูกยกเลิกทั้งหมด — monster ทุกตัวโหลดจาก server data เท่านั้น
+  const { zone, monsterId, dungeonRunId } = req.body;
   const uid = req.user.uid;
 
+  const db = admin.firestore();
   let monster;
-  if (bossData) {
-    // Inline boss (dungeon boss rooms)
-    monster = {
-      ...bossData,
-      goldReward:  bossData.goldReward || [0, 0],
-      flee_chance: bossData.flee_chance ?? 0.1,
-      drops:       bossData.drops || [],
-      attackMsg:   bossData.attackMsg || ['โจมตี'],
-    };
+
+  if (dungeonRunId) {
+    // ── Dungeon battle: load room + monster from Firestore (server-side) ─────
+    const runDoc = await db.collection('game_dungeons').doc(dungeonRunId).get();
+    if (!runDoc.exists)           return res.status(400).json({ error: 'ไม่พบ Dungeon run' });
+    const run = runDoc.data();
+    if (run.uid !== uid)          return res.status(403).json({ error: 'ไม่ใช่ Dungeon run ของคุณ' });
+    if (run.status !== 'active')  return res.status(400).json({ error: 'Dungeon run นี้ไม่ active แล้ว' });
+
+    const { getDungeon } = require('../../data/dungeons');
+    const dungeon = getDungeon(run.dungeonId);
+    const room    = dungeon?.rooms[run.currentRoom];
+    if (!room || (room.type !== 'combat' && room.type !== 'boss')) {
+      return res.status(400).json({ error: 'ห้องปัจจุบันไม่ใช่ห้องต่อสู้' });
+    }
+    monster = getMonster(room.monsterId) || getDungeonMonster(room.monsterId);
+    if (!monster) return res.status(400).json({ error: `ไม่พบมอนสเตอร์ในห้องนี้: ${room.monsterId}` });
+
   } else if (monsterId) {
     monster = getMonster(monsterId) || getDungeonMonster(monsterId);
   } else {
@@ -76,8 +86,7 @@ async function startBattle(req, res) {
 
   // ── Zone Boss cooldown check ────────────────────────────────────────────
   if (monster.special === 'zone_boss') {
-    const db2 = admin.firestore();
-    const acct2 = await db2.collection('game_accounts').doc(uid).get();
+    const acct2 = await db.collection('game_accounts').doc(uid).get();
     const kills = acct2.data()?.zoneBossKills || {};
     const lastKill = kills[monster.monsterId] || 0;
     const cooldownMs = (monster.cooldownHours || 24) * 3600 * 1000;
@@ -92,7 +101,6 @@ async function startBattle(req, res) {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const db = admin.firestore();
   try {
     const accountDoc = await db.collection('game_accounts').doc(uid).get();
     if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
@@ -604,6 +612,14 @@ async function grantRewards(uid, state) {
       }
     }
   }
+
+  // ── Anti-cheat: log reward event ─────────────────────────────────────────
+  logReward(uid, 'combat_drop', {
+    xp:      rewards.xp || 0,
+    gold:    rewards.gold || 0,
+    items:   rewards.items || [],
+    levelUp: rewards.levelUp || null,
+  }).catch(() => {});
 
   return { ...rewards, log };
 }
