@@ -70,10 +70,14 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
 
-  const socketRef           = useRef(null);
-  const wasConnectedRef     = useRef(false); // true = เคย connect TikTok ในรอบนี้
-  const manualDisconnectRef = useRef(false); // true = user กด disconnect เอง
-  const tiktokUsernameRef   = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
+  const socketRef            = useRef(null);
+  const wasConnectedRef      = useRef(false); // true = เคย connect TikTok ในรอบนี้
+  const manualDisconnectRef  = useRef(false); // true = user กด disconnect เอง
+  const tiktokUsernameRef    = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
+  const autoConnectDoneRef   = useRef(false); // ป้องกัน auto-connect ซ้ำในรอบเดียวกัน
+  const [autoConnect, setAutoConnect] = useState(() => {
+    try { return localStorage.getItem('ttplus_ac') !== '0'; } catch { return true; }
+  });
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -105,9 +109,29 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     // auto-reconnect TikTok หลัง socket กลับมา (เช่น หลัง server deploy restart)
     // ใช้ once() ป้องกัน listener สะสม — แต่ละ connect ลง listener ใหม่ครั้งเดียว
     const onSocketReconnect = () => {
-      if (!wasConnectedRef.current) return;         // ไม่เคย connect ก็ไม่ต้อง
-      if (manualDisconnectRef.current) return;      // user กด disconnect เอง ไม่ auto
       const username = tiktokUsernameRef.current;
+      if (manualDisconnectRef.current) return; // user กด disconnect เอง ไม่ auto
+
+      // ── Auto-connect ครั้งแรก (page load) ──────────────────────
+      if (!autoConnectDoneRef.current && username) {
+        const acEnabled = (() => { try { return localStorage.getItem('ttplus_ac') !== '0'; } catch { return true; } })();
+        if (acEnabled) {
+          autoConnectDoneRef.current = true;
+          setTimeout(async () => {
+            if (!socket.connected) return;
+            if (manualDisconnectRef.current) return;
+            try {
+              setConnecting(true);
+              await api.post('/api/connect', { tiktokUsername: username });
+              toast('⚡ เชื่อมต่อ TikTok อัตโนมัติ...', { id: 'auto-connect', duration: 3000 });
+            } catch { setConnecting(false); }
+          }, 700);
+          return; // ไม่ต้องทำ reconnect ด้วยถ้าเป็นครั้งแรก
+        }
+      }
+
+      // ── Auto-reconnect หลัง socket กลับมา (เช่น หลัง server restart) ──
+      if (!wasConnectedRef.current) return;         // ไม่เคย connect ก็ไม่ต้อง
       if (!username) return;
       // รอ authenticate เสร็จก่อน (~600ms) แล้วค่อย reconnect
       setTimeout(async () => {
@@ -399,6 +423,22 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
             <p className={clsx('text-xs mt-2', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
               🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok
             </p>
+          )}
+          {/* Auto-connect toggle */}
+          {user && !connected && (
+            <label className={clsx('flex items-center gap-2 mt-2 cursor-pointer select-none w-fit', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
+              <input
+                type="checkbox"
+                checked={autoConnect}
+                onChange={e => {
+                  const val = e.target.checked;
+                  setAutoConnect(val);
+                  try { localStorage.setItem('ttplus_ac', val ? '1' : '0'); } catch {}
+                }}
+                className="accent-brand-500 w-3.5 h-3.5 cursor-pointer"
+              />
+              <span className="text-xs">เชื่อมต่ออัตโนมัติเมื่อเปิดหน้า</span>
+            </label>
           )}
         </div>
 
