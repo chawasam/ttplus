@@ -7,6 +7,7 @@ export const requestVerify    = (tiktokUniqueId) => api.post('/api/game/account/
 export const getVerifyStatus  = ()               => api.get('/api/game/account/verify-status');
 export const createCharacter  = (data)           => api.post('/api/game/account/character/create', data);
 export const loadCharacter    = ()               => api.get('/api/game/account/character');
+export const deleteCharacter  = ()               => api.post('/api/game/account/character/delete');
 export const getUnlockedRaces = ()               => api.get('/api/game/account/unlocked-races');
 
 // ===== Currency =====
@@ -81,6 +82,10 @@ export const getLeaderboard   = ()               => api.get('/api/game/leaderboa
 export const getWorldBoss     = ()               => api.get('/api/game/world-boss');
 export const attackWorldBoss  = ()               => api.post('/api/game/world-boss/attack');
 export const spawnWorldBoss   = (bossId, reason) => api.post('/api/game/world-boss/spawn', { bossId, reason });
+
+// ===== Crafting =====
+export const getCraftingRecipes = ()            => api.get('/api/game/crafting');
+export const craftItem          = (recipeId)    => api.post('/api/game/crafting/craft', { recipeId });
 
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
