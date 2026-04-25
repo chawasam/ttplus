@@ -4,8 +4,9 @@ const { getDungeon, listAllDungeons, getDungeonMonster, getDungeonRoom } = requi
 const { getMonster, calcDamage } = require('../../data/monsters');
 const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
-const { trackQuestProgress } = require('./quests');
-const { trackStoryStep }     = require('./quest_engine');
+const { trackQuestProgress }  = require('./quests');
+const { trackStoryStep }      = require('./quest_engine');
+const { trackWeeklyProgress } = require('./weeklyQuests');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -417,8 +418,9 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     // Update char (XP/level)
     await db.collection('game_characters').doc(run.charId).update(charUpdate);
 
-    // Track daily quest + story/side quest step
+    // Track daily + weekly + story/side quest step
     trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
+    trackWeeklyProgress(uid, 'dungeon_clear', 1).catch(() => {});
     trackStoryStep(uid, 'dungeon_clear', { dungeonId: run.dungeonId }).catch(() => {});
 
     return res.json({
@@ -524,8 +526,9 @@ async function onDungeonBattleWin(uid, runId) {
         currentRoom: dungeon.totalRooms,
       });
 
-      // Track daily quest + story/side quest step
+      // Track daily + weekly + story/side quest step
       trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
+      trackWeeklyProgress(uid, 'dungeon_clear', 1).catch(() => {});
       trackStoryStep(uid, 'dungeon_clear', { dungeonId: run.dungeonId }).catch(() => {});
 
       return {

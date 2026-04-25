@@ -15,6 +15,10 @@ const dungeon   = require('../handlers/game/dungeon');
 const quests       = require('../handlers/game/quests');
 const questEngine  = require('../handlers/game/quest_engine');
 const rpShop       = require('../handlers/game/rpShop');
+const skills       = require('../handlers/game/skills');
+const character    = require('../handlers/game/character');
+const enhance      = require('../handlers/game/enhance');
+const weeklyQ      = require('../handlers/game/weeklyQuests');
 
 // ===== Game-specific rate limiters =====
 const gameLimiter = rateLimit({
@@ -83,6 +87,22 @@ router.post('/quest-log/accept',   questEngine.acceptSideQuest);
 // ----- RP Shop -----
 router.get ('/rp-shop',            shopLimiter, rpShop.getRPShop);
 router.post('/rp-shop/buy',        shopLimiter, rpShop.buyRPItem);
+
+// ----- Skills -----
+router.get ('/skills',             skills.getSkills);
+router.post('/skills/unlock',      skills.unlockSkill);
+
+// ----- Character Profile + Stat Allocation -----
+router.get ('/character/profile',  character.getCharacterProfile);
+router.post('/character/stat',     character.allocateStat);
+
+// ----- Enhancement -----
+router.get ('/enhance/:instanceId', enhance.getEnhanceInfo);
+router.post('/enhance',             enhance.enhanceItem);
+
+// ----- Weekly Quests -----
+router.get ('/quests/weekly',        weeklyQ.getWeeklyQuests);
+router.post('/quests/weekly/claim',  weeklyQ.claimWeeklyReward);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);

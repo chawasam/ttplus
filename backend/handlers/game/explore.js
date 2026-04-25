@@ -5,8 +5,9 @@ const { getItem, rollItem }        = require('../../data/items');
 const { addGold }                  = require('./currency');
 
 const STAMINA_COST = 20; // ต่อ exploration action (ใหม่: max 200, regen ช้า)
-const { trackQuestProgress } = require('./quests');
-const { trackStoryStep }     = require('./quest_engine');
+const { trackQuestProgress }  = require('./quests');
+const { trackStoryStep }      = require('./quest_engine');
+const { trackWeeklyProgress } = require('./weeklyQuests');
 
 // ===== Explore action =====
 async function explore(req, res) {
@@ -100,6 +101,8 @@ async function explore(req, res) {
     trackQuestProgress(uid, 'explore', 1).catch(() => {});
     // Track story/side quest step — explore event
     trackStoryStep(uid, 'explore', { zone }).catch(() => {});
+    // Track weekly quest progress
+    trackWeeklyProgress(uid, 'explore', 1).catch(() => {});
 
     return res.json(response);
   } catch (err) {

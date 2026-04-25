@@ -4,8 +4,10 @@ const { getMonster, getRandomMonster, calcDamage } = require('../../data/monster
 const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
-const { trackQuestProgress } = require('./quests');
-const { trackStoryStep }     = require('./quest_engine');
+const { trackQuestProgress }    = require('./quests');
+const { trackStoryStep }        = require('./quest_engine');
+const { trackWeeklyProgress }   = require('./weeklyQuests');
+const { getSkill }              = require('../../data/skills');
 
 // Active battles in memory (battleId → state)
 const activeBattles = new Map();
@@ -48,25 +50,39 @@ async function startBattle(req, res) {
     const char = charDoc.data();
     if (char.hp <= 0) return res.status(400).json({ error: 'Character หมดพลัง ต้อง Rest ก่อน' });
 
+    // Passive skill bonuses applied at battle start
+    const className = (char.class || '').toLowerCase();
+    let passiveAtk = char.atk, passiveDef = char.def, passiveCrit = 0.1, passiveMpRegen = 0;
+    if (className === 'warrior') passiveDef = Math.floor(char.def * 1.1);   // Iron Will: DEF +10%
+    if (className === 'mage')    passiveMpRegen = 5;                         // Mana Flow: +5 MP/turn
+    if (className === 'archer')  passiveCrit = 0.15;                         // Keen Senses: Crit +5%
+
     const battleId = `battle_${uid}_${Date.now()}`;
     const state = {
       battleId,
       uid,
       charId,
-      dungeonRunId: dungeonRunId || null, // track dungeon context
-      zone:         dungeonRunId ? null : (zone || null), // track zone for quest step matching
+      charClass:    className,
+      unlockedSkills: char.unlockedSkills || [],
+      dungeonRunId: dungeonRunId || null,
+      zone:         dungeonRunId ? null : (zone || null),
       turn: 1,
       result: null,
       player: {
-        hp:    char.hp,
-        hpMax: char.hpMax,
-        mp:    char.mp,
-        mpMax: char.mpMax,
-        atk:   char.atk,
-        def:   char.def,
-        spd:   char.spd,
-        mag:   char.mag,
+        hp:         char.hp,
+        hpMax:      char.hpMax,
+        mp:         char.mp,
+        mpMax:      char.mpMax,
+        atk:        passiveAtk,
+        atkBase:    passiveAtk,     // base before buffs
+        def:        passiveDef,
+        defBase:    passiveDef,
+        spd:        char.spd,
+        mag:        char.mag,
+        critChance: passiveCrit,    // base crit (with passive)
+        mpRegen:    passiveMpRegen, // MP regen per turn (mage passive)
         status: [],
+        buffs:  [],                 // active self-buffs { type, atkMult, defMult, critBonus, duration }
       },
       enemy: {
         monsterId: monster.monsterId,
@@ -92,12 +108,15 @@ async function startBattle(req, res) {
     };
 
     activeBattles.set(battleId, state);
-    // ล้าง battle เก่า (เกิน 1 ชั่วโมง)
     for (const [k, v] of activeBattles.entries()) {
       if (Date.now() - v.createdAt > 3600_000) activeBattles.delete(k);
     }
 
-    return res.json({ battleId, state: sanitizeState(state) });
+    // Build skill info for frontend
+    const { getClassSkills } = require('../../data/skills');
+    const classSkills = getClassSkills(className).filter(s => (char.unlockedSkills || []).includes(s.id));
+
+    return res.json({ battleId, state: sanitizeState(state), availableSkills: classSkills });
   } catch (err) {
     console.error('[Combat] startBattle:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -122,11 +141,20 @@ async function processAction(req, res) {
 
   // ===== Player action =====
   if (action === 'attack') {
-    const isCrit = Math.random() < 0.1; // 10% base crit
+    const isCrit = Math.random() < (state.player.critChance || 0.1);
     let dmg = calcDamage(state.player.atk, state.enemy.def);
     if (isCrit) { dmg = Math.floor(dmg * 2); log.push('💥 CRITICAL HIT!'); }
     state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
     log.push(`⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage${isCrit ? ' (Critical!)' : ''}`);
+
+  } else if (action === 'skill') {
+    // ─── USE SKILL ───
+    const skillResult = applySkill(state, skillId, log);
+    if (!skillResult.success) return res.status(400).json({ error: skillResult.error });
+    // If skill has goFirst (Archer's Quick Shot), skip enemy turn this round
+    if (skillResult.goFirst && state.enemy.hp > 0) {
+      // Enemy turn is skipped — handled after this block
+    }
 
   } else if (action === 'flee') {
     const fleeRoll = Math.random();
@@ -156,8 +184,9 @@ async function processAction(req, res) {
     state.result = 'victory';
     activeBattles.delete(battleId);
 
-    // Track daily kill quest + story/side quest step
+    // Track daily + weekly + story/side quest step
     trackQuestProgress(uid, 'kill', 1).catch(() => {});
+    trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
     trackStoryStep(uid, 'kill', {
       monsterId: state.enemy.monsterId,
       zone:      state.zone, // null inside dungeons, zone string in world
@@ -184,21 +213,50 @@ async function processAction(req, res) {
   }
 
   // ===== Enemy turn =====
-  // Process player status effects first
+  // Mage passive: MP regen per turn
+  if (state.player.mpRegen > 0) {
+    state.player.mp = Math.min(state.player.mpMax, state.player.mp + state.player.mpRegen);
+  }
+
+  // Process player buffs (atkMult/defMult/critBonus) — apply/tick
+  processBuff(state.player, log);
+
+  // Process player status effects (POISON, STUN, etc.)
   processStatusEffects(state.player, log, 'player');
 
+  // Check STUN on enemy — skip enemy attack this turn
+  const isEnemyStunned = state.enemy.status.some(s => s.type === 'STUN');
+  if (isEnemyStunned) {
+    log.push(`😵 ${state.enemy.name} ถูกสตันไม่สามารถโจมตีได้!`);
+    // Tick stun duration
+    state.enemy.status = state.enemy.status.map(s =>
+      s.type === 'STUN' ? { ...s, duration: s.duration - 1 } : s
+    ).filter(s => s.duration > 0);
+  }
+
   // Enemy regen
-  if (state.enemy.regen > 0) {
+  if (!isEnemyStunned && state.enemy.regen > 0) {
     state.enemy.hp = Math.min(state.enemy.hpMax, state.enemy.hp + state.enemy.regen);
     log.push(`💚 ${state.enemy.name} ฟื้นฟู ${state.enemy.regen} HP`);
   }
 
-  // Enemy attack
-  const attackMsgs = state.enemy.attackMsg;
-  const attackMsg  = attackMsgs[Math.floor(Math.random() * attackMsgs.length)];
-  const enemyDmg   = calcDamage(state.enemy.atk, state.player.def);
-  state.player.hp = Math.max(0, state.player.hp - enemyDmg);
-  log.push(`👹 ${state.enemy.name} ${attackMsg}! ${enemyDmg} damage`);
+  // Enemy attack (skip if stunned)
+  if (!isEnemyStunned) {
+    const attackMsgs = state.enemy.attackMsg;
+    const attackMsg  = attackMsgs[Math.floor(Math.random() * attackMsgs.length)];
+    // Apply SLOW debuff to enemy atk
+    const slowBuff = state.enemy.status.find(s => s.type === 'SLOW');
+    const enemyAtk = slowBuff ? Math.floor(state.enemy.atk * slowBuff.atkMult) : state.enemy.atk;
+    // Tick SLOW duration
+    if (slowBuff) {
+      state.enemy.status = state.enemy.status.map(s =>
+        s.type === 'SLOW' ? { ...s, duration: s.duration - 1 } : s
+      ).filter(s => s.duration > 0);
+    }
+    const enemyDmg = calcDamage(enemyAtk, state.player.def);
+    state.player.hp = Math.max(0, state.player.hp - enemyDmg);
+    log.push(`👹 ${state.enemy.name} ${attackMsg}! ${enemyDmg} damage${slowBuff ? ' (ช้าลง)' : ''}`);
+  }
 
   // Enemy status attack
   if (state.enemy.statusAttack) {
@@ -231,6 +289,112 @@ async function processAction(req, res) {
 
   state.turn++;
   return res.json({ battleId, state: { ...sanitizeState(state), log, result: null } });
+}
+
+// ─── Apply Skill ─────────────────────────────────────────────────
+function applySkill(state, skillId, log) {
+  const skillDef = getSkill(skillId);
+  if (!skillDef) return { success: false, error: 'ไม่พบ Skill' };
+
+  // Check unlocked
+  if (!state.unlockedSkills.includes(skillId)) {
+    return { success: false, error: 'ยังไม่ได้ unlock Skill นี้' };
+  }
+
+  // Check MP
+  if (state.player.mp < skillDef.mpCost) {
+    return { success: false, error: `MP ไม่พอ (มี ${state.player.mp}, ต้องการ ${skillDef.mpCost})` };
+  }
+
+  // Deduct MP
+  state.player.mp -= skillDef.mpCost;
+  log.push(`✨ ใช้ ${skillDef.name}! (-${skillDef.mpCost} MP)`);
+
+  // Self-buff (no damage)
+  if (skillDef.selfBuff && skillDef.damage === 0) {
+    const buff = { ...skillDef.selfBuff };
+    state.player.buffs = state.player.buffs || [];
+    // Remove old buff of same type
+    state.player.buffs = state.player.buffs.filter(b => !(b.atkMult || b.critBonus));
+
+    if (buff.atkMult) {
+      state.player.atk = Math.floor(state.player.atkBase * buff.atkMult);
+      log.push(`🔥 ATK เพิ่มเป็น ${state.player.atk} (${Math.round((buff.atkMult - 1) * 100)}% buff, ${buff.duration} เทิร์น)`);
+    }
+    if (buff.defMult) {
+      state.player.def = Math.floor(state.player.defBase * buff.defMult);
+      log.push(`🛡️ DEF เปลี่ยนเป็น ${state.player.def}`);
+    }
+    if (buff.critBonus) {
+      state.player.critChance = (state.player.critChance || 0.1) + buff.critBonus;
+      log.push(`👁️ Crit +${Math.round(buff.critBonus * 100)}% (${buff.duration} เทิร์น)`);
+    }
+    state.player.buffs.push({ ...buff, appliedAt: state.turn });
+    return { success: true };
+  }
+
+  // Damage skill
+  if (skillDef.damage > 0) {
+    const isCrit = Math.random() < (state.player.critChance || 0.1);
+    let dmg;
+    if (skillDef.magicDamage) {
+      // Magic: ใช้ MAG, ไม่ถูก DEF ลด
+      dmg = Math.floor(state.player.mag * skillDef.damage);
+    } else {
+      dmg = Math.floor(calcDamage(state.player.atk, state.enemy.def) * skillDef.damage);
+    }
+    if (isCrit) { dmg = Math.floor(dmg * 2); log.push('💥 CRITICAL!'); }
+    state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
+    log.push(`💥 ${skillDef.name}: ${dmg} damage${skillDef.magicDamage ? ' (magic)' : ''}!`);
+  }
+
+  // Apply effect to enemy
+  if (skillDef.effect) {
+    const ef = skillDef.effect;
+    const alreadyHas = state.enemy.status.find(s => s.type === ef.type);
+    if (!alreadyHas) {
+      if (ef.type === 'STUN') {
+        state.enemy.status.push({ type: 'STUN', duration: ef.duration });
+        log.push(`😵 ${state.enemy.name} ถูกสตัน ${ef.duration} เทิร์น!`);
+      } else if (ef.type === 'SLOW') {
+        state.enemy.status.push({ type: 'SLOW', atkMult: ef.atkMult, duration: ef.duration });
+        log.push(`❄️ ${state.enemy.name} ถูกชะลอ ATK -${Math.round((1 - ef.atkMult) * 100)}% ${ef.duration} เทิร์น!`);
+      } else if (ef.type === 'POISON') {
+        state.enemy.status.push({ type: 'POISON', dmgPerTurn: ef.dmgPerTurn, duration: ef.duration });
+        log.push(`☠️ ${state.enemy.name} ถูกพิษ! ${ef.dmgPerTurn}/เทิร์น เป็นเวลา ${ef.duration} เทิร์น`);
+      }
+    } else {
+      log.push(`⚠️ ${state.enemy.name} มีสถานะนี้อยู่แล้ว`);
+    }
+  }
+
+  return { success: true, goFirst: skillDef.goFirst || false };
+}
+
+// ─── Process player buffs each turn ──────────────────────────────
+function processBuff(player, log) {
+  if (!player.buffs || player.buffs.length === 0) return;
+  const remaining = [];
+  for (const buff of player.buffs) {
+    buff.duration--;
+    if (buff.duration > 0) {
+      remaining.push(buff);
+    } else {
+      // Buff expired — reset stats
+      if (buff.atkMult) {
+        player.atk = player.atkBase;
+        log.push(`⚪ Berserk สิ้นสุด — ATK กลับสู่ปกติ (${player.atk})`);
+      }
+      if (buff.defMult) {
+        player.def = player.defBase;
+      }
+      if (buff.critBonus) {
+        player.critChance = Math.max(0.05, (player.critChance || 0.1) - buff.critBonus);
+        log.push(`⚪ Eagle Eye สิ้นสุด — Crit กลับปกติ`);
+      }
+    }
+  }
+  player.buffs = remaining;
 }
 
 function processStatusEffects(entity, log, who) {
@@ -375,15 +539,24 @@ async function handlePlayerDeath(uid, state) {
 // Remove sensitive data before sending to client
 function sanitizeState(state) {
   return {
-    battleId: state.battleId,
-    turn:     state.turn,
-    result:   state.result,
+    battleId:       state.battleId,
+    turn:           state.turn,
+    result:         state.result,
+    charClass:      state.charClass,
+    unlockedSkills: state.unlockedSkills,
     player: {
-      hp:     state.player.hp,
-      hpMax:  state.player.hpMax,
-      mp:     state.player.mp,
-      mpMax:  state.player.mpMax,
-      status: state.player.status,
+      hp:         state.player.hp,
+      hpMax:      state.player.hpMax,
+      mp:         state.player.mp,
+      mpMax:      state.player.mpMax,
+      atk:        state.player.atk,
+      def:        state.player.def,
+      critChance: state.player.critChance,
+      status:     state.player.status,
+      buffs:      (state.player.buffs || []).map(b => ({
+        type:     b.atkMult ? 'ATK_BUFF' : b.critBonus ? 'CRIT_BUFF' : 'BUFF',
+        duration: b.duration,
+      })),
     },
     enemy: {
       monsterId: state.enemy.monsterId,
@@ -413,6 +586,7 @@ async function rest(req, res) {
 
     await charRef.update({ hp: char.hpMax, mp: char.mpMax });
     trackQuestProgress(uid, 'rest', 1).catch(() => {});
+    trackWeeklyProgress(uid, 'rest', 1).catch(() => {});
     return res.json({ success: true, hp: char.hpMax, mp: char.mpMax, msg: '💤 พักผ่อนแล้ว — HP และ MP เต็ม' });
   } catch (err) {
     console.error('[Combat] rest:', err.message);

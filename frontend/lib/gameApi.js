@@ -51,6 +51,22 @@ export const acceptSideQuest  = (questId)        => api.post('/api/game/quest-lo
 export const getRPShop        = ()               => api.get('/api/game/rp-shop');
 export const buyRPItem        = (itemId)         => api.post('/api/game/rp-shop/buy', { itemId });
 
+// ===== Skills =====
+export const getSkills        = ()               => api.get('/api/game/skills');
+export const unlockSkill      = (skillId)        => api.post('/api/game/skills/unlock', { skillId });
+
+// ===== Character Profile + Stat Allocation =====
+export const getCharacterProfile = ()            => api.get('/api/game/character/profile');
+export const allocateStat     = (stat, points)   => api.post('/api/game/character/stat', { stat, points });
+
+// ===== Enhancement =====
+export const getEnhanceInfo   = (instanceId)     => api.get(`/api/game/enhance/${instanceId}`);
+export const enhanceItem      = (instanceId)     => api.post('/api/game/enhance', { instanceId });
+
+// ===== Weekly Quests =====
+export const getWeeklyQuests  = ()               => api.get('/api/game/quests/weekly');
+export const claimWeeklyReward = (questId)       => api.post('/api/game/quests/weekly/claim', { questId });
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

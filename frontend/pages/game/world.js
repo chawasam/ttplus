@@ -10,7 +10,11 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          requestVerify, getVerifyStatus,
          getQuests, claimQuestReward,
          getQuestLog, acceptSideQuest,
-         getRPShop, buyRPItem } from '../../lib/gameApi';
+         getRPShop, buyRPItem,
+         getSkills, unlockSkill,
+         getCharacterProfile, allocateStat,
+         getEnhanceInfo, enhanceItem,
+         getWeeklyQuests, claimWeeklyReward } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -29,6 +33,10 @@ const SCREENS = {
   QUESTS:         'quests',
   QUEST_LOG:      'quest_log',
   RP_SHOP:        'rp_shop',
+  SKILLS:         'skills',
+  CHARACTER:      'character',
+  ENHANCE:        'enhance',
+  WEEKLY_QUESTS:  'weekly_quests',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -78,6 +86,7 @@ export default function GameWorld() {
   const [gameLog,    setGameLog]    = useState(['⚔️ ยินดีต้อนรับสู่ Ashenveil: The Shattered Age', '500 ปีหลัง The Sundering โลกแตกออกเป็น Shard...', '─────────────────────────']);
   const [battle,     setBattle]     = useState(null);
   const [battleLog,  setBattleLog]  = useState([]);
+  const [battleSkills, setBattleSkills] = useState([]);  // available skills in current battle
   const [inventory,  setInventory]  = useState([]);
   const [equipment,  setEquipment]  = useState({});
   const [shopItems,  setShopItems]  = useState([]);
@@ -104,6 +113,23 @@ export default function GameWorld() {
   // ── RP Shop ──
   const [rpShopItems,    setRPShopItems]    = useState([]);
   const [rpShopLoading,  setRPShopLoading]  = useState(false);
+
+  // ── Skills ──
+  const [skillsData,     setSkillsData]     = useState(null);   // { charClass, classSkills, passiveSkill, unlockedSkills, skillPoints }
+  const [skillsLoading,  setSkillsLoading]  = useState(false);
+
+  // ── Character Profile / Stat Allocation ──
+  const [charProfile,    setCharProfile]    = useState(null);   // full character stats
+  const [charLoading,    setCharLoading]    = useState(false);
+
+  // ── Enhancement ──
+  const [enhanceInfo,    setEnhanceInfo]    = useState(null);   // { item, recipe, canEnhance, currentGold }
+  const [enhanceTarget,  setEnhanceTarget]  = useState(null);   // { instanceId, name }
+  const [enhanceLoading, setEnhanceLoading] = useState(false);
+
+  // ── Weekly Quests ──
+  const [weeklyData,     setWeeklyData]     = useState(null);   // { weekKey, quests, allCompleted, bonusClaimed, bonus }
+  const [weeklyBadge,    setWeeklyBadge]    = useState(false);
 
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
@@ -250,6 +276,144 @@ export default function GameWorld() {
       toast.error(err.response?.data?.error || 'ซื้อไม่ได้');
     }
   }, [loadRPShop, addLog]);
+
+  // ===== Skills =====
+  const loadSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    try {
+      const { data } = await getSkills();
+      setSkillsData(data);
+    } catch (err) {
+      toast.error('โหลด Skills ไม่ได้');
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, []);
+
+  const openSkills = useCallback(async () => {
+    setScreen(SCREENS.SKILLS);
+    await loadSkills();
+  }, [loadSkills]);
+
+  const handleUnlockSkill = useCallback(async (skillId, skillName, cost) => {
+    if (!confirm(`ปลดล็อค ${skillName} (${cost} Skill Point)?`)) return;
+    try {
+      const { data } = await unlockSkill(skillId);
+      toast.success(`✅ ปลดล็อค ${data.skillName || skillName} แล้ว!`);
+      addLog(`✨ ปลดล็อค Skill: ${skillName}`);
+      setChar(c => c ? { ...c, skillPoints: data.skillPoints } : c);
+      await loadSkills();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ปลดล็อคไม่ได้');
+    }
+  }, [loadSkills, addLog]);
+
+  // ===== Character Profile + Stat Allocation =====
+  const loadCharProfile = useCallback(async () => {
+    setCharLoading(true);
+    try {
+      const { data } = await getCharacterProfile();
+      setCharProfile(data);
+    } catch (err) {
+      toast.error('โหลด Character ไม่ได้');
+    } finally {
+      setCharLoading(false);
+    }
+  }, []);
+
+  const openCharacter = useCallback(async () => {
+    setScreen(SCREENS.CHARACTER);
+    await loadCharProfile();
+  }, [loadCharProfile]);
+
+  const handleAllocateStat = useCallback(async (stat, statLabel) => {
+    if (!charProfile || (charProfile.statPoints || 0) < 1) {
+      return toast.error('Stat Points ไม่พอ');
+    }
+    try {
+      const { data } = await allocateStat(stat, 1);
+      toast.success(data.msg);
+      addLog(`📊 เพิ่ม ${statLabel} 1 point`);
+      setChar(c => c ? { ...c, statPoints: data.statPoints, hpMax: data.hpMax, mpMax: data.mpMax } : c);
+      await loadCharProfile();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ใส่ Stat ไม่ได้');
+    }
+  }, [charProfile, loadCharProfile, addLog]);
+
+  // ===== Enhancement =====
+  const openEnhance = useCallback(async (instanceId, itemName) => {
+    setEnhanceTarget({ instanceId, name: itemName });
+    setEnhanceInfo(null);
+    setEnhanceLoading(true);
+    setScreen(SCREENS.ENHANCE);
+    try {
+      const { data } = await getEnhanceInfo(instanceId);
+      setEnhanceInfo(data);
+    } catch (err) {
+      toast.error('โหลดข้อมูล Enhance ไม่ได้');
+    } finally {
+      setEnhanceLoading(false);
+    }
+  }, []);
+
+  const handleEnhanceItem = useCallback(async () => {
+    if (!enhanceTarget || !enhanceInfo?.canEnhance) return;
+    if (!confirm(`Enhance ${enhanceTarget.name} +${(enhanceInfo.currentEnhance || 0) + 1}?`)) return;
+    try {
+      const { data } = await enhanceItem(enhanceTarget.instanceId);
+      if (data.result === 'success') {
+        toast.success(data.msg, { duration: 4000 });
+        addLog(`✨ ${data.msg}`);
+      } else {
+        toast.error(data.msg, { duration: 4000 });
+        addLog(`💔 ${data.msg}`);
+      }
+      setGold(g => g - data.goldSpent);
+      // Reload enhance info
+      setEnhanceLoading(true);
+      try {
+        const { data: fresh } = await getEnhanceInfo(enhanceTarget.instanceId);
+        setEnhanceInfo(fresh);
+      } catch {
+        setEnhanceInfo(null);
+      } finally {
+        setEnhanceLoading(false);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Enhance ไม่สำเร็จ');
+    }
+  }, [enhanceTarget, enhanceInfo, addLog]);
+
+  // ===== Weekly Quests =====
+  const loadWeeklyQuests = useCallback(async () => {
+    try {
+      const { data } = await getWeeklyQuests();
+      setWeeklyData(data);
+      const hasUnclaimed = data.quests.some(q => q.completed && !q.claimed)
+        || (data.allCompleted && !data.bonusClaimed);
+      setWeeklyBadge(hasUnclaimed);
+    } catch {}
+  }, []);
+
+  const openWeeklyQuests = useCallback(async () => {
+    setScreen(SCREENS.WEEKLY_QUESTS);
+    await loadWeeklyQuests();
+  }, [loadWeeklyQuests]);
+
+  const handleClaimWeekly = useCallback(async (questId) => {
+    try {
+      const { data } = await claimWeeklyReward(questId);
+      if (data.rewards?.gold) setGold(g => g + data.rewards.gold);
+      if (data.rewards?.xp)   setChar(c => c ? { ...c, xp: (c.xp || 0) + data.rewards.xp } : c);
+      const label = questId === 'bonus' ? '🏆 Weekly Bonus' : questId;
+      toast.success(`✅ รับรางวัล ${label}! (+${data.rewards?.gold || 0}G)`);
+      addLog(`🎖️ รับ Weekly Quest: +${data.rewards?.gold || 0} Gold, +${data.rewards?.xp || 0} XP`);
+      await loadWeeklyQuests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
+    }
+  }, [loadWeeklyQuests, addLog]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -449,6 +613,7 @@ export default function GameWorld() {
       const { data } = await startBattle(z || zone, monsterId);
       setBattle(data.state);
       setBattleLog(data.state.log || []);
+      setBattleSkills(data.availableSkills || []);
       setScreen(SCREENS.BATTLE);
     } catch (err) {
       addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
@@ -750,6 +915,7 @@ export default function GameWorld() {
         `🏰 [Dungeon] ${dungeonInfo?.nameTH} — ห้อง ${(dungeonRun?.currentRoom || 0) + 1}`,
         ...(data.state.log || [])
       ]);
+      setBattleSkills(data.availableSkills || []);
       setScreen(SCREENS.BATTLE);
     } catch (err) {
       addLog(`⛔ ${err.response?.data?.error || 'เริ่ม Battle ไม่ได้'}`);
@@ -863,9 +1029,16 @@ export default function GameWorld() {
                       📋 ภารกิจ
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
-                    <Btn onClick={openQuestLog}   disabled={busy}>📖 เนื้อเรื่อง</Btn>
-                    <Btn onClick={openRPShop}     disabled={busy}>💎 RP Shop</Btn>
-                    <Btn onClick={openSettings}   disabled={busy}>⚙️ ตั้งค่า</Btn>
+                    <Btn onClick={openQuestLog}     disabled={busy}>📖 เนื้อเรื่อง</Btn>
+                    <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
+                    <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
+                    <Btn onClick={openCharacter}    disabled={busy}>📊 ตัวละคร</Btn>
+                    <button onClick={openWeeklyQuests} disabled={busy}
+                      className="relative px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
+                      📅 Weekly
+                      {weeklyBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />}
+                    </button>
+                    <Btn onClick={openSettings}     disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
               )}
@@ -904,12 +1077,36 @@ export default function GameWorld() {
                     <>
                       <div className="flex gap-2 mb-2 text-xs text-gray-500">
                         <span className="text-red-400">👹 {battle.enemy.name}: {battle.enemy.hp}/{battle.enemy.hpMax} HP</span>
+                        <span className="text-blue-400 ml-2">💧 {battle.player?.mp}/{battle.player?.mpMax} MP</span>
                         <span className="ml-auto">Turn {battle.turn}</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      {/* Active buffs */}
+                      {battle.player?.buffs?.length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                          {battle.player.buffs.map((b, i) => (
+                            <span key={i} className="text-xs px-1 border border-amber-800 text-amber-500 rounded">
+                              {b.name || b.type} ({b.duration}t)
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-2 mb-2">
                         <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>⚔️ โจมตี</Btn>
                         <Btn onClick={() => handleBattleAction('flee')}   disabled={busy}>🏃 หนี</Btn>
                       </div>
+                      {/* Skill buttons */}
+                      {battleSkills.length > 0 && (
+                        <div className="grid grid-cols-2 gap-1">
+                          {battleSkills.map(sk => (
+                            <button key={sk.id}
+                              onClick={() => handleBattleAction('skill', { skillId: sk.id })}
+                              disabled={busy || (battle.player?.mp || 0) < sk.mpCost}
+                              className="px-2 py-1.5 border border-blue-900 text-blue-300 hover:border-blue-600 hover:bg-blue-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded">
+                              {sk.name} <span className="text-blue-600">({sk.mpCost}MP)</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <p className={`text-center text-sm ${battle.result === 'victory' ? 'text-green-400' : 'text-red-400'}`}>
@@ -934,6 +1131,10 @@ export default function GameWorld() {
                       {!item.equipped && ['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (
                         <button onClick={() => handleEquip(item.instanceId, item.type)}
                           className="text-blue-500 hover:text-blue-300 text-xs">ใส่</button>
+                      )}
+                      {['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (item.enhancement || 0) < 10 && (
+                        <button onClick={() => openEnhance(item.instanceId, item.name)}
+                          className="text-amber-600 hover:text-amber-400 text-xs">+{(item.enhancement||0)+1}↑</button>
                       )}
                       {!item.equipped && (
                         <button onClick={() => handleSell(item.instanceId, item.name)}
@@ -1391,6 +1592,264 @@ export default function GameWorld() {
                         <p className="text-gray-700 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้</p>
                       )}
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* SKILLS */}
+              {screen === SCREENS.SKILLS && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">[ ✨ Skills — Skill Points: <span className="text-amber-400">{char?.skillPoints || 0}</span> ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {skillsLoading ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : !skillsData ? null : (
+                    <>
+                      {/* Passive skill */}
+                      {skillsData.passive && (
+                        <div className="border border-green-900 rounded p-2 text-xs bg-green-900/10">
+                          <p className="text-green-400 font-bold">🌿 {skillsData.passive.name}: {skillsData.passive.desc}</p>
+                          <p className="text-gray-600 mt-0.5">ทำงานอัตโนมัติทุก Battle (ไม่ต้องปลดล็อค)</p>
+                        </div>
+                      )}
+
+                      {/* Active skills */}
+                      <p className="text-gray-700 text-xs">[ Active Skills ]</p>
+                      {(skillsData.skills || []).map(sk => (
+                        <div key={sk.id} className={`border rounded p-2 text-xs ${
+                          sk.unlocked    ? 'border-blue-800 bg-blue-900/10' :
+                          sk.canUnlock   ? 'border-gray-700' :
+                                           'border-gray-900 opacity-50'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-bold ${sk.unlocked ? 'text-blue-300' : 'text-amber-200'}`}>
+                                {sk.name}
+                                {sk.unlocked && <span className="text-blue-600 font-normal ml-1 text-xs">✓ ปลดแล้ว</span>}
+                                {sk.levelLocked && !sk.unlocked && <span className="text-red-700 font-normal ml-1 text-xs">🔒 Lv.{sk.minLevel}</span>}
+                              </p>
+                              <p className="text-gray-500 mt-0.5 leading-relaxed">{sk.desc}</p>
+                              <div className="flex gap-3 mt-1 text-gray-600">
+                                <span>💧 {sk.mpCost} MP</span>
+                                <span>Lv.{sk.minLevel}+</span>
+                                <span>⚡ {sk.skillPointCost} SP</span>
+                              </div>
+                            </div>
+                            {!sk.unlocked && (
+                              <button
+                                onClick={() => handleUnlockSkill(sk.id, sk.name, sk.skillPointCost)}
+                                disabled={!sk.canUnlock}
+                                className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-30 disabled:cursor-not-allowed">
+                                ปลดล็อค
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* CHARACTER PROFILE */}
+              {screen === SCREENS.CHARACTER && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">[ 📊 ตัวละคร — Stat Points: <span className="text-amber-400">{charProfile?.statPoints ?? char?.statPoints ?? 0}</span> ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {charLoading ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : !charProfile ? null : (
+                    <>
+                      {/* Level / XP */}
+                      <div className="border border-gray-800 rounded p-2 text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-amber-300 font-bold">{charProfile.name}</span>
+                          <span className="text-gray-500">{charProfile.race} {charProfile.class}</span>
+                        </div>
+                        <div className="flex gap-3 text-gray-400">
+                          <span>Lv.{charProfile.level}</span>
+                          <span>XP: {charProfile.xp}/{charProfile.xpToNext}</span>
+                        </div>
+                        <div className="w-full h-1 bg-gray-800 rounded">
+                          <div className="h-1 bg-purple-700 rounded" style={{ width: `${Math.min(100, (charProfile.xp / charProfile.xpToNext) * 100)}%` }} />
+                        </div>
+                        <div className="flex gap-3 text-gray-500">
+                          <span>⚔️ {charProfile.monstersKilled} kills</span>
+                          <span>💀 {charProfile.deathCount} deaths</span>
+                        </div>
+                      </div>
+
+                      {/* Combat stats */}
+                      <div className="border border-gray-800 rounded p-2 text-xs">
+                        <p className="text-gray-600 mb-1">[ Combat Stats ]</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-gray-400">
+                          <span>❤️ HP {charProfile.hp}/{charProfile.hpMax}</span>
+                          <span>💧 MP {charProfile.mp}/{charProfile.mpMax}</span>
+                          <span>⚔️ ATK {charProfile.atk}</span>
+                          <span>🛡️ DEF {charProfile.def}</span>
+                          <span>✨ MAG {charProfile.mag}</span>
+                          <span>💨 SPD {charProfile.spd}</span>
+                          <span>⚡ Stamina {charProfile.stamina}/{charProfile.staminaMax}</span>
+                        </div>
+                      </div>
+
+                      {/* Stat allocation */}
+                      <div className="border border-gray-800 rounded p-2 text-xs">
+                        <p className="text-gray-600 mb-1">[ Allocate Stat Points — มี {charProfile.statPoints} points ]</p>
+                        {[
+                          { key: 'str', label: 'STR ⚔️', desc: '+2 ATK/point', val: charProfile.allocatedStats?.str || 0 },
+                          { key: 'int', label: 'INT ✨', desc: '+3 MAG, +5 MP/point', val: charProfile.allocatedStats?.int || 0 },
+                          { key: 'agi', label: 'AGI 💨', desc: '+1 SPD/point', val: charProfile.allocatedStats?.agi || 0 },
+                          { key: 'vit', label: 'VIT ❤️', desc: '+10 HP, +1 DEF/point', val: charProfile.allocatedStats?.vit || 0 },
+                        ].map(s => (
+                          <div key={s.key} className="flex items-center gap-2 py-0.5 border-b border-gray-900 last:border-0">
+                            <span className="w-16 text-amber-200 font-bold">{s.label}</span>
+                            <span className="flex-1 text-gray-600">{s.desc}</span>
+                            <span className="text-gray-500 w-6 text-right">{s.val}</span>
+                            <button
+                              onClick={() => handleAllocateStat(s.key, s.label)}
+                              disabled={(charProfile.statPoints || 0) < 1}
+                              className="px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-30 disabled:cursor-not-allowed">
+                              +1
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Skill points */}
+                      <div className="border border-gray-800 rounded p-2 text-xs text-gray-500">
+                        <span>Skill Points: <span className="text-amber-400">{charProfile.skillPoints || 0}</span></span>
+                        <span className="ml-3">Unlocked Skills: {(charProfile.unlockedSkills || []).join(', ') || 'ยังไม่มี'}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ENHANCEMENT */}
+              {screen === SCREENS.ENHANCE && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">[ 🔨 Enhance: {enhanceTarget?.name} ]</p>
+                    <Btn onClick={() => { setScreen(SCREENS.INVENTORY); }}>← กลับ</Btn>
+                  </div>
+
+                  {enhanceLoading ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : !enhanceInfo ? null : enhanceInfo.maxEnhanced ? (
+                    <div className="text-center py-4">
+                      <p className="text-amber-400 text-sm">🌟 Enhance MAX (+10)</p>
+                      <p className="text-gray-600 text-xs mt-1">อุปกรณ์นี้ Enhance สูงสุดแล้ว</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="border border-gray-800 rounded p-2 text-xs">
+                        <p className="text-amber-300 font-bold">{enhanceInfo.itemName} +{enhanceInfo.currentEnhance} → +{enhanceInfo.nextLevel}</p>
+                        <div className="mt-1 space-y-0.5 text-gray-400">
+                          <p>💰 Gold: <span className={enhanceInfo.currentGold >= enhanceInfo.recipe?.gold ? 'text-yellow-400' : 'text-red-400'}>
+                            {(enhanceInfo.currentGold || 0).toLocaleString()} / {(enhanceInfo.recipe?.gold || 0).toLocaleString()}
+                          </span></p>
+                          {(enhanceInfo.recipe?.materials || []).map((m, i) => (
+                            <p key={i}>📦 {m.name}: <span className={m.enough ? 'text-green-400' : 'text-red-400'}>{m.have}/{m.required}</span></p>
+                          ))}
+                          <p>🎯 อัตราสำเร็จ: <span className={
+                            enhanceInfo.recipe?.successRate >= 0.8 ? 'text-green-400' :
+                            enhanceInfo.recipe?.successRate >= 0.6 ? 'text-yellow-400' : 'text-red-400'
+                          }>{Math.round((enhanceInfo.recipe?.successRate || 0) * 100)}%</span></p>
+                          {enhanceInfo.recipe?.successRate < 1 && (
+                            <p className="text-gray-700">⚠️ ล้มเหลว → item ยังอยู่ที่ +{enhanceInfo.currentEnhance} (ไม่หาย)</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleEnhanceItem}
+                        disabled={!enhanceInfo.canEnhance}
+                        className="w-full px-3 py-2 border border-amber-700 text-amber-300 hover:border-amber-500 hover:bg-amber-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded font-bold">
+                        🔨 Enhance +{enhanceInfo.nextLevel}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* WEEKLY QUESTS */}
+              {screen === SCREENS.WEEKLY_QUESTS && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-gray-600 text-xs">[ 📅 Weekly Quests ]</p>
+                    {weeklyData?.weekKey && <p className="text-gray-700 text-xs">สัปดาห์ {weeklyData.weekKey}</p>}
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {!weeklyData ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : (
+                    <>
+                      {weeklyData.quests.map(q => (
+                        <div key={q.id} className={`border rounded p-2 text-xs ${
+                          q.claimed   ? 'border-gray-900 opacity-40' :
+                          q.completed ? 'border-green-800' :
+                                        'border-gray-800'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 text-amber-200">{q.name}</span>
+                            {q.claimed ? (
+                              <span className="text-gray-600">✓ รับแล้ว</span>
+                            ) : q.completed ? (
+                              <button onClick={() => handleClaimWeekly(q.id)}
+                                className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
+                                รับรางวัล
+                              </button>
+                            ) : (
+                              <span className="text-gray-600">{q.progress}/{q.target}</span>
+                            )}
+                          </div>
+                          <p className="text-gray-600 mt-0.5">{q.desc}</p>
+                          {!q.claimed && (
+                            <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
+                              <div className="h-0.5 bg-purple-700 rounded transition-all"
+                                style={{ width: `${Math.min(100, ((q.progress || 0) / q.target) * 100)}%` }} />
+                            </div>
+                          )}
+                          {!q.claimed && (
+                            <p className="text-purple-800 mt-0.5">
+                              💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP{q.reward.items?.length ? ` · 📦 x${q.reward.items.length}` : ''}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Weekly bonus */}
+                      <div className={`border rounded p-2 text-xs ${
+                        weeklyData.bonusClaimed ? 'border-gray-900 opacity-40' :
+                        weeklyData.allCompleted ? 'border-amber-700 bg-amber-900/10' :
+                                                   'border-gray-800 opacity-60'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-amber-300">{weeklyData.bonus?.label || '🏆 ครบทุก Weekly Quest!'}</span>
+                          {weeklyData.bonusClaimed ? (
+                            <span className="text-gray-600">✓ รับแล้ว</span>
+                          ) : weeklyData.allCompleted ? (
+                            <button onClick={() => handleClaimWeekly('bonus')}
+                              className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
+                              🏆 รับ!
+                            </button>
+                          ) : (
+                            <span className="text-gray-700">ยังไม่ครบ</span>
+                          )}
+                        </div>
+                        <p className="text-purple-800 mt-0.5">
+                          💰 {weeklyData.bonus?.gold}G · ⭐ {weeklyData.bonus?.xp} XP · 📦 ของพิเศษ
+                        </p>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
