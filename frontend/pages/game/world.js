@@ -25,6 +25,27 @@ const SCREENS = {
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
 
+// ─────────────────────────────────────────────────────────
+//  BGM Config — วาง Suno URL หลังจาก generate แล้ว
+//  แนะนำ: 16-bit SNES style (ดู prompt ในไฟล์ BGM_PROMPTS.md)
+// ─────────────────────────────────────────────────────────
+const BGM = {
+  town:    '',  // Town Square — peaceful, warm
+  field:   '',  // Outskirts / Forest — mysterious, adventurous
+  cave:    '',  // Dark Cave — dark, tense
+  dungeon: '',  // Dungeon run — gothic, intense
+  battle:  '',  // Normal battle — fast, driving
+  boss:    '',  // Boss battle — epic, sinister
+};
+
+// zone → bgm key
+const ZONE_BGM = {
+  town_square:    'town',
+  town_outskirts: 'field',
+  forest_path:    'field',
+  dark_cave:      'cave',
+};
+
 const GRADE_COLOR = {
   COMMON:    'text-gray-400',
   UNCOMMON:  'text-green-400',
@@ -37,6 +58,8 @@ const GRADE_COLOR = {
 export default function GameWorld() {
   const router    = useRouter();
   const logEndRef = useRef(null);
+  const audioRef  = useRef(null);   // HTMLAudioElement
+  const bgmKeyRef = useRef('');     // track กำลังเล่นอยู่
 
   const [loading,    setLoading]    = useState(true);
   const [char,       setChar]       = useState(null);
@@ -61,9 +84,17 @@ export default function GameWorld() {
   const [dungeonLog,    setDungeonLog]   = useState([]);    // room-specific log
   const [dungeonReward, setDungeonReward]= useState(null);  // clear rewards
   const [dungeonRunId,  setDungeonRunId] = useState(null);  // active dungeon run ID (for battle)
-  const [fontSize,   setFontSize]   = useState(() => {
+  const [fontSize,    setFontSize]    = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('game_fontSize') || 'sm';
     return 'sm';
+  });
+  const [bgmEnabled,  setBgmEnabled]  = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('game_bgm') !== 'off';
+    return true;
+  });
+  const [bgmVolume,   setBgmVolume]   = useState(() => {
+    if (typeof window !== 'undefined') return parseFloat(localStorage.getItem('game_bgm_vol') || '0.4');
+    return 0.4;
   });
 
 
@@ -96,6 +127,87 @@ export default function GameWorld() {
 
   const addLog = useCallback((...msgs) => {
     setGameLog(prev => [...prev.slice(-100), ...msgs]);
+  }, []);
+
+  // ── BGM: เล่น track ตาม key ──
+  const playBgm = useCallback((key) => {
+    const url = BGM[key] || '';
+    if (!url) return; // ยังไม่มี URL — รอใส่ Suno link
+
+    // สร้าง audio element ครั้งแรก
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+      audioRef.current.loop   = true;
+      audioRef.current.volume = bgmVolume;
+    }
+
+    // เปลี่ยน track ถ้าต่างจากที่เล่นอยู่
+    if (bgmKeyRef.current !== key) {
+      audioRef.current.pause();
+      audioRef.current.src = url;
+      audioRef.current.currentTime = 0;
+      bgmKeyRef.current = key;
+    }
+
+    if (bgmEnabled) {
+      audioRef.current.play().catch(() => {}); // autoplay policy — ignore error
+    }
+  }, [bgmEnabled, bgmVolume]);
+
+  // ── BGM: pause/resume เมื่อ toggle ──
+  useEffect(() => {
+    if (!audioRef.current) return;
+    if (bgmEnabled) {
+      audioRef.current.play().catch(() => {});
+    } else {
+      audioRef.current.pause();
+    }
+  }, [bgmEnabled]);
+
+  // ── BGM: sync volume ──
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = bgmVolume;
+  }, [bgmVolume]);
+
+  // ── BGM: สลับ track ตาม screen/zone ──
+  useEffect(() => {
+    if (screen === SCREENS.BATTLE) {
+      // ตรวจว่าเป็น boss หรือเปล่า
+      const isBoss = battle?.enemy?.monsterId?.includes('guardian') ||
+                     battle?.enemy?.monsterId?.includes('boss')    ||
+                     battle?.enemy?.monsterId?.includes('colossus') ||
+                     battle?.enemy?.monsterId?.includes('malachar') ||
+                     battle?.enemy?.monsterId?.includes('cryptlord');
+      playBgm(isBoss ? 'boss' : 'battle');
+    } else if (screen === SCREENS.DUNGEON_ROOM || screen === SCREENS.DUNGEON_LIST) {
+      playBgm('dungeon');
+    } else {
+      playBgm(ZONE_BGM[zone] || 'town');
+    }
+  }, [screen, zone, battle?.enemy?.monsterId]);
+
+  // ── cleanup audio on unmount ──
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const toggleBgm = useCallback(() => {
+    setBgmEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem('game_bgm', next ? 'on' : 'off');
+      return next;
+    });
+  }, []);
+
+  const handleVolumeChange = useCallback((e) => {
+    const vol = parseFloat(e.target.value);
+    setBgmVolume(vol);
+    localStorage.setItem('game_bgm_vol', String(vol));
   }, []);
 
   // ===== Explore =====
@@ -488,6 +600,31 @@ export default function GameWorld() {
               disabled={fontSize === 'base'}
               className="px-1.5 py-0.5 border border-gray-700 rounded text-gray-500 hover:text-amber-400 hover:border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed transition select-none"
               style={{ fontSize: '13px', lineHeight: 1 }}>A+</button>
+
+            {/* BGM toggle */}
+            <button
+              onClick={toggleBgm}
+              title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
+              className={`px-1.5 py-0.5 border rounded transition select-none text-xs ${
+                bgmEnabled
+                  ? 'border-amber-800 text-amber-500 hover:text-amber-300 hover:border-amber-600'
+                  : 'border-gray-800 text-gray-700 hover:text-gray-500'
+              }`}
+              style={{ lineHeight: 1 }}>
+              {bgmEnabled ? '🎵' : '🔇'}
+            </button>
+
+            {/* Volume slider — แสดงเฉพาะตอน bgm เปิด */}
+            {bgmEnabled && (
+              <input
+                type="range" min="0" max="1" step="0.05"
+                value={bgmVolume}
+                onChange={handleVolumeChange}
+                title={`Volume: ${Math.round(bgmVolume * 100)}%`}
+                className="w-14 h-1 accent-amber-600 cursor-pointer"
+                style={{ verticalAlign: 'middle' }}
+              />
+            )}
           </div>
         </div>
 
