@@ -900,7 +900,7 @@ export default function GameWorld() {
     try {
       const { data } = await battleAction(battle.battleId, action, opts);
       setBattle(data.state);
-      setBattleLog(prev => [...prev, '─────', ...data.log]);
+      setBattleLog(prev => [...prev, '─────', ...(data.log || [])]);
 
       if (data.result === 'victory') {
         const rewards = data.rewards || {};
@@ -1018,7 +1018,7 @@ export default function GameWorld() {
       toast.success(data.msg);
       setGold(g => g + data.gold);
       const inv = await getInventory();
-      setInventory(inv.data.items);
+      setInventory(inv.data.items || []);
     } catch (err) {
       toast.error(err.response?.data?.error || 'ขายไม่ได้');
     }
@@ -1026,10 +1026,18 @@ export default function GameWorld() {
 
   // ===== Shop =====
   const loadShop = useCallback(async () => {
-    const { data } = await getShopItems();
-    setShopItems(data.items);
-    setScreen(SCREENS.SHOP);
-  }, []);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await getShopItems();
+      setShopItems(data.items || []);
+      setScreen(SCREENS.SHOP);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'โหลดร้านค้าไม่ได้');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
 
   const handleBuy = useCallback(async (itemId, name, price) => {
     if (!confirm(`ซื้อ ${name} ราคา ${price} Gold?`)) return;
@@ -1044,18 +1052,30 @@ export default function GameWorld() {
 
   // ===== NPC =====
   const loadNPCs = useCallback(async () => {
-    const { data } = await getNPCs();
-    setNPCs(data.npcs);
-    setScreen(SCREENS.NPC);
-  }, []);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await getNPCs();
+      setNPCs(data.npcs || []);
+      setScreen(SCREENS.NPC);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'โหลด NPC ไม่ได้');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
 
   const handleTalkNPC = useCallback(async (npcId) => {
-    const { data } = await talkNPC(npcId);
-    setActiveNPC(data);
-    setNpcLineIdx(0);
-    setNpcTyped('');
-    setNpcTyping(true);
-    setScreen(SCREENS.NPC_TALK);
+    try {
+      const { data } = await talkNPC(npcId);
+      setActiveNPC(data);
+      setNpcLineIdx(0);
+      setNpcTyped('');
+      setNpcTyping(true);
+      setScreen(SCREENS.NPC_TALK);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'คุยกับ NPC ไม่ได้');
+    }
   }, []);
 
   // ── Typewriter effect ──────────────────────────────────────────────────────
@@ -1086,7 +1106,7 @@ export default function GameWorld() {
       setActiveNPC(npc.data);
       // Refresh inventory
       const inv = await getInventory();
-      setInventory(inv.data.items);
+      setInventory(inv.data.items || []);
     } catch (err) {
       toast.error(err.response?.data?.error || 'ให้ของไม่ได้');
     }
