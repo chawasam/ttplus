@@ -393,11 +393,9 @@ export default function GameIndex() {
           {/* ── VERIFY WAIT ── */}
           {step === STEP.VERIFY_WAIT && (
             <Box title="พิมพ์ Code ใน TikTok Live">
-              <p className="text-gray-400 text-sm mb-4">พิมพ์ข้อความนี้ใน comment ของ TikTok Live ใดก็ได้:</p>
-              <div className="bg-black border border-amber-600 rounded p-4 text-center mb-4">
-                <p className="text-3xl font-bold text-amber-300 tracking-widest">{verifyCode}</p>
-                <p className="text-gray-600 text-xs mt-1">หมดอายุใน 10 นาที</p>
-              </div>
+              <p className="text-gray-400 text-sm mb-4">คัดลอก code แล้วพิมพ์ใน comment ของ TikTok Live ใดก็ได้:</p>
+              <CopyCodeBox code={verifyCode} />
+
               <div className="flex items-center gap-2 text-gray-500 text-sm mb-4">
                 <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
                 รอการยืนยัน...
@@ -416,6 +414,52 @@ export default function GameIndex() {
 
       <AshenveilSettings {...settings} />
     </>
+  );
+}
+
+// ── Copy Code Box ────────────────────────────────────────────────────
+function CopyCodeBox({ code }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback สำหรับ browser ที่ไม่รองรับ clipboard API
+      try {
+        const el = document.createElement('textarea');
+        el.value = code;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {}
+    }
+  }, [code]);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={handleCopy}
+        className="w-full bg-black border border-amber-600 rounded p-4 text-center transition hover:border-amber-400 hover:bg-amber-950/10 active:scale-95 cursor-pointer group"
+        title="กดเพื่อคัดลอก"
+      >
+        <p className="text-3xl font-bold text-amber-300 tracking-widest select-all">{code}</p>
+        <p className="text-xs mt-2 transition">
+          {copied
+            ? <span className="text-green-400">✅ คัดลอกแล้ว!</span>
+            : <span className="text-gray-600 group-hover:text-amber-600">📋 กดเพื่อคัดลอก</span>
+          }
+        </p>
+        <p className="text-gray-700 text-xs mt-0.5">หมดอายุใน 10 นาที</p>
+      </button>
+    </div>
   );
 }
 
