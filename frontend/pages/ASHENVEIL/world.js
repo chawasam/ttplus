@@ -22,6 +22,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
+import { connectSocket, getSocket } from '../../lib/socket';
 
 const SCREENS = {
   WORLD:          'world',
@@ -199,6 +200,23 @@ export default function GameWorld() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) { router.replace('/ASHENVEIL'); return; }
+
+      // ── Ensure socket is connected + authenticated ──────────────────────────
+      // กรณีผู้เล่นเปิด /ASHENVEIL/world ตรงๆ โดยไม่ผ่าน dashboard
+      // socket จะยังไม่ได้ auth → ต้อง connect ก่อน quest popup ถึงจะ work
+      try {
+        const sock = getSocket();
+        if (!sock.connected) {
+          const token = await u.getIdToken();
+          connectSocket(token);
+        } else if (!sock._authenticated) {
+          // socket connected แต่อาจ auth หาย (เช่น หลัง server restart)
+          const token = await u.getIdToken();
+          sock.emit('authenticate', { token });
+        }
+      } catch {}
+      // ───────────────────────────────────────────────────────────────────────
+
       try {
         const { data } = await loadCharacter();
         if (!data.hasCharacter) { router.replace('/ASHENVEIL'); return; }
@@ -712,12 +730,7 @@ export default function GameWorld() {
   }, []);
 
   useEffect(() => {
-    // ดึง socket จาก lib/socket (same instance ที่ dashboard ใช้)
-    let sock = null;
-    try {
-      const { getSocket } = require('../../lib/socket');
-      sock = getSocket();
-    } catch { return; }
+    const sock = getSocket();
     if (!sock) return;
 
     const onProgress = (d) => showQuestPopup({ popupType: 'progress', ...d });
