@@ -1,20 +1,22 @@
 // handlers/game/account.js — Game account management + TikTok verify
 const admin = require('firebase-admin');
 
-// ===== TikTok Verify Code Storage =====
-// Map: uid → { code, tiktokUniqueId, expiresAt }
-const pendingVerifications = new Map();
+// ─────────────────────────────────────────────
+//  Verify constants
+// ─────────────────────────────────────────────
+const VERIFY_TTL_MS         = 10 * 60 * 1000;   // 10 นาที
+const VJ_CHANGE_COOLDOWN_MS = 7 * 24 * 3600_000; // 7 วัน cooldown เปลี่ยน VJ
+const RATE_WINDOW_MS        = 60 * 60 * 1000;    // หน้าต่าง rate limit = 1 ชั่วโมง
+const RATE_MAX_REQ          = 3;                  // สูงสุด 3 ครั้ง/ชั่วโมง
 
-// คำภาษาไทยสำหรับสร้าง verify code
+// คำสุ่ม 4 คำ + ตัวเลข 2 หลัก → ~2.8M combos (ปลอดภัยกว่า 3 คำ 36k)
 const WORD_POOL = [
   'ดาบ','โล่','หอก','ธนู','ไฟ','น้ำ','ดิน','ลม','แสง','เงา',
   'เสือ','มังกร','หมาป่า','อินทรี','งู','สิงห์','หมี','กา',
   'ทอง','เงิน','เหล็ก','คริสตัล','น้ำแข็ง','ฟ้า','พายุ','เปลวไฟ',
   'ป่า','ถ้ำ','ภูเขา','ทะเล','ทะเลทราย','หิมะ','หมอก','พระจันทร์',
+  'พิษ','เลือด','วิญญาณ','เวทย์','เงาดำ','แสงทอง','ฟ้าแลบ','พลังงาน',
 ];
-
-const VERIFY_TTL_MS          = 10 * 60 * 1000;  // 10 นาที
-const VJ_CHANGE_COOLDOWN_MS  = 7 * 24 * 3600_000; // 7 วัน
 const RACES = ['HUMAN', 'ELVEN', 'DWARF', 'SHADE', 'REVENANT', 'VOIDBORN', 'BEASTKIN'];
 const LOCKED_RACES = new Set(['REVENANT', 'VOIDBORN', 'BEASTKIN']);
 
@@ -72,14 +74,34 @@ const RACE_MOD = {
   BEASTKIN: { hp: 20,  atk: 4,  def: 2,  spd: 4,  mag: -3 }, // physical powerhouse
 };
 
+// ─────────────────────────────────────────────
+//  Code generator: 4 คำไทย + ตัวเลข 2 หลัก
+//  ตัวอย่าง: "ดาบไฟมังกรเงา42"  (~2.8M combos)
+// ─────────────────────────────────────────────
 function generateVerifyCode() {
-  const words = [];
   const pool  = [...WORD_POOL];
-  while (words.length < 3) {
+  const words = [];
+  while (words.length < 4) {
     const idx = Math.floor(Math.random() * pool.length);
     words.push(pool.splice(idx, 1)[0]);
   }
-  return words.join('');
+  const digits = String(Math.floor(Math.random() * 90) + 10); // 10-99
+  return words.join('') + digits;
+}
+
+// ─────────────────────────────────────────────
+//  Audit log helper
+// ─────────────────────────────────────────────
+async function writeVerifyLog(db, { uid, tiktokUniqueId, action, note = '' }) {
+  try {
+    await db.collection('game_verify_log').add({
+      uid,
+      tiktokUniqueId,
+      action,   // 'request' | 'verify_success' | 'verify_fail' | 'expired' | 'rate_limited'
+      note,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch { /* log ไม่ควรทำให้ main flow พัง */ }
 }
 
 // ===== Sync account after Google login =====
@@ -141,102 +163,199 @@ async function syncAccount(req, res) {
 }
 
 // ===== Step 1: Request TikTok verify code =====
+// ─ เก็บ pending ใน Firestore (ทุก instance เห็น)
+// ─ Rate limit 3 req/hr ต่อ uid (ป้องกัน spam)
+// ─ VJ change cooldown 7 วัน
 async function requestVerifyCode(req, res) {
   const { tiktokUniqueId } = req.body;
   if (!tiktokUniqueId || typeof tiktokUniqueId !== 'string') {
     return res.status(400).json({ error: 'กรุณาใส่ TikTok username' });
   }
 
-  const clean = tiktokUniqueId.replace(/[^a-zA-Z0-9._]/g, '').replace(/^@/, '').slice(0, 50);
+  const clean = tiktokUniqueId.replace(/[^a-zA-Z0-9._]/g, '').replace(/^@/, '').toLowerCase().slice(0, 50);
   if (!clean) return res.status(400).json({ error: 'Username ไม่ถูกต้อง' });
 
-  const db = admin.firestore();
+  const uid = req.user.uid;
+  const db  = admin.firestore();
+  const now = Date.now();
+
   try {
-    // ตรวจ cooldown การเปลี่ยน VJ
-    const myDoc = await db.collection('game_accounts').doc(req.user.uid).get();
-    if (myDoc.exists) {
-      const myData = myDoc.data();
-      if (myData.tiktokVerified && myData.tiktokUniqueId && myData.tiktokUniqueId !== clean) {
-        // ผู้เล่นต้องการเปลี่ยน VJ — ตรวจ cooldown
-        const vjChangedAt = myData.vjChangedAt?.toMillis?.() || myData.tiktokLinkedAt?.toMillis?.() || 0;
-        const elapsed     = Date.now() - vjChangedAt;
-        if (elapsed < VJ_CHANGE_COOLDOWN_MS) {
-          const daysLeft = Math.ceil((VJ_CHANGE_COOLDOWN_MS - elapsed) / 86400_000);
-          return res.status(429).json({
-            error: `การเปลี่ยน VJ มี Cooldown 7 วัน — รออีก ${daysLeft} วัน`,
-            cooldownDaysLeft: daysLeft,
-          });
-        }
+    // ── 1. อ่าน account ──
+    const accountDoc = await db.collection('game_accounts').doc(uid).get();
+    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const acct = accountDoc.data();
+
+    // ── 2. Rate limit: 3 req/hr per uid ──
+    const windowStart = acct.verifyWindowStart?.toMillis?.() || 0;
+    const withinWindow = (now - windowStart) < RATE_WINDOW_MS;
+    const attempts    = withinWindow ? (acct.verifyAttempts || 0) : 0;
+
+    if (withinWindow && attempts >= RATE_MAX_REQ) {
+      const resetInMin = Math.ceil((RATE_WINDOW_MS - (now - windowStart)) / 60_000);
+      await writeVerifyLog(db, { uid, tiktokUniqueId: clean, action: 'rate_limited' });
+      return res.status(429).json({
+        error: `ขอ verify code บ่อยเกินไป — รออีก ${resetInMin} นาที`,
+        resetInMinutes: resetInMin,
+      });
+    }
+
+    // ── 3. VJ change cooldown (ถ้ามีการเปลี่ยน VJ) ──
+    if (acct.tiktokVerified && acct.tiktokUniqueId && acct.tiktokUniqueId !== clean) {
+      const vjChangedAt = acct.vjChangedAt?.toMillis?.() || acct.tiktokLinkedAt?.toMillis?.() || 0;
+      const elapsed     = now - vjChangedAt;
+      if (elapsed < VJ_CHANGE_COOLDOWN_MS) {
+        const daysLeft = Math.ceil((VJ_CHANGE_COOLDOWN_MS - elapsed) / 86400_000);
+        return res.status(429).json({
+          error: `การเปลี่ยน VJ มี Cooldown 7 วัน — รออีก ${daysLeft} วัน`,
+          cooldownDaysLeft: daysLeft,
+        });
       }
     }
 
-    // ตรวจว่า username นี้มีคนใช้แล้วหรือยัง
+    // ── 4. ตรวจ username ถูกใช้โดย account อื่นแล้วหรือยัง ──
     const existing = await db.collection('game_accounts')
       .where('tiktokUniqueId', '==', clean)
       .where('tiktokVerified', '==', true)
       .limit(1).get();
 
-    if (!existing.empty && existing.docs[0].id !== req.user.uid) {
+    if (!existing.empty && existing.docs[0].id !== uid) {
       return res.status(400).json({ error: `@${clean} ถูกใช้งานโดย account อื่นแล้ว` });
     }
+
+    // ── 5. สร้าง code + เขียน Firestore (overwrite ทุกครั้ง) ──
+    const code      = generateVerifyCode();
+    const expiresAt = new Date(now + VERIFY_TTL_MS);
+
+    // doc key = uid → 1 pending per uid, overwrite ถ้าขอซ้ำ
+    await db.collection('game_verify_pending').doc(uid).set({
+      uid,
+      code,
+      tiktokUniqueId: clean,
+      expiresAt:      admin.firestore.Timestamp.fromDate(expiresAt),
+      used:           false,
+      createdAt:      admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // อัปเดต rate limit counter ใน game_accounts
+    await db.collection('game_accounts').doc(uid).update({
+      verifyAttempts:  withinWindow ? admin.firestore.FieldValue.increment(1) : 1,
+      verifyWindowStart: withinWindow
+        ? (acct.verifyWindowStart || admin.firestore.FieldValue.serverTimestamp())
+        : admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await writeVerifyLog(db, { uid, tiktokUniqueId: clean, action: 'request', note: `attempt ${attempts + 1}/${RATE_MAX_REQ}` });
+    console.log(`[Game/Verify] uid=${uid} tiktok=@${clean} code=${code} attempt=${attempts + 1}`);
+
+    return res.json({ code, tiktokUniqueId: clean, expiresIn: VERIFY_TTL_MS });
+
   } catch (err) {
-    console.error('[Game/Account] requestVerifyCode check:', err.message);
+    console.error('[Game/Account] requestVerifyCode:', err.message);
+    return res.status(500).json({ error: 'Server error' });
   }
-
-  const code      = generateVerifyCode();
-  const expiresAt = Date.now() + VERIFY_TTL_MS;
-
-  pendingVerifications.set(req.user.uid, { code, tiktokUniqueId: clean, expiresAt });
-
-  // ล้าง expired entries
-  for (const [k, v] of pendingVerifications.entries()) {
-    if (Date.now() > v.expiresAt) pendingVerifications.delete(k);
-  }
-
-  console.log(`[Game/Verify] uid=${req.user.uid} tiktok=@${clean} code=${code}`);
-  return res.json({ code, tiktokUniqueId: clean, expiresIn: VERIFY_TTL_MS });
 }
 
 // ===== Called from tiktok.js chat handler =====
-// ตรวจว่า chat message มี verify code ตรงกับ pending verification ของใครไหม
+// ─ Query Firestore แทน Map scan → O(1) per uniqueId
+// ─ ใช้ runTransaction → atomic: verify ได้ครั้งเดียวเท่านั้น แม้ chat flood
 async function checkChatVerify(uniqueId, comment) {
-  const db = admin.firestore();
+  if (!uniqueId || !comment) return null;
 
-  for (const [uid, pending] of pendingVerifications.entries()) {
-    if (Date.now() > pending.expiresAt) {
-      pendingVerifications.delete(uid);
+  const db        = admin.firestore();
+  const lowerUId  = uniqueId.toLowerCase();
+  const now       = Date.now();
+
+  // ── 1. หา pending doc ของ tiktokUniqueId นี้ ──
+  // doc key = uid, query by tiktokUniqueId field
+  let pendingSnap;
+  try {
+    pendingSnap = await db.collection('game_verify_pending')
+      .where('tiktokUniqueId', '==', lowerUId)
+      .where('used', '==', false)
+      .limit(3) // กันกรณีผิดปกติ แต่ปกติ 1 คน 1 pending
+      .get();
+  } catch (err) {
+    console.error('[Game/Verify] query error:', err.message);
+    return null;
+  }
+
+  if (pendingSnap.empty) return null;
+
+  // ── 2. ลอง match code จาก comment ──
+  for (const pendingDoc of pendingSnap.docs) {
+    const pending = pendingDoc.data();
+
+    // ตรวจ expired (non-transaction check ก่อนเพื่อ skip เร็ว)
+    const expiresMs = pending.expiresAt?.toMillis?.() || 0;
+    if (now > expiresMs) {
+      // ล้าง expired doc
+      pendingDoc.ref.delete().catch(() => {});
+      await writeVerifyLog(db, { uid: pending.uid, tiktokUniqueId: lowerUId, action: 'expired' });
       continue;
     }
-    if (pending.tiktokUniqueId.toLowerCase() !== uniqueId.toLowerCase()) continue;
+
+    // ตรวจ code ใน comment
     if (!comment.includes(pending.code)) continue;
 
-    // Match! ยืนยันสำเร็จ
-    pendingVerifications.delete(uid);
-    console.log(`[Game/Verify] ✅ uid=${uid} @${uniqueId} verified!`);
-
+    // ── 3. runTransaction: atomic check + mark used + update account ──
+    let result = null;
     try {
-      const existingDoc = await db.collection('game_accounts').doc(uid).get();
-      const isVJChange  = existingDoc.exists && existingDoc.data().tiktokVerified &&
-                          existingDoc.data().tiktokUniqueId !== pending.tiktokUniqueId;
+      await db.runTransaction(async (tx) => {
+        // Re-read ใน transaction เพื่อป้องกัน race condition
+        const freshPending = await tx.get(pendingDoc.ref);
+        if (!freshPending.exists) throw Object.assign(new Error('not_found'), { code: 'not_found' });
 
-      const updatePayload = {
-        tiktokUniqueId: pending.tiktokUniqueId,
-        tiktokVerified: true,
-        tiktokLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      if (isVJChange) {
-        // บันทึกเวลาเปลี่ยน VJ สำหรับ cooldown
-        updatePayload.vjChangedAt = admin.firestore.FieldValue.serverTimestamp();
-        console.log(`[Game/Verify] VJ changed: uid=${uid} old=@${existingDoc.data().tiktokUniqueId} new=@${pending.tiktokUniqueId}`);
+        const fp = freshPending.data();
+        if (fp.used) throw Object.assign(new Error('already_used'), { code: 'already_used' });
+        if ((fp.expiresAt?.toMillis?.() || 0) < Date.now()) throw Object.assign(new Error('expired'), { code: 'expired' });
+
+        // ── อ่าน account ──
+        const accountRef = db.collection('game_accounts').doc(fp.uid);
+        const accountDoc = await tx.get(accountRef);
+        if (!accountDoc.exists) throw Object.assign(new Error('account_not_found'), { code: 'account_not_found' });
+
+        const acct = accountDoc.data();
+        const isVJChange = acct.tiktokVerified && acct.tiktokUniqueId && acct.tiktokUniqueId !== fp.tiktokUniqueId;
+
+        // ── Atomic writes ──
+        tx.update(pendingDoc.ref, { used: true });
+
+        const accountUpdate = {
+          tiktokUniqueId: fp.tiktokUniqueId,
+          tiktokVerified: true,
+          tiktokLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (isVJChange) {
+          accountUpdate.vjChangedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+        tx.update(accountRef, accountUpdate);
+
+        result = { uid: fp.uid, tiktokUniqueId: fp.tiktokUniqueId, isVJChange };
+      });
+    } catch (txErr) {
+      const code = txErr.code || '';
+      if (code === 'already_used') {
+        console.log(`[Game/Verify] dup attempt @${uniqueId} — already verified`);
+      } else if (code === 'expired') {
+        pendingDoc.ref.delete().catch(() => {});
+      } else {
+        console.error('[Game/Verify] transaction error:', txErr.message);
       }
-
-      await db.collection('game_accounts').doc(uid).update(updatePayload);
-    } catch (err) {
-      console.error('[Game/Verify] Firestore update error:', err.message);
+      continue;
     }
 
-    return { uid, tiktokUniqueId: pending.tiktokUniqueId };
+    if (result) {
+      console.log(`[Game/Verify] ✅ uid=${result.uid} @${uniqueId} verified! isVJChange=${result.isVJChange}`);
+      await writeVerifyLog(db, {
+        uid:             result.uid,
+        tiktokUniqueId:  lowerUId,
+        action:          'verify_success',
+        note:            result.isVJChange ? 'vj_change' : 'first_verify',
+      });
+      return result;
+    }
   }
+
   return null;
 }
 
@@ -491,5 +610,6 @@ module.exports = {
   syncAccount, requestVerifyCode, getVerifyStatus,
   createCharacter, loadCharacter,
   getUnlockedRaces,
-  checkChatVerify, pendingVerifications,
+  checkChatVerify,
+  // pendingVerifications ถูกย้ายไป Firestore แล้ว — ไม่ export อีกต่อไป
 };
