@@ -14,7 +14,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getSkills, unlockSkill,
          getCharacterProfile, allocateStat,
          getEnhanceInfo, enhanceItem,
-         getWeeklyQuests, claimWeeklyReward } from '../../lib/gameApi';
+         getWeeklyQuests, claimWeeklyReward,
+         getAchievements } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -37,6 +38,7 @@ const SCREENS = {
   CHARACTER:      'character',
   ENHANCE:        'enhance',
   WEEKLY_QUESTS:  'weekly_quests',
+  ACHIEVEMENTS:   'achievements',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -130,6 +132,10 @@ export default function GameWorld() {
   // ── Weekly Quests ──
   const [weeklyData,     setWeeklyData]     = useState(null);   // { weekKey, quests, allCompleted, bonusClaimed, bonus }
   const [weeklyBadge,    setWeeklyBadge]    = useState(false);
+
+  // ── Achievements ──
+  const [achData,        setAchData]        = useState(null);   // { achievements, unlockedCount, totalCount }
+  const [achLoading,     setAchLoading]     = useState(false);
 
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
@@ -414,6 +420,24 @@ export default function GameWorld() {
       toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
     }
   }, [loadWeeklyQuests, addLog]);
+
+  // ===== Achievements =====
+  const loadAchievements = useCallback(async () => {
+    setAchLoading(true);
+    try {
+      const { data } = await getAchievements();
+      setAchData(data);
+    } catch (err) {
+      toast.error('โหลด Achievements ไม่ได้');
+    } finally {
+      setAchLoading(false);
+    }
+  }, []);
+
+  const openAchievements = useCallback(async () => {
+    setScreen(SCREENS.ACHIEVEMENTS);
+    await loadAchievements();
+  }, [loadAchievements]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -1038,6 +1062,7 @@ export default function GameWorld() {
                       📅 Weekly
                       {weeklyBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />}
                     </button>
+                    <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
                     <Btn onClick={openSettings}     disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
@@ -1849,6 +1874,83 @@ export default function GameWorld() {
                           💰 {weeklyData.bonus?.gold}G · ⭐ {weeklyData.bonus?.xp} XP · 📦 ของพิเศษ
                         </p>
                       </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ACHIEVEMENTS */}
+              {screen === SCREENS.ACHIEVEMENTS && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">
+                      [ 🏆 Achievements — ปลดล็อคแล้ว{' '}
+                      <span className="text-amber-400">{achData?.unlockedCount ?? 0}</span>
+                      /{achData?.totalCount ?? 0} ]
+                    </p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {achLoading ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : !achData ? null : (
+                    <>
+                      {/* Group by category */}
+                      {[
+                        { key: 'Combat',      label: '⚔️ การต่อสู้' },
+                        { key: 'Exploration', label: '🌿 การสำรวจ' },
+                        { key: 'Dungeon',     label: '🏰 Dungeon' },
+                        { key: 'Progression', label: '📈 ความก้าวหน้า' },
+                        { key: 'Enhancement', label: '🔨 Enhancement' },
+                        { key: 'Social',      label: '💝 สังคม' },
+                        { key: 'Death',       label: '💀 ความตาย' },
+                        { key: 'Quests',      label: '📋 ภารกิจ' },
+                      ].map(cat => {
+                        const catAchs = (achData.achievements || []).filter(a => a.category === cat.key);
+                        if (!catAchs.length) return null;
+                        const catUnlocked = catAchs.filter(a => a.unlocked).length;
+                        return (
+                          <div key={cat.key}>
+                            <p className="text-gray-700 text-xs mb-1">
+                              {cat.label}{' '}
+                              <span className="text-gray-800">({catUnlocked}/{catAchs.length})</span>
+                            </p>
+                            {catAchs.map(ach => (
+                              <div key={ach.id} className={`border rounded p-2 mb-1 text-xs ${
+                                ach.unlocked
+                                  ? 'border-amber-800 bg-amber-900/10'
+                                  : 'border-gray-900 opacity-50'
+                              }`}>
+                                <div className="flex items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`font-bold ${ach.unlocked ? 'text-amber-300' : 'text-gray-500'}`}>
+                                      {ach.unlocked ? '✅ ' : '🔒 '}
+                                      {ach.name}
+                                    </p>
+                                    <p className="text-gray-600 mt-0.5 leading-relaxed">{ach.desc}</p>
+                                    {/* Progress bar (show if not unlocked) */}
+                                    {!ach.unlocked && ach.target > 0 && (
+                                      <>
+                                        <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
+                                          <div className="h-0.5 bg-amber-800 rounded transition-all"
+                                            style={{ width: `${Math.min(100, ((ach.progress || 0) / ach.target) * 100)}%` }} />
+                                        </div>
+                                        <p className="text-gray-700 mt-0.5">{ach.progress || 0}/{ach.target}</p>
+                                      </>
+                                    )}
+                                    {/* Reward info */}
+                                    <div className="flex gap-2 mt-0.5 text-yellow-900 text-xs">
+                                      {ach.reward?.gold > 0 && <span>💰 {ach.reward.gold}G</span>}
+                                      {ach.reward?.xp   > 0 && <span>⭐ {ach.reward.xp} XP</span>}
+                                      {ach.reward?.title && <span className="text-amber-800">🎖️ "{ach.reward.title}"</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </>
                   )}
                 </div>

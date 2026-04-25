@@ -19,6 +19,7 @@ const skills       = require('../handlers/game/skills');
 const character    = require('../handlers/game/character');
 const enhance      = require('../handlers/game/enhance');
 const weeklyQ      = require('../handlers/game/weeklyQuests');
+const ach          = require('../handlers/game/achievements');
 
 // ===== Game-specific rate limiters =====
 const gameLimiter = rateLimit({
@@ -103,6 +104,9 @@ router.post('/enhance',             enhance.enhanceItem);
 // ----- Weekly Quests -----
 router.get ('/quests/weekly',        weeklyQ.getWeeklyQuests);
 router.post('/quests/weekly/claim',  weeklyQ.claimWeeklyReward);
+
+// ----- Achievements -----
+router.get ('/achievements',         ach.getAchievements);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);

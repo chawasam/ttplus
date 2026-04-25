@@ -4,6 +4,7 @@
 
 const admin = require('firebase-admin');
 const { getItem } = require('../../data/items');
+const { checkAchievements } = require('./achievements');
 
 // Enhancement recipe per tier
 // { gold, materials: [{ itemId, qty }], successRate }
@@ -150,6 +151,8 @@ async function enhanceItem(req, res) {
     if (success) {
       await itemDoc.ref.update({ enhancement: nextLevel });
       const label = `${def?.name || item.itemId} +${nextLevel}`;
+      // Achievement check on enhancement success
+      checkAchievements(uid, 'enhance', nextLevel).catch(() => {});
       return res.json({
         success: true,
         result:  'success',

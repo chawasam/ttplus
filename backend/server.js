@@ -257,6 +257,10 @@ app.get('/api/stats', verifyToken, async (req, res) => {
 const gameRouter = require('./routes/game');
 app.use('/api/game', gameRouter);
 
+// ===== Overlay Route (public, no auth) =====
+const { getOverlayState } = require('./handlers/game/overlay');
+app.get('/api/overlay/:tiktokId', getOverlayState);
+
 // ===== Error Handlers =====
 app.use((err, _req, res, _next) => {
   console.error('[Server] Unhandled:', err.message);

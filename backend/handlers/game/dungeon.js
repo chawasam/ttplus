@@ -7,6 +7,7 @@ const { addGold } = require('./currency');
 const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
+const { checkAchievements, pushGameEvent } = require('./achievements');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -418,10 +419,16 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     // Update char (XP/level)
     await db.collection('game_characters').doc(run.charId).update(charUpdate);
 
-    // Track daily + weekly + story/side quest step
+    // Track daily + weekly + story/side + achievements
     trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
     trackWeeklyProgress(uid, 'dungeon_clear', 1).catch(() => {});
     trackStoryStep(uid, 'dungeon_clear', { dungeonId: run.dungeonId }).catch(() => {});
+    checkAchievements(uid, 'dungeon_clear', 1).catch(() => {});
+    if (charUpdate.level) {
+      checkAchievements(uid, 'level_up', charUpdate.level).catch(() => {});
+      pushGameEvent(uid, { type: 'level_up', msg: `🎉 Level Up! → Lv.${charUpdate.level}`, char: uid }).catch(() => {});
+    }
+    pushGameEvent(uid, { type: 'dungeon_clear', msg: `🏆 เคลียร์ ${dungeon.nameTH}!`, char: uid }).catch(() => {});
 
     return res.json({
       cleared: true,
@@ -526,10 +533,16 @@ async function onDungeonBattleWin(uid, runId) {
         currentRoom: dungeon.totalRooms,
       });
 
-      // Track daily + weekly + story/side quest step
+      // Track daily + weekly + story/side + achievements
       trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
       trackWeeklyProgress(uid, 'dungeon_clear', 1).catch(() => {});
       trackStoryStep(uid, 'dungeon_clear', { dungeonId: run.dungeonId }).catch(() => {});
+      checkAchievements(uid, 'dungeon_clear', 1).catch(() => {});
+      if (newLevel) {
+        checkAchievements(uid, 'level_up', newLevel).catch(() => {});
+        pushGameEvent(uid, { type: 'level_up', msg: `🎉 Level Up! → Lv.${newLevel}`, char: uid }).catch(() => {});
+      }
+      pushGameEvent(uid, { type: 'dungeon_clear', msg: `🏆 เคลียร์ ${getDungeon(run.dungeonId)?.nameTH || 'Dungeon'}!`, char: uid }).catch(() => {});
 
       return {
         cleared: true,

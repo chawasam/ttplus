@@ -3,6 +3,7 @@ const admin = require('firebase-admin');
 const { WEEKLY_QUESTS, WEEKLY_BONUS, getWeekKey, buildFreshWeeklyQuests } = require('../../data/weekly_quests');
 const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
+const { checkAchievements } = require('./achievements');
 
 async function loadOrInitWeeklyDoc(uid, db) {
   const ref  = db.collection('game_weekly_quests').doc(uid);
@@ -97,6 +98,13 @@ async function claimWeeklyReward(req, res) {
       q.id === questId ? { ...q, claimed: true } : q
     );
     await ref.update({ quests: updatedQuests });
+
+    // Track weekly achievement counter
+    const db2 = admin.firestore();
+    await db2.collection('game_achievements').doc(uid).set(
+      { weeklyTotal: admin.firestore.FieldValue.increment(1) }, { merge: true }
+    );
+    checkAchievements(uid, 'weekly_claim', 1).catch(() => {});
 
     return res.json({ success: true, rewards });
   } catch (err) {

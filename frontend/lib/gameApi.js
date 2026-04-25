@@ -67,6 +67,9 @@ export const enhanceItem      = (instanceId)     => api.post('/api/game/enhance'
 export const getWeeklyQuests  = ()               => api.get('/api/game/quests/weekly');
 export const claimWeeklyReward = (questId)       => api.post('/api/game/quests/weekly/claim', { questId });
 
+// ===== Achievements =====
+export const getAchievements  = ()               => api.get('/api/game/achievements');
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

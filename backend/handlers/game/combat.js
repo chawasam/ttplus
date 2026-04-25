@@ -8,6 +8,7 @@ const { trackQuestProgress }    = require('./quests');
 const { trackStoryStep }        = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill }              = require('../../data/skills');
+const { checkAchievements, pushGameEvent } = require('./achievements');
 
 // Active battles in memory (battleId → state)
 const activeBattles = new Map();
@@ -191,6 +192,13 @@ async function processAction(req, res) {
       monsterId: state.enemy.monsterId,
       zone:      state.zone, // null inside dungeons, zone string in world
     }).catch(() => {});
+    // Achievements + overlay event
+    checkAchievements(uid, 'kill', 1).catch(() => {});
+    if (rewards.levelUp) {
+      checkAchievements(uid, 'level_up', rewards.levelUp).catch(() => {});
+      pushGameEvent(uid, { type: 'level_up', msg: `🎉 Level Up! → Lv.${rewards.levelUp}`, char: uid }).catch(() => {});
+    }
+    pushGameEvent(uid, { type: 'kill', msg: `⚔️ สังหาร ${state.enemy.emoji} ${state.enemy.name}!`, char: uid }).catch(() => {});
 
     // Advance dungeon room if in a dungeon run
     let dungeonResult = null;
@@ -284,6 +292,8 @@ async function processAction(req, res) {
 
     state.result = 'defeat';
     activeBattles.delete(battleId);
+    // Achievement check for death
+    checkAchievements(uid, 'death', 1).catch(() => {});
     return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
   }
 

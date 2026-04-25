@@ -5,6 +5,7 @@ const { getItem, rollItem } = require('../../data/items');
 const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
+const { checkAchievements }   = require('./achievements');
 
 const GIFT_DAILY_LIMIT = 3; // ครั้งต่อ NPC ต่อวัน
 const DECAY_PER_DAY    = 1; // affection ลดต่อวันที่ไม่ได้คุย
@@ -134,9 +135,14 @@ async function giveGift(req, res) {
 
     await batch.commit();
 
-    // Track daily quest + weekly quest
+    // Track daily quest + weekly quest + achievements
     trackQuestProgress(uid, 'npc_gift', 1).catch(() => {});
     trackWeeklyProgress(uid, 'npc_gift', 1).catch(() => {});
+    checkAchievements(uid, 'npc_gift', 1).catch(() => {});
+    // Check bond achievement
+    if (newAff >= 100 && !npcAff.bondReceived) {
+      checkAchievements(uid, 'npc_bond', 1).catch(() => {});
+    }
 
     // Reaction message
     const reactionMsg = {

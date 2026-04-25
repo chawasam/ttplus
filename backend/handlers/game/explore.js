@@ -8,6 +8,7 @@ const STAMINA_COST = 20; // ต่อ exploration action (ใหม่: max 200,
 const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
+const { checkAchievements }   = require('./achievements');
 
 // ===== Explore action =====
 async function explore(req, res) {
@@ -103,6 +104,7 @@ async function explore(req, res) {
     trackStoryStep(uid, 'explore', { zone }).catch(() => {});
     // Track weekly quest progress
     trackWeeklyProgress(uid, 'explore', 1).catch(() => {});
+    checkAchievements(uid, 'explore', 1).catch(() => {});
 
     return res.json(response);
   } catch (err) {
