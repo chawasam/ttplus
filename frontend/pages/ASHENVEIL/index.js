@@ -464,22 +464,36 @@ function CopyCodeBox({ code }) {
 }
 
 // ── Character Card (shown when characterId exists) ──────────────────
+const DELETE_COUNTDOWN = 5; // วินาทีที่ต้องรอก่อนยืนยันครั้งสุดท้าย
+
 function CharacterCard({ account, onEnter, onDelete }) {
-  const [deleteStep, setDeleteStep] = useState(0); // 0=hidden 1=confirm1 2=confirm2 3=confirm3
+  const [deleteStep, setDeleteStep] = useState(0); // 0=hidden 1=confirm1 2=confirm2(countdown)
   const [deleting,   setDeleting]   = useState(false);
+  const [countdown,  setCountdown]  = useState(0);  // countdown ก่อน execute
+
+  // เริ่ม countdown เมื่อถึง step สุดท้าย
+  useEffect(() => {
+    if (deleteStep !== 2) { setCountdown(0); return; }
+    setCountdown(DELETE_COUNTDOWN);
+    const iv = setInterval(() => {
+      setCountdown(c => {
+        if (c <= 1) { clearInterval(iv); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [deleteStep]);
 
   const CONFIRM_MSGS = [
-    'คุณต้องการลบตัวจริงๆใช่ไหม? 1/3',
-    'คุณต้องการลบตัวจริงๆใช่ไหม? 2/3',
-    'คุณต้องการลบตัวจริงๆใช่ไหม? 3/3',
+    'แน่ใจหรือ? ข้อมูลทั้งหมดจะหายถาวร',
+    'นี่คือการยืนยันครั้งสุดท้าย — ลบแล้วไม่มีทางคืนได้',
   ];
 
   const handleDeleteClick = async () => {
-    if (deleteStep < 2) {
-      setDeleteStep(s => s + 1);
-      return;
-    }
-    // step === 2 → this is the 3rd click → execute
+    if (deleteStep < 1) { setDeleteStep(1); return; }
+    if (deleteStep === 1) { setDeleteStep(2); return; }
+    // step === 2 + countdown หมดแล้ว → execute
+    if (countdown > 0) return;
     setDeleting(true);
     try {
       await onDelete();
@@ -537,6 +551,22 @@ function CharacterCard({ account, onEnter, onDelete }) {
             <p className="text-red-300 text-xs text-center">
               {CONFIRM_MSGS[deleteStep - 1]}
             </p>
+
+            {/* Countdown bar — แสดงเฉพาะ step สุดท้าย */}
+            {deleteStep === 2 && countdown > 0 && (
+              <div className="space-y-1">
+                <div className="w-full bg-gray-800 rounded-full h-1 overflow-hidden">
+                  <div
+                    className="bg-red-600 h-1 rounded-full transition-all duration-1000 ease-linear"
+                    style={{ width: `${(countdown / DELETE_COUNTDOWN) * 100}%` }}
+                  />
+                </div>
+                <p className="text-gray-600 text-[10px] text-center">
+                  รอ {countdown} วินาที...
+                </p>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={() => setDeleteStep(0)}
@@ -546,9 +576,16 @@ function CharacterCard({ account, onEnter, onDelete }) {
               </button>
               <button
                 onClick={handleDeleteClick}
-                disabled={deleting}
-                className="flex-1 py-1.5 border border-red-800 text-red-400 hover:bg-red-900/20 transition text-xs rounded disabled:opacity-40 font-bold">
-                {deleting ? 'กำลังลบ...' : `ยืนยัน (${deleteStep}/3)`}
+                disabled={deleting || (deleteStep === 2 && countdown > 0)}
+                className="flex-1 py-1.5 border border-red-800 text-red-400 hover:bg-red-900/20 transition text-xs rounded disabled:opacity-40 font-bold"
+                style={deleteStep === 2 && countdown > 0 ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}>
+                {deleting
+                  ? 'กำลังลบ...'
+                  : deleteStep === 2 && countdown > 0
+                    ? `รอ ${countdown}s...`
+                    : deleteStep === 2
+                      ? '🗑️ ลบถาวร'
+                      : `ยืนยัน (${deleteStep}/2)`}
               </button>
             </div>
           </div>
