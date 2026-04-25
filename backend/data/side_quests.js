@@ -309,6 +309,275 @@ const SIDE_QUESTS = [
   },
 
   // ══════════════════════════════════════════
+  //  CATEGORY: TOWN — เพิ่มเติม
+  // ══════════════════════════════════════════
+
+  {
+    id:        'SSQ_004',
+    category:  'town',
+    name:      'ซ่อมแซมบ้านเรือน',
+    desc:      'The Resonance ทำให้บ้านเรือนหลายหลังพังเสียหาย Pita และชาวบ้านช่วยกันซ่อมแต่ขาดวัสดุ ช่วยหามาจากป่าได้ไหม?',
+    giverNpc:  'pita',
+    prereqs:   [],
+    minLevel:  1,
+    steps: [
+      {
+        id:    'gather_wood',
+        type:  'explore',
+        zone:  'forest_path',
+        count: 3,
+        hint:  'หาวัสดุในทางป่า 3 ครั้ง — ไม้และหินจำนวนมาก',
+      },
+      {
+        id:    'gather_stone',
+        type:  'explore',
+        zone:  'dark_cave',
+        count: 2,
+        hint:  'หาหินจากถ้ำอีก 2 ครั้ง',
+      },
+      {
+        id:    'return_pita_repair',
+        type:  'talk',
+        target: 'pita',
+        count: 1,
+        hint:  'ส่งวัสดุให้ Pita',
+      },
+    ],
+    rewards: { xp: 100, gold: 150, items: ['health_potion'] },
+    completionText: 'Pita รับวัสดุด้วยรอยยิ้มอิ่มเอม "ชาวบ้านจะได้อยู่อาศัยได้แล้ว ขอบคุณมาก คุณใจดีจริงๆ"',
+  },
+
+  {
+    id:        'SSQ_005',
+    category:  'town',
+    name:      'บันทึกที่หายไป',
+    desc:      'Elder Maren ทำบันทึกการวิจัยเก่าหายระหว่าง The Resonance เขาเชื่อว่าตกอยู่แถวชานเมืองตอนที่วิ่งหนีออกมา',
+    giverNpc:  'elder_maren',
+    prereqs:   [],
+    minLevel:  1,
+    steps: [
+      {
+        id:    'search_notes',
+        type:  'explore',
+        zone:  'town_outskirts',
+        count: 4,
+        hint:  'ค้นหาบันทึกในชานเมือง 4 ครั้ง',
+      },
+      {
+        id:    'return_notes',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'นำบันทึกกลับมาให้ Elder Maren',
+      },
+    ],
+    rewards: { xp: 80, gold: 120 },
+    completionText: '"เจอแล้ว! นี่คือ..." Elder Maren เปิดบันทึกพลางพึมพำ "บันทึก The Resonance ครั้งก่อนเมื่อ 200 ปีก่อน... มันเคยเกิดขึ้นมาแล้ว"',
+  },
+
+  // ══════════════════════════════════════════
+  //  CATEGORY: BOUNTY — เพิ่มเติม (ระดับสูง)
+  // ══════════════════════════════════════════
+
+  {
+    id:        'SSQ_104',
+    category:  'bounty',
+    name:      'ล่า Golem ในซากเมือง',
+    desc:      'Golem ยามรักษาการณ์โบราณในซากเมืองเริ่มโจมตีนักสำรวจที่เข้าไป พวกมันถูก Void ควบคุมและสั่งการผิดพลาด ต้องกำจัดก่อนจะมีคนเสียชีวิต',
+    giverNpc:  'dakan',
+    prereqs:   ['SSQ_101'],
+    minLevel:  10,
+    steps: [
+      {
+        id:    'travel_ruins_bounty',
+        type:  'travel',
+        zone:  'city_ruins',
+        count: 1,
+        hint:  'เดินทางไปซากเมือง',
+      },
+      {
+        id:    'kill_golem',
+        type:  'kill',
+        monsterId: null,
+        zone:  'city_ruins',
+        count: 15,
+        hint:  'กำจัด Golem และสิ่งมีชีวิต Void ในซากเมือง 15 ตัว',
+      },
+      {
+        id:    'report_dakan_golem',
+        type:  'talk',
+        target: 'dakan',
+        count: 1,
+        hint:  'รายงาน Dakan ว่าเสร็จสิ้น',
+      },
+    ],
+    rewards: { xp: 800, gold: 1000, items: ['void_crystal', 'health_potion'] },
+    completionText: 'Dakan พยักหน้าหนัก "เขาไม่ได้ถูกทำลายตาม เขาแค่... สับสน น่าเศร้า แต่ต้องทำ ขอบใจ"',
+  },
+
+  {
+    id:        'SSQ_105',
+    category:  'bounty',
+    name:      'พิษจากหนองสาปแช่ง',
+    desc:      'สัตว์ประหลาดจากหนองสาปแช่งเริ่มข้ามมาโจมตีพื้นที่ใกล้เคียง พิษของพวกมันทำให้ชาวบ้านล้มป่วย ต้องจัดการแหล่งที่มาก่อน',
+    giverNpc:  'elder_maren',
+    prereqs:   ['SSQ_102'],
+    minLevel:  18,
+    steps: [
+      {
+        id:    'travel_marsh_bounty',
+        type:  'travel',
+        zone:  'cursed_marshlands',
+        count: 1,
+        hint:  'เดินทางไปหนองสาปแช่ง',
+      },
+      {
+        id:    'kill_marsh_creatures',
+        type:  'kill',
+        monsterId: null,
+        zone:  'cursed_marshlands',
+        count: 20,
+        hint:  'สังหารสัตว์ประหลาดในหนอง 20 ตัว — ทำลายแหล่งสร้างพิษ',
+      },
+      {
+        id:    'report_marsh_clear',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'รายงาน Elder Maren ว่าเคลียร์แล้ว',
+      },
+    ],
+    rewards: { xp: 2000, gold: 2500, items: ['void_crystal', 'void_crystal', 'antidote'] },
+    completionText: 'Elder Maren โล่งใจ "ชาวบ้านจะฟื้นตัวได้แล้ว The Resonance ยังคงทำให้สัตว์ป่าผิดปกติอยู่ คงต้องระวังกันต่อไป"',
+  },
+
+  {
+    id:        'SSQ_106',
+    category:  'bounty',
+    name:      'Void Entity ระดับสูง',
+    desc:      'สิ่งมีชีวิตที่มาจาก Void โดยตรงปรากฏตัวใน Void Frontier พวกมันไม่ใช่สัตว์ธรรมดา — เป็นชิ้นส่วนของ The Void เอง',
+    giverNpc:  'elder_maren',
+    prereqs:   ['SSQ_105'],
+    minLevel:  28,
+    steps: [
+      {
+        id:    'travel_void_bounty',
+        type:  'travel',
+        zone:  'void_frontier',
+        count: 1,
+        hint:  'เดินทางไป Void Frontier',
+      },
+      {
+        id:    'kill_void_entity',
+        type:  'kill',
+        monsterId: null,
+        zone:  'void_frontier',
+        count: 25,
+        hint:  'ทำลาย Void Entity 25 ชิ้น — ระวัง พวกมันไม่มีรูปร่างชัดเจน',
+      },
+      {
+        id:    'report_void_entity',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'รายงาน Elder Maren ผลลัพธ์',
+      },
+    ],
+    rewards: { xp: 5000, gold: 6000, items: ['void_crystal', 'void_crystal', 'void_crystal', 'ancient_scroll'] },
+    completionText: 'Elder Maren จดบันทึกอย่างรีบเร่ง "สิ่งที่คุณพบ... มันคือ Pure Void Fragment ถ้า Vorath รวบรวมมันได้... เราต้องรีบ"',
+  },
+
+  // ══════════════════════════════════════════
+  //  CATEGORY: EXPLORATION — เพิ่มเติม
+  // ══════════════════════════════════════════
+
+  {
+    id:        'SSQ_203',
+    category:  'exploration',
+    name:      'สำรวจ Void Frontier',
+    desc:      'ยังไม่มีใครทำแผนที่ Void Frontier อย่างละเอียด ทั้งที่มันอาจเป็นสมรภูมิสำคัญในอนาคต Elder Maren ต้องการข้อมูลนี้',
+    giverNpc:  'elder_maren',
+    prereqs:   ['SSQ_201'],
+    minLevel:  28,
+    steps: [
+      {
+        id:    'travel_void_map',
+        type:  'travel',
+        zone:  'void_frontier',
+        count: 1,
+        hint:  'เดินทางไป Void Frontier',
+      },
+      {
+        id:    'map_void',
+        type:  'explore',
+        zone:  'void_frontier',
+        count: 8,
+        hint:  'สำรวจ Void Frontier อย่างละเอียด 8 ครั้ง',
+      },
+      {
+        id:    'kill_for_samples',
+        type:  'kill',
+        monsterId: null,
+        zone:  'void_frontier',
+        count: 10,
+        hint:  'เก็บตัวอย่างจากสิ่งมีชีวิต Void 10 ตัว',
+      },
+      {
+        id:    'report_void_map',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'ส่งข้อมูลให้ Elder Maren',
+      },
+    ],
+    rewards: { xp: 3500, gold: 4000, items: ['void_crystal', 'ancient_scroll', 'ancient_scroll'] },
+    completionText: 'Elder Maren กางแผนที่ที่ได้ข้อมูลใหม่ "สิ่งที่คุณพบมันน่ากลัว... แต่มีประโยชน์มาก ขอบใจ"',
+  },
+
+  {
+    id:        'SSQ_204',
+    category:  'exploration',
+    name:      'สายลับในเงา',
+    desc:      'Dakan ต้องการสายงานข่าวกรองใน Shadowfell Depths ก่อนที่จะส่งใครเข้าไปจริงๆ ต้องการคนที่กล้าไปลาดตระเวณก่อน',
+    giverNpc:  'dakan',
+    prereqs:   ['SSQ_203'],
+    minLevel:  38,
+    steps: [
+      {
+        id:    'travel_shadow_scout',
+        type:  'travel',
+        zone:  'shadowfell_depths',
+        count: 1,
+        hint:  'ลงไปลาดตระเวณ Shadowfell Depths',
+      },
+      {
+        id:    'scout_shadow',
+        type:  'explore',
+        zone:  'shadowfell_depths',
+        count: 6,
+        hint:  'สำรวจ Shadowfell อย่างระมัดระวัง 6 ครั้ง',
+      },
+      {
+        id:    'test_strength_shadow',
+        type:  'kill',
+        monsterId: null,
+        zone:  'shadowfell_depths',
+        count: 15,
+        hint:  'ทดสอบความแข็งแกร่งของศัตรู — สังหาร 15 ตัว',
+      },
+      {
+        id:    'report_dakan_scout',
+        type:  'talk',
+        target: 'dakan',
+        count: 1,
+        hint:  'รายงาน Dakan ข้อมูลที่ได้',
+      },
+    ],
+    rewards: { xp: 8000, gold: 9000, items: ['void_crystal', 'void_crystal', 'ancient_scroll', 'health_potion'] },
+    completionText: 'Dakan จ้องแผนที่ที่คุณวาดมาอย่างจริงจัง "ดีมาก ด้วยข้อมูลนี้... เราพอมีโอกาสเอาชนะได้"',
+  },
+
+  // ══════════════════════════════════════════
   //  CATEGORY: PERSONAL — เรื่องส่วนตัว NPC
   //  (ต้องการ minAffection — ต้องสร้างความสัมพันธ์ก่อน)
   // ══════════════════════════════════════════

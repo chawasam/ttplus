@@ -137,10 +137,17 @@ async function getQuestLog(req, res) {
         };
       });
 
-    // Build completed side quests
+    // Build completed side quests (include completionText for journal feel)
     const completedSideQuests = SIDE_QUESTS
       .filter(q => completedSideIds.includes(q.id))
-      .map(q => ({ id: q.id, category: q.category, name: q.name, status: 'completed', rewards: q.rewards }));
+      .map(q => ({
+        id:             q.id,
+        category:       q.category,
+        name:           q.name,
+        status:         'completed',
+        rewards:        q.rewards,
+        completionText: q.completionText || null,
+      }));
 
     // Build available (not yet accepted) side quests — pass affectionMap for personal quest gating
     const availableSideQuests = getAvailableSideQuests(completedSideIds, activeSideIds, charLevel, affectionMap)
@@ -152,14 +159,38 @@ async function getQuestLog(req, res) {
         status:       'available',
         giverNpc:     q.giverNpc,
         minAffection: q.minAffection || null,
+        minLevel:     q.minLevel || 1,
         rewards:      q.rewards,
       }));
 
+    // Build locked personal quests (affection not met yet) — show progress to encourage
+    const lockedPersonal = SIDE_QUESTS.filter(q => {
+      if (!q.minAffection) return false;
+      if (completedSideIds.includes(q.id)) return false;
+      if (activeSideIds.includes(q.id)) return false;
+      // prereqs met but affection not yet enough
+      if (q.prereqs.some(p => !completedSideIds.includes(p))) return false;
+      if ((q.minLevel || 1) > charLevel) return false;
+      const current = affectionMap[q.minAffection.npcId] || 0;
+      return current < q.minAffection.amount; // locked only due to affection
+    }).map(q => ({
+      id:           q.id,
+      category:     q.category,
+      name:         q.name,
+      desc:         q.desc,
+      giverNpc:     q.giverNpc,
+      minAffection: q.minAffection,
+      currentAffection: affectionMap[q.minAffection.npcId] || 0,
+      status:       'locked',
+      rewards:      q.rewards,
+    }));
+
     return res.json({
-      story:     storyQuests,
+      story:           storyQuests,
       sideActive:      activeSideQuests,
       sideCompleted:   completedSideQuests,
       sideAvailable:   availableSideQuests,
+      lockedPersonal,
     });
   } catch (err) {
     console.error('[QuestEngine] getQuestLog:', err.message);

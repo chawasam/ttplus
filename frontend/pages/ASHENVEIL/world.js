@@ -2085,72 +2085,122 @@ export default function GameWorld() {
                     </div>
                   ) : (
                     /* ── SIDE QUESTS TAB ── */
-                    <div className="space-y-2">
-                      {/* Active side quests */}
-                      {questLog.sideActive.length > 0 && (
-                        <div>
-                          <p className="text-gray-400 text-xs mb-1">[ กำลังดำเนินการ ]</p>
-                          {questLog.sideActive.map(q => (
-                            <div key={q.id} className="border border-amber-800 rounded p-2 mb-1 text-xs bg-amber-900/10">
-                              <p className="text-amber-300 font-bold">{q.name}
-                                <span className="text-gray-400 font-normal ml-1">[{q.category}]</span>
-                              </p>
-                              <p className="text-gray-400 leading-relaxed mt-0.5">{q.currentStep.hint}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <div className="flex-1 h-0.5 bg-gray-800 rounded">
-                                  <div className="h-0.5 bg-amber-600 rounded transition-all"
-                                    style={{ width: `${Math.min(100, (q.currentStep.progress / q.currentStep.count) * 100)}%` }} />
-                                </div>
-                                <span className="text-gray-400 shrink-0">
-                                  {q.currentStep.progress}/{q.currentStep.count}
-                                </span>
-                              </div>
-                              <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    (() => {
+                      const CAT = {
+                        town:        { emoji: '🏘️', label: 'เมือง',     color: 'text-green-400',  border: 'border-green-900',  bg: 'bg-green-900/10'  },
+                        bounty:      { emoji: '⚔️', label: 'ล่ารางวัล', color: 'text-red-400',    border: 'border-red-900',    bg: 'bg-red-900/10'    },
+                        exploration: { emoji: '🗺️', label: 'สำรวจ',     color: 'text-blue-400',   border: 'border-blue-900',   bg: 'bg-blue-900/10'   },
+                        personal:    { emoji: '❤️', label: 'NPC story', color: 'text-pink-400',   border: 'border-pink-900',   bg: 'bg-pink-900/10'   },
+                      };
+                      const catBadge = (cat) => {
+                        const c = CAT[cat] || { emoji: '📜', label: cat, color: 'text-gray-400', border: '', bg: '' };
+                        return <span className={`${c.color} text-xs`}>{c.emoji} {c.label}</span>;
+                      };
+                      return (
+                      <div className="space-y-3">
 
-                      {/* Available side quests */}
-                      {questLog.sideAvailable.length > 0 && (
-                        <div>
-                          <p className="text-gray-400 text-xs mb-1">[ รับได้เลย ]</p>
-                          {questLog.sideAvailable.map(q => (
-                            <div key={q.id} className="border border-gray-700 rounded p-2 mb-1 text-xs">
-                              <div className="flex items-start gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-amber-200 font-bold">{q.name}
-                                    <span className="text-gray-400 font-normal ml-1">[{q.category}]</span>
+                        {/* Active side quests */}
+                        {questLog.sideActive.length > 0 && (
+                          <div>
+                            <p className="text-amber-500 text-xs font-bold mb-1">▶ กำลังดำเนินการ</p>
+                            {questLog.sideActive.map(q => (
+                              <div key={q.id} className={`border rounded p-2 mb-1 text-xs ${(CAT[q.category]||{}).border||'border-amber-800'} ${(CAT[q.category]||{}).bg||'bg-amber-900/10'}`}>
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  {catBadge(q.category)}
+                                  <span className="text-amber-300 font-bold ml-1">{q.name}</span>
+                                </div>
+                                <p className="text-gray-400 leading-relaxed">{q.currentStep.hint}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="flex-1 h-1 bg-gray-800 rounded-full">
+                                    <div className="h-1 bg-amber-500 rounded-full transition-all"
+                                      style={{ width: `${Math.min(100, (q.currentStep.progress / (q.currentStep.count||1)) * 100)}%` }} />
+                                  </div>
+                                  <span className="text-gray-400 shrink-0 text-xs">{q.currentStep.progress}/{q.currentStep.count}</span>
+                                </div>
+                                <p className="text-gray-500 text-xs mt-0.5">ขั้น {q.currentStep.stepIndex + 1}/{q.currentStep.totalSteps}</p>
+                                <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Available side quests */}
+                        {questLog.sideAvailable.length > 0 && (
+                          <div>
+                            <p className="text-gray-400 text-xs font-bold mb-1">📋 รับได้เลย</p>
+                            {questLog.sideAvailable.map(q => (
+                              <div key={q.id} className={`border rounded p-2 mb-1 text-xs ${(CAT[q.category]||{}).border||'border-gray-700'}`}>
+                                <div className="flex items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+                                      {catBadge(q.category)}
+                                      <span className="text-amber-200 font-bold">{q.name}</span>
+                                      {q.giverNpc && <span className="text-gray-500">· {q.giverNpc}</span>}
+                                    </div>
+                                    <p className="text-gray-300 leading-relaxed">{q.desc}</p>
+                                    <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}</p>
+                                  </div>
+                                  <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
+                                    className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                                    รับ
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Locked personal quests — show affection progress to hint */}
+                        {(questLog.lockedPersonal||[]).length > 0 && (
+                          <div>
+                            <p className="text-pink-800 text-xs font-bold mb-1">🔒 ต้องสร้างความสัมพันธ์ก่อน</p>
+                            {(questLog.lockedPersonal||[]).map(q => (
+                              <div key={q.id} className="border border-pink-950 rounded p-2 mb-1 text-xs opacity-70">
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <span className="text-pink-600">❤️ NPC story</span>
+                                  <span className="text-gray-500 font-bold ml-1">{q.name}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="flex-1 h-1 bg-gray-900 rounded-full">
+                                    <div className="h-1 bg-pink-800 rounded-full transition-all"
+                                      style={{ width: `${Math.min(100, (q.currentAffection / q.minAffection.amount) * 100)}%` }} />
+                                  </div>
+                                  <span className="text-pink-700 shrink-0">{q.currentAffection}/{q.minAffection.amount} ❤️ กับ {q.giverNpc}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Completed side quests */}
+                        {questLog.sideCompleted.length > 0 && (
+                          <div>
+                            <p className="text-gray-600 text-xs font-bold mb-1">✅ เสร็จแล้ว</p>
+                            {questLog.sideCompleted.map(q => (
+                              <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-50">
+                                <div className="flex items-center gap-1">
+                                  {catBadge(q.category)}
+                                  <span className="text-gray-500 ml-1">✅ {q.name}</span>
+                                </div>
+                                {q.completionText && (
+                                  <p className="text-gray-600 italic leading-relaxed mt-0.5">
+                                    "{q.completionText.substring(0, 80)}{q.completionText.length > 80 ? '...' : ''}"
                                   </p>
-                                  <p className="text-gray-300 leading-relaxed mt-0.5">{q.desc}</p>
-                                  <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
-                                </div>
-                                <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
-                                  className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
-                                  รับ
-                                </button>
+                                )}
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        )}
 
-                      {/* Completed side quests */}
-                      {questLog.sideCompleted.length > 0 && (
-                        <div>
-                          <p className="text-gray-400 text-xs mb-1">[ เสร็จแล้ว ]</p>
-                          {questLog.sideCompleted.map(q => (
-                            <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-40">
-                              <p className="text-gray-500">✅ {q.name}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 && questLog.sideCompleted.length === 0 && (
-                        <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้</p>
-                      )}
-                    </div>
+                        {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 &&
+                         questLog.sideCompleted.length === 0 && (questLog.lockedPersonal||[]).length === 0 && (
+                          <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้<br/>
+                            <span className="text-gray-600">คุยกับ NPC และสำรวจโลก Ashenveil เพื่อ unlock ภารกิจ</span>
+                          </p>
+                        )}
+                      </div>
+                      );
+                    })()
                   )}
                 </div>
               )}
