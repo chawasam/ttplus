@@ -68,6 +68,10 @@ const io = new Server(server, {
 
 const userSockets = new Map();
 
+// ── Shared socket emitter (ให้ handlers emit ถึง user โดยไม่ต้องรับ io ตรงๆ) ──
+const { setIO } = require('./lib/emitter');
+setIO(io, userSockets);
+
 // ===== Health check — ต้องมาก่อนทุก middleware =====
 app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 

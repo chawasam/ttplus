@@ -169,6 +169,10 @@ export default function GameWorld() {
   const [leaderboardTab,   setLeaderboardTab]   = useState('level'); // 'level' | 'kills' | 'achievements'
   const [leaderboardLoad,  setLeaderboardLoad]  = useState(false);
 
+  // ── Quest Popup (real-time progress via socket) ──
+  const [questPopup,      setQuestPopup]       = useState(null);  // { type, questName, hint, progress, total, rewards, ... }
+  const questPopupTimer   = useRef(null);
+
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
   const [settingsTiktok, setSettingsTiktok] = useState('');     // input username
@@ -707,6 +711,42 @@ export default function GameWorld() {
     };
   }, []);
 
+  // ── Quest real-time notifications (socket events from quest_engine) ──
+  const showQuestPopup = useCallback((data) => {
+    if (questPopupTimer.current) clearTimeout(questPopupTimer.current);
+    setQuestPopup(data);
+    const dur = data.popupType === 'complete' ? 6000 : 3500;
+    questPopupTimer.current = setTimeout(() => setQuestPopup(null), dur);
+  }, []);
+
+  useEffect(() => {
+    // ดึง socket จาก lib/socket (same instance ที่ dashboard ใช้)
+    let sock = null;
+    try {
+      const { getSocket } = require('../../lib/socket');
+      sock = getSocket();
+    } catch { return; }
+    if (!sock) return;
+
+    const onProgress = (d) => showQuestPopup({ popupType: 'progress', ...d });
+    const onStep     = (d) => showQuestPopup({ popupType: 'step',     ...d });
+    const onComplete = (d) => showQuestPopup({ popupType: 'complete', ...d });
+    const onStarted  = (d) => showQuestPopup({ popupType: 'started',  ...d });
+
+    sock.on('quest_progress', onProgress);
+    sock.on('quest_step',     onStep);
+    sock.on('quest_complete', onComplete);
+    sock.on('quest_started',  onStarted);
+
+    return () => {
+      sock.off('quest_progress', onProgress);
+      sock.off('quest_step',     onStep);
+      sock.off('quest_complete', onComplete);
+      sock.off('quest_started',  onStarted);
+      if (questPopupTimer.current) clearTimeout(questPopupTimer.current);
+    };
+  }, [showQuestPopup]);
+
   const toggleBgm = useCallback(() => {
     setBgmEnabled(prev => {
       const next = !prev;
@@ -1103,6 +1143,101 @@ export default function GameWorld() {
   return (
     <>
       <Head><title>Ashenveil — {char?.name || 'Game'}</title></Head>
+
+      {/* ── QUEST NOTIFICATION POPUP ── */}
+      {questPopup && (
+        <div className="fixed top-4 right-4 z-[60] max-w-xs w-full pointer-events-none"
+          style={{ fontFamily: 'system-ui, sans-serif', animation: 'slideInRight 0.3s ease' }}>
+          <style>{`
+            @keyframes slideInRight {
+              from { opacity: 0; transform: translateX(24px); }
+              to   { opacity: 1; transform: translateX(0); }
+            }
+            @keyframes shimmer {
+              0%   { background-position: -200% center; }
+              100% { background-position:  200% center; }
+            }
+          `}</style>
+
+          {questPopup.popupType === 'complete' ? (
+            /* ── Quest Complete ── */
+            <div className="rounded-xl border border-amber-500 bg-gray-950 shadow-2xl overflow-hidden">
+              <div className="bg-gradient-to-r from-amber-900/60 to-yellow-900/40 px-4 py-3">
+                <p className="text-amber-300 text-xs font-bold tracking-widest uppercase mb-0.5">
+                  {questPopup.type === 'story' ? '📖 เนื้อเรื่อง' : '📋 ภารกิจ'}
+                </p>
+                <p className="text-amber-100 text-sm font-bold">✅ สำเร็จ! {questPopup.questName}</p>
+              </div>
+              <div className="px-4 py-2 space-y-0.5">
+                {questPopup.rewards?.xp  > 0 && <p className="text-purple-400 text-xs">⭐ +{questPopup.rewards.xp} XP</p>}
+                {questPopup.rewards?.gold > 0 && <p className="text-yellow-400 text-xs">💰 +{questPopup.rewards.gold} Gold</p>}
+                {questPopup.nextQuest && (
+                  <p className="text-sky-400 text-xs mt-1">▶ ต่อไป: {questPopup.nextQuest}</p>
+                )}
+              </div>
+            </div>
+
+          ) : questPopup.popupType === 'started' ? (
+            /* ── Quest Started ── */
+            <div className="rounded-xl border border-sky-700 bg-gray-950 shadow-xl overflow-hidden">
+              <div className="bg-sky-900/40 px-4 py-2">
+                <p className="text-sky-400 text-xs font-bold tracking-widest uppercase mb-0.5">
+                  {questPopup.type === 'story' ? '📖 เนื้อเรื่อง' : '📋 ภารกิจ'} — ใหม่!
+                </p>
+                <p className="text-sky-100 text-sm font-bold">🆕 {questPopup.questName}</p>
+              </div>
+              {questPopup.hint && (
+                <p className="px-4 py-2 text-gray-400 text-xs">{questPopup.hint}</p>
+              )}
+            </div>
+
+          ) : questPopup.popupType === 'step' ? (
+            /* ── Next Step Unlocked ── */
+            <div className="rounded-xl border border-green-800 bg-gray-950 shadow-xl overflow-hidden">
+              <div className="bg-green-900/30 px-4 py-2">
+                <p className="text-green-400 text-xs font-bold tracking-widest uppercase mb-0.5">
+                  {questPopup.type === 'story' ? '📖 เนื้อเรื่อง' : '📋 ภารกิจ'} — ขั้นตอนถัดไป
+                </p>
+                <p className="text-green-200 text-sm font-bold">
+                  {questPopup.questName}
+                  <span className="text-green-500 font-normal text-xs ml-2">
+                    ({questPopup.stepIndex + 1}/{questPopup.stepTotal})
+                  </span>
+                </p>
+              </div>
+              {questPopup.hint && (
+                <p className="px-4 py-2 text-gray-300 text-xs">{questPopup.hint}</p>
+              )}
+            </div>
+
+          ) : (
+            /* ── Progress Update ── */
+            <div className="rounded-xl border border-gray-700 bg-gray-950/95 shadow-lg overflow-hidden">
+              <div className="px-4 py-2">
+                <p className="text-gray-500 text-xs mb-0.5">
+                  {questPopup.type === 'story' ? '📖 เนื้อเรื่อง' : '📋 ภารกิจ'}
+                </p>
+                <p className="text-gray-200 text-xs font-semibold truncate">{questPopup.questName}</p>
+                {questPopup.hint && (
+                  <p className="text-gray-400 text-xs mt-0.5 truncate">{questPopup.hint}</p>
+                )}
+                {questPopup.total > 1 && (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>ความคืบหน้า</span>
+                      <span className="text-amber-400 font-bold">{questPopup.progress}/{questPopup.total}</span>
+                    </div>
+                    <div className="w-full bg-gray-800 rounded-full h-1.5">
+                      <div className="bg-amber-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${(questPopup.progress / questPopup.total) * 100}%` }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── LOGIN BONUS POPUP ── */}
       {showLoginBonus && loginBonusData && (

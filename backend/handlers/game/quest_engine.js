@@ -4,6 +4,7 @@ const { STORY_QUESTS, getStoryQuest } = require('../../data/story_quests');
 const { SIDE_QUESTS, getSideQuest, getAvailableSideQuests } = require('../../data/side_quests');
 const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
+const { emitToUser } = require('../../lib/emitter');
 
 // ─── Firestore Collection ─────────────────────────────────────────
 // game_quest_state/{uid}  →
@@ -242,7 +243,14 @@ async function trackStoryStep(uid, eventType, eventData = {}) {
         // Advance to next step
         const nextStepIdx = active.stepIndex + 1;
         if (nextStepIdx >= quest.steps.length) {
-          // Quest complete!
+          // Quest complete! — emit ก่อน completeQuestInternal (เพื่อให้ reward แสดงหลัง)
+          emitToUser(uid, 'quest_complete', {
+            questId:   quest.id,
+            questName: quest.name,
+            type:      'story',
+            rewards:   quest.rewards || {},
+            nextQuest: STORY_QUESTS.find(q => q.prereqs?.includes(quest.id) && q.autoStart)?.name || null,
+          });
           await completeQuestInternal(uid, quest, 'story', db);
           // Update in-memory state so auto-start sees it
           newState.storyCompleted.push(quest.id);
@@ -255,12 +263,39 @@ async function trackStoryStep(uid, eventType, eventData = {}) {
             const prereqsMet = next.prereqs.every(p => newState.storyCompleted.includes(p));
             if (prereqsMet) {
               newState.storyActive[next.id] = { stepIndex: 0, stepProgress: 0 };
+              // แจ้ง quest ใหม่เริ่ม
+              emitToUser(uid, 'quest_started', {
+                questId:   next.id,
+                questName: next.name,
+                type:      'story',
+                firstStep: next.steps[0]?.hint || '',
+              });
             }
           }
         } else {
           active.stepIndex    = nextStepIdx;
           active.stepProgress = 0;
+          // แจ้ง step ถัดไป
+          const nextStep = quest.steps[nextStepIdx];
+          emitToUser(uid, 'quest_step', {
+            questId:   quest.id,
+            questName: quest.name,
+            type:      'story',
+            hint:      nextStep?.hint || '',
+            stepIndex: nextStepIdx,
+            stepTotal: quest.steps.length,
+          });
         }
+      } else {
+        // Progress update (ยังไม่ครบ count)
+        emitToUser(uid, 'quest_progress', {
+          questId:   quest.id,
+          questName: quest.name,
+          type:      'story',
+          hint:      step.hint || '',
+          progress:  active.stepProgress,
+          total:     step.count,
+        });
       }
     }
 
@@ -281,13 +316,38 @@ async function trackStoryStep(uid, eventType, eventData = {}) {
       if (active.stepProgress >= step.count) {
         const nextStepIdx = active.stepIndex + 1;
         if (nextStepIdx >= quest.steps.length) {
+          emitToUser(uid, 'quest_complete', {
+            questId:   quest.id,
+            questName: quest.name,
+            type:      'side',
+            rewards:   quest.rewards || {},
+            nextQuest: null,
+          });
           await completeQuestInternal(uid, quest, 'side', db);
           newState.sideCompleted.push(quest.id);
           delete newState.sideActive[quest.id];
         } else {
           active.stepIndex    = nextStepIdx;
           active.stepProgress = 0;
+          const nextStep = quest.steps[nextStepIdx];
+          emitToUser(uid, 'quest_step', {
+            questId:   quest.id,
+            questName: quest.name,
+            type:      'side',
+            hint:      nextStep?.hint || '',
+            stepIndex: nextStepIdx,
+            stepTotal: quest.steps.length,
+          });
         }
+      } else {
+        emitToUser(uid, 'quest_progress', {
+          questId:   quest.id,
+          questName: quest.name,
+          type:      'side',
+          hint:      step.hint || '',
+          progress:  active.stepProgress,
+          total:     step.count,
+        });
       }
     }
 
