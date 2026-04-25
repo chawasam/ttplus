@@ -115,6 +115,9 @@ export default function GameWorld() {
   const [shopItems,  setShopItems]  = useState([]);
   const [npcs,       setNPCs]       = useState([]);
   const [activeNPC,  setActiveNPC]  = useState(null);
+  const [npcLineIdx,  setNpcLineIdx]  = useState(0);   // typewriter: which line we're on
+  const [npcTyped,    setNpcTyped]    = useState('');   // typewriter: chars revealed so far
+  const [npcTyping,   setNpcTyping]   = useState(false); // typewriter: animation running
   const [busy,          setBusy]         = useState(false);
   const [atmosphere,    setAtmosphere]   = useState('');
   const [dungeonList,   setDungeonList]  = useState([]);
@@ -987,8 +990,26 @@ export default function GameWorld() {
   const handleTalkNPC = useCallback(async (npcId) => {
     const { data } = await talkNPC(npcId);
     setActiveNPC(data);
+    setNpcLineIdx(0);
+    setNpcTyped('');
+    setNpcTyping(true);
     setScreen(SCREENS.NPC_TALK);
   }, []);
+
+  // ── Typewriter effect ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!npcTyping || !activeNPC) return;
+    const lines = activeNPC.lines || [activeNPC.dialog || ''];
+    const currentLine = lines[npcLineIdx] || '';
+    if (npcTyped.length >= currentLine.length) {
+      setNpcTyping(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setNpcTyped(currentLine.slice(0, npcTyped.length + 1));
+    }, 28); // ~35 chars/sec
+    return () => clearTimeout(timer);
+  }, [npcTyping, npcTyped, npcLineIdx, activeNPC]);
 
   const handleGiveGift = useCallback(async (npcId, instanceId, itemName) => {
     try {
@@ -2561,31 +2582,102 @@ export default function GameWorld() {
               )}
 
               {/* NPC TALK */}
-              {screen === SCREENS.NPC_TALK && activeNPC && (
-                <div>
-                  <div className="text-xs text-gray-400 mb-2">
-                    {activeNPC.emoji} <span className="text-amber-400">{activeNPC.name}</span>
-                    {' '}❤️ {activeNPC.affection}/100
-                    {' '}· ให้ของได้ {activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้ง
-                  </div>
-                  <p className="text-gray-300 text-sm italic mb-3">"{activeNPC.dialog}"</p>
-                  <p className="text-gray-400 text-xs mb-2">เลือก item จาก inventory เพื่อให้ของขวัญ:</p>
-                  <div className="max-h-28 overflow-y-auto mb-2">
-                    {inventory.filter(i => i.type === 'MATERIAL' || i.type === 'JUNK' || i.type === 'CONSUMABLE').map(item => (
-                      <button key={item.instanceId}
-                        onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
-                        className="w-full flex items-center gap-2 py-1 text-xs border-b border-gray-900 hover:text-amber-300 text-left">
-                        <span>{item.emoji}</span>
-                        <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
-                      </button>
-                    ))}
-                    {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
-                      <p className="text-gray-500 text-xs">ไม่มี item ที่จะให้ได้</p>
+              {screen === SCREENS.NPC_TALK && activeNPC && (() => {
+                const npcLines = activeNPC.lines || [activeNPC.dialog || ''];
+                const totalLines = npcLines.length;
+                const isLast = npcLineIdx >= totalLines - 1;
+                const currentLineFull = npcLines[npcLineIdx] || '';
+                const isDoneTyping = !npcTyping && npcTyped.length >= currentLineFull.length;
+
+                // Advance to next line or skip typewriter
+                const handleAdvance = () => {
+                  if (npcTyping) {
+                    // Skip — show full line instantly
+                    setNpcTyped(currentLineFull);
+                    setNpcTyping(false);
+                  } else if (!isLast) {
+                    const next = npcLineIdx + 1;
+                    setNpcLineIdx(next);
+                    setNpcTyped('');
+                    setNpcTyping(true);
+                  }
+                };
+
+                return (
+                  <div>
+                    {/* NPC header */}
+                    <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+                      <span>
+                        {activeNPC.emoji} <span className="text-amber-400 font-semibold">{activeNPC.name}</span>
+                        {activeNPC.title && <span className="text-gray-600 ml-1">— {activeNPC.title}</span>}
+                      </span>
+                      <span>❤️ {activeNPC.affection}/100</span>
+                    </div>
+
+                    {/* Quest badge */}
+                    {activeNPC.isQuestDialog && activeNPC.questContext && (
+                      <div className="mb-2 px-2 py-0.5 rounded text-[10px] inline-block"
+                        style={{ background: '#92400e22', border: '1px solid #92400e', color: '#fbbf24' }}>
+                        📜 {activeNPC.questContext.questName}
+                      </div>
                     )}
+
+                    {/* Dialog box — typewriter */}
+                    <div
+                      className="relative rounded-lg border p-3 mb-3 cursor-pointer select-none"
+                      style={{ borderColor: activeNPC.isQuestDialog ? '#92400e' : '#374151',
+                               background: activeNPC.isQuestDialog ? '#0f0a0022' : '#0a0a0a',
+                               minHeight: '72px' }}
+                      onClick={handleAdvance}
+                    >
+                      {/* Past lines (dimmed) */}
+                      {npcLineIdx > 0 && npcLines.slice(0, npcLineIdx).map((l, i) => (
+                        <p key={i} className="text-gray-600 text-xs italic mb-1">"{l}"</p>
+                      ))}
+                      {/* Current line */}
+                      <p className="text-gray-200 text-sm italic leading-relaxed">
+                        "{npcTyped}<span className="opacity-60 animate-pulse">{npcTyping ? '▌' : ''}</span>"
+                      </p>
+                      {/* Line counter + advance hint */}
+                      <div className="flex justify-between items-center mt-2">
+                        {totalLines > 1 && (
+                          <span className="text-gray-700 text-[10px]">{npcLineIdx + 1}/{totalLines}</span>
+                        )}
+                        {isDoneTyping && !isLast && (
+                          <span className="text-amber-700 text-[10px] animate-pulse ml-auto">แตะเพื่ออ่านต่อ ▶</span>
+                        )}
+                        {isDoneTyping && isLast && (
+                          <span className="text-gray-700 text-[10px] ml-auto">— จบบทสนทนา —</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Gift section — แสดงเมื่ออ่านจบ หรือ NPC ไม่ใช่ quest dialog */}
+                    {(isDoneTyping && isLast) || !activeNPC.isQuestDialog ? (
+                      <>
+                        <p className="text-gray-400 text-xs mb-2">
+                          ให้ของขวัญได้ {activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้ง
+                        </p>
+                        <div className="max-h-28 overflow-y-auto mb-2">
+                          {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).map(item => (
+                            <button key={item.instanceId}
+                              onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
+                              className="w-full flex items-center gap-2 py-1 text-xs border-b border-gray-900 hover:text-amber-300 text-left">
+                              <span>{item.emoji}</span>
+                              <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
+                            </button>
+                          ))}
+                          {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
+                            <p className="text-gray-500 text-xs">ไม่มี item ที่จะให้ได้</p>
+                          )}
+                        </div>
+                      </>
+                    ) : null}
+
+                    <Btn onClick={() => setScreen(SCREENS.NPC)}>← กลับ</Btn>
                   </div>
-                  <Btn onClick={() => setScreen(SCREENS.NPC)}>← กลับ</Btn>
-                </div>
-              )}
+                );
+              })()}
 
             </div>
           </div>
