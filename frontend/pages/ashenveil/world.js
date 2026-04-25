@@ -985,11 +985,19 @@ export default function GameWorld() {
 
   // ===== Inventory =====
   const loadInventory = useCallback(async () => {
-    const { data } = await getInventory();
-    setInventory(data.items);
-    setEquipment(data.equipment);
-    setScreen(SCREENS.INVENTORY);
-  }, []);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await getInventory();
+      setInventory(data.items || []);
+      setEquipment(data.equipment || {});
+      setScreen(SCREENS.INVENTORY);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'โหลด Inventory ไม่ได้');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
 
   const handleEquip = useCallback(async (instanceId, slot) => {
     try {
