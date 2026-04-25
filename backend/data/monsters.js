@@ -364,8 +364,6 @@ const MONSTERS = {
     flee_chance: 0.5,
   },
 
-};
-
   // ===== ZONE: shadowfell_depths (Lv 38-55) =====
   shadow_wraith: {
     monsterId: 'shadow_wraith', name: 'Shadow Wraith', emoji: '👻',
