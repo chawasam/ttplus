@@ -207,7 +207,9 @@ export default function GameIndex() {
         setRaceProgress(ur.data.progress   || {});
       } catch {}
     } catch (err) {
-      toast.error(err.response?.data?.error || 'ลบไม่สำเร็จ กรุณาลองใหม่');
+      const status  = err.response?.status;
+      const detail  = err.response?.data?.error || err.response?.data || err.message || 'no response';
+      toast.error(`ลบไม่สำเร็จ [${status ?? 'ERR'}]: ${detail}`);
     }
   }, []);
 
