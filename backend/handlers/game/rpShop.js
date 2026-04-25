@@ -201,10 +201,20 @@ async function buyRPItem(req, res) {
 async function executeClassChange(req, res) {
   const { newClass } = req.body;
   const uid = req.user.uid;
-  const VALID_CLASSES = ['warrior', 'mage', 'archer'];
-  if (!VALID_CLASSES.includes(newClass)) {
-    return res.status(400).json({ error: 'Class ไม่ถูกต้อง (warrior / mage / archer)' });
+  // All 21 valid classes (must match CLASSES_BY_RACE in account.js, lowercase)
+  const VALID_CLASSES = [
+    'warrior','rogue','cleric',           // HUMAN
+    'ranger','mage','bard',               // ELVEN
+    'berserker','engineer','runesmith',   // DWARF
+    'assassin','hexblade','phantom',      // SHADE
+    'deathknight','necromancer','gravecaller', // REVENANT
+    'voidwalker','rifter','soulseer',     // VOIDBORN
+    'wildguard','tracker','shaman',       // BEASTKIN
+  ];
+  if (!VALID_CLASSES.includes(newClass?.toLowerCase())) {
+    return res.status(400).json({ error: `Class "${newClass}" ไม่ถูกต้อง` });
   }
+  const newClass_normalized = newClass.toLowerCase();
 
   const db = admin.firestore();
   try {
@@ -222,13 +232,13 @@ async function executeClassChange(req, res) {
 
     // Change class — reset skills (keep stat points)
     await db.collection('game_characters').doc(charId).update({
-      class:          newClass,
+      class:          newClass_normalized.toUpperCase(), // เก็บ uppercase ให้ตรงกับ account.js
       unlockedSkills: [],   // Skills ต้อง unlock ใหม่
     });
     await accountRef.update({ pendingClassChange: admin.firestore.FieldValue.delete() });
 
-    console.log(`[RPShop] 🔄 uid=${uid} changed class to ${newClass}`);
-    return res.json({ success: true, newClass, msg: `เปลี่ยน Class เป็น ${newClass} สำเร็จ! Skills ต้อง unlock ใหม่` });
+    console.log(`[RPShop] 🔄 uid=${uid} changed class to ${newClass_normalized}`);
+    return res.json({ success: true, newClass: newClass_normalized, msg: `เปลี่ยน Class เป็น ${newClass_normalized} สำเร็จ! Skills ต้อง unlock ใหม่` });
   } catch (err) {
     console.error('[RPShop] executeClassChange:', err.message);
     return res.status(500).json({ error: 'Server error' });

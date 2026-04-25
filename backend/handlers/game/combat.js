@@ -156,12 +156,28 @@ async function startBattle(req, res) {
     // Passive skill bonuses applied at battle start
     const className = (char.class || '').toLowerCase();
     let passiveAtk = char.atk, passiveDef = char.def, passiveCrit = 0.1, passiveMpRegen = 0;
-    if (className === 'warrior')   passiveDef    = Math.floor(char.def * 1.1);  // Iron Will: DEF +10%
-    if (className === 'mage')      passiveMpRegen = 5;                           // Mana Flow: +5 MP/turn
-    if (className === 'archer')    passiveCrit   = 0.15;                         // Keen Senses: Crit +5%
-    if (className === 'paladin')   passiveMpRegen = 0;                           // Holy Blessing: HP regen handled in turn
-    if (className === 'berserker') passiveAtk    = char.atk;                     // Bloodthirst: checked per turn
-    if (className === 'rogue')     passiveCrit   = 0.15;                         // Shadow Veil: flee handled separately
+    // Iron Will (warrior): DEF +10%
+    if (className === 'warrior')     passiveDef     = Math.floor(char.def * 1.1);
+    // Overclock (engineer): DEF +15%
+    if (className === 'engineer')    passiveDef     = Math.floor(char.def * 1.15);
+    // Rune Forge (runesmith): ATK +10%
+    if (className === 'runesmith')   passiveAtk     = Math.floor(char.atk * 1.1);
+    // Mana Flow (mage): +5 MP/turn
+    if (className === 'mage')        passiveMpRegen = 5;
+    // Inspiring Melody (bard): +5 MP/turn + ATK +5%
+    if (className === 'bard')      { passiveMpRegen = 5; passiveAtk = Math.floor(char.atk * 1.05); }
+    // Forest Stride (ranger): Crit +5%
+    if (className === 'ranger')      passiveCrit    = 0.15;
+    // True Sight (soulseer): Crit +8%
+    if (className === 'soulseer')    passiveCrit    = 0.18;
+    // Lethal Focus (assassin): Crit +10%
+    if (className === 'assassin')    passiveCrit    = 0.20;
+    // Shadow Veil (rogue): flee 90% — handled at flee action
+    // Bloodthirst (berserker): ATK +20% at <50% HP — handled per turn
+    // Divine Grace (cleric): +8 HP/turn — handled per turn
+    // Undying (deathknight): +15 HP/turn — handled per turn
+    // Elemental Harmony (shaman): +5 HP +5 MP/turn — handled per turn
+    // Others: handled per turn or at specific events
 
     const battleId = `battle_${uid}_${Date.now()}`;
     const state = {
@@ -357,17 +373,33 @@ async function processAction(req, res) {
     state.player.mp = Math.min(state.player.mpMax, state.player.mp + state.player.mpRegen);
   }
 
-  // Paladin passive: Holy Blessing — ฟื้นฟู 8 HP ทุกเทิร์น
-  if (state.charClass === 'paladin' && state.player.hp > 0) {
-    const regenAmt = 8;
-    state.player.hp = Math.min(state.player.hpMax, state.player.hp + regenAmt);
-    log.push(`💚 Holy Blessing ฟื้นฟู ${regenAmt} HP`);
+  // ── Per-turn passive effects ─────────────────────────────────────────────
+  const cls = state.charClass;
+
+  // Cleric: Divine Grace — +8 HP/turn
+  if (cls === 'cleric' && state.player.hp > 0) {
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + 8);
+    log.push('💚 Divine Grace ฟื้นฟู 8 HP');
+  }
+  // Deathknight: Undying — +15 HP/turn
+  if (cls === 'deathknight' && state.player.hp > 0) {
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + 15);
+    log.push('💀 Undying ฟื้นฟู 15 HP');
+  }
+  // Shaman: Elemental Harmony — +5 HP +5 MP/turn
+  if (cls === 'shaman' && state.player.hp > 0) {
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + 5);
+    state.player.mp = Math.min(state.player.mpMax, state.player.mp + 5);
+    log.push('🌊 Elemental Harmony ฟื้นฟู 5 HP + 5 MP');
+  }
+  // Bard: Inspiring Melody — +5 MP/turn (on top of mana_flow handled in mpRegen)
+  if (cls === 'bard') {
+    state.player.mp = Math.min(state.player.mpMax, state.player.mp + 5);
   }
 
-  // Berserker passive: Bloodthirst — ATK +20% เมื่อ HP < 50%
-  if (state.charClass === 'berserker' && !state.berserkerRageActive) {
-    const halfHp = Math.floor(state.player.hpMax * 0.5);
-    if (state.player.hp <= halfHp) {
+  // Berserker: Bloodthirst — ATK +20% เมื่อ HP < 50% (เกิดครั้งเดียว)
+  if (cls === 'berserker' && !state.berserkerRageActive) {
+    if (state.player.hp <= Math.floor(state.player.hpMax * 0.5)) {
       state.berserkerRageActive = true;
       state.player.atk = Math.round(state.player.atk * 1.2);
       log.push('🔥 Bloodthirst ทำงาน! ATK +20% (HP ต่ำกว่า 50%)');
