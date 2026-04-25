@@ -6,7 +6,8 @@ import { auth } from '../../lib/firebase';
 import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, rest,
          getInventory, getShopItems, buyItem, sellItem, equipItem, unequipItem,
          getNPCs, talkNPC, giveGift,
-         getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee } from '../../lib/gameApi';
+         getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee,
+         requestVerify, getVerifyStatus } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -21,6 +22,7 @@ const SCREENS = {
   DUNGEON_LIST:   'dungeon_list',
   DUNGEON_ROOM:   'dungeon_room',
   DUNGEON_CLEAR:  'dungeon_clear',
+  SETTINGS:       'settings',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -84,6 +86,14 @@ export default function GameWorld() {
   const [dungeonLog,    setDungeonLog]   = useState([]);    // room-specific log
   const [dungeonReward, setDungeonReward]= useState(null);  // clear rewards
   const [dungeonRunId,  setDungeonRunId] = useState(null);  // active dungeon run ID (for battle)
+
+  // ── Settings / Verify ──
+  const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
+  const [settingsTiktok, setSettingsTiktok] = useState('');     // input username
+  const [settingsCode,   setSettingsCode]   = useState('');     // code ที่ได้จาก server
+  const [settingsStep,   setSettingsStep]   = useState('status');// 'status' | 'input' | 'wait'
+  const [settingsPolling,setSettingsPolling]= useState(false);
+  const settingsPollRef  = useRef(null);
   const [fontSize,    setFontSize]    = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('game_fontSize') || 'sm';
     return 'sm';
@@ -128,6 +138,61 @@ export default function GameWorld() {
   const addLog = useCallback((...msgs) => {
     setGameLog(prev => [...prev.slice(-100), ...msgs]);
   }, []);
+
+  // ===== Settings =====
+  const openSettings = useCallback(async () => {
+    setSettingsStep('status');
+    setSettingsCode('');
+    setSettingsTiktok('');
+    setScreen(SCREENS.SETTINGS);
+    try {
+      const { data } = await getVerifyStatus();
+      setVerifyStatus(data);
+    } catch {
+      setVerifyStatus(null);
+    }
+  }, []);
+
+  const handleRequestVerifyCode = useCallback(async () => {
+    const clean = settingsTiktok.replace(/^@/, '').trim();
+    if (!clean) return toast.error('กรุณาใส่ TikTok username');
+    try {
+      const { data } = await requestVerify(clean);
+      setSettingsCode(data.code);
+      setSettingsStep('wait');
+      setSettingsPolling(true);
+      toast.success('ได้ code แล้ว! พิมพ์ใน TikTok Live ภายใน 10 นาที');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'เกิดข้อผิดพลาด');
+    }
+  }, [settingsTiktok]);
+
+  // polling verify status ใน settings
+  useEffect(() => {
+    if (!settingsPolling) return;
+    settingsPollRef.current = setInterval(async () => {
+      try {
+        const { data } = await getVerifyStatus();
+        if (data.verified) {
+          clearInterval(settingsPollRef.current);
+          setSettingsPolling(false);
+          setVerifyStatus(data);
+          setSettingsStep('status');
+          setSettingsCode('');
+          toast.success('✅ ยืนยัน TikTok สำเร็จ! ตอนนี้คุณรับ Gold จาก Gift ได้แล้ว');
+          addLog('✅ Verify TikTok สำเร็จ — รับ Gold จาก Gift ได้แล้ว!');
+        }
+      } catch {}
+    }, 3000);
+    // หยุดหลัง 12 นาที
+    const t = setTimeout(() => {
+      clearInterval(settingsPollRef.current);
+      setSettingsPolling(false);
+      toast.error('หมดเวลา — ลอง verify ใหม่อีกครั้ง');
+      setSettingsStep('input');
+    }, 12 * 60 * 1000);
+    return () => { clearInterval(settingsPollRef.current); clearTimeout(t); };
+  }, [settingsPolling]);
 
   // ── BGM: เล่น track ตาม key ──
   const playBgm = useCallback((key) => {
@@ -667,6 +732,7 @@ export default function GameWorld() {
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
                     <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
                     <Btn onClick={() => setScreen('travel')} disabled={busy}>🗺️ เดินทาง</Btn>
+                    <Btn onClick={openSettings}   disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
               )}
@@ -904,6 +970,116 @@ export default function GameWorld() {
                     </div>
                   )}
                   <Btn onClick={() => { setScreen(SCREENS.WORLD); setDungeonReward(null); }}>← กลับ Town</Btn>
+                </div>
+              )}
+
+              {/* SETTINGS */}
+              {screen === SCREENS.SETTINGS && (
+                <div className="max-h-80 overflow-y-auto space-y-3">
+                  <p className="text-gray-600 text-xs">[ ⚙️ ตั้งค่า ]</p>
+
+                  {/* ── STATUS STEP ── */}
+                  {settingsStep === 'status' && (
+                    <div className="space-y-2">
+                      {/* Verify badge */}
+                      {verifyStatus === null ? (
+                        <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                      ) : verifyStatus.verified ? (
+                        <div className="border border-green-800 rounded p-2 text-xs space-y-0.5">
+                          <p className="text-green-400 font-bold">✅ ยืนยัน TikTok แล้ว</p>
+                          <p className="text-gray-400">
+                            @{verifyStatus.tiktokUniqueId}
+                          </p>
+                          {!verifyStatus.canChangeVJ ? (
+                            <p className="text-orange-400">
+                              ⏳ เปลี่ยน VJ ได้ในอีก {verifyStatus.vjCooldownDaysLeft} วัน
+                            </p>
+                          ) : (
+                            <button
+                              onClick={() => setSettingsStep('input')}
+                              className="mt-1 text-amber-500 hover:text-amber-300 underline text-xs">
+                              🔄 เปลี่ยน TikTok VJ
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="border border-gray-800 rounded p-2 text-xs space-y-1">
+                          <p className="text-gray-500">❌ ยังไม่ได้ยืนยัน TikTok</p>
+                          <p className="text-gray-600 leading-relaxed">
+                            ยืนยัน TikTok เพื่อรับ Gold จาก Gift ใน Live ได้
+                          </p>
+                          <button
+                            onClick={() => setSettingsStep('input')}
+                            className="mt-1 px-3 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                            🔗 ยืนยัน TikTok ตอนนี้
+                          </button>
+                        </div>
+                      )}
+                      <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                    </div>
+                  )}
+
+                  {/* ── INPUT STEP ── */}
+                  {settingsStep === 'input' && (
+                    <div className="space-y-2">
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        ใส่ TikTok username ของ VJ ที่เชื่อมต่อกับ{' '}
+                        <span className="text-amber-400">ttsam.app</span> และกำลัง Live อยู่
+                      </p>
+                      <div className="flex gap-2">
+                        <span className="text-gray-600 text-xs self-center">@</span>
+                        <input
+                          type="text"
+                          value={settingsTiktok}
+                          onChange={e => setSettingsTiktok(e.target.value.replace(/^@/, ''))}
+                          placeholder="tiktok_username"
+                          className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-amber-100 placeholder-gray-700 focus:outline-none focus:border-amber-700"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Btn onClick={handleRequestVerifyCode} disabled={busy || !settingsTiktok.trim()}>
+                          ✅ ขอ Code
+                        </Btn>
+                        <Btn onClick={() => setSettingsStep('status')}>← กลับ</Btn>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── WAIT STEP ── */}
+                  {settingsStep === 'wait' && (
+                    <div className="space-y-3">
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        พิมพ์ข้อความนี้ใน <span className="text-pink-400">TikTok Live</span>{' '}
+                        ของ @{settingsTiktok} ภายใน <span className="text-amber-400">10 นาที</span>:
+                      </p>
+                      {/* Code box */}
+                      <div className="bg-gray-900 border border-amber-700 rounded p-3 text-center">
+                        <p className="text-amber-300 text-sm font-mono tracking-wider break-all select-all">
+                          {settingsCode}
+                        </p>
+                      </div>
+                      {/* Polling indicator */}
+                      {settingsPolling && (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span className="animate-spin">⏳</span>
+                          <span>รอการยืนยัน... (ตรวจสอบทุก 3 วินาที)</span>
+                        </div>
+                      )}
+                      <p className="text-gray-600 text-xs">
+                        💡 tip: กด copy ข้อความในกล่องแล้วไป paste ใน comment TikTok Live
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Btn onClick={() => {
+                          navigator.clipboard?.writeText(settingsCode).catch(() => {});
+                          toast.success('คัดลอก code แล้ว!');
+                        }}>📋 Copy Code</Btn>
+                        <Btn onClick={() => {
+                          setSettingsStep('status');
+                          setSettingsPolling(false);
+                        }}>← ยกเลิก</Btn>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
