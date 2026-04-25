@@ -15,7 +15,7 @@ const { Server } = require('socket.io');
 const helmet = require('helmet');
 const admin = require('firebase-admin');
 
-const { generalLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
+const { generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection, hasConnection, getActiveConnectionCount } = require('./handlers/tiktok');
@@ -46,6 +46,12 @@ try {
 const app = express();
 const server = http.createServer(app);
 const isProd = process.env.NODE_ENV === 'production';
+
+// ===== Server-level timeouts (ป้องกัน Slowloris / connection exhaustion) =====
+// keepAliveTimeout > Railway load-balancer idle timeout (60s) เพื่อป้องกัน ECONNRESET
+server.keepAliveTimeout = 65000;   // 65s
+server.headersTimeout   = 66000;   // ต้อง > keepAliveTimeout
+server.setTimeout(120000);         // ปิด connection ที่ไม่ส่ง request มานาน 2 นาที
 
 // Trust proxy: จำเป็นสำหรับ Railway / Render / Fly.io
 app.set('trust proxy', 1);
@@ -122,7 +128,7 @@ app.use((req, res, next) => {
 
 // ===== Routes =====
 
-app.get('/api/csrf-token', verifyToken, (_req, res) => {
+app.get('/api/csrf-token', unauthLimiter, verifyToken, (_req, res) => {
   res.json({ token: generateCsrfToken() });
 });
 
@@ -199,7 +205,7 @@ app.post('/api/disconnect', verifyToken, async (req, res) => {
 });
 
 // ===== Widget styles — public endpoint (widget โหลด style จาก cid หรือ token เก่า) =====
-app.get('/api/widget-styles', async (req, res) => {
+app.get('/api/widget-styles', unauthLimiter, async (req, res) => {
   const { cid, wt } = req.query;
   const db = admin.firestore();
 
