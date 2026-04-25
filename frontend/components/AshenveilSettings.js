@@ -61,7 +61,11 @@ export function useAshenveilSettings() {
 
   const [theme,      setThemeRaw]  = useState(() => get('ash_theme',      'amber'));
   const [fontSize,   setFontRaw]   = useState(() => get('ash_fontSize',   'sm'));
-  const [brightness, setBrightRaw] = useState(() => parseFloat(get('ash_brightness', '1.0')));
+  const [brightness, setBrightRaw] = useState(() => {
+    const saved = parseFloat(get('ash_brightness', '1.0'));
+    // ป้องกัน bad value จาก localStorage เก่า
+    return (isNaN(saved) || saved < 1.0 || saved > 2.0) ? 1.0 : saved;
+  });
 
   const setTheme = useCallback((v) => {
     setThemeRaw(v);
@@ -200,9 +204,18 @@ export default function AshenveilSettings({
             <div>
               <div className="flex justify-between items-center mb-2">
                 <p className="text-gray-500 text-xs font-semibold tracking-wide">🔆 ความสว่าง</p>
-                <span className="text-xs" style={{ color: themeColor }}>
-                  {brightness === 1.0 ? 'ปกติ' : `+${Math.round((brightness - 1) * 100)}%`}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: themeColor }}>
+                    {brightness === 1.0 ? 'ปกติ' : `+${Math.round((brightness - 1) * 100)}%`}
+                  </span>
+                  {brightness !== 1.0 && (
+                    <button
+                      onClick={() => setBrightness(1.0)}
+                      title="รีเซ็ตความสว่าง"
+                      className="text-[10px] text-gray-600 hover:text-gray-400 transition px-1 border border-gray-700 rounded"
+                    >↩</button>
+                  )}
+                </div>
               </div>
               <input
                 type="range"
@@ -213,14 +226,8 @@ export default function AshenveilSettings({
                 style={{ accentColor: themeColor }}
               />
               <div className="flex justify-between text-gray-700 text-[10px] mt-0.5">
-                <span>ปกติ</span><span>สว่างสุด</span>
+                <span>ปกติ (0%)</span><span>+100%</span>
               </div>
-              {brightness !== 1.0 && (
-                <button
-                  onClick={() => setBrightness(1.0)}
-                  className="mt-1 text-[10px] text-gray-600 hover:text-gray-400 transition"
-                >↩ รีเซ็ต</button>
-              )}
             </div>
 
             {/* BGM — optional */}

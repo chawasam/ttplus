@@ -457,9 +457,11 @@ function CharacterCard({ account, onEnter, onDelete }) {
             {account.charName || 'ตัวละครของคุณ'}
           </p>
           <p className="text-gray-400 text-xs mt-0.5">
-            {account.charRace && account.charClass
-              ? `${account.charRace} ${account.charClass} · Lv.${account.charLevel || '?'}`
-              : 'กำลังโหลดข้อมูล...'}
+            {account.charRace || account.charClass
+              ? `${account.charRace || '?'} ${account.charClass || '?'} · Lv.${account.charLevel || '?'}`
+              : account.charName
+                ? `Lv.${account.charLevel || '?'}`
+                : '...'}
           </p>
           <div className="flex gap-3 mt-1 text-xs text-gray-500">
             <span>💰 {(account.gold || 0).toLocaleString()} Gold</span>
