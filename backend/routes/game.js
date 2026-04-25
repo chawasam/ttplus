@@ -158,10 +158,13 @@ router.post('/world-boss/attack',     battleLimiter, worldBoss.attackWorldBoss);
 router.post('/world-boss/spawn',      worldBoss.spawnWorldBoss);
 
 // ----- Admin Audit (ADMIN_UID only) -----
-router.get ('/audit/summary',                audit.requireAdmin, audit.getSummary);
-router.get ('/audit/flags',                  audit.requireAdmin, audit.getFlags);
-router.post('/audit/flags/:flagId/resolve',  audit.requireAdmin, audit.resolveFlag);
-router.get ('/audit/player/:uid',            audit.requireAdmin, audit.getPlayerHistory);
+router.get ('/audit/summary',                  audit.requireAdmin, audit.getSummary);
+router.get ('/audit/flags',                    audit.requireAdmin, audit.getFlags);
+router.post('/audit/flags/:flagId/resolve',    audit.requireAdmin, audit.resolveFlag);
+router.get ('/audit/player/:uid',              audit.requireAdmin, audit.getPlayerHistory);
+router.get ('/audit/activity',                 audit.requireAdmin, audit.getActivity);
+router.get ('/audit/players',                  audit.requireAdmin, audit.getPlayers);
+router.post('/audit/players/:uid/flag',        audit.requireAdmin, audit.manualFlag);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);

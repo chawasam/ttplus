@@ -155,4 +155,104 @@ async function getSummary(req, res) {
   }
 }
 
-module.exports = { requireAdmin, getFlags, getPlayerHistory, resolveFlag, getSummary };
+// ── GET /api/game/audit/activity — recent reward feed across all players ──────
+async function getActivity(req, res) {
+  const db  = admin.firestore();
+  const lim = Math.min(parseInt(req.query.limit || '100', 10), 500);
+  const THRESHOLDS = { xp: 8000, gold: 60000 };
+
+  try {
+    const snap = await db.collection('game_audit_rewards')
+      .orderBy('ts', 'desc')
+      .limit(lim)
+      .get();
+
+    const rows = snap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id:         doc.id,
+        uid:        d.uid,
+        source:     d.source,
+        xp:         d.xp    || 0,
+        gold:       d.gold  || 0,
+        items:      d.items || [],
+        levelUp:    d.levelUp || null,
+        ts:         d.ts?.toDate?.()?.toISOString() || null,
+        suspicious: (d.xp > THRESHOLDS.xp) || (d.gold > THRESHOLDS.gold),
+      };
+    });
+
+    return res.json({ total: rows.length, activity: rows });
+  } catch (err) {
+    console.error('[Audit] getActivity:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ── GET /api/game/audit/players — all players with character stats ─────────────
+async function getPlayers(req, res) {
+  const db   = admin.firestore();
+  const sort = req.query.sort || 'level'; // level | gold | monstersKilled | deathCount
+  const lim  = Math.min(parseInt(req.query.limit || '100', 10), 500);
+
+  try {
+    const accountsSnap = await db.collection('game_accounts').limit(lim).get();
+
+    const players = await Promise.all(accountsSnap.docs.map(async doc => {
+      const acct = doc.data();
+      let char = null;
+      if (acct.characterId) {
+        const charDoc = await db.collection('game_characters').doc(acct.characterId).get();
+        if (charDoc.exists) char = charDoc.data();
+      }
+      return {
+        uid:            doc.id,
+        tiktokId:       acct.tiktokUniqueId || '—',
+        gold:           acct.gold || 0,
+        name:           char?.name           || '—',
+        race:           char?.race           || '—',
+        charClass:      char?.class          || '—',
+        level:          char?.level          || 0,
+        xp:             char?.xp             || 0,
+        xpToNext:       char?.xpToNext       || 100,
+        hp:             char?.hp             || 0,
+        hpMax:          char?.hpMax          || 0,
+        monstersKilled: char?.monstersKilled || 0,
+        deathCount:     char?.deathCount     || 0,
+        location:       char?.location       || '—',
+        explorationCount: char?.explorationCount || 0,
+      };
+    }));
+
+    const sortable = ['level', 'gold', 'monstersKilled', 'deathCount', 'xp', 'explorationCount'];
+    const sortKey  = sortable.includes(sort) ? sort : 'level';
+    players.sort((a, b) => (b[sortKey] || 0) - (a[sortKey] || 0));
+
+    return res.json({ total: players.length, players });
+  } catch (err) {
+    console.error('[Audit] getPlayers:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ── POST /api/game/audit/players/:uid/flag — admin manual flag ────────────────
+async function manualFlag(req, res) {
+  const { uid: targetUid } = req.params;
+  const { reason = 'Manual flag by admin' } = req.body;
+  const db = admin.firestore();
+
+  try {
+    const { flagPlayer } = require('../../utils/anticheat');
+    await flagPlayer(targetUid, `[MANUAL] ${reason}`, { flaggedBy: req.user.uid });
+    return res.json({ success: true, uid: targetUid });
+  } catch (err) {
+    console.error('[Audit] manualFlag:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+module.exports = {
+  requireAdmin,
+  getFlags, getPlayerHistory, resolveFlag, getSummary,
+  getActivity, getPlayers, manualFlag,
+};
