@@ -210,9 +210,27 @@ export default function GameIndex() {
           {/* ── VERIFY TIKTOK ── */}
           {step === STEP.VERIFY && (
             <GameBox title="เชื่อม TikTok Account">
-              <p className="text-gray-400 text-sm mb-4">
-                ใส่ TikTok username ของคุณ เพื่อรับ Gold จาก Gift ในไลฟ์<br/>
-                <span className="text-gray-600 text-xs">ข้ามได้ — แต่จะไม่ได้ Gold จาก Gift</span>
+
+              {/* เงื่อนไขสำคัญ */}
+              <div className="border border-amber-900/60 bg-amber-950/30 rounded p-3 mb-4 text-xs space-y-1">
+                <p className="text-amber-500 font-bold">⚠️ เงื่อนไขการรับ Gold</p>
+                <p className="text-amber-700 leading-relaxed">
+                  Gold จาก Gift จะเข้าก็ต่อเมื่อ <span className="text-amber-500">VJ / Host ที่คุณส่ง Gift ให้</span> เชื่อมต่อ TikTok Live ผ่านเว็บ{' '}
+                  <span className="text-amber-400 font-bold">ttsam.app</span> อยู่ในขณะนั้น
+                </p>
+                <p className="text-amber-700 leading-relaxed">
+                  ถ้า VJ ไม่ได้เปิด ttsam.app — Gift จะ<span className="text-red-600"> ไม่ถูกนับ</span> ไม่ว่าจะส่งกี่ครั้ง
+                </p>
+              </div>
+
+              {/* disclaimer */}
+              <div className="border border-gray-800 rounded p-3 mb-4 text-xs text-gray-600 leading-relaxed">
+                <p className="text-gray-500 font-bold mb-1">⚙️ เกมกำลังพัฒนา (Early Access)</p>
+                ระบบยังอยู่ระหว่างทดสอบ อาจมีข้อผิดพลาดได้ ทีมงาน<span className="text-gray-500"> ไม่รับผิดชอบ</span>ต่อ Gold หรือ item ที่อาจเกิดความผิดพลาดระหว่างช่วง Early Access นี้
+              </div>
+
+              <p className="text-gray-400 text-xs mb-3">
+                ใส่ TikTok username ของคุณเพื่อเชื่อม account และรับ Gold จาก Gift
               </p>
               <input
                 value={tiktokInput}
@@ -228,8 +246,8 @@ export default function GameIndex() {
                   try { const ur = await getUnlockedRaces(); setUnlockedRaces(ur.data.unlockedRaces||[]); setRaceProgress(ur.data.progress||{}); } catch {}
                   setStep(STEP.CREATE_CHAR);
                 }}
-                className="w-full py-2 text-gray-600 hover:text-gray-400 transition text-xs">
-                ข้ามขั้นตอนนี้
+                className="w-full py-2 text-gray-700 hover:text-gray-500 transition text-xs">
+                ข้ามขั้นตอนนี้ (เล่นได้แต่ไม่รับ Gold จาก Gift)
               </button>
             </GameBox>
           )}
