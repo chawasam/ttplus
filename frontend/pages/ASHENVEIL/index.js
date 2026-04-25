@@ -180,7 +180,7 @@ export default function GameIndex() {
           <div className="text-4xl mb-2">⚔️</div>
           <h1 className="text-3xl font-bold text-amber-400 tracking-widest">ASHENVEIL</h1>
           <p className="text-amber-600 text-sm tracking-widest mt-1">THE SHATTERED AGE</p>
-          <p className="text-gray-600 text-xs mt-2">500 ปีหลัง The Sundering — โลกแตกออกเป็น Shard</p>
+          <p className="text-gray-400 text-xs mt-2">500 ปีหลัง The Sundering — โลกแตกออกเป็น Shard</p>
         </div>
 
         <div className="w-full max-w-md">
@@ -193,15 +193,15 @@ export default function GameIndex() {
           {/* ── LOGIN ── */}
           {step === STEP.LOGIN && (
             <GameBox title="เข้าสู่โลก Ashenveil">
-              <p className="text-gray-400 text-sm mb-6 text-center">
+              <p className="text-gray-300 text-sm mb-6 text-center">
                 ดินแดนนี้รอผู้กล้ามานานแล้ว<br/>
-                <span className="text-gray-600 text-xs">ลงทะเบียนด้วย Google เพื่อเริ่มต้น</span>
+                <span className="text-gray-500 text-xs">ลงทะเบียนด้วย Google เพื่อเริ่มต้น</span>
               </p>
               <button onClick={handleLogin}
                 className="w-full py-3 rounded border border-amber-600 text-amber-400 hover:bg-amber-900/20 transition font-bold tracking-wider">
                 [ เข้าสู่ระบบด้วย Google ]
               </button>
-              <p className="text-gray-700 text-xs text-center mt-4">
+              <p className="text-gray-500 text-xs text-center mt-4">
                 ไม่มีคู่มือ — ทุกอย่างค้นพบได้ด้วยตัวเอง
               </p>
             </GameBox>
@@ -213,23 +213,23 @@ export default function GameIndex() {
 
               {/* เงื่อนไขสำคัญ */}
               <div className="border border-amber-900/60 bg-amber-950/30 rounded p-3 mb-4 text-xs space-y-1">
-                <p className="text-amber-500 font-bold">⚠️ เงื่อนไขการรับ Gold</p>
-                <p className="text-amber-700 leading-relaxed">
-                  Gold จาก Gift จะเข้าก็ต่อเมื่อ <span className="text-amber-500">VJ / Host ที่คุณส่ง Gift ให้</span> เชื่อมต่อ TikTok Live ผ่านเว็บ{' '}
-                  <span className="text-amber-400 font-bold">ttsam.app</span> อยู่ในขณะนั้น
+                <p className="text-amber-400 font-bold">⚠️ เงื่อนไขการรับ Gold</p>
+                <p className="text-amber-300 leading-relaxed">
+                  Gold จาก Gift จะเข้าก็ต่อเมื่อ <span className="text-amber-400">VJ / Host ที่คุณส่ง Gift ให้</span> เชื่อมต่อ TikTok Live ผ่านเว็บ{' '}
+                  <span className="text-amber-300 font-bold">ttsam.app</span> อยู่ในขณะนั้น
                 </p>
-                <p className="text-amber-700 leading-relaxed">
-                  ถ้า VJ ไม่ได้เปิด ttsam.app — Gift จะ<span className="text-red-600"> ไม่ถูกนับ</span> ไม่ว่าจะส่งกี่ครั้ง
+                <p className="text-amber-300 leading-relaxed">
+                  ถ้า VJ ไม่ได้เปิด ttsam.app — Gift จะ<span className="text-red-400"> ไม่ถูกนับ</span> ไม่ว่าจะส่งกี่ครั้ง
                 </p>
               </div>
 
               {/* disclaimer */}
-              <div className="border border-gray-800 rounded p-3 mb-4 text-xs text-gray-600 leading-relaxed">
-                <p className="text-gray-500 font-bold mb-1">⚙️ เกมกำลังพัฒนา (Early Access)</p>
-                ระบบยังอยู่ระหว่างทดสอบ อาจมีข้อผิดพลาดได้ ทีมงาน<span className="text-gray-500"> ไม่รับผิดชอบ</span>ต่อ Gold หรือ item ที่อาจเกิดความผิดพลาดระหว่างช่วง Early Access นี้
+              <div className="border border-gray-700 rounded p-3 mb-4 text-xs text-gray-400 leading-relaxed">
+                <p className="text-gray-300 font-bold mb-1">⚙️ เกมกำลังพัฒนา (Early Access)</p>
+                ระบบยังอยู่ระหว่างทดสอบ อาจมีข้อผิดพลาดได้ ทีมงาน<span className="text-gray-300"> ไม่รับผิดชอบ</span>ต่อ Gold หรือ item ที่อาจเกิดความผิดพลาดระหว่างช่วง Early Access นี้
               </div>
 
-              <p className="text-gray-400 text-xs mb-3">
+              <p className="text-gray-300 text-xs mb-3">
                 ใส่ TikTok username ของคุณเพื่อเชื่อม account และรับ Gold จาก Gift
               </p>
               <input
@@ -298,16 +298,16 @@ export default function GameIndex() {
                       title={r.locked && !isUnlocked ? `🔒 ${r.unlockHint}${prog ? ` (${prog.current}/${prog.required})` : ''}` : ''}
                       className={`p-2 border rounded text-left transition text-xs relative ${
                         race === r.id ? 'border-amber-500 bg-amber-900/20 text-amber-300' :
-                        !isUnlocked ? 'border-gray-800 text-gray-700 cursor-not-allowed opacity-60' :
-                        'border-gray-700 text-gray-400 hover:border-gray-500'
+                        !isUnlocked ? 'border-gray-700 text-gray-500 cursor-not-allowed opacity-60' :
+                        'border-gray-600 text-gray-300 hover:border-gray-400'
                       }`}>
                       <div className="text-lg mb-1">{r.emoji}{!isUnlocked && ' 🔒'}</div>
                       <div className="font-bold">{r.th}</div>
                       {isUnlocked
-                        ? <div className="text-gray-600 text-xs mt-1 leading-tight">{r.desc}</div>
-                        : <div className="text-gray-700 text-xs mt-1 leading-tight">
+                        ? <div className="text-gray-400 text-xs mt-1 leading-tight">{r.desc}</div>
+                        : <div className="text-gray-500 text-xs mt-1 leading-tight">
                             {r.unlockHint}
-                            {prog && <span className="block text-gray-800">{prog.current}/{prog.required}</span>}
+                            {prog && <span className="block text-gray-600">{prog.current}/{prog.required}</span>}
                           </div>
                       }
                     </button>
@@ -322,10 +322,10 @@ export default function GameIndex() {
                   <div className="grid grid-cols-3 gap-2 mb-4">
                     {(CLASSES_BY_RACE[race] || []).map(c => (
                       <button key={c.id} onClick={() => setCharClass(c.id)}
-                        className={`p-2 border rounded text-left transition ${charClass === c.id ? 'border-amber-500 bg-amber-900/20 text-amber-300' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}>
+                        className={`p-2 border rounded text-left transition ${charClass === c.id ? 'border-amber-500 bg-amber-900/20 text-amber-300' : 'border-gray-600 text-gray-300 hover:border-gray-400'}`}>
                         <div className="text-xl mb-1">{c.emoji}</div>
                         <div className="text-xs font-bold">{c.th}</div>
-                        <div className="text-gray-600 text-xs leading-tight mt-1">{c.desc}</div>
+                        <div className="text-gray-400 text-xs leading-tight mt-1">{c.desc}</div>
                       </button>
                     ))}
                   </div>
@@ -341,7 +341,7 @@ export default function GameIndex() {
 
         </div>
 
-        <p className="text-gray-800 text-xs mt-8">Ashenveil • Powered by TTsam</p>
+        <p className="text-gray-600 text-xs mt-8">Ashenveil • Powered by TTsam</p>
       </div>
     </>
   );
@@ -349,9 +349,9 @@ export default function GameIndex() {
 
 function GameBox({ title, children }) {
   return (
-    <div className="border border-gray-800 rounded bg-gray-950/80 p-6">
-      <div className="border-b border-gray-800 pb-3 mb-4">
-        <h2 className="text-amber-500 font-bold tracking-wider text-sm">▸ {title}</h2>
+    <div className="border border-gray-700 rounded bg-gray-950/80 p-6">
+      <div className="border-b border-gray-700 pb-3 mb-4">
+        <h2 className="text-amber-400 font-bold tracking-wider text-sm">▸ {title}</h2>
       </div>
       {children}
     </div>

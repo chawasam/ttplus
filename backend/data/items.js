@@ -437,6 +437,163 @@ const ITEMS = {
     stackable: true, maxStack: 10,
   },
 
+  // ===== CONSUMABLES (Tier 2) =====
+  health_potion_large: {
+    itemId: 'health_potion_large', name: 'Large Health Potion', emoji: '🍾',
+    grade: 'UNCOMMON', type: 'CONSUMABLE',
+    classReq: [], levelReq: 10,
+    effect: { heal: 250 },
+    desc: 'ยาฟื้นฟูขนาดใหญ่ สีแดงเข้มข้น หอมฉุน ฟื้นฟูได้มาก',
+    sellPrice: 50, buyPrice: 150,
+    stackable: true, maxStack: 99,
+  },
+
+  mp_potion_medium: {
+    itemId: 'mp_potion_medium', name: 'Mana Potion', emoji: '🫙',
+    grade: 'UNCOMMON', type: 'CONSUMABLE',
+    classReq: [], levelReq: 5,
+    effect: { restoreMP: 80 },
+    desc: 'ยาฟื้นฟูพลังเวทย์ขนาดกลาง สีน้ำเงินเข้ม มีประกายวิบวับ',
+    sellPrice: 25, buyPrice: 75,
+    stackable: true, maxStack: 99,
+  },
+
+  poison_vial: {
+    itemId: 'poison_vial', name: 'Poison Vial', emoji: '🧫',
+    grade: 'UNCOMMON', type: 'CONSUMABLE',
+    classReq: [],  levelReq: 15,
+    effect: { applyPoison: { duration: 5, dmgPerTurn: 20 } },
+    desc: 'ขวดแก้วบรรจุพิษสกัดจากสิ่งมีชีวิตในหนอง ทาบนอาวุธเพื่อวางยาศัตรู',
+    sellPrice: 60, buyPrice: null,
+    stackable: true, maxStack: 30,
+  },
+
+  // ===== CITY RUINS DROPS =====
+  chainmail_fragment: {
+    itemId: 'chainmail_fragment', name: 'Chainmail Fragment', emoji: '⛓️',
+    grade: 'UNCOMMON', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'ชิ้นส่วนของเกราะลูกโซ่ที่แตกกระจาย เชื่อมกันอย่างประณีต ยังแข็งแรงอยู่',
+    sellPrice: 35, buyPrice: null,
+    stackable: true, maxStack: 99,
+  },
+
+  shadow_cloth: {
+    itemId: 'shadow_cloth', name: 'Shadow Cloth', emoji: '🩱',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 10,
+    desc: 'ผ้าสีดำที่ดูดซับแสงอย่างสมบูรณ์ ทำจากด้ายที่ปั่นจากเงา ใช้ตัดชุดนักฆ่า',
+    sellPrice: 90, buyPrice: null,
+    stackable: true, maxStack: 30,
+  },
+
+  golem_core: {
+    itemId: 'golem_core', name: 'Golem Core', emoji: '⚙️',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 10,
+    desc: 'แกนกลางพลังงานของ Iron Golem ยังมีพลังงานสะสมอยู่ ใช้ทำเครื่องจักรหรือ Rune',
+    sellPrice: 120, buyPrice: null,
+    stackable: true, maxStack: 20,
+  },
+
+  shadow_dagger: {
+    itemId: 'shadow_dagger', name: 'Shadow Dagger', emoji: '🌙',
+    grade: 'RARE', type: 'MAIN_HAND',
+    classReq: ['ROGUE', 'ASSASSIN', 'PHANTOM', 'HEXBLADE'],
+    levelReq: 12,
+    base: { atk: 35, spd: 12 },
+    rolls: { crit_rate: [6, 14], shadow_dmg: [5, 15] },
+    sockets: 1,
+    desc: 'มีดสั้นที่ตีจากเงาล้วน เมื่อฟาดไม่มีเสียง ทำให้ศัตรูสับสน',
+    sellPrice: 200, buyPrice: null,
+  },
+
+  // ===== CURSED MARSHLANDS DROPS =====
+  bog_scale: {
+    itemId: 'bog_scale', name: 'Bog Scale', emoji: '🐉',
+    grade: 'UNCOMMON', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'เกล็ดสัตว์เลื้อยคลานจากหนองน้ำ เหนียวและทนทาน ต้านทานพิษได้ดี',
+    sellPrice: 45, buyPrice: null,
+    stackable: true, maxStack: 99,
+  },
+
+  wraith_essence: {
+    itemId: 'wraith_essence', name: 'Wraith Essence', emoji: '💜',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 15,
+    desc: 'แก่นสารจากวิญญาณ Wraith ของเหลวสีม่วงเข้มที่ดูดซับพลังชีวิต ใช้ทำยาและอาวุธเวทย์มืด',
+    sellPrice: 100, buyPrice: null,
+    stackable: true, maxStack: 30,
+  },
+
+  basilisk_scale: {
+    itemId: 'basilisk_scale', name: 'Basilisk Scale', emoji: '🦎',
+    grade: 'RARE', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'เกล็ดบาซิลิสก์ แข็งราวหิน ยังมีพลังงานเปโตรฟิเคชันอ่อนๆ ใช้ทำเกราะระดับสูง',
+    sellPrice: 130, buyPrice: null,
+    stackable: true, maxStack: 20,
+  },
+
+  basilisk_eye: {
+    itemId: 'basilisk_eye', name: "Basilisk's Eye", emoji: '👁️',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 1,
+    desc: 'ดวงตาของ Marsh Basilisk มีพลังสะกดชั่วคราว หายากมาก ใช้ทำ Accessory ระดับ Epic',
+    sellPrice: 300, buyPrice: null,
+    stackable: true, maxStack: 5,
+  },
+
+  // ===== VOID FRONTIER DROPS =====
+  void_essence: {
+    itemId: 'void_essence', name: 'Void Essence', emoji: '🌌',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 25,
+    desc: 'แก่นสารบริสุทธิ์จาก The Void พลังงานมืดที่เข้มข้นที่สุด ใช้ enhance อาวุธระดับ Legendary',
+    sellPrice: 500, buyPrice: null,
+    stackable: true, maxStack: 20,
+  },
+
+  soul_gem: {
+    itemId: 'soul_gem', name: 'Soul Gem', emoji: '🔴',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 25,
+    desc: 'อัญมณีที่กักเก็บวิญญาณของ Void creature สั่นสะเทือนเมื่อจับ ใช้ปลดล็อก Legendary recipe',
+    sellPrice: 600, buyPrice: null,
+    stackable: true, maxStack: 10,
+  },
+
+  chaos_shard: {
+    itemId: 'chaos_shard', name: 'Chaos Shard', emoji: '🌪️',
+    grade: 'EPIC', type: 'MATERIAL',
+    classReq: [], levelReq: 30,
+    desc: 'เศษพลังงาน Chaos ที่แข็งตัวเป็นผลึก ไม่เสถียร ต้องจัดเก็บด้วยความระมัดระวัง',
+    sellPrice: 450, buyPrice: null,
+    stackable: true, maxStack: 10,
+  },
+
+  titan_core: {
+    itemId: 'titan_core', name: 'Void Titan Core', emoji: '💠',
+    grade: 'LEGENDARY', type: 'MATERIAL',
+    classReq: [], levelReq: 30,
+    desc: 'แกนกลางของ Void Titan หนักผิดปกติ แผ่พลังงานมืดอย่างต่อเนื่อง วัตถุดิบ Legendary ชั้นสูงสุด',
+    sellPrice: 0, buyPrice: null, // ขายไม่ได้ — Legendary crafting only
+    stackable: true, maxStack: 5,
+  },
+
+  void_dagger: {
+    itemId: 'void_dagger', name: 'Void Dagger', emoji: '🗡️',
+    grade: 'EPIC', type: 'MAIN_HAND',
+    classReq: ['ROGUE', 'ASSASSIN', 'PHANTOM', 'VOIDWALKER'],
+    levelReq: 28,
+    base: { atk: 65, spd: 18 },
+    rolls: { crit_rate: [10, 20], void_dmg: [15, 35] },
+    sockets: 2,
+    desc: 'มีดสั้นที่ตีจากผลึก Void ฟาดทุกครั้งทำให้เกิดรอยแยกมิติเล็กๆ บนร่างศัตรู',
+    sellPrice: 800, buyPrice: null,
+  },
+
 };
 
 // Grade ordering (สำหรับ sort)
