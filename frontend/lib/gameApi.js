@@ -39,6 +39,10 @@ export const getNPCs          = ()               => api.get('/api/game/npcs');
 export const talkNPC          = (npcId)          => api.get(`/api/game/npc/${npcId}`);
 export const giveGift         = (npcId, instanceId) => api.post('/api/game/npc/gift', { npcId, instanceId });
 
+// ===== Daily Quests =====
+export const getQuests        = ()               => api.get('/api/game/quests');
+export const claimQuestReward = (questId)        => api.post('/api/game/quests/claim', { questId });
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

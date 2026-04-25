@@ -465,8 +465,8 @@ async function createCharacter(req, res) {
       location:      'town_square',
       questLog:      [],
       completedQuests: [],
-      stamina:       100,
-      staminaMax:    100,
+      stamina:       200,
+      staminaMax:    200,
       failstack:     0,
       createdAt:     admin.firestore.FieldValue.serverTimestamp(),
       lastActiveAt:  admin.firestore.FieldValue.serverTimestamp(),
@@ -544,10 +544,10 @@ async function loadCharacter(req, res) {
     if (!charDoc.exists) return res.json({ hasCharacter: false });
 
     const char = charDoc.data();
-    // Regen stamina (10/minute)
+    // Regen stamina: 1 ต่อ 5 นาที (12/ชม) — เต็มจาก 0 ใช้เวลา ~16 ชั่วโมง
     const lastActive = char.lastActiveAt?.toMillis?.() || Date.now();
     const minutesPassed = Math.floor((Date.now() - lastActive) / 60000);
-    const staminaRegen = Math.min(minutesPassed * 10, char.staminaMax - char.stamina);
+    const staminaRegen = Math.min(Math.floor(minutesPassed / 5), char.staminaMax - char.stamina);
     if (staminaRegen > 0) {
       await db.collection('game_characters').doc(characterId).update({
         stamina: char.stamina + staminaRegen,

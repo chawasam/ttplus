@@ -2,6 +2,7 @@
 const admin  = require('firebase-admin');
 const { getNPC, getAllNPCs, getGiftReaction, getAffectionTier, BOND_ITEMS, TIER_GIFT_BACK } = require('../../data/npcs');
 const { getItem, rollItem } = require('../../data/items');
+const { trackQuestProgress } = require('./quests');
 
 const GIFT_DAILY_LIMIT = 3; // ครั้งต่อ NPC ต่อวัน
 const DECAY_PER_DAY    = 1; // affection ลดต่อวันที่ไม่ได้คุย
@@ -130,6 +131,9 @@ async function giveGift(req, res) {
     }
 
     await batch.commit();
+
+    // Track daily quest
+    trackQuestProgress(uid, 'npc_gift', 1).catch(() => {});
 
     // Reaction message
     const reactionMsg = {

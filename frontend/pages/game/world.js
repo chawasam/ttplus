@@ -7,7 +7,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getInventory, getShopItems, buyItem, sellItem, equipItem, unequipItem,
          getNPCs, talkNPC, giveGift,
          getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee,
-         requestVerify, getVerifyStatus } from '../../lib/gameApi';
+         requestVerify, getVerifyStatus,
+         getQuests, claimQuestReward } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -23,6 +24,7 @@ const SCREENS = {
   DUNGEON_ROOM:   'dungeon_room',
   DUNGEON_CLEAR:  'dungeon_clear',
   SETTINGS:       'settings',
+  QUESTS:         'quests',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -87,6 +89,10 @@ export default function GameWorld() {
   const [dungeonReward, setDungeonReward]= useState(null);  // clear rewards
   const [dungeonRunId,  setDungeonRunId] = useState(null);  // active dungeon run ID (for battle)
 
+  // ── Daily Quests ──
+  const [questData,      setQuestData]      = useState(null);   // { quests, bonusClaimed, allCompleted, bonus }
+  const [questBadge,     setQuestBadge]     = useState(false);  // มีเควสที่รับรางวัลได้
+
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
   const [settingsTiktok, setSettingsTiktok] = useState('');     // input username
@@ -138,6 +144,37 @@ export default function GameWorld() {
   const addLog = useCallback((...msgs) => {
     setGameLog(prev => [...prev.slice(-100), ...msgs]);
   }, []);
+
+  // ===== Daily Quests =====
+  const loadQuests = useCallback(async () => {
+    try {
+      const { data } = await getQuests();
+      setQuestData(data);
+      // badge = มีเควสที่ complete แต่ยังไม่ claim
+      const hasUnclaimed = data.quests.some(q => q.completed && !q.claimed)
+        || (data.allCompleted && !data.bonusClaimed);
+      setQuestBadge(hasUnclaimed);
+    } catch {}
+  }, []);
+
+  const openQuests = useCallback(async () => {
+    setScreen(SCREENS.QUESTS);
+    await loadQuests();
+  }, [loadQuests]);
+
+  const handleClaimQuest = useCallback(async (questId) => {
+    try {
+      const { data } = await claimQuestReward(questId);
+      if (data.rewards?.gold) setGold(g => g + data.rewards.gold);
+      if (data.rewards?.xp)   setChar(c => c ? { ...c, xp: (c.xp || 0) + data.rewards.xp } : c);
+      const label = questId === 'bonus' ? '🎁 Bonus reward' : questId;
+      toast.success(`✅ รับรางวัล ${label} แล้ว! (+${data.rewards?.gold || 0}G)`);
+      addLog(`🎖️ รับรางวัล Quest: +${data.rewards?.gold || 0} Gold, +${data.rewards?.xp || 0} XP`);
+      await loadQuests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
+    }
+  }, [loadQuests]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -746,6 +783,11 @@ export default function GameWorld() {
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
                     <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
                     <Btn onClick={() => setScreen('travel')} disabled={busy}>🗺️ เดินทาง</Btn>
+                    <button onClick={openQuests} disabled={busy}
+                      className="relative px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
+                      📋 ภารกิจ
+                      {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
+                    </button>
                     <Btn onClick={openSettings}   disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
@@ -985,6 +1027,81 @@ export default function GameWorld() {
                     </div>
                   )}
                   <Btn onClick={() => { setScreen(SCREENS.WORLD); setDungeonReward(null); }}>← กลับ Town</Btn>
+                </div>
+              )}
+
+              {/* DAILY QUESTS */}
+              {screen === SCREENS.QUESTS && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-gray-600 text-xs">[ 📋 ภารกิจประจำวัน ]</p>
+                    {questData?.date && <p className="text-gray-700 text-xs">{questData.date}</p>}
+                  </div>
+
+                  {!questData ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : (
+                    <>
+                      {questData.quests.map(q => (
+                        <div key={q.id} className={`border rounded p-2 text-xs ${
+                          q.claimed   ? 'border-gray-900 opacity-40' :
+                          q.completed ? 'border-green-800' :
+                                        'border-gray-800'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 text-amber-200">{q.name}</span>
+                            {q.claimed ? (
+                              <span className="text-gray-600">✓ รับแล้ว</span>
+                            ) : q.completed ? (
+                              <button onClick={() => handleClaimQuest(q.id)}
+                                className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
+                                รับรางวัล
+                              </button>
+                            ) : (
+                              <span className="text-gray-600">{q.progress}/{q.target}</span>
+                            )}
+                          </div>
+                          <p className="text-gray-600 mt-0.5">{q.desc}</p>
+                          {/* Progress bar */}
+                          {!q.claimed && (
+                            <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
+                              <div className="h-0.5 bg-amber-700 rounded transition-all"
+                                style={{ width: `${Math.min(100, ((q.progress || 0) / q.target) * 100)}%` }} />
+                            </div>
+                          )}
+                          {!q.claimed && (
+                            <p className="text-yellow-700 mt-0.5">💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP</p>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Bonus reward */}
+                      <div className={`border rounded p-2 text-xs ${
+                        questData.bonusClaimed ? 'border-gray-900 opacity-40' :
+                        questData.allCompleted ? 'border-amber-700 bg-amber-900/10' :
+                                                 'border-gray-800 opacity-60'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-amber-300">{questData.bonus?.label || '🎁 ครบทุกภารกิจ'}</span>
+                          {questData.bonusClaimed ? (
+                            <span className="text-gray-600">✓ รับแล้ว</span>
+                          ) : questData.allCompleted ? (
+                            <button onClick={() => handleClaimQuest('bonus')}
+                              className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
+                              🎁 รับ!
+                            </button>
+                          ) : (
+                            <span className="text-gray-700">ยังไม่ครบ</span>
+                          )}
+                        </div>
+                        <p className="text-yellow-700 mt-0.5">
+                          💰 {questData.bonus?.gold}G · ⭐ {questData.bonus?.xp} XP · 🧪 Potion
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                 </div>
               )}
 

@@ -4,6 +4,7 @@ const { getMonster, getRandomMonster, calcDamage } = require('../../data/monster
 const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
+const { trackQuestProgress } = require('./quests');
 
 // Active battles in memory (battleId → state)
 const activeBattles = new Map();
@@ -152,6 +153,9 @@ async function processAction(req, res) {
     log.push(...rewards.log);
     state.result = 'victory';
     activeBattles.delete(battleId);
+
+    // Track kill quest
+    trackQuestProgress(uid, 'kill', 1).catch(() => {});
 
     // Advance dungeon room if in a dungeon run
     let dungeonResult = null;
@@ -402,6 +406,7 @@ async function rest(req, res) {
     const char    = charDoc.data();
 
     await charRef.update({ hp: char.hpMax, mp: char.mpMax });
+    trackQuestProgress(uid, 'rest', 1).catch(() => {});
     return res.json({ success: true, hp: char.hpMax, mp: char.mpMax, msg: '💤 พักผ่อนแล้ว — HP และ MP เต็ม' });
   } catch (err) {
     console.error('[Combat] rest:', err.message);

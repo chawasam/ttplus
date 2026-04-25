@@ -12,6 +12,7 @@ const inventory = require('../handlers/game/inventory');
 const explore   = require('../handlers/game/explore');
 const npc       = require('../handlers/game/npc');
 const dungeon   = require('../handlers/game/dungeon');
+const quests    = require('../handlers/game/quests');
 
 // ===== Game-specific rate limiters =====
 const gameLimiter = rateLimit({
@@ -68,6 +69,10 @@ router.post('/shop/buy',  shopLimiter, inventory.buyItem);
 router.get ('/npcs',              npc.getNPCList);
 router.get ('/npc/:npcId',        npc.talkToNPC);
 router.post('/npc/gift',          npc.giveGift);
+
+// ----- Daily Quests -----
+router.get ('/quests',       quests.getQuests);
+router.post('/quests/claim', quests.claimReward);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);

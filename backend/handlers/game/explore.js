@@ -4,8 +4,8 @@ const { getZone, getExploreEvent } = require('../../data/maps');
 const { getItem, rollItem }        = require('../../data/items');
 const { addGold }                  = require('./currency');
 
-const STAMINA_COST    = 10; // ต่อ exploration action
-const STAMINA_REGEN_RATE = 10; // ต่อนาที
+const STAMINA_COST = 20; // ต่อ exploration action (ใหม่: max 200, regen ช้า)
+const { trackQuestProgress } = require('./quests');
 
 // ===== Explore action =====
 async function explore(req, res) {
@@ -90,12 +90,13 @@ async function explore(req, res) {
       response.msg = result.msg;
     }
 
-    // Regen stamina ตาม time passed
     await charRef.update(updates);
 
     // Add small XP for exploring
-    const xpGain = 2;
-    await charRef.update({ xp: admin.firestore.FieldValue.increment(xpGain) });
+    await charRef.update({ xp: admin.firestore.FieldValue.increment(2) });
+
+    // Track daily quest
+    trackQuestProgress(uid, 'explore', 1).catch(() => {});
 
     return res.json(response);
   } catch (err) {

@@ -4,6 +4,7 @@ const { getDungeon, listAllDungeons, getDungeonMonster, getDungeonRoom } = requi
 const { getMonster, calcDamage } = require('../../data/monsters');
 const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
+const { trackQuestProgress } = require('./quests');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -411,6 +412,9 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     // Update char (XP/level)
     await db.collection('game_characters').doc(run.charId).update(charUpdate);
 
+    // Track daily quest
+    trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
+
     return res.json({
       cleared: true,
       log,
@@ -513,6 +517,9 @@ async function onDungeonBattleWin(uid, runId) {
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
         currentRoom: dungeon.totalRooms,
       });
+
+      // Track daily quest
+      trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
 
       return {
         cleared: true,
