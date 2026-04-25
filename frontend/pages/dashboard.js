@@ -133,16 +133,28 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       // ── Auto-reconnect หลัง socket กลับมา (เช่น หลัง server restart) ──
       if (!wasConnectedRef.current) return;         // ไม่เคย connect ก็ไม่ต้อง
       if (!username) return;
-      // รอ authenticate เสร็จก่อน (~600ms) แล้วค่อย reconnect
-      setTimeout(async () => {
-        if (!socket.connected) return;              // socket หลุดอีกแล้ว ไม่ต้อง call
-        if (manualDisconnectRef.current) return;    // user กด disconnect ระหว่างรอ
+
+      // Retry loop: พยายาม reconnect TikTok สูงสุด 4 ครั้ง (ครั้งแรก + retry 3 ครั้ง)
+      // ห่างกัน 3 วินาที — รอ server warm up หลัง restart
+      const MAX_RETRY = 4;
+      const RETRY_DELAY_MS = 3000;
+      const attemptReconnect = async (attempt = 1) => {
+        if (!socket.connected) return;
+        if (manualDisconnectRef.current) return;
         try {
           await api.post('/api/connect', { tiktokUsername: username });
           toast('🔄 เชื่อมต่อ TikTok ใหม่อัตโนมัติ...', { id: 'auto-reconnect', duration: 3000 });
           setConnecting(true);
-        } catch { /* server อาจยัง warm up ไม่เสร็จ — scheduleReconnect ของ backend จะจัดการ */ }
-      }, 600);
+        } catch {
+          if (attempt < MAX_RETRY) {
+            toast(`⏳ รอ server พร้อม... (${attempt}/${MAX_RETRY})`, { id: 'auto-reconnect', duration: RETRY_DELAY_MS });
+            setTimeout(() => attemptReconnect(attempt + 1), RETRY_DELAY_MS);
+          }
+          // หมดจำนวน retry แล้ว — ปล่อยผ่าน (server อาจ down จริง)
+        }
+      };
+      // รอ socket auth เสร็จก่อน (~800ms) แล้วค่อยเริ่ม
+      setTimeout(() => attemptReconnect(1), 800);
     };
     // ลบ listener เดิมก่อนเสมอ ป้องกันสะสมถ้า setupSocketListeners ถูกเรียกซ้ำ
     socket.off('connect', onSocketReconnect);
