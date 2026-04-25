@@ -5,6 +5,7 @@ const { getMonster, calcDamage } = require('../../data/monsters');
 const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
 const { trackQuestProgress } = require('./quests');
+const { trackStoryStep }     = require('./quest_engine');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -193,6 +194,10 @@ async function enterDungeon(req, res) {
 
     const runData = { id: runRef.id, ...run };
     const room    = dungeon.rooms[0];
+
+    // Track story/side quest step — dungeon_enter event
+    trackStoryStep(uid, 'dungeon_enter', { dungeonId }).catch(() => {});
+
     return res.json({ run: runData, dungeon: summarizeDungeon(dungeon), room });
 
   } catch (err) {
@@ -412,8 +417,9 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     // Update char (XP/level)
     await db.collection('game_characters').doc(run.charId).update(charUpdate);
 
-    // Track daily quest
+    // Track daily quest + story/side quest step
     trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
+    trackStoryStep(uid, 'dungeon_clear', { dungeonId: run.dungeonId }).catch(() => {});
 
     return res.json({
       cleared: true,
@@ -518,8 +524,9 @@ async function onDungeonBattleWin(uid, runId) {
         currentRoom: dungeon.totalRooms,
       });
 
-      // Track daily quest
+      // Track daily quest + story/side quest step
       trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
+      trackStoryStep(uid, 'dungeon_clear', { dungeonId: run.dungeonId }).catch(() => {});
 
       return {
         cleared: true,

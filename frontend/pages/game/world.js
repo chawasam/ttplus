@@ -8,7 +8,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getNPCs, talkNPC, giveGift,
          getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee,
          requestVerify, getVerifyStatus,
-         getQuests, claimQuestReward } from '../../lib/gameApi';
+         getQuests, claimQuestReward,
+         getQuestLog, acceptSideQuest } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -25,6 +26,7 @@ const SCREENS = {
   DUNGEON_CLEAR:  'dungeon_clear',
   SETTINGS:       'settings',
   QUESTS:         'quests',
+  QUEST_LOG:      'quest_log',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -92,6 +94,10 @@ export default function GameWorld() {
   // ── Daily Quests ──
   const [questData,      setQuestData]      = useState(null);   // { quests, bonusClaimed, allCompleted, bonus }
   const [questBadge,     setQuestBadge]     = useState(false);  // มีเควสที่รับรางวัลได้
+
+  // ── Quest Log (Story + Side) ──
+  const [questLog,       setQuestLog]       = useState(null);   // { story, sideActive, sideCompleted, sideAvailable }
+  const [questLogTab,    setQuestLogTab]    = useState('story');  // 'story' | 'side'
 
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
@@ -175,6 +181,31 @@ export default function GameWorld() {
       toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
     }
   }, [loadQuests]);
+
+  // ===== Quest Log (Story + Side) =====
+  const loadQuestLog = useCallback(async () => {
+    try {
+      const { data } = await getQuestLog();
+      setQuestLog(data);
+    } catch {}
+  }, []);
+
+  const openQuestLog = useCallback(async () => {
+    setQuestLogTab('story');
+    setScreen(SCREENS.QUEST_LOG);
+    await loadQuestLog();
+  }, [loadQuestLog]);
+
+  const handleAcceptSideQuest = useCallback(async (questId, questName) => {
+    try {
+      await acceptSideQuest(questId);
+      toast.success(`✅ รับภารกิจ: ${questName}`);
+      addLog(`📜 รับภารกิจพิเศษ: ${questName}`);
+      await loadQuestLog();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'รับภารกิจไม่ได้');
+    }
+  }, [loadQuestLog]);
 
   // ===== Settings =====
   const openSettings = useCallback(async () => {
@@ -788,6 +819,7 @@ export default function GameWorld() {
                       📋 ภารกิจ
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
+                    <Btn onClick={openQuestLog}   disabled={busy}>📖 เนื้อเรื่อง</Btn>
                     <Btn onClick={openSettings}   disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
@@ -1102,6 +1134,155 @@ export default function GameWorld() {
                   )}
 
                   <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                </div>
+              )}
+
+              {/* QUEST LOG */}
+              {screen === SCREENS.QUEST_LOG && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  {/* Tab switcher */}
+                  <div className="flex gap-1 mb-2">
+                    {['story', 'side'].map(tab => (
+                      <button key={tab} onClick={() => setQuestLogTab(tab)}
+                        className={`px-3 py-1 text-xs rounded border transition ${
+                          questLogTab === tab
+                            ? 'border-amber-600 text-amber-300 bg-amber-900/20'
+                            : 'border-gray-800 text-gray-600 hover:text-gray-400'
+                        }`}>
+                        {tab === 'story' ? '📖 เนื้อเรื่อง' : '⚔️ ภารกิจพิเศษ'}
+                      </button>
+                    ))}
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)} className="ml-auto text-xs">← กลับ</Btn>
+                  </div>
+
+                  {!questLog ? (
+                    <p className="text-gray-600 text-xs">กำลังโหลด...</p>
+                  ) : questLogTab === 'story' ? (
+                    /* ── STORY TAB ── */
+                    <div className="space-y-2">
+                      {questLog.story.map(q => (
+                        <div key={q.id} className={`border rounded p-2 text-xs ${
+                          q.status === 'completed' ? 'border-gray-800 opacity-50' :
+                          q.status === 'active'    ? 'border-amber-700 bg-amber-900/10' :
+                                                     'border-gray-900 opacity-30'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            <span className={`text-xs font-bold shrink-0 ${
+                              q.status === 'completed' ? 'text-green-600' :
+                              q.status === 'active'    ? 'text-amber-400' :
+                                                         'text-gray-700'
+                            }`}>
+                              {q.status === 'completed' ? '✅' : q.status === 'active' ? '▶' : '🔒'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-bold ${q.status === 'active' ? 'text-amber-300' : 'text-gray-400'}`}>
+                                {q.name}
+                                <span className="text-gray-700 font-normal ml-1 text-xs">[{q.chapter}]</span>
+                              </p>
+                              {q.status === 'active' && q.currentStep && (
+                                <div className="mt-1">
+                                  <p className="text-gray-400 leading-relaxed">{q.currentStep.hint}</p>
+                                  {/* Step progress bar */}
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <div className="flex-1 h-0.5 bg-gray-800 rounded">
+                                      <div className="h-0.5 bg-amber-600 rounded transition-all"
+                                        style={{ width: `${Math.min(100, (q.currentStep.progress / q.currentStep.count) * 100)}%` }} />
+                                    </div>
+                                    <span className="text-gray-600 shrink-0">
+                                      {q.currentStep.progress}/{q.currentStep.count}
+                                    </span>
+                                  </div>
+                                  <p className="text-gray-700 mt-0.5">
+                                    ขั้น {q.currentStep.stepIndex + 1}/{q.currentStep.totalSteps}
+                                  </p>
+                                </div>
+                              )}
+                              {q.status === 'completed' && q.completionText && (
+                                <p className="text-gray-500 italic leading-relaxed mt-0.5 text-xs">
+                                  "{q.completionText.substring(0, 100)}{q.completionText.length > 100 ? '...' : ''}"
+                                </p>
+                              )}
+                              {q.status === 'locked' && (
+                                <p className="text-gray-700 leading-relaxed mt-0.5">{q.desc}</p>
+                              )}
+                              {/* Rewards */}
+                              <p className="text-yellow-800 mt-0.5 text-xs">
+                                🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.join(', ')}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* ── SIDE QUESTS TAB ── */
+                    <div className="space-y-2">
+                      {/* Active side quests */}
+                      {questLog.sideActive.length > 0 && (
+                        <div>
+                          <p className="text-gray-600 text-xs mb-1">[ กำลังดำเนินการ ]</p>
+                          {questLog.sideActive.map(q => (
+                            <div key={q.id} className="border border-amber-800 rounded p-2 mb-1 text-xs bg-amber-900/10">
+                              <p className="text-amber-300 font-bold">{q.name}
+                                <span className="text-gray-600 font-normal ml-1">[{q.category}]</span>
+                              </p>
+                              <p className="text-gray-400 leading-relaxed mt-0.5">{q.currentStep.hint}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <div className="flex-1 h-0.5 bg-gray-800 rounded">
+                                  <div className="h-0.5 bg-amber-600 rounded transition-all"
+                                    style={{ width: `${Math.min(100, (q.currentStep.progress / q.currentStep.count) * 100)}%` }} />
+                                </div>
+                                <span className="text-gray-600 shrink-0">
+                                  {q.currentStep.progress}/{q.currentStep.count}
+                                </span>
+                              </div>
+                              <p className="text-yellow-800 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Available side quests */}
+                      {questLog.sideAvailable.length > 0 && (
+                        <div>
+                          <p className="text-gray-600 text-xs mb-1">[ รับได้เลย ]</p>
+                          {questLog.sideAvailable.map(q => (
+                            <div key={q.id} className="border border-gray-700 rounded p-2 mb-1 text-xs">
+                              <div className="flex items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-amber-200 font-bold">{q.name}
+                                    <span className="text-gray-600 font-normal ml-1">[{q.category}]</span>
+                                  </p>
+                                  <p className="text-gray-500 leading-relaxed mt-0.5">{q.desc}</p>
+                                  <p className="text-yellow-800 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G</p>
+                                </div>
+                                <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
+                                  className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                                  รับ
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Completed side quests */}
+                      {questLog.sideCompleted.length > 0 && (
+                        <div>
+                          <p className="text-gray-600 text-xs mb-1">[ เสร็จแล้ว ]</p>
+                          {questLog.sideCompleted.map(q => (
+                            <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-40">
+                              <p className="text-gray-500">✅ {q.name}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 && questLog.sideCompleted.length === 0 && (
+                        <p className="text-gray-700 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

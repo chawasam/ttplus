@@ -6,6 +6,7 @@ const { addGold }                  = require('./currency');
 
 const STAMINA_COST = 20; // ต่อ exploration action (ใหม่: max 200, regen ช้า)
 const { trackQuestProgress } = require('./quests');
+const { trackStoryStep }     = require('./quest_engine');
 
 // ===== Explore action =====
 async function explore(req, res) {
@@ -97,6 +98,8 @@ async function explore(req, res) {
 
     // Track daily quest
     trackQuestProgress(uid, 'explore', 1).catch(() => {});
+    // Track story/side quest step — explore event
+    trackStoryStep(uid, 'explore', { zone }).catch(() => {});
 
     return res.json(response);
   } catch (err) {
@@ -120,6 +123,9 @@ async function travel(req, res) {
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     await db.collection('game_characters').doc(charId).update({ location: zone });
+
+    // Track story/side quest step — travel event
+    trackStoryStep(uid, 'travel', { zone }).catch(() => {});
 
     return res.json({
       success:   true,

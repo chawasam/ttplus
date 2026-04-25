@@ -3,6 +3,7 @@ const admin  = require('firebase-admin');
 const { getNPC, getAllNPCs, getGiftReaction, getAffectionTier, BOND_ITEMS, TIER_GIFT_BACK } = require('../../data/npcs');
 const { getItem, rollItem } = require('../../data/items');
 const { trackQuestProgress } = require('./quests');
+const { trackStoryStep }     = require('./quest_engine');
 
 const GIFT_DAILY_LIMIT = 3; // ครั้งต่อ NPC ต่อวัน
 const DECAY_PER_DAY    = 1; // affection ลดต่อวันที่ไม่ได้คุย
@@ -195,6 +196,9 @@ async function talkToNPC(req, res) {
     const dialog     = getDialog(npc, npcAff.affection || 0);
     const tier       = getAffectionTier(npcAff.affection || 0);
     const giftUsed   = getGiftUsedToday(npcAff);
+
+    // Track story/side quest step — talk event
+    trackStoryStep(uid, 'talk', { npcId }).catch(() => {});
 
     return res.json({
       npcId,

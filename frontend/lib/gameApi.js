@@ -43,6 +43,10 @@ export const giveGift         = (npcId, instanceId) => api.post('/api/game/npc/g
 export const getQuests        = ()               => api.get('/api/game/quests');
 export const claimQuestReward = (questId)        => api.post('/api/game/quests/claim', { questId });
 
+// ===== Quest Log (Story + Side) =====
+export const getQuestLog      = ()               => api.get('/api/game/quest-log');
+export const acceptSideQuest  = (questId)        => api.post('/api/game/quest-log/accept', { questId });
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

@@ -5,6 +5,7 @@ const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
 const { trackQuestProgress } = require('./quests');
+const { trackStoryStep }     = require('./quest_engine');
 
 // Active battles in memory (battleId → state)
 const activeBattles = new Map();
@@ -53,6 +54,7 @@ async function startBattle(req, res) {
       uid,
       charId,
       dungeonRunId: dungeonRunId || null, // track dungeon context
+      zone:         dungeonRunId ? null : (zone || null), // track zone for quest step matching
       turn: 1,
       result: null,
       player: {
@@ -154,8 +156,12 @@ async function processAction(req, res) {
     state.result = 'victory';
     activeBattles.delete(battleId);
 
-    // Track kill quest
+    // Track daily kill quest + story/side quest step
     trackQuestProgress(uid, 'kill', 1).catch(() => {});
+    trackStoryStep(uid, 'kill', {
+      monsterId: state.enemy.monsterId,
+      zone:      state.zone, // null inside dungeons, zone string in world
+    }).catch(() => {});
 
     // Advance dungeon room if in a dungeon run
     let dungeonResult = null;
