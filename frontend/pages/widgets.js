@@ -329,7 +329,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         ) : (
           <div className={clsx('rounded-xl p-3 mb-4 text-sm flex items-center gap-2 border',
             isDark ? 'bg-yellow-500/10 border-yellow-500/25 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-700')}>
-            ⏳ {tokenLoading ? 'กำลังโหลด Widget URL...' : 'กำลังเตรียม Widget URL...'}
+            ⏳ {tokenLoading ? 'กำลังโหลด Widget URL... (Railway cold start อาจใช้เวลา 30-60 วินาที)' : 'กำลังเตรียม Widget URL...'}
           </div>
         )}
 
