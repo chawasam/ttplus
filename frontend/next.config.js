@@ -51,6 +51,17 @@ const nextConfig = {
     minimumCacheTTL: 3600,
   },
 
+  // ===== Redirects: ทุก alias → /ashenveil (canonical URL) =====
+  // pages/ashenveil/ เป็น page จริง — ไม่ต้องใช้ rewrites
+  async redirects() {
+    return [
+      { source: '/ASHENVEIL',       destination: '/ashenveil',       permanent: false },
+      { source: '/ASHENVEIL/world', destination: '/ashenveil/world', permanent: false },
+      { source: '/game',            destination: '/ashenveil',       permanent: false },
+      { source: '/game/world',      destination: '/ashenveil/world', permanent: false },
+    ];
+  },
+
   async headers() {
     return [
       // ===== หน้าหลัก (ทุกหน้ายกเว้น /widget/*) =====
