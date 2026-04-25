@@ -1,6 +1,6 @@
 // handlers/game/combat.js — Server-side battle logic
 const admin  = require('firebase-admin');
-const { getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
+const { MONSTERS, getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
 const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
@@ -36,6 +36,24 @@ async function startBattle(req, res) {
     monster = getRandomMonster(zone || 'town_outskirts');
   }
   if (!monster) return res.status(400).json({ error: 'ไม่พบมอนสเตอร์' });
+
+  // ── Zone Boss cooldown check ────────────────────────────────────────────
+  if (monster.special === 'zone_boss') {
+    const db2 = admin.firestore();
+    const acct2 = await db2.collection('game_accounts').doc(uid).get();
+    const kills = acct2.data()?.zoneBossKills || {};
+    const lastKill = kills[monster.monsterId] || 0;
+    const cooldownMs = (monster.cooldownHours || 24) * 3600 * 1000;
+    const elapsed = Date.now() - lastKill;
+    if (elapsed < cooldownMs) {
+      const remaining = Math.ceil((cooldownMs - elapsed) / 3600000);
+      return res.status(400).json({
+        error: `⏳ ${monster.name} กำลังฟื้นร่าง — อีก ${remaining} ชั่วโมงจะกลับมา`,
+        cooldownRemaining: cooldownMs - elapsed,
+      });
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const db = admin.firestore();
   try {
@@ -501,6 +519,16 @@ async function grantRewards(uid, state) {
       rewards.levelUp = newLevel;
     }
     await charRef.update(updates);
+  }
+
+  // Zone Boss kill record
+  if (state.enemy.monsterId && MONSTERS[state.enemy.monsterId]?.special === 'zone_boss') {
+    try {
+      await db.collection('game_accounts').doc(uid).set(
+        { zoneBossKills: { [state.enemy.monsterId]: Date.now() } },
+        { merge: true }
+      );
+    } catch {}
   }
 
   // Item drops

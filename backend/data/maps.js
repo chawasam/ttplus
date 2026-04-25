@@ -23,6 +23,7 @@ const ZONES = {
     zoneId: 'town_outskirts',
     name: 'Town Outskirts', nameTH: 'ชานเมือง',
     shard: 'starter', level: [1, 5],
+    zoneBossId: 'outskirts_boss',
     atmosphere: [
       'ทุ่งหญ้าโล่งกว้าง ลมเย็นพัดผ่าน ไม่มีต้นไม้บังแสง',
       'รอยเท้าสัตว์หลายชนิดบนดินชื้น บางอันใหญ่ผิดปกติ',
@@ -49,6 +50,7 @@ const ZONES = {
     zoneId: 'forest_path',
     name: 'Forest Path', nameTH: 'ทางป่า',
     shard: 'starter', level: [3, 10],
+    zoneBossId: 'forest_boss',
     atmosphere: [
       'ป่าทึบ แสงแดดส่องทะลุมาเป็นลำบางๆ พื้นดินปกคลุมด้วยใบไม้เก่า',
       'เสียงกิ่งไม้หักดังๆ แต่ไม่มีอะไรให้เห็น',
@@ -78,6 +80,7 @@ const ZONES = {
     zoneId: 'dark_cave',
     name: 'Dark Cave', nameTH: 'ถ้ำมืด',
     shard: 'starter', level: [5, 15],
+    zoneBossId: 'cave_boss',
     atmosphere: [
       'มืดสนิท เสียงหยดน้ำดังเป็นจังหวะ ไม่รู้ว่ามาจากไหน',
       'ผนังถ้ำมีผลึกแร่เล็กๆ เปล่งแสงน้ำเงินอ่อนๆ',
@@ -107,6 +110,7 @@ const ZONES = {
     zoneId: 'city_ruins',
     name: 'Ashenveil City Ruins', nameTH: 'ซากเมือง Ashenveil',
     shard: 'midgame', level: [10, 20],
+    zoneBossId: 'ruins_boss',
     atmosphere: [
       'ตึกรามสูงใหญ่ที่เคยตระการตา บัดนี้ล้มทับกันเป็นซาก',
       'กลิ่นควันไฟเก่าที่ยังลอยอยู่ ราวกับเมืองเพิ่งถูกเผาไม่นานนี้',
@@ -137,6 +141,7 @@ const ZONES = {
     zoneId: 'cursed_marshlands',
     name: 'Cursed Marshlands', nameTH: 'หนองสาปแช่ง',
     shard: 'midgame', level: [18, 28],
+    zoneBossId: 'marsh_boss',
     atmosphere: [
       'น้ำสีเขียวขุ่นไม่เห็นก้น หมอกลอยหนาทั้งกลางวันกลางคืน',
       'ต้นไม้บิดเบี้ยวทุกต้น ราวกับถูกสาปให้เติบโตผิดรูป',
@@ -166,7 +171,8 @@ const ZONES = {
   void_frontier: {
     zoneId: 'void_frontier',
     name: 'Void Frontier', nameTH: 'ชายขอบ Void',
-    shard: 'endgame', level: [28, 99],
+    shard: 'endgame', level: [28, 50],
+    zoneBossId: 'void_boss',
     atmosphere: [
       'ท้องฟ้าสีดำไม่มีดาว พื้นดินแตกร้าว มีแสงม่วงผุดขึ้นจากรอยแยก',
       'กฎฟิสิกส์ไม่ทำงานที่นี่ หินลอย น้ำไหลย้อนขึ้น',
@@ -190,6 +196,68 @@ const ZONES = {
       { id: 'encounter',       weight: 30, result: { type: 'encounter', msg: 'บางอย่างจาก The Void ตรวจพบว่าคุณอยู่ที่นี่...' } },
       { id: 'nothing_1',       weight: 6,  result: { type: 'nothing', msg: 'คุณก้าวเดินไปข้างหน้า แต่กลับมาอยู่จุดเดิม' } },
       { id: 'nothing_2',       weight: 5,  result: { type: 'nothing', msg: 'แสงวาบ แล้วก็ดับ ไม่มีอะไรเหลือ' } },
+    ],
+  },
+
+  shadowfell_depths: {
+    zoneId: 'shadowfell_depths',
+    name: 'Shadowfell Depths', nameTH: 'ห้วงลึกแห่งเงา',
+    shard: 'endgame', level: [38, 55],
+    zoneBossId: 'shadow_boss',
+    atmosphere: [
+      'มิติเงาที่แยกออกมาจาก The Void ท้องฟ้าเป็นผิวกระจกสีดำสะท้อนเงาคุณกลับมา',
+      'ทุกก้าวทิ้งรอยเงาไว้ข้างหลัง และรอยเงาเหล่านั้นเคลื่อนไหวต่อ',
+      'เสียงกระซิบจากเงาของตัวเอง บางครั้งมันพูดสิ่งที่คุณยังไม่รู้',
+      'ดวงอาทิตย์ที่นี่เป็นสีดำ แสดงออกมาเป็นความมืดที่มองเห็นได้',
+      'ร่างเงาของคนที่เคยมาที่นี่เดินเวียนซ้ำๆ ไม่รู้ตัวว่าตายแล้ว',
+      'สิ่งที่ตายที่นี่ไม่ได้หายไป — มันกลายเป็นส่วนหนึ่งของความมืด',
+    ],
+    canFight: true, canExplore: true,
+    monsters: ['shadow_wraith', 'dark_knight', 'nightmare_hound'],
+    icon: '🌑',
+    minLevel: 38,
+    connections: ['void_frontier', 'vorath_citadel'],
+    events: [
+      { id: 'find_shadow_gem',  weight: 12, result: { type: 'item', items: ['soul_gem'], gold: 0, msg: 'เงาของคุณทิ้งอัญมณีวิญญาณไว้ คุณหยิบมันขึ้นมา' } },
+      { id: 'find_void_cache',  weight: 15, result: { type: 'item', items: ['void_crystal', 'void_essence'], gold: 0, msg: 'รอยแยกในเงา เป็นทางเข้าไปในห้องเล็กที่เต็มไปด้วยผลึก' } },
+      { id: 'find_dark_steel',  weight: 10, result: { type: 'item', items: ['dark_steel'], gold: 0, msg: 'โลหะสีดำที่หลอมจากเงาแข็ง ของหายากในมิตินี้' } },
+      { id: 'find_chaos',       weight: 8,  result: { type: 'item', items: ['chaos_shard'], gold: 0, msg: 'เศษพลังงานที่ไม่เป็นระเบียบ สั่นสะเทือนในมือ' } },
+      { id: 'find_gold',        weight: 10, result: { type: 'gold', gold: [300, 700], msg: 'ทองคำจากมิติอื่นลอยอยู่ มูลค่าเดิมในโลกของคุณ' } },
+      { id: 'find_scroll',      weight: 8,  result: { type: 'item', items: ['ancient_scroll', 'ancient_scroll'], gold: 0, msg: 'ม้วนหนังสือเขียนด้วยภาษาเงา แปลได้บ้าง บ้างก็ไม่ได้' } },
+      { id: 'encounter',        weight: 30, result: { type: 'encounter', msg: 'เงาของคุณแยกตัวออกมาและหันหน้ามาโจมตี...' } },
+      { id: 'nothing_1',        weight: 4,  result: { type: 'nothing', msg: 'เดินในความมืดสักพัก ไม่พบอะไร นอกจากเงาของตัวเอง' } },
+      { id: 'nothing_2',        weight: 3,  result: { type: 'nothing', msg: 'กระจกเงาขนาดใหญ่ แต่ภาพสะท้อนล้าช้ากว่า 5 วินาที' } },
+    ],
+  },
+
+  vorath_citadel: {
+    zoneId: 'vorath_citadel',
+    name: "Vorath's Citadel", nameTH: 'ป้อมปราการ Vorath',
+    shard: 'endgame', level: [50, 99],
+    zoneBossId: 'vorath_boss',
+    atmosphere: [
+      'ป้อมปราการลอยอยู่กลางอวกาศ Void — ทำจากหินที่ดูดซับแสงทุกชนิด',
+      'พื้นโปร่งใส มองลงไปเห็นดาวนับไม่ถ้วนที่กำลังดับลงทีละดวง',
+      'เสียงของ Vorath ดังก้องในหัว ภาษาที่ไม่มีคำ แต่ความหมายชัดเจน',
+      'ผู้พิทักษ์ Golem ยืนนิ่งทุก 10 เมตร จ้องมาที่คุณแต่ไม่โจมตีก่อน',
+      'หน้าต่างเปิดไปสู่ The Sundering — เห็นโลกก่อนที่มันจะแตกสลาย',
+      'ทางเดินหินแคบ ทั้งสองข้างคือความว่างเปล่าที่ไม่มีที่สิ้นสุด',
+    ],
+    canFight: true, canExplore: true,
+    monsters: ['citadel_sentinel', 'void_priest', 'abyssal_dragon'],
+    icon: '🏰',
+    minLevel: 50,
+    connections: ['shadowfell_depths'],
+    events: [
+      { id: 'find_titan_core',  weight: 8,  result: { type: 'item', items: ['titan_core'], gold: 0, msg: 'แกนพลังงานของ Golem ที่ถูกทำลาย ยังคงมีพลังหลงเหลือ' } },
+      { id: 'find_void_hoard',  weight: 12, result: { type: 'item', items: ['void_crystal', 'void_crystal', 'void_essence'], gold: 0, msg: 'คลังของ Vorath ที่ถูกทิ้งร้าง ยังมีทรัพยากร Void เหลือ' } },
+      { id: 'find_chaos_cache', weight: 10, result: { type: 'item', items: ['chaos_shard', 'chaos_shard'], gold: 0, msg: 'ห้องทดลองของ Vorath มีเศษพลังงาน Chaos กองอยู่' } },
+      { id: 'find_soul_trove',  weight: 8,  result: { type: 'item', items: ['soul_gem', 'soul_gem'], gold: 0, msg: 'วิญญาณของนักผจญภัยที่ล้มเหลวถูกขังไว้ในอัญมณี' } },
+      { id: 'find_gold',        weight: 10, result: { type: 'gold', gold: [800, 2000], msg: 'คลังทองคำเก่าที่ Vorath เก็บสะสมจากอาณาจักรที่ล่มสลาย' } },
+      { id: 'find_scroll',      weight: 10, result: { type: 'item', items: ['ancient_scroll', 'ancient_scroll', 'ancient_scroll'], gold: 0, msg: 'ห้องสมุด Void — ม้วนหนังสือที่รวบรวมความรู้จากหลายโลก' } },
+      { id: 'encounter',        weight: 30, result: { type: 'encounter', msg: 'ผู้พิทักษ์ของ Vorath ตรวจพบผู้บุกรุก...' } },
+      { id: 'nothing_1',        weight: 6,  result: { type: 'nothing', msg: 'ห้องว่างเปล่า บนผนังมีแค่ดวงตาที่วาดไว้นับร้อยดวง' } },
+      { id: 'nothing_2',        weight: 6,  result: { type: 'nothing', msg: 'ทางตัน ประตูหินปิดสนิท ไม่มีทางเปิด ยังไม่ถึงเวลา' } },
     ],
   },
 
@@ -236,13 +304,15 @@ function getExploreEvent(zoneId) {
 
 // Zone display list for travel screen
 const ZONE_LIST = [
-  { id: 'town_square',      name: '🏘️ Town Square',        lv: 'Safe',   minLevel: 1  },
-  { id: 'town_outskirts',   name: '🌾 ชานเมือง',            lv: 'Lv.1+',  minLevel: 1  },
-  { id: 'forest_path',      name: '🌲 ทางป่า',              lv: 'Lv.3+',  minLevel: 3  },
-  { id: 'dark_cave',        name: '🕳️ ถ้ำมืด',             lv: 'Lv.5+',  minLevel: 5  },
-  { id: 'city_ruins',       name: '🏚️ ซากเมือง',           lv: 'Lv.10+', minLevel: 10 },
-  { id: 'cursed_marshlands',name: '🌿 หนองสาปแช่ง',        lv: 'Lv.18+', minLevel: 18 },
-  { id: 'void_frontier',    name: '🌀 ชายขอบ Void',         lv: 'Lv.28+', minLevel: 28 },
+  { id: 'town_square',       name: '🏘️ Town Square',         lv: 'Safe',   minLevel: 1  },
+  { id: 'town_outskirts',    name: '🌾 ชานเมือง',             lv: 'Lv.1+',  minLevel: 1,  bossId: 'outskirts_boss' },
+  { id: 'forest_path',       name: '🌲 ทางป่า',               lv: 'Lv.3+',  minLevel: 3,  bossId: 'forest_boss'    },
+  { id: 'dark_cave',         name: '🕳️ ถ้ำมืด',              lv: 'Lv.5+',  minLevel: 5,  bossId: 'cave_boss'      },
+  { id: 'city_ruins',        name: '🏚️ ซากเมือง',            lv: 'Lv.10+', minLevel: 10, bossId: 'ruins_boss'     },
+  { id: 'cursed_marshlands', name: '🌿 หนองสาปแช่ง',         lv: 'Lv.18+', minLevel: 18, bossId: 'marsh_boss'     },
+  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',          lv: 'Lv.28+', minLevel: 28, bossId: 'void_boss'      },
+  { id: 'shadowfell_depths', name: '🌑 ห้วงลึกแห่งเงา',      lv: 'Lv.38+', minLevel: 38, bossId: 'shadow_boss'    },
+  { id: 'vorath_citadel',    name: '🏰 ป้อมปราการ Vorath',    lv: 'Lv.50+', minLevel: 50, bossId: 'vorath_boss'    },
 ];
 
 module.exports = { ZONES, ZONE_LIST, SHOP_INVENTORY, getZone, getExploreEvent };

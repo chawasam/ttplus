@@ -24,6 +24,18 @@ import Head from 'next/head';
 import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
 import { connectSocket, getSocket } from '../../lib/socket';
 
+// Zone boss ID map (mirrors maps.js ZONE_LIST bossId)
+const ZONE_BOSSES = {
+  town_outskirts:    'outskirts_boss',
+  forest_path:       'forest_boss',
+  dark_cave:         'cave_boss',
+  city_ruins:        'ruins_boss',
+  cursed_marshlands: 'marsh_boss',
+  void_frontier:     'void_boss',
+  shadowfell_depths: 'shadow_boss',
+  vorath_citadel:    'vorath_boss',
+};
+
 const SCREENS = {
   WORLD:          'world',
   EXPLORE:        'explore',
@@ -82,7 +94,9 @@ const ZONE_LIST = [
   { id: 'dark_cave',         name: '🕳️ ถ้ำมืด',            lv: 'Lv.5+',   minLevel: 5  },
   { id: 'city_ruins',        name: '🏚️ ซากเมือง',          lv: 'Lv.10+',  minLevel: 10 },
   { id: 'cursed_marshlands', name: '🌿 หนองสาปแช่ง',       lv: 'Lv.18+',  minLevel: 18 },
-  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',       lv: 'Lv.28+',  minLevel: 28 },
+  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',        lv: 'Lv.28+',  minLevel: 28 },
+  { id: 'shadowfell_depths', name: '🌑 ห้วงลึกแห่งเงา',    lv: 'Lv.38+',  minLevel: 38 },
+  { id: 'vorath_citadel',    name: '🏰 ป้อมปราการ Vorath',  lv: 'Lv.50+',  minLevel: 50 },
 ];
 
 const GRADE_COLOR = {
@@ -1468,8 +1482,12 @@ export default function GameWorld() {
                     {zone !== 'town_square' && (
                       <Btn onClick={handleExplore}  disabled={busy}>🔍 สำรวจ</Btn>
                     )}
-                    {zone !== 'town_square' && (
-                      <Btn onClick={() => handleStartBattle(zone)} disabled={busy}>⚔️ ออกหาบอส</Btn>
+                    {zone !== 'town_square' && ZONE_BOSSES[zone] && (
+                      <Btn
+                        onClick={() => handleStartBattle(zone, ZONE_BOSSES[zone])}
+                        disabled={busy}
+                        title="สู้ Zone Boss (24h cooldown)"
+                      >💀 Zone Boss</Btn>
                     )}
                     <Btn onClick={handleRest}     disabled={busy}>💤 พักผ่อน</Btn>
                     <Btn onClick={loadInventory}  disabled={busy}>🎒 Inventory</Btn>
@@ -1866,11 +1884,12 @@ export default function GameWorld() {
                     <>
                       {/* Group by category */}
                       {[
-                        { key: 'consumable',  label: '🧪 ของใช้' },
-                        { key: 'premium_box', label: '📦 กล่องสุ่ม' },
-                        { key: 'material',    label: '📜 วัตถุดิบ' },
+                        { key: 'consumable',  label: '🧪 Boost & ของใช้' },
+                        { key: 'premium_box', label: '📦 กล่องพรีเมียม' },
+                        { key: 'upgrade',     label: '⬆️ Permanent Upgrade' },
+                        { key: 'service',     label: '⚗️ Character Service' },
                         { key: 'race_unlock', label: '🧬 Race Unlock' },
-                        { key: 'cosmetic',    label: '🎖️ ตำแหน่ง' },
+                        { key: 'cosmetic',    label: '🎖️ Title / Cosmetic' },
                       ].map(cat => {
                         const catItems = rpShopItems.filter(i => i.category === cat.key);
                         if (!catItems.length) return null;
