@@ -78,19 +78,38 @@ async function startBattle(req, res) {
     if (!monster) return res.status(400).json({ error: `ไม่พบมอนสเตอร์ในห้องนี้: ${room.monsterId}` });
 
   } else if (monsterId) {
-    // ── Validate monsterId อยู่ใน zone ที่ character ปัจจุบันอยู่จริง ────────
-    // โหลด zone ของ character จาก Firestore ก่อน (กันคนส่ง monsterId เองโดยไม่ผ่าน explore)
+    // ── Validate monsterId อยู่ใน zone ที่ถูกต้อง ────────────────────────────
+    // ใช้ zone จาก request body ก่อน (ส่งมาจาก explore encounter)
+    // ถ้าไม่มี zone ใน request → โหลด character location จาก Firestore
     const { getZone } = require('../../data/maps');
+
+    let validationZone = zone || null;     // zone จาก explore result
+    let charLevelForZone = 1;
+
     const acctForZone = await db.collection('game_accounts').doc(uid).get();
     const charIdForZone = acctForZone.data()?.characterId;
     if (charIdForZone) {
       const charForZone = await db.collection('game_characters').doc(charIdForZone).get();
-      const charLocation = charForZone.data()?.location || 'town_outskirts';
-      const zoneDef = getZone(charLocation);
-      const allowedMonsters = zoneDef?.monsters || [];
-      // zone boss (special) อนุญาตถ้าอยู่ใน zone นั้น
+      charLevelForZone = charForZone.data()?.level || 1;
+      if (!validationZone) {
+        // ไม่มี zone ใน request — fallback to stored location
+        validationZone = charForZone.data()?.location || 'town_outskirts';
+      }
+    }
+
+    if (validationZone) {
+      const zoneDef = getZone(validationZone);
+      if (!zoneDef) return res.status(400).json({ error: 'Zone ไม่ถูกต้อง' });
+
+      // ตรวจ level requirement ของ zone (ป้องกันส่ง zone สูงเกินมาตรง ๆ)
+      const [minLv] = zoneDef.level || [1];
+      if (charLevelForZone < minLv) {
+        return res.status(403).json({ error: `Level ไม่ถึง — Zone นี้ต้องการ Level ${minLv}` });
+      }
+
+      const allowedMonsters = zoneDef.monsters || [];
       if (allowedMonsters.length > 0 && !allowedMonsters.includes(monsterId)) {
-        return res.status(403).json({ error: `มอนสเตอร์นี้ไม่ได้อยู่ใน zone ของคุณ (${zoneDef?.nameTH || charLocation})` });
+        return res.status(403).json({ error: `มอนสเตอร์นี้ไม่ได้อยู่ใน zone ${zoneDef.nameTH}` });
       }
     }
     monster = getMonster(monsterId) || getDungeonMonster(monsterId);
