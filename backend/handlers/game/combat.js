@@ -78,6 +78,21 @@ async function startBattle(req, res) {
     if (!monster) return res.status(400).json({ error: `ไม่พบมอนสเตอร์ในห้องนี้: ${room.monsterId}` });
 
   } else if (monsterId) {
+    // ── Validate monsterId อยู่ใน zone ที่ character ปัจจุบันอยู่จริง ────────
+    // โหลด zone ของ character จาก Firestore ก่อน (กันคนส่ง monsterId เองโดยไม่ผ่าน explore)
+    const { getZone } = require('../../data/maps');
+    const acctForZone = await db.collection('game_accounts').doc(uid).get();
+    const charIdForZone = acctForZone.data()?.characterId;
+    if (charIdForZone) {
+      const charForZone = await db.collection('game_characters').doc(charIdForZone).get();
+      const charLocation = charForZone.data()?.location || 'town_outskirts';
+      const zoneDef = getZone(charLocation);
+      const allowedMonsters = zoneDef?.monsters || [];
+      // zone boss (special) อนุญาตถ้าอยู่ใน zone นั้น
+      if (allowedMonsters.length > 0 && !allowedMonsters.includes(monsterId)) {
+        return res.status(403).json({ error: `มอนสเตอร์นี้ไม่ได้อยู่ใน zone ของคุณ (${zoneDef?.nameTH || charLocation})` });
+      }
+    }
     monster = getMonster(monsterId) || getDungeonMonster(monsterId);
   } else {
     monster = getRandomMonster(zone || 'town_outskirts');

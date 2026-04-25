@@ -3,60 +3,93 @@ const admin = require('firebase-admin');
 const { getZone, getExploreEvent } = require('../../data/maps');
 const { getItem, rollItem }        = require('../../data/items');
 const { addGold }                  = require('./currency');
+const { logReward }                = require('../../utils/anticheat');
 
-const STAMINA_COST    = 20;   // ต่อ exploration action (ใหม่: max 200, regen ช้า)
-const EXPLORE_COOLDOWN_MS = 3000; // server-side cooldown 3 วินาที ป้องกัน bot spam
+const STAMINA_COST        = 20;
+const EXPLORE_COOLDOWN_MS = 3000; // 3 วินาที
+
 const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements }   = require('./achievements');
+
+// ── In-memory cooldown (set ก่อน await ใดๆ — ป้องกัน race condition) ─────────
+const _exploreCooldown = new Map(); // uid → lastMs
+setInterval(() => {
+  const cutoff = Date.now() - EXPLORE_COOLDOWN_MS * 5;
+  for (const [k, v] of _exploreCooldown.entries()) {
+    if (v < cutoff) _exploreCooldown.delete(k);
+  }
+}, 60_000);
 
 // ===== Explore action =====
 async function explore(req, res) {
   const { zone = 'town_outskirts' } = req.body;
   const uid = req.user.uid;
 
+  // ── 1. In-memory cooldown SEBELUM await apapun ────────────────────────────
+  // Node.js single-threaded: เซ็ตก่อน await → request ถัดไปเห็น lock ทันที
+  const lastExplore = _exploreCooldown.get(uid) || 0;
+  const elapsed     = Date.now() - lastExplore;
+  if (elapsed < EXPLORE_COOLDOWN_MS) {
+    const wait = Math.ceil((EXPLORE_COOLDOWN_MS - elapsed) / 1000);
+    return res.status(429).json({ error: `รอ ${wait} วินาทีก่อน explore ใหม่` });
+  }
+  _exploreCooldown.set(uid, Date.now()); // ← lock ก่อน await
+
+  // ── 2. Validate zone ───────────────────────────────────────────────────────
   const zoneDef = getZone(zone);
   if (!zoneDef || !zoneDef.canExplore) {
+    _exploreCooldown.delete(uid); // คืน cooldown ถ้า input ผิด
     return res.status(400).json({ error: 'ไม่สามารถ explore zone นี้ได้' });
   }
 
   const db = admin.firestore();
 
   try {
+    // ── 3. โหลด account → charId ──────────────────────────────────────────
     const accountDoc = await db.collection('game_accounts').doc(uid).get();
     if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
     const charId = accountDoc.data().characterId;
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     const charRef = db.collection('game_characters').doc(charId);
-    const charDoc = await charRef.get();
-    const char    = charDoc.data();
 
-    // ── Server-side cooldown (3s) ป้องกัน bot spam ──────────────────────────
-    if (char.lastExploreAt) {
-      const lastMs = char.lastExploreAt.toMillis
-        ? char.lastExploreAt.toMillis()
-        : Number(char.lastExploreAt);
-      const elapsed = Date.now() - lastMs;
-      if (elapsed < EXPLORE_COOLDOWN_MS) {
-        const wait = Math.ceil((EXPLORE_COOLDOWN_MS - elapsed) / 1000);
-        return res.status(429).json({ error: `รอ ${wait} วินาทีก่อน explore ใหม่` });
+    // ── 4. Transaction: ตรวจ + หัก stamina แบบ atomic ────────────────────
+    let charSnapshot;
+    await db.runTransaction(async (t) => {
+      const charDoc = await t.get(charRef);
+      if (!charDoc.exists) throw new Error('Character ไม่พบ');
+      const char = charDoc.data();
+
+      // ตรวจ level requirement
+      const [minLv] = zoneDef.level;
+      if (char.level < minLv) {
+        throw Object.assign(new Error(`ต้องการ Level ${minLv} ขึ้นไป`), { status: 400 });
       }
-    }
 
-    // ตรวจ level requirement
-    const [minLv, maxLv] = zoneDef.level;
-    if (char.level < minLv) {
-      return res.status(400).json({ error: `ต้องการ Level ${minLv} ขึ้นไปเพื่อเข้า ${zoneDef.nameTH}` });
-    }
+      // ตรวจ stamina
+      if ((char.stamina || 0) < STAMINA_COST) {
+        throw Object.assign(
+          new Error(`Stamina ไม่พอ (${char.stamina}/${STAMINA_COST}) รอ regen หรือกด Rest`),
+          { status: 400 }
+        );
+      }
 
-    // ตรวจ Stamina
-    if (char.stamina < STAMINA_COST) {
-      return res.status(400).json({ error: `Stamina ไม่พอ (${char.stamina}/${STAMINA_COST}) รอ regen หรือกด Rest` });
-    }
+      // หัก stamina + stamp timestamp แบบ atomic
+      t.update(charRef, {
+        stamina:          char.stamina - STAMINA_COST,
+        lastActiveAt:     admin.firestore.FieldValue.serverTimestamp(),
+        lastExploreAt:    admin.firestore.FieldValue.serverTimestamp(),
+        explorationCount: admin.firestore.FieldValue.increment(1),
+      });
 
-    // สุ่ม event
+      charSnapshot = char; // ส่งออกมาใช้นอก transaction
+    });
+
+    const char = charSnapshot;
+
+    // ── 5. สุ่ม event ─────────────────────────────────────────────────────
     const event = getExploreEvent(zone);
     if (!event) return res.status(500).json({ error: 'ไม่พบ event' });
 
@@ -74,17 +107,9 @@ async function explore(req, res) {
       staminaMax: char.staminaMax,
     };
 
-    const updates = {
-      stamina:          char.stamina - STAMINA_COST,
-      lastActiveAt:     admin.firestore.FieldValue.serverTimestamp(),
-      lastExploreAt:    admin.firestore.FieldValue.serverTimestamp(), // cooldown tracking
-      explorationCount: admin.firestore.FieldValue.increment(1),
-    };
-
-    // Process event
+    // ── 6. Process event ──────────────────────────────────────────────────
     if (result.type === 'item') {
-      const itemIds = result.items || [];
-      for (const itemId of itemIds) {
+      for (const itemId of (result.items || [])) {
         const instance = rollItem(itemId);
         if (instance) {
           await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
@@ -100,28 +125,35 @@ async function explore(req, res) {
         response.gold = gold;
       }
     } else if (result.type === 'encounter') {
-      // บอกแค่ว่าจะเจอมอนสเตอร์ — client ต้อง call /api/game/battle/start
-      const monsters = zoneDef.monsters || [];
+      const monsters  = zoneDef.monsters || [];
       const monsterId = monsters[Math.floor(Math.random() * monsters.length)];
       response.encounter = { zone, monsterId };
       response.msg = result.msg;
     }
 
-    await charRef.update(updates);
-
-    // Add small XP for exploring
+    // Add small XP
     await charRef.update({ xp: admin.firestore.FieldValue.increment(2) });
 
-    // Track daily quest
+    // ── 7. Quest + achievement tracking ──────────────────────────────────
     trackQuestProgress(uid, 'explore', 1).catch(() => {});
-    // Track story/side quest step — explore event
     trackStoryStep(uid, 'explore', { zone }).catch(() => {});
-    // Track weekly quest progress
     trackWeeklyProgress(uid, 'explore', 1).catch(() => {});
     checkAchievements(uid, 'explore', 1).catch(() => {});
 
+    // ── 8. Anti-cheat log ─────────────────────────────────────────────────
+    logReward(uid, 'explore', {
+      xp:    2,
+      gold:  response.gold,
+      items: response.items.map(i => i.itemId),
+    }).catch(() => {});
+
     return res.json(response);
+
   } catch (err) {
+    // ถ้า transaction throw ด้วย status ที่กำหนด ส่ง error นั้นกลับไป
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('[Explore] explore:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
@@ -142,16 +174,14 @@ async function travel(req, res) {
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     await db.collection('game_characters').doc(charId).update({ location: zone });
-
-    // Track story/side quest step — travel event
     trackStoryStep(uid, 'travel', { zone }).catch(() => {});
 
     return res.json({
-      success:   true,
+      success:    true,
       zone,
-      zoneName:  zoneDef.nameTH,
+      zoneName:   zoneDef.nameTH,
       atmosphere: zoneDef.atmosphere[Math.floor(Math.random() * zoneDef.atmosphere.length)],
-      icon:      zoneDef.icon,
+      icon:       zoneDef.icon,
     });
   } catch (err) {
     console.error('[Explore] travel:', err.message);
