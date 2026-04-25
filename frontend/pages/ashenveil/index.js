@@ -181,7 +181,7 @@ export default function GameIndex() {
     try {
       await createCharacter({ name: charName.trim(), race, characterClass: charClass });
       toast.success('🎉 สร้าง Character สำเร็จ!');
-      router.replace('/ASHENVEIL/world');
+      router.replace('/ashenveil/world');
     } catch (err) {
       toast.error(err.response?.data?.error || 'สร้างไม่สำเร็จ');
       setCreating(false);
@@ -190,7 +190,7 @@ export default function GameIndex() {
 
   // ===== Enter game =====
   const enterGame = useCallback(() => {
-    router.replace('/ASHENVEIL/world');
+    router.replace('/ashenveil/world');
   }, []);
 
   // ===== Delete character =====
