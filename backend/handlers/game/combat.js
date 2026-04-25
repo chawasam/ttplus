@@ -74,23 +74,47 @@ async function startBattle(req, res) {
     if (!room || (room.type !== 'combat' && room.type !== 'boss')) {
       return res.status(400).json({ error: 'ห้องปัจจุบันไม่ใช่ห้องต่อสู้' });
     }
-    monster = getMonster(room.monsterId) || getDungeonMonster(room.monsterId);
-    if (!monster) return res.status(400).json({ error: `ไม่พบมอนสเตอร์ในห้องนี้: ${room.monsterId}` });
+    // boss rooms ใช้ room.boss โดยตรง (room.monsterId ไม่มีสำหรับ boss type)
+    if (room.type === 'boss') {
+      monster = room.boss;
+    } else {
+      monster = getMonster(room.monsterId) || getDungeonMonster(room.monsterId);
+    }
+    if (!monster) return res.status(400).json({ error: `ไม่พบมอนสเตอร์ในห้องนี้: ${room.monsterId || 'boss'}` });
 
   } else if (monsterId) {
-    // ── Validate monsterId อยู่ใน zone ที่ character ปัจจุบันอยู่จริง ────────
-    // โหลด zone ของ character จาก Firestore ก่อน (กันคนส่ง monsterId เองโดยไม่ผ่าน explore)
+    // ── Validate monsterId อยู่ใน zone ที่ถูกต้อง ────────────────────────────
+    // ใช้ zone จาก request body ก่อน (ส่งมาจาก explore encounter)
+    // ถ้าไม่มี zone ใน request → โหลด character location จาก Firestore
     const { getZone } = require('../../data/maps');
+
+    let validationZone = zone || null;     // zone จาก explore result
+    let charLevelForZone = 1;
+
     const acctForZone = await db.collection('game_accounts').doc(uid).get();
     const charIdForZone = acctForZone.data()?.characterId;
     if (charIdForZone) {
       const charForZone = await db.collection('game_characters').doc(charIdForZone).get();
-      const charLocation = charForZone.data()?.location || 'town_outskirts';
-      const zoneDef = getZone(charLocation);
-      const allowedMonsters = zoneDef?.monsters || [];
-      // zone boss (special) อนุญาตถ้าอยู่ใน zone นั้น
+      charLevelForZone = charForZone.data()?.level || 1;
+      if (!validationZone) {
+        // ไม่มี zone ใน request — fallback to stored location
+        validationZone = charForZone.data()?.location || 'town_outskirts';
+      }
+    }
+
+    if (validationZone) {
+      const zoneDef = getZone(validationZone);
+      if (!zoneDef) return res.status(400).json({ error: 'Zone ไม่ถูกต้อง' });
+
+      // ตรวจ level requirement ของ zone (ป้องกันส่ง zone สูงเกินมาตรง ๆ)
+      const [minLv] = zoneDef.level || [1];
+      if (charLevelForZone < minLv) {
+        return res.status(403).json({ error: `Level ไม่ถึง — Zone นี้ต้องการ Level ${minLv}` });
+      }
+
+      const allowedMonsters = zoneDef.monsters || [];
       if (allowedMonsters.length > 0 && !allowedMonsters.includes(monsterId)) {
-        return res.status(403).json({ error: `มอนสเตอร์นี้ไม่ได้อยู่ใน zone ของคุณ (${zoneDef?.nameTH || charLocation})` });
+        return res.status(403).json({ error: `มอนสเตอร์นี้ไม่ได้อยู่ใน zone ${zoneDef.nameTH}` });
       }
     }
     monster = getMonster(monsterId) || getDungeonMonster(monsterId);
@@ -132,9 +156,12 @@ async function startBattle(req, res) {
     // Passive skill bonuses applied at battle start
     const className = (char.class || '').toLowerCase();
     let passiveAtk = char.atk, passiveDef = char.def, passiveCrit = 0.1, passiveMpRegen = 0;
-    if (className === 'warrior') passiveDef = Math.floor(char.def * 1.1);   // Iron Will: DEF +10%
-    if (className === 'mage')    passiveMpRegen = 5;                         // Mana Flow: +5 MP/turn
-    if (className === 'archer')  passiveCrit = 0.15;                         // Keen Senses: Crit +5%
+    if (className === 'warrior')   passiveDef    = Math.floor(char.def * 1.1);  // Iron Will: DEF +10%
+    if (className === 'mage')      passiveMpRegen = 5;                           // Mana Flow: +5 MP/turn
+    if (className === 'archer')    passiveCrit   = 0.15;                         // Keen Senses: Crit +5%
+    if (className === 'paladin')   passiveMpRegen = 0;                           // Holy Blessing: HP regen handled in turn
+    if (className === 'berserker') passiveAtk    = char.atk;                     // Bloodthirst: checked per turn
+    if (className === 'rogue')     passiveCrit   = 0.15;                         // Shadow Veil: flee handled separately
 
     const battleId = `battle_${uid}_${Date.now()}`;
     const state = {
@@ -181,6 +208,9 @@ async function startBattle(req, res) {
         attackMsg: monster.attackMsg,
         statusAttack: monster.statusAttack || null,
         flee_chance: monster.flee_chance || 0.7,
+        // Boss phase 2 support
+        phase2:        monster.phase2 || null,
+        phase2Applied: false,
       },
       log: [`${monster.emoji} ${monster.name} ปรากฏตัว!`, monster.desc],
       createdAt: Date.now(),
@@ -241,8 +271,10 @@ async function processAction(req, res) {
     }
 
   } else if (action === 'flee') {
+    // Rogue Shadow Veil passive: flee chance = 90%
+    const fleeThreshold = state.charClass === 'rogue' ? 0.9 : state.enemy.flee_chance;
     const fleeRoll = Math.random();
-    if (fleeRoll < state.enemy.flee_chance) {
+    if (fleeRoll < fleeThreshold) {
       log.push('🏃 คุณหนีออกมาได้!');
       state.result = 'fled';
       await deleteBattle(db, battleId);
@@ -258,6 +290,22 @@ async function processAction(req, res) {
 
   } else {
     return res.status(400).json({ error: 'action ไม่ถูกต้อง' });
+  }
+
+  // ===== Boss Phase 2 transition =====
+  if (
+    !state.enemy.phase2Applied &&
+    state.enemy.phase2 &&
+    state.enemy.hp > 0 &&
+    state.enemy.hp <= Math.floor(state.enemy.hpMax * (state.enemy.phase2.trigger || 0.5))
+  ) {
+    const p2 = state.enemy.phase2;
+    state.enemy.phase2Applied = true;
+    if (p2.atkMult)   state.enemy.atk = Math.round(state.enemy.atk * p2.atkMult);
+    if (p2.defMult)   state.enemy.def = Math.round(state.enemy.def * p2.defMult);
+    if (p2.attackMsg) state.enemy.attackMsg = p2.attackMsg;
+    if (p2.regen !== undefined) state.enemy.regen = p2.regen;
+    log.push(p2.phaseMsg || `🔥 ${state.enemy.name} เข้าสู่ Phase 2!`);
   }
 
   // ===== Check enemy dead =====
@@ -307,6 +355,23 @@ async function processAction(req, res) {
   // Mage passive: MP regen per turn
   if (state.player.mpRegen > 0) {
     state.player.mp = Math.min(state.player.mpMax, state.player.mp + state.player.mpRegen);
+  }
+
+  // Paladin passive: Holy Blessing — ฟื้นฟู 8 HP ทุกเทิร์น
+  if (state.charClass === 'paladin' && state.player.hp > 0) {
+    const regenAmt = 8;
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + regenAmt);
+    log.push(`💚 Holy Blessing ฟื้นฟู ${regenAmt} HP`);
+  }
+
+  // Berserker passive: Bloodthirst — ATK +20% เมื่อ HP < 50%
+  if (state.charClass === 'berserker' && !state.berserkerRageActive) {
+    const halfHp = Math.floor(state.player.hpMax * 0.5);
+    if (state.player.hp <= halfHp) {
+      state.berserkerRageActive = true;
+      state.player.atk = Math.round(state.player.atk * 1.2);
+      log.push('🔥 Bloodthirst ทำงาน! ATK +20% (HP ต่ำกว่า 50%)');
+    }
   }
 
   // Process player buffs (atkMult/defMult/critBonus) — apply/tick

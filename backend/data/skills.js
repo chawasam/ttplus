@@ -133,13 +133,144 @@ const CLASS_SKILLS = {
       effect:         null,
     },
   ],
+  // ══════════════════════════════════════════
+  //  PALADIN — ถัง + รักษา + Holy DPS
+  // ══════════════════════════════════════════
+  paladin: [
+    {
+      id:             'holy_strike',
+      name:           '✨ Holy Strike',
+      desc:           'โจมตีศักดิ์สิทธิ์ — ดาเมจ Magic 1.8× + ทำให้ Enemy BLIND (ATK -40%) 1 เทิร์น',
+      mpCost:         18,
+      skillPointCost: 1,
+      minLevel:       3,
+      damage:         1.8,
+      magicDamage:    true,
+      selfBuff:       null,
+      effect:         { type: 'SLOW', atkMult: 0.6, duration: 1 },
+    },
+    {
+      id:             'divine_shield',
+      name:           '🛡️ Divine Shield',
+      desc:           'โล่ศักดิ์สิทธิ์ — DEF +80% 2 เทิร์น พร้อมฟื้นฟู HP 15%',
+      mpCost:         22,
+      skillPointCost: 2,
+      minLevel:       5,
+      damage:         0,
+      magicDamage:    false,
+      selfBuff:       { defMult: 1.8, healPercent: 0.15, duration: 2 },
+      effect:         null,
+    },
+    {
+      id:             'smite',
+      name:           '⚡ Smite',
+      desc:           'ประณามศักดิ์สิทธิ์ — ดาเมจ Magic 3.5× ไม่ถูก DEF ลด ทะลุเกราะ',
+      mpCost:         38,
+      skillPointCost: 3,
+      minLevel:       8,
+      damage:         3.5,
+      magicDamage:    true,
+      armorPierce:    true, // ไม่ถูก DEF หักลด
+      selfBuff:       null,
+      effect:         null,
+    },
+  ],
+
+  // ══════════════════════════════════════════
+  //  BERSERKER — Glass Cannon ATK สูงสุด
+  // ══════════════════════════════════════════
+  berserker: [
+    {
+      id:             'reckless_assault',
+      name:           '💢 Reckless Assault',
+      desc:           'โจมตีบ้าระห่ำ — ดาเมจ 3× แต่ DEF ตัวเองลด -20% เป็นเวลา 2 เทิร์น',
+      mpCost:         20,
+      skillPointCost: 1,
+      minLevel:       3,
+      damage:         3.0,
+      magicDamage:    false,
+      selfBuff:       { defMult: 0.8, duration: 2 },
+      effect:         null,
+    },
+    {
+      id:             'bloodlust',
+      name:           '🩸 Bloodlust',
+      desc:           'กระหายเลือด — ดาเมจ 2× และดูดพลังชีวิต 40% ของดาเมจที่ทำ',
+      mpCost:         28,
+      skillPointCost: 2,
+      minLevel:       5,
+      damage:         2.0,
+      magicDamage:    false,
+      lifeSteal:      0.4,  // ฟื้น HP = 40% ของดาเมจ
+      selfBuff:       null,
+      effect:         null,
+    },
+    {
+      id:             'warcry',
+      name:           '📣 Warcry',
+      desc:           'กู่ก้องสนามรบ — ATK +100% 2 เทิร์น แต่ DEF -50%',
+      mpCost:         30,
+      skillPointCost: 3,
+      minLevel:       8,
+      damage:         0,
+      magicDamage:    false,
+      selfBuff:       { atkMult: 2.0, defMult: 0.5, duration: 2 },
+      effect:         null,
+    },
+  ],
+
+  // ══════════════════════════════════════════
+  //  ROGUE — เร็ว + Crit + Debuff
+  // ══════════════════════════════════════════
+  rogue: [
+    {
+      id:             'backstab',
+      name:           '🗡️ Backstab',
+      desc:           'แทงหลัง — ดาเมจ 2.5× ถ้า Enemy สตัน/ช้า จะเป็น 4× แทน',
+      mpCost:         15,
+      skillPointCost: 1,
+      minLevel:       3,
+      damage:         2.5,
+      magicDamage:    false,
+      bonusVsCC:      { multiplier: 4.0 }, // bonus vs stunned/slowed
+      selfBuff:       null,
+      effect:         null,
+    },
+    {
+      id:             'smoke_bomb',
+      name:           '💨 Smoke Bomb',
+      desc:           'ระเบิดควัน — ATK ของ Enemy -60% 2 เทิร์น + โอกาสหนี +50%',
+      mpCost:         20,
+      skillPointCost: 2,
+      minLevel:       5,
+      damage:         0,
+      magicDamage:    false,
+      selfBuff:       { fleeBonus: 0.5, duration: 2 },
+      effect:         { type: 'SLOW', atkMult: 0.4, duration: 2 },
+    },
+    {
+      id:             'shadow_step',
+      name:           '🌑 Shadow Step',
+      desc:           'ก้าวเงา — Crit +50% และ SPD +50% เป็นเวลา 2 เทิร์น',
+      mpCost:         25,
+      skillPointCost: 3,
+      minLevel:       8,
+      damage:         0,
+      magicDamage:    false,
+      selfBuff:       { critBonus: 0.5, spdMult: 1.5, duration: 2 },
+      effect:         null,
+    },
+  ],
 };
 
 // ALL classes get 1 passive skill automatically (no unlock needed)
 const PASSIVE_SKILLS = {
-  warrior: { id: 'iron_will',    name: '🪨 Iron Will',    desc: 'DEF +10% ตลอดเวลา' },
-  mage:    { id: 'mana_flow',    name: '💧 Mana Flow',    desc: 'ฟื้นฟู 5 MP ทุกเทิร์น' },
-  archer:  { id: 'keen_senses',  name: '👁️ Keen Senses',  desc: 'Crit rate +5% ตลอดเวลา' },
+  warrior:   { id: 'iron_will',     name: '🪨 Iron Will',     desc: 'DEF +10% ตลอดเวลา' },
+  mage:      { id: 'mana_flow',     name: '💧 Mana Flow',     desc: 'ฟื้นฟู 5 MP ทุกเทิร์น' },
+  archer:    { id: 'keen_senses',   name: '👁️ Keen Senses',   desc: 'Crit rate +5% ตลอดเวลา' },
+  paladin:   { id: 'holy_blessing', name: '💚 Holy Blessing',  desc: 'ฟื้นฟู 8 HP ทุกเทิร์น' },
+  berserker: { id: 'bloodthirst',   name: '🔥 Bloodthirst',   desc: 'ATK +20% เมื่อ HP เหลือต่ำกว่า 50%' },
+  rogue:     { id: 'shadow_veil',   name: '🌑 Shadow Veil',   desc: 'อัตราหนีสำเร็จเพิ่มเป็น 90% เสมอ' },
 };
 
 function getClassSkills(className) {
