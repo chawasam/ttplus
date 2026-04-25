@@ -188,6 +188,15 @@ export default function GameWorld() {
     if (typeof window !== 'undefined') return parseFloat(localStorage.getItem('game_bgm_vol') || '0.4');
     return 0.4;
   });
+  const [brightness,  setBrightness]  = useState(() => {
+    if (typeof window !== 'undefined') return parseFloat(localStorage.getItem('ashenveil_brightness') || '1.0');
+    return 1.0;
+  });
+
+  const handleBrightnessChange = useCallback((val) => {
+    setBrightness(val);
+    try { localStorage.setItem('ashenveil_brightness', String(val)); } catch {}
+  }, []);
 
 
   // ===== Init =====
@@ -1136,7 +1145,10 @@ export default function GameWorld() {
         </div>
       )}
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col"
-        style={{ fontFamily: "'Courier New', Courier, monospace" }}>
+        style={{
+          fontFamily: "'Courier New', Courier, monospace",
+          filter: brightness !== 1.0 ? `brightness(${brightness})` : undefined,
+        }}>
 
         {/* ── STATUS BAR ── */}
         <div className="border-b border-gray-800 bg-gray-950 px-4 py-2 flex flex-wrap gap-4 text-xs">
@@ -2254,6 +2266,54 @@ export default function GameWorld() {
                           setSettingsPolling(false);
                         }}>← ยกเลิก</Btn>
                       </div>
+                    </div>
+                  )}
+
+                  {/* ── ACCESSIBILITY ── */}
+                  {settingsStep === 'status' && (
+                    <div className="border border-gray-800 rounded p-3 space-y-3 mt-1">
+                      <p className="text-amber-400 text-xs font-bold">🔆 การแสดงผล</p>
+
+                      {/* Brightness */}
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-400">ความสว่างข้อความ</span>
+                          <span className="text-amber-400">
+                            {brightness === 1.0 ? 'ปกติ' : `+${Math.round((brightness - 1) * 100)}%`}
+                          </span>
+                        </div>
+                        <input
+                          type="range" min="1.0" max="2.0" step="0.05"
+                          value={brightness}
+                          onChange={e => handleBrightnessChange(parseFloat(e.target.value))}
+                          className="w-full accent-amber-500 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-gray-600 text-xs mt-0.5">
+                          <span>ปกติ</span>
+                          <span>สว่างมาก</span>
+                        </div>
+                      </div>
+
+                      {/* Font size */}
+                      <div>
+                        <p className="text-gray-400 text-xs mb-1.5">ขนาดตัวหนังสือ</p>
+                        <div className="flex gap-2">
+                          {['xs','sm','base'].map(sz => (
+                            <button key={sz}
+                              onClick={() => { setFontSize(sz); localStorage.setItem('game_fontSize', sz); }}
+                              className={`flex-1 py-1 rounded border text-xs transition ${fontSize === sz ? 'border-amber-500 text-amber-400 bg-amber-900/20' : 'border-gray-700 text-gray-500 hover:border-gray-600'}`}>
+                              {sz === 'xs' ? 'เล็ก' : sz === 'sm' ? 'กลาง' : 'ใหญ่'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {brightness !== 1.0 && (
+                        <button onClick={() => handleBrightnessChange(1.0)}
+                          className="text-xs text-gray-600 hover:text-gray-400 transition">
+                          รีเซ็ตความสว่าง
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
