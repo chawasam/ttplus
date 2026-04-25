@@ -362,14 +362,28 @@ export default function GameWorld() {
         if (data.dungeonRunId) {
           setTimeout(async () => {
             setBattle(null);
+
+            // Backend told us dungeon was cleared (boss killed)
+            if (data.dungeonCleared) {
+              const cr = data.dungeonClearRewards || {};
+              // Add clear gold to balance (boss gold already counted in rewards)
+              if (cr.gold) setGold(g => g + cr.gold);
+              if (data.dungeonNewLevel) setChar(c => c ? { ...c, level: data.dungeonNewLevel } : c);
+              setDungeonReward({
+                gold:  (rewards.gold || 0) + (cr.gold || 0),
+                xp:    (rewards.xp   || 0) + (cr.xp   || 0),
+                items: [...(rewards.items || []), ...(cr.items || [])],
+              });
+              setDungeonRun(null);
+              setDungeonRunId(null);
+              setScreen(SCREENS.DUNGEON_CLEAR);
+              return;
+            }
+
+            // Regular combat room — fetch next room state
             try {
               const runRes = await getDungeonRun();
-              if (runRes.data.run?.status === 'completed') {
-                setDungeonReward({ gold: rewards.gold || 0, xp: rewards.xp || 0, items: rewards.items || [] });
-                setDungeonRun(null);
-                setDungeonRunId(null);
-                setScreen(SCREENS.DUNGEON_CLEAR);
-              } else if (runRes.data.run) {
+              if (runRes.data.run) {
                 setDungeonRun(runRes.data.run);
                 setDungeonRoom(runRes.data.room);
                 const idx = runRes.data.run.currentRoom;
@@ -864,6 +878,7 @@ export default function GameWorld() {
                         <span className="text-gray-600">Lv.{d.minLevel}+ · {d.totalRooms} ห้อง</span>
                         {d.levelLocked && <span className="text-red-600 ml-auto">🔒 ต้อง Lv.{d.minLevel}</span>}
                         {d.onCooldown && <span className="text-orange-600 ml-auto">⏳ {d.cooldownHoursLeft} ชั่วโมง</span>}
+                        {d.blockedByOtherRun && <span className="text-gray-600 ml-auto">⛔ มี run อื่นค้างอยู่</span>}
                         {d.canEnter && (
                           <button onClick={() => handleEnterDungeon(d.id)} disabled={busy}
                             className="ml-auto px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-40">

@@ -41,16 +41,18 @@ async function listDungeons(req, res) {
       if (charDoc.exists) charLevel = charDoc.data().level || 1;
     }
 
-    // Load recent completions for cooldown info
+    // Load recent completions for cooldown info (sort in-memory — ไม่ต้อง composite index)
     const completedSnap = await db.collection('game_dungeons')
       .where('uid', '==', uid)
       .where('status', '==', 'completed')
-      .orderBy('completedAt', 'desc')
-      .limit(10)
       .get();
 
     const lastClear = {};
-    for (const doc of completedSnap.docs) {
+    // sort desc by completedAt in memory
+    const sortedDocs = completedSnap.docs.sort((a, b) =>
+      (b.data().completedAt?.toMillis?.() || 0) - (a.data().completedAt?.toMillis?.() || 0)
+    );
+    for (const doc of sortedDocs) {
       const d = doc.data();
       if (!lastClear[d.dungeonId]) {
         lastClear[d.dungeonId] = d.completedAt?.toMillis?.() || 0;
@@ -66,6 +68,9 @@ async function listDungeons(req, res) {
       const cooldownLeft = Math.max(0, nextAvailMs - Date.now());
       const cooldownHrs  = Math.ceil(cooldownLeft / 3600_000);
 
+      const hasThisActiveRun  = activeRun?.dungeonId === d.id;
+      const hasOtherActiveRun = !!activeRun && activeRun.dungeonId !== d.id;
+
       return {
         id:             d.id,
         name:           d.name,
@@ -78,11 +83,13 @@ async function listDungeons(req, res) {
         minLevel:       d.minLevel,
         totalRooms:     d.totalRooms,
         charLevel,
-        canEnter:       charLevel >= d.minLevel && cooldownLeft === 0,
+        // canEnter: ระดับ OK + ไม่มี cooldown + ไม่มี active run อื่นค้างอยู่
+        canEnter:       charLevel >= d.minLevel && cooldownLeft === 0 && !activeRun,
         levelLocked:    charLevel < d.minLevel,
-        onCooldown:     cooldownLeft > 0,
+        onCooldown:     cooldownLeft > 0 && !hasThisActiveRun,
         cooldownHoursLeft: cooldownHrs,
-        hasActiveRun:   activeRun?.dungeonId === d.id,
+        hasActiveRun:   hasThisActiveRun,
+        blockedByOtherRun: hasOtherActiveRun,
       };
     });
 
@@ -147,18 +154,19 @@ async function enterDungeon(req, res) {
       return res.status(400).json({ error: 'HP หมด ต้อง Rest ก่อน' });
     }
 
-    // Check cooldown
+    // Check cooldown (sort in-memory — ไม่ต้อง composite index)
     const cooldownMs = dungeon.clearCooldownHours * 3600_000;
     const completedSnap = await db.collection('game_dungeons')
       .where('uid', '==', uid)
       .where('dungeonId', '==', dungeonId)
       .where('status', '==', 'completed')
-      .orderBy('completedAt', 'desc')
-      .limit(1)
       .get();
 
     if (!completedSnap.empty) {
-      const lastComplete = completedSnap.docs[0].data().completedAt?.toMillis?.() || 0;
+      const lastComplete = completedSnap.docs.reduce((best, doc) => {
+        const ms = doc.data().completedAt?.toMillis?.() || 0;
+        return ms > best ? ms : best;
+      }, 0);
       const remaining = lastComplete + cooldownMs - Date.now();
       if (remaining > 0) {
         const hrs = Math.ceil(remaining / 3600_000);
@@ -356,11 +364,17 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     const char    = charDoc.data();
     const newXp   = (char.xp || 0) + (cr.xp || 0);
     const charUpdate = { xp: newXp };
-    // Simple level-up check (100 xp per level)
-    const xpNeeded = (char.level || 1) * 100;
-    if (newXp >= xpNeeded) {
-      charUpdate.level = (char.level || 1) + 1;
-      charUpdate.skillPoints = (char.skillPoints || 0) + 3;
+    // Level-up check — ใช้ xpToNext เดียวกับ combat.js
+    if (newXp >= (char.xpToNext || 100)) {
+      charUpdate.level    = (char.level || 1) + 1;
+      charUpdate.xp       = newXp - (char.xpToNext || 100);
+      charUpdate.xpToNext = Math.floor((char.xpToNext || 100) * 1.5);
+      charUpdate.hpMax    = char.hpMax + 10;
+      charUpdate.hp       = char.hpMax + 10;
+      charUpdate.mpMax    = char.mpMax + 5;
+      charUpdate.mp       = char.mpMax + 5;
+      charUpdate.statPoints  = (char.statPoints  || 0) + 3;
+      charUpdate.skillPoints = (char.skillPoints || 0) + 1;
       log.push(`🎉 Level Up! → Level ${charUpdate.level}`);
     }
 
@@ -437,20 +451,21 @@ async function fleeDungeon(req, res) {
 }
 
 // ===== Called by combat handler when a dungeon battle is won =====
+// Returns { cleared, clearRewards, newLevel } or null
 async function onDungeonBattleWin(uid, runId) {
   const db  = admin.firestore();
   try {
     const runDoc = await db.collection('game_dungeons').doc(runId).get();
-    if (!runDoc.exists || runDoc.data().uid !== uid) return;
+    if (!runDoc.exists || runDoc.data().uid !== uid) return null;
 
     const run     = { id: runDoc.id, ...runDoc.data() };
     const dungeon = getDungeon(run.dungeonId);
-    if (!dungeon) return;
+    if (!dungeon) return null;
 
     const nextRoom = run.currentRoom + 1;
 
     if (nextRoom >= dungeon.totalRooms) {
-      // Boss was the last room — mark complete
+      // Boss was the last room — mark complete + grant clear rewards
       const cr = dungeon.clearRewards;
       const [minG, maxG] = cr.gold || [100, 300];
       const goldBonus = Math.floor(Math.random() * (maxG - minG + 1)) + minG;
@@ -460,18 +475,58 @@ async function onDungeonBattleWin(uid, runId) {
       const char = charDoc.data();
       const newXp = (char.xp || 0) + (cr.xp || 0);
       const charUpdate = { xp: newXp };
-      const xpNeeded = (char.level || 1) * 100;
-      if (newXp >= xpNeeded) {
-        charUpdate.level = (char.level || 1) + 1;
-        charUpdate.skillPoints = (char.skillPoints || 0) + 3;
+      let newLevel = null;
+      if (newXp >= (char.xpToNext || 100)) {
+        newLevel = (char.level || 1) + 1;
+        charUpdate.level    = newLevel;
+        charUpdate.xp       = newXp - (char.xpToNext || 100);
+        charUpdate.xpToNext = Math.floor((char.xpToNext || 100) * 1.5);
+        charUpdate.hpMax    = char.hpMax + 10;
+        charUpdate.hp       = char.hpMax + 10;
+        charUpdate.mpMax    = char.mpMax + 5;
+        charUpdate.mp       = char.mpMax + 5;
+        charUpdate.statPoints  = (char.statPoints  || 0) + 3;
+        charUpdate.skillPoints = (char.skillPoints || 0) + 1;
       }
+
+      // Grant loot items
+      const lootItems = [];
+      const pool  = [...(cr.itemPool || [])];
+      const { getItem, rollItem } = require('../../data/items');
+      for (let i = 0; i < (cr.itemCount || 1) && pool.length > 0; i++) {
+        const idx    = Math.floor(Math.random() * pool.length);
+        const itemId = pool.splice(idx, 1)[0];
+        const itemDef = getItem(itemId);
+        if (itemDef) {
+          const instanceId = `inv_${uid}_${Date.now()}_${i}`;
+          await db.collection('game_inventory').add({
+            uid, itemId, instanceId, enhancement: 0, equipped: false,
+            obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji });
+        }
+      }
+
       await db.collection('game_characters').doc(run.charId).update(charUpdate);
-      await runDoc.ref.update({ status: 'completed', completedAt: admin.firestore.FieldValue.serverTimestamp(), currentRoom: dungeon.totalRooms });
+      await runDoc.ref.update({
+        status: 'completed',
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        currentRoom: dungeon.totalRooms,
+      });
+
+      return {
+        cleared: true,
+        clearRewards: { gold: goldBonus, xp: cr.xp || 0, items: lootItems },
+        newLevel,
+      };
     } else {
+      // Regular combat room — just advance
       await runDoc.ref.update({ currentRoom: nextRoom });
+      return { cleared: false };
     }
   } catch (err) {
     console.error('[Dungeon] onDungeonBattleWin:', err.message);
+    return null;
   }
 }
 

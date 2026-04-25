@@ -154,14 +154,23 @@ async function processAction(req, res) {
     activeBattles.delete(battleId);
 
     // Advance dungeon room if in a dungeon run
+    let dungeonResult = null;
     if (state.dungeonRunId) {
       const { onDungeonBattleWin } = require('./dungeon');
-      await onDungeonBattleWin(uid, state.dungeonRunId).catch(e =>
-        console.error('[Combat] dungeon advance failed:', e.message)
-      );
+      dungeonResult = await onDungeonBattleWin(uid, state.dungeonRunId).catch(e => {
+        console.error('[Combat] dungeon advance failed:', e.message);
+        return null;
+      });
     }
 
-    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory', rewards }, dungeonRunId: state.dungeonRunId });
+    return res.json({
+      battleId,
+      state:          { ...sanitizeState(state), log, result: 'victory', rewards },
+      dungeonRunId:   state.dungeonRunId,
+      dungeonCleared: dungeonResult?.cleared ?? false,
+      dungeonClearRewards: dungeonResult?.clearRewards ?? null,
+      dungeonNewLevel:     dungeonResult?.newLevel    ?? null,
+    });
   }
 
   // ===== Enemy turn =====
@@ -201,7 +210,6 @@ async function processAction(req, res) {
       await db.collection('game_dungeons').doc(state.dungeonRunId).update({
         status:   'failed',
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
-        fleeRoom: state.dungeonRunId,
       }).catch(() => {});
       log.push('🏚️ Dungeon run ล้มเหลว...');
     }
