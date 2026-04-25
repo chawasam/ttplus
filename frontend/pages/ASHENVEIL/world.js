@@ -15,7 +15,10 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getCharacterProfile, allocateStat,
          getEnhanceInfo, enhanceItem,
          getWeeklyQuests, claimWeeklyReward,
-         getAchievements } from '../../lib/gameApi';
+         getAchievements,
+         getLoginBonusStatus, claimLoginBonus,
+         getLeaderboard,
+         getWorldBoss, attackWorldBoss } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 
@@ -39,6 +42,8 @@ const SCREENS = {
   ENHANCE:        'enhance',
   WEEKLY_QUESTS:  'weekly_quests',
   ACHIEVEMENTS:   'achievements',
+  WORLD_BOSS:     'world_boss',
+  LEADERBOARD:    'leaderboard',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -58,11 +63,25 @@ const BGM = {
 
 // zone → bgm key
 const ZONE_BGM = {
-  town_square:    'town',
-  town_outskirts: 'field',
-  forest_path:    'field',
-  dark_cave:      'cave',
+  town_square:       'town',
+  town_outskirts:    'field',
+  forest_path:       'field',
+  dark_cave:         'cave',
+  city_ruins:        'cave',
+  cursed_marshlands: 'field',
+  void_frontier:     'boss',
 };
+
+// Full zone list for travel screen (minLevel gating)
+const ZONE_LIST = [
+  { id: 'town_square',       name: '🏘️ Town Square',        lv: 'Safe',    minLevel: 1  },
+  { id: 'town_outskirts',    name: '🌾 ชานเมือง',           lv: 'Lv.1+',   minLevel: 1  },
+  { id: 'forest_path',       name: '🌲 ทางป่า',             lv: 'Lv.3+',   minLevel: 3  },
+  { id: 'dark_cave',         name: '🕳️ ถ้ำมืด',            lv: 'Lv.5+',   minLevel: 5  },
+  { id: 'city_ruins',        name: '🏚️ ซากเมือง',          lv: 'Lv.10+',  minLevel: 10 },
+  { id: 'cursed_marshlands', name: '🌿 หนองสาปแช่ง',       lv: 'Lv.18+',  minLevel: 18 },
+  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',       lv: 'Lv.28+',  minLevel: 28 },
+];
 
 const GRADE_COLOR = {
   COMMON:    'text-gray-400',
@@ -137,6 +156,19 @@ export default function GameWorld() {
   const [achData,        setAchData]        = useState(null);   // { achievements, unlockedCount, totalCount }
   const [achLoading,     setAchLoading]     = useState(false);
 
+  // ── Login Bonus ──
+  const [loginBonusData,   setLoginBonusData]   = useState(null);  // { streak, reward, alreadyClaimed }
+  const [showLoginBonus,   setShowLoginBonus]   = useState(false); // popup visible
+
+  // ── World Boss ──
+  const [worldBossData,    setWorldBossData]    = useState(null);  // { active, boss, myDamage, cooldown, topPlayers }
+  const [worldBossBusy,    setWorldBossBusy]    = useState(false);
+
+  // ── Leaderboard ──
+  const [leaderboardData,  setLeaderboardData]  = useState(null);  // { level, kills, achievements }
+  const [leaderboardTab,   setLeaderboardTab]   = useState('level'); // 'level' | 'kills' | 'achievements'
+  const [leaderboardLoad,  setLeaderboardLoad]  = useState(false);
+
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
   const [settingsTiktok, setSettingsTiktok] = useState('');     // input username
@@ -171,6 +203,14 @@ export default function GameWorld() {
         setZone(data.character.location || 'town_square');
         addLog(`👤 ${data.character.name} (${data.character.race} ${data.character.class} Lv.${data.character.level})`);
         addLog(`📍 ${getZoneName(data.character.location || 'town_square')}`);
+        // Auto-check login bonus
+        try {
+          const { data: lb } = await getLoginBonusStatus();
+          if (!lb.alreadyClaimed) {
+            setLoginBonusData(lb);
+            setShowLoginBonus(true);
+          }
+        } catch {}
       } catch {
         router.replace('/ASHENVEIL');
       } finally {
@@ -439,6 +479,65 @@ export default function GameWorld() {
     await loadAchievements();
   }, [loadAchievements]);
 
+  // ===== Login Bonus =====
+  const handleClaimLoginBonus = useCallback(async () => {
+    try {
+      const { data } = await claimLoginBonus();
+      setGold(g => g + (data.reward?.gold || 0));
+      setChar(c => c ? { ...c, xp: (c.xp || 0) + (data.reward?.xp || 0) } : c);
+      addLog(`🎁 Login Bonus Day ${data.streak}! +${data.reward?.gold || 0} Gold, +${data.reward?.xp || 0} XP${data.reward?.items?.length ? ', +ของพิเศษ' : ''}`);
+      toast.success(`🎁 รับ Login Bonus Day ${data.streak}!`, { duration: 4000 });
+      setShowLoginBonus(false);
+      setLoginBonusData(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'รับ Login Bonus ไม่ได้');
+    }
+  }, [addLog]);
+
+  // ===== World Boss =====
+  const openWorldBoss = useCallback(async () => {
+    setScreen(SCREENS.WORLD_BOSS);
+    setWorldBossData(null);
+    try {
+      const { data } = await getWorldBoss();
+      setWorldBossData(data);
+    } catch { setWorldBossData({ active: false, boss: null }); }
+  }, []);
+
+  const handleAttackWorldBoss = useCallback(async () => {
+    if (worldBossBusy) return;
+    setWorldBossBusy(true);
+    try {
+      const { data } = await attackWorldBoss();
+      toast.success(data.msg, { duration: 4000 });
+      if (data.killed) {
+        addLog(`💀 World Boss ถูกสังหาร! คุณได้อันดับ ${data.myRank}/${data.totalPlayers}`);
+        addLog(`🏆 รางวัล: +${data.myReward?.gold || 0} Gold`);
+        setGold(g => g + (data.myReward?.gold || 0));
+      } else {
+        addLog(`⚔️ โจมตี World Boss เสียหาย ${data.damage} HP!`);
+      }
+      // Refresh boss state
+      const { data: fresh } = await getWorldBoss();
+      setWorldBossData(fresh);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'โจมตีไม่ได้');
+    } finally {
+      setWorldBossBusy(false);
+    }
+  }, [worldBossBusy, addLog]);
+
+  // ===== Leaderboard =====
+  const openLeaderboard = useCallback(async () => {
+    setScreen(SCREENS.LEADERBOARD);
+    setLeaderboardLoad(true);
+    try {
+      const { data } = await getLeaderboard();
+      setLeaderboardData(data);
+    } catch { toast.error('โหลด Leaderboard ไม่ได้'); }
+    finally { setLeaderboardLoad(false); }
+  }, []);
+
   // ===== Settings =====
   const openSettings = useCallback(async () => {
     setSettingsStep('status');
@@ -494,10 +593,11 @@ export default function GameWorld() {
     return () => { clearInterval(settingsPollRef.current); clearTimeout(t); };
   }, [settingsPolling]);
 
-  // ── BGM: เล่น track ตาม key ──
+  // ── BGM: เล่น track ตาม key พร้อม crossfade ──
+  const fadeIntervalRef = useRef(null);
   const playBgm = useCallback((key) => {
     const url = BGM[key] || '';
-    if (!url) return; // ยังไม่มี URL — รอใส่ Suno link
+    if (!url) return;
 
     // สร้าง audio element ครั้งแรก
     if (!audioRef.current) {
@@ -506,17 +606,54 @@ export default function GameWorld() {
       audioRef.current.volume = bgmVolume;
     }
 
-    // เปลี่ยน track ถ้าต่างจากที่เล่นอยู่
-    if (bgmKeyRef.current !== key) {
+    // ถ้า track เดิม ไม่ต้องทำอะไร
+    if (bgmKeyRef.current === key) {
+      if (bgmEnabled && audioRef.current.paused) {
+        audioRef.current.play().catch(() => {});
+      }
+      return;
+    }
+
+    // เปลี่ยน track — crossfade (ถ้า track ต่างกัน จริงๆ)
+    const prevUrl = BGM[bgmKeyRef.current] || '';
+    bgmKeyRef.current = key;
+
+    if (!bgmEnabled || !prevUrl || prevUrl === url) {
+      // ไม่มีเสียงเดิม หรือเป็น url เดียวกัน — switch ตรงๆ
       audioRef.current.pause();
       audioRef.current.src = url;
       audioRef.current.currentTime = 0;
-      bgmKeyRef.current = key;
+      if (bgmEnabled) audioRef.current.play().catch(() => {});
+      return;
     }
 
-    if (bgmEnabled) {
-      audioRef.current.play().catch(() => {}); // autoplay policy — ignore error
-    }
+    // Crossfade: fade out → swap → fade in
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+    const targetVol = bgmVolume;
+    let vol = audioRef.current.volume;
+    const step = targetVol / 15; // ~300ms fade at 20ms interval
+
+    fadeIntervalRef.current = setInterval(() => {
+      vol = Math.max(0, vol - step);
+      if (audioRef.current) audioRef.current.volume = vol;
+      if (vol <= 0) {
+        clearInterval(fadeIntervalRef.current);
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = url;
+          audioRef.current.currentTime = 0;
+          audioRef.current.volume = 0;
+          audioRef.current.play().catch(() => {});
+          // Fade in
+          let inVol = 0;
+          const inInterval = setInterval(() => {
+            inVol = Math.min(targetVol, inVol + step);
+            if (audioRef.current) audioRef.current.volume = inVol;
+            if (inVol >= targetVol) clearInterval(inInterval);
+          }, 20);
+        }
+      }
+    }, 20);
   }, [bgmEnabled, bgmVolume]);
 
   // ── BGM: pause/resume เมื่อ toggle ──
@@ -957,6 +1094,47 @@ export default function GameWorld() {
   return (
     <>
       <Head><title>Ashenveil — {char?.name || 'Game'}</title></Head>
+
+      {/* ── LOGIN BONUS POPUP ── */}
+      {showLoginBonus && loginBonusData && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-950 border border-amber-700 rounded-lg p-6 max-w-sm w-full text-center"
+            style={{ fontFamily: "'Courier New', Courier, monospace" }}>
+            <p className="text-amber-400 text-lg font-bold mb-1">🎁 Login Bonus!</p>
+            <p className="text-gray-400 text-xs mb-4">
+              Day Streak: <span className="text-amber-300 font-bold">{loginBonusData.streak}</span>
+              {loginBonusData.nextMilestone && (
+                <span className="text-gray-600"> → Milestone ที่ {loginBonusData.nextMilestone} วัน</span>
+              )}
+            </p>
+            {/* Reward preview */}
+            <div className="bg-gray-900 border border-gray-800 rounded p-3 mb-4 space-y-1">
+              {loginBonusData.reward?.gold > 0 && (
+                <p className="text-yellow-400 text-sm">💰 +{loginBonusData.reward.gold} Gold</p>
+              )}
+              {loginBonusData.reward?.xp > 0 && (
+                <p className="text-purple-400 text-sm">⭐ +{loginBonusData.reward.xp} XP</p>
+              )}
+              {(loginBonusData.reward?.items || []).map((it, i) => (
+                <p key={i} className="text-blue-400 text-xs">📦 {it}</p>
+              ))}
+              {loginBonusData.reward?.title && (
+                <p className="text-amber-300 text-xs">🎖️ ตำแหน่ง: "{loginBonusData.reward.title}"</p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={handleClaimLoginBonus}
+                className="px-4 py-2 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-sm font-bold transition">
+                🎁 รับเลย!
+              </button>
+              <button onClick={() => setShowLoginBonus(false)}
+                className="px-4 py-2 border border-gray-700 text-gray-500 hover:text-gray-400 rounded text-sm transition">
+                ทีหลัง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col"
         style={{ fontFamily: "'Courier New', Courier, monospace" }}>
 
@@ -1063,6 +1241,12 @@ export default function GameWorld() {
                       {weeklyBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />}
                     </button>
                     <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
+                    <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
+                    <Btn onClick={openWorldBoss}    disabled={busy}>💀 World Boss</Btn>
+                    <button onClick={() => { setLoginBonusData(null); getLoginBonusStatus().then(r => { setLoginBonusData(r.data); setShowLoginBonus(true); }).catch(() => {}); }} disabled={busy}
+                      className="px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
+                      🎁 Login Bonus
+                    </button>
                     <Btn onClick={openSettings}     disabled={busy}>⚙️ ตั้งค่า</Btn>
                   </div>
                 </div>
@@ -1071,18 +1255,27 @@ export default function GameWorld() {
               {/* TRAVEL */}
               {screen === 'travel' && (
                 <div>
-                  <p className="text-gray-600 text-xs mb-3">[ เลือก Zone ]</p>
+                  <p className="text-gray-600 text-xs mb-3">[ เลือก Zone — Lv.{char?.level || 1} ]</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: 'town_square',    name: '🏘️ Town Square', lv: 'Lv.1+' },
-                      { id: 'town_outskirts', name: '🌾 ชานเมือง',    lv: 'Lv.1+' },
-                      { id: 'forest_path',    name: '🌲 ทางป่า',      lv: 'Lv.3+' },
-                      { id: 'dark_cave',      name: '🕳️ ถ้ำมืด',     lv: 'Lv.5+' },
-                    ].map(z => (
-                      <Btn key={z.id} onClick={() => handleTravel(z.id)} disabled={busy || z.id === zone}>
-                        {z.name} <span className="text-gray-600 text-xs">{z.lv}</span>
-                      </Btn>
-                    ))}
+                    {ZONE_LIST.map(z => {
+                      const locked   = (char?.level || 1) < z.minLevel;
+                      const isCurrent = z.id === zone;
+                      return (
+                        <button key={z.id}
+                          onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
+                          disabled={busy || isCurrent || locked}
+                          className={`px-3 py-2 border text-xs rounded transition text-left ${
+                            isCurrent  ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
+                            locked     ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
+                                         'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 disabled:opacity-40'
+                          }`}>
+                          <div>{z.name}</div>
+                          <div className={`text-xs mt-0.5 ${locked ? 'text-red-700' : 'text-gray-600'}`}>
+                            {locked ? `🔒 ต้อง Lv.${z.minLevel}` : isCurrent ? '📍 อยู่ที่นี่' : z.lv}
+                          </div>
+                        </button>
+                      );
+                    })}
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
                 </div>
@@ -2066,6 +2259,157 @@ export default function GameWorld() {
                 </div>
               )}
 
+              {/* WORLD BOSS */}
+              {screen === SCREENS.WORLD_BOSS && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">[ 💀 World Boss — Community Event ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {!worldBossData ? (
+                    <p className="text-gray-600 text-xs animate-pulse">กำลังโหลด...</p>
+                  ) : !worldBossData.active ? (
+                    <div className="text-center py-6 space-y-2">
+                      <p className="text-gray-600 text-sm">ไม่มี World Boss ในขณะนี้</p>
+                      <p className="text-gray-700 text-xs leading-relaxed">
+                        Boss จะถูก spawn เมื่อ VJ เริ่ม Event<br />
+                        หรือเมื่อมีการส่ง Gift มากพอ
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Boss header */}
+                      <div className="border border-red-900 rounded p-3 bg-red-900/10 text-center">
+                        <p className="text-3xl mb-1">{worldBossData.boss?.emoji}</p>
+                        <p className="text-red-300 font-bold text-sm">{worldBossData.boss?.nameTH}</p>
+                        <p className="text-gray-500 text-xs leading-relaxed mt-1">{worldBossData.boss?.desc}</p>
+                      </div>
+
+                      {/* HP Bar */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>HP Boss</span>
+                          <span>{(worldBossData.boss?.hp || 0).toLocaleString()} / {(worldBossData.boss?.hpMax || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="w-full h-3 bg-gray-800 rounded overflow-hidden">
+                          <div className="h-3 bg-red-700 rounded transition-all duration-500"
+                            style={{ width: `${worldBossData.boss?.hpPct || 0}%` }} />
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-red-600">{worldBossData.boss?.hpPct}% HP เหลือ</span>
+                          <span className="text-gray-600">
+                            ⏰ {Math.floor((worldBossData.boss?.timeLeft || 0) / 60)}m {(worldBossData.boss?.timeLeft || 0) % 60}s
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* My stats */}
+                      <div className="border border-gray-800 rounded p-2 text-xs flex gap-4">
+                        <span className="text-gray-500">ดาเมจของคุณ: <span className="text-amber-400">{(worldBossData.myDamage || 0).toLocaleString()}</span></span>
+                        <span className="text-gray-500">โจมตีแล้ว: <span className="text-amber-400">{worldBossData.myAttacks || 0} ครั้ง</span></span>
+                      </div>
+
+                      {/* Attack button */}
+                      {worldBossData.cooldown > 0 ? (
+                        <div className="text-center border border-gray-800 rounded p-2 text-xs text-gray-600">
+                          ⏳ รอ {Math.floor(worldBossData.cooldown / 60)}m {worldBossData.cooldown % 60}s ก่อนโจมตีได้อีก
+                        </div>
+                      ) : (
+                        <button onClick={handleAttackWorldBoss} disabled={worldBossBusy}
+                          className="w-full py-2 border border-red-700 text-red-400 hover:bg-red-900/20 rounded text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
+                          {worldBossBusy ? '⚡ กำลังโจมตี...' : '⚔️ โจมตี World Boss!'}
+                        </button>
+                      )}
+
+                      {/* Top 5 damage */}
+                      {worldBossData.topPlayers?.length > 0 && (
+                        <div className="border border-gray-800 rounded p-2 text-xs">
+                          <p className="text-gray-600 mb-1">[ Top Damage ]</p>
+                          {worldBossData.topPlayers.map((p, i) => (
+                            <div key={p.uid} className="flex items-center gap-2 py-0.5">
+                              <span className={`w-5 text-right font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-700'}`}>
+                                {i + 1}.
+                              </span>
+                              <span className="flex-1 text-amber-200">{p.name}</span>
+                              <span className="text-red-400">{p.damage.toLocaleString()} dmg</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* LEADERBOARD */}
+              {screen === SCREENS.LEADERBOARD && (
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-600 text-xs">[ 🥇 Leaderboard ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {/* Tab switcher */}
+                  <div className="flex gap-1 mb-2">
+                    {[
+                      { key: 'level',        label: '⭐ Level' },
+                      { key: 'kills',        label: '⚔️ Kills' },
+                      { key: 'achievements', label: '🏆 Ach' },
+                    ].map(tab => (
+                      <button key={tab.key} onClick={() => setLeaderboardTab(tab.key)}
+                        className={`flex-1 px-2 py-1 text-xs rounded border transition ${
+                          leaderboardTab === tab.key
+                            ? 'border-amber-600 text-amber-300 bg-amber-900/20'
+                            : 'border-gray-800 text-gray-600 hover:text-gray-400'
+                        }`}>
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {leaderboardLoad ? (
+                    <p className="text-gray-600 text-xs animate-pulse">กำลังโหลด...</p>
+                  ) : !leaderboardData ? null : (
+                    <div className="space-y-1">
+                      {(leaderboardData[leaderboardTab] || []).map((p, i) => (
+                        <div key={i} className={`border rounded p-2 text-xs flex items-center gap-2 ${
+                          i === 0 ? 'border-yellow-700 bg-yellow-900/10' :
+                          i === 1 ? 'border-gray-600 bg-gray-900/50' :
+                          i === 2 ? 'border-amber-800 bg-amber-900/10' :
+                                    'border-gray-900'
+                        }`}>
+                          <span className={`w-6 text-center font-bold text-sm ${
+                            i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-700'
+                          }`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-amber-200 font-bold truncate">{p.name}</span>
+                            {p.title && <span className="text-amber-700 text-xs ml-1">"{p.title}"</span>}
+                            <div className="text-gray-600 text-xs">{p.race} {p.class} Lv.{p.level}</div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className={`font-bold ${
+                              leaderboardTab === 'level'  ? 'text-purple-400' :
+                              leaderboardTab === 'kills'  ? 'text-red-400' : 'text-amber-400'
+                            }`}>
+                              {leaderboardTab === 'level'  ? `Lv.${p.value}` :
+                               leaderboardTab === 'kills'  ? `${p.value} kills` :
+                               `${p.value} ach`}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {(leaderboardData[leaderboardTab] || []).length === 0 && (
+                        <p className="text-gray-700 text-xs text-center py-4">ยังไม่มีข้อมูล</p>
+                      )}
+                      <p className="text-gray-800 text-xs text-center pt-1">
+                        อัปเดตล่าสุด: {leaderboardData.updatedAt ? new Date(leaderboardData.updatedAt).toLocaleTimeString('th-TH') : '—'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* NPC TALK */}
               {screen === SCREENS.NPC_TALK && activeNPC && (
                 <div>
@@ -2112,10 +2456,13 @@ function Btn({ onClick, disabled, children, className = '' }) {
 
 function getZoneName(zone) {
   const names = {
-    town_square:    'Town Square',
-    town_outskirts: 'ชานเมือง',
-    forest_path:    'ทางป่า',
-    dark_cave:      'ถ้ำมืด',
+    town_square:       'Town Square',
+    town_outskirts:    'ชานเมือง',
+    forest_path:       'ทางป่า',
+    dark_cave:         'ถ้ำมืด',
+    city_ruins:        'ซากเมือง',
+    cursed_marshlands: 'หนองสาปแช่ง',
+    void_frontier:     'ชายขอบ Void',
   };
   return names[zone] || zone;
 }

@@ -70,6 +70,18 @@ export const claimWeeklyReward = (questId)       => api.post('/api/game/quests/w
 // ===== Achievements =====
 export const getAchievements  = ()               => api.get('/api/game/achievements');
 
+// ===== Login Bonus =====
+export const getLoginBonusStatus = ()            => api.get('/api/game/login-bonus/status');
+export const claimLoginBonus     = ()            => api.post('/api/game/login-bonus/claim');
+
+// ===== Leaderboard =====
+export const getLeaderboard   = ()               => api.get('/api/game/leaderboard');
+
+// ===== World Boss =====
+export const getWorldBoss     = ()               => api.get('/api/game/world-boss');
+export const attackWorldBoss  = ()               => api.post('/api/game/world-boss/attack');
+export const spawnWorldBoss   = (bossId, reason) => api.post('/api/game/world-boss/spawn', { bossId, reason });
+
 // ===== Dungeon =====
 export const getDungeons      = ()               => api.get('/api/game/dungeons');
 export const getDungeonRun    = ()               => api.get('/api/game/dungeon/run');

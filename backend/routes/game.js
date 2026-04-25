@@ -20,6 +20,9 @@ const character    = require('../handlers/game/character');
 const enhance      = require('../handlers/game/enhance');
 const weeklyQ      = require('../handlers/game/weeklyQuests');
 const ach          = require('../handlers/game/achievements');
+const loginBonus   = require('../handlers/game/loginBonus');
+const leaderboard  = require('../handlers/game/leaderboard');
+const worldBoss    = require('../handlers/game/worldBoss');
 
 // ===== Game-specific rate limiters =====
 const gameLimiter = rateLimit({
@@ -107,6 +110,18 @@ router.post('/quests/weekly/claim',  weeklyQ.claimWeeklyReward);
 
 // ----- Achievements -----
 router.get ('/achievements',         ach.getAchievements);
+
+// ----- Login Bonus -----
+router.get ('/login-bonus/status',  loginBonus.getLoginBonusStatus);
+router.post('/login-bonus/claim',   loginBonus.claimLoginBonus);
+
+// ----- Leaderboard -----
+router.get ('/leaderboard',         leaderboard.getLeaderboard);
+
+// ----- World Boss -----
+router.get ('/world-boss',            worldBoss.getWorldBossStatus);
+router.post('/world-boss/attack',     battleLimiter, worldBoss.attackWorldBoss);
+router.post('/world-boss/spawn',      worldBoss.spawnWorldBoss);
 
 // ----- Dungeon -----
 router.get ('/dungeons',          dungeon.listDungeons);
