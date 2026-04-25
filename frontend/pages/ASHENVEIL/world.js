@@ -1733,16 +1733,60 @@ export default function GameWorld() {
               {/* NPC LIST */}
               {screen === SCREENS.NPC && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-2">[ NPC ในเมือง ]</p>
-                  {npcs.map(n => (
-                    <button key={n.npcId} onClick={() => handleTalkNPC(n.npcId)}
-                      className="w-full flex items-center gap-2 py-1 border-b border-gray-900 text-xs text-left hover:text-amber-300">
-                      <span>{n.emoji}</span>
-                      <span className="flex-1">{n.name} <span className="text-gray-400">— {n.title}</span></span>
-                      <span className="text-pink-600">❤️ {n.affection}</span>
-                    </button>
-                  ))}
-                  <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-2">← กลับ</Btn>
+                  {/* ── NPC Affection Gallery ── */}
+                  {(() => {
+                    const TIER_INFO = [
+                      { min: 80,  label: 'ผูกพัน',   color: 'text-pink-400',   border: 'border-pink-900',   bar: 'bg-pink-500'   },
+                      { min: 60,  label: 'สนิท',      color: 'text-yellow-400', border: 'border-yellow-900', bar: 'bg-yellow-500' },
+                      { min: 40,  label: 'เพื่อน',    color: 'text-green-400',  border: 'border-green-900',  bar: 'bg-green-500'  },
+                      { min: 20,  label: 'รู้จัก',    color: 'text-blue-400',   border: 'border-blue-900',   bar: 'bg-blue-500'   },
+                      { min: 0,   label: 'ไม่รู้จัก', color: 'text-gray-500',   border: 'border-gray-800',   bar: 'bg-gray-600'   },
+                    ];
+                    const getTier = (aff) => TIER_INFO.find(t => aff >= t.min) || TIER_INFO[TIER_INFO.length - 1];
+                    return (
+                      <div>
+                        <p className="text-gray-500 text-xs mb-3">[ 👥 NPC — ความสัมพันธ์ ]</p>
+                        <div className="space-y-2">
+                          {npcs.map(n => {
+                            const tier = getTier(n.affection);
+                            const pct  = Math.min(100, (n.affection / 100) * 100);
+                            const nextTierVal = [20, 40, 60, 80, 100].find(v => v > n.affection) || 100;
+                            return (
+                              <button key={n.npcId} onClick={() => handleTalkNPC(n.npcId)}
+                                className={`w-full text-left rounded border p-2 transition hover:brightness-125 ${tier.border} bg-black/20`}>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  {/* Avatar */}
+                                  <span className="text-2xl shrink-0">{n.emoji}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-amber-200 text-xs font-bold">{n.name}</span>
+                                      <span className={`text-[10px] px-1.5 py-px rounded-full border ${tier.border} ${tier.color}`}>
+                                        {tier.label}
+                                      </span>
+                                      {n.bondUnlocked && <span className="text-[10px] text-pink-500">✨ Bond</span>}
+                                    </div>
+                                    <p className="text-gray-500 text-[10px] truncate">{n.title}</p>
+                                  </div>
+                                  <span className="text-pink-500 text-xs shrink-0">❤️ {n.affection}</span>
+                                </div>
+                                {/* Affection bar */}
+                                <div className="w-full h-1.5 bg-gray-900 rounded-full">
+                                  <div className={`h-1.5 rounded-full transition-all ${tier.bar}`}
+                                    style={{ width: `${pct}%` }} />
+                                </div>
+                                <div className="flex justify-between text-[10px] text-gray-700 mt-0.5">
+                                  <span>{tier.label}</span>
+                                  {n.affection < 100 && <span>→ {nextTierVal} ถึง tier ถัดไป</span>}
+                                  {n.affection >= 100 && <span className="text-pink-700">MAX ✨</span>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-3">← กลับ</Btn>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -3037,13 +3081,40 @@ export default function GameWorld() {
                 return (
                   <div>
                     {/* NPC header */}
-                    <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-                      <span>
-                        {activeNPC.emoji} <span className="text-amber-400 font-semibold">{activeNPC.name}</span>
-                        {activeNPC.title && <span className="text-gray-600 ml-1">— {activeNPC.title}</span>}
-                      </span>
-                      <span>❤️ {activeNPC.affection}/100</span>
-                    </div>
+                    {(() => {
+                      const TIERS = [
+                        { min: 80, label: 'ผูกพัน',   color: 'text-pink-400',   bar: 'bg-pink-500'   },
+                        { min: 60, label: 'สนิท',      color: 'text-yellow-400', bar: 'bg-yellow-500' },
+                        { min: 40, label: 'เพื่อน',    color: 'text-green-400',  bar: 'bg-green-500'  },
+                        { min: 20, label: 'รู้จัก',    color: 'text-blue-400',   bar: 'bg-blue-500'   },
+                        { min: 0,  label: 'ไม่รู้จัก', color: 'text-gray-500',   bar: 'bg-gray-600'   },
+                      ];
+                      const tier = TIERS.find(t => (activeNPC.affection || 0) >= t.min) || TIERS[TIERS.length - 1];
+                      const pct  = Math.min(100, (activeNPC.affection || 0));
+                      return (
+                        <div className="mb-3">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-xl">{activeNPC.emoji}</span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-amber-400 text-xs font-bold">{activeNPC.name}</span>
+                                {activeNPC.title && <span className="text-gray-600 text-[10px]">— {activeNPC.title}</span>}
+                                <span className={`text-[10px] px-1 rounded ${tier.color}`}>{tier.label}</span>
+                              </div>
+                            </div>
+                            <span className="text-pink-500 text-xs shrink-0">❤️ {activeNPC.affection}/100</span>
+                          </div>
+                          {/* Affection progress bar */}
+                          <div className="w-full h-1 bg-gray-900 rounded-full">
+                            <div className={`h-1 rounded-full transition-all ${tier.bar}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          {/* Bond reward hint */}
+                          {activeNPC.bondUnlocked && activeNPC.bondDesc && (
+                            <p className="text-pink-600 text-[10px] mt-1">✨ {activeNPC.bondDesc}</p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Quest badge */}
                     {activeNPC.isQuestDialog && activeNPC.questContext && (
@@ -3086,20 +3157,44 @@ export default function GameWorld() {
                     {/* Gift section — แสดงเมื่ออ่านจบ หรือ NPC ไม่ใช่ quest dialog */}
                     {(isDoneTyping && isLast) || !activeNPC.isQuestDialog ? (
                       <>
-                        <p className="text-gray-400 text-xs mb-2">
-                          ให้ของขวัญได้ {activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้ง
-                        </p>
-                        <div className="max-h-28 overflow-y-auto mb-2">
-                          {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).map(item => (
-                            <button key={item.instanceId}
-                              onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
-                              className="w-full flex items-center gap-2 py-1 text-xs border-b border-gray-900 hover:text-amber-300 text-left">
-                              <span>{item.emoji}</span>
-                              <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
-                            </button>
-                          ))}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-gray-500 text-xs">🎁 ให้ของขวัญ ({activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้งวันนี้)</p>
+                        </div>
+                        {/* Likes / hates hints */}
+                        {(activeNPC.likes?.length > 0 || activeNPC.hates?.length > 0) && (
+                          <div className="flex gap-3 mb-2 text-[10px]">
+                            {activeNPC.likes?.length > 0 && (
+                              <span className="text-green-700">
+                                💚 ชอบ: {activeNPC.likes.slice(0, 3).join(', ')}
+                              </span>
+                            )}
+                            {activeNPC.hates?.length > 0 && (
+                              <span className="text-red-900">
+                                💔 ไม่ชอบ: {activeNPC.hates.slice(0, 2).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div className="max-h-28 overflow-y-auto mb-2 border border-gray-900 rounded">
+                          {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).map(item => {
+                            const isLiked  = activeNPC.likes?.includes(item.itemId);
+                            const isHated  = activeNPC.hates?.includes(item.itemId);
+                            return (
+                              <button key={item.instanceId}
+                                onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
+                                className="w-full flex items-center gap-2 px-1.5 py-1 text-xs border-b border-gray-900 hover:bg-gray-900 text-left">
+                                <span>{item.emoji}</span>
+                                <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
+                                <span className="ml-auto shrink-0">
+                                  {isLiked ? <span className="text-green-600">💚 +8</span>
+                                  : isHated ? <span className="text-red-700">💔 -5</span>
+                                  : <span className="text-gray-700">+2</span>}
+                                </span>
+                              </button>
+                            );
+                          })}
                           {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
-                            <p className="text-gray-500 text-xs">ไม่มี item ที่จะให้ได้</p>
+                            <p className="text-gray-600 text-xs px-2 py-2">ไม่มี item ที่จะให้ได้</p>
                           )}
                         </div>
                       </>
