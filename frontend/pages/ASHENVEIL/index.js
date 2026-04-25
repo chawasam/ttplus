@@ -6,6 +6,7 @@ import { auth } from '../../lib/firebase';
 import { syncAccount, requestVerify, getVerifyStatus, createCharacter, loadCharacter, getUnlockedRaces } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
+import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
 
 const RACES = [
   { id: 'HUMAN',    th: 'มนุษย์',    desc: 'สมดุลทุกด้าน เหมาะกับมือใหม่', emoji: '👤' },
@@ -75,21 +76,8 @@ export default function GameIndex() {
   const [account,       setAccount]       = useState(null);
   const [unlockedRaces, setUnlockedRaces] = useState([]);
   const [raceProgress,  setRaceProgress]  = useState({});
-  const [brightness,    setBrightness]    = useState(1.0);
-  const [showBrPanel,   setShowBrPanel]   = useState(false);
-
-  // ===== Load brightness preference =====
-  useEffect(() => {
-    try {
-      const saved = parseFloat(localStorage.getItem('ashenveil_brightness') || '1.0');
-      if (saved >= 1.0 && saved <= 2.0) setBrightness(saved);
-    } catch {}
-  }, []);
-
-  const handleBrightnessChange = useCallback((val) => {
-    setBrightness(val);
-    try { localStorage.setItem('ashenveil_brightness', String(val)); } catch {}
-  }, []);
+  // ── Display settings (theme / font / brightness) ──
+  const settings = useAshenveilSettings();
 
   // ===== Auth state =====
   useEffect(() => {
@@ -190,7 +178,8 @@ export default function GameIndex() {
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col items-center justify-center p-4"
         style={{
           fontFamily: "'Courier New', Courier, monospace",
-          filter: brightness !== 1.0 ? `brightness(${brightness})` : undefined,
+          fontSize:   settings.fontPx,
+          filter:     settings.cssFilter,
         }}>
 
         {/* Title */}
@@ -360,44 +349,10 @@ export default function GameIndex() {
         </div>
 
         <p className="text-gray-600 text-xs mt-8">Ashenveil • Powered by TTsam</p>
-
-        {/* ── Brightness panel (fixed, ไม่โดนกรอง) ── */}
       </div>
 
-      {/* Brightness control — อยู่นอก filtered div เพื่อให้ปุ่มเองไม่ถูกกรอง */}
-      <div className="fixed bottom-4 right-4 z-50" style={{ fontFamily: 'system-ui, sans-serif' }}>
-        {showBrPanel && (
-          <div className="mb-2 bg-gray-900 border border-gray-700 rounded-xl p-3 shadow-xl w-52"
-            style={{ filter: `brightness(${brightness})` }}>
-            <p className="text-amber-400 text-xs font-bold mb-2">🔆 ความสว่างข้อความ</p>
-            <input
-              type="range" min="1.0" max="2.0" step="0.05"
-              value={brightness}
-              onChange={e => handleBrightnessChange(parseFloat(e.target.value))}
-              className="w-full accent-amber-500 cursor-pointer"
-            />
-            <div className="flex justify-between text-gray-400 text-xs mt-1">
-              <span>ปกติ</span>
-              <span className="text-amber-400">{Math.round((brightness - 1) * 100)}%</span>
-              <span>สว่างสุด</span>
-            </div>
-            {brightness > 1.0 && (
-              <button onClick={() => handleBrightnessChange(1.0)}
-                className="mt-2 w-full text-xs text-gray-500 hover:text-gray-300 transition">
-                รีเซ็ต
-              </button>
-            )}
-          </div>
-        )}
-        <button
-          onClick={() => setShowBrPanel(p => !p)}
-          title="ปรับความสว่าง"
-          className="w-9 h-9 rounded-full bg-gray-900 border border-gray-700 flex items-center justify-center text-base hover:border-amber-600 hover:text-amber-400 transition shadow-lg"
-          style={{ color: brightness > 1.1 ? '#fbbf24' : '#6b7280' }}
-        >
-          🔆
-        </button>
-      </div>
+      {/* ── Settings Panel (theme / font / brightness) — outside filtered div ── */}
+      <AshenveilSettings {...settings} />
     </>
   );
 }

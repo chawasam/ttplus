@@ -21,6 +21,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getWorldBoss, attackWorldBoss } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
+import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
 
 const SCREENS = {
   WORLD:          'world',
@@ -180,10 +181,10 @@ export default function GameWorld() {
   const [settingsStep,   setSettingsStep]   = useState('status');// 'status' | 'input' | 'wait'
   const [settingsPolling,setSettingsPolling]= useState(false);
   const settingsPollRef  = useRef(null);
-  const [fontSize,    setFontSize]    = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('game_fontSize') || 'sm';
-    return 'sm';
-  });
+  // ── Display settings (theme / font / brightness) shared across all Ashenveil pages ──
+  const ashSettings = useAshenveilSettings();
+  const { fontSize, setFontSize, cssFilter: ashFilter, fontPx } = ashSettings;
+
   const [bgmEnabled,  setBgmEnabled]  = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('game_bgm') !== 'off';
     return true;
@@ -192,15 +193,6 @@ export default function GameWorld() {
     if (typeof window !== 'undefined') return parseFloat(localStorage.getItem('game_bgm_vol') || '0.4');
     return 0.4;
   });
-  const [brightness,  setBrightness]  = useState(() => {
-    if (typeof window !== 'undefined') return parseFloat(localStorage.getItem('ashenveil_brightness') || '1.0');
-    return 1.0;
-  });
-
-  const handleBrightnessChange = useCallback((val) => {
-    setBrightness(val);
-    try { localStorage.setItem('ashenveil_brightness', String(val)); } catch {}
-  }, []);
 
 
   // ===== Init =====
@@ -1282,7 +1274,8 @@ export default function GameWorld() {
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col"
         style={{
           fontFamily: "'Courier New', Courier, monospace",
-          filter: brightness !== 1.0 ? `brightness(${brightness})` : undefined,
+          fontSize:   fontPx,
+          filter:     ashFilter,
         }}>
 
         {/* ── STATUS BAR ── */}
@@ -1296,18 +1289,7 @@ export default function GameWorld() {
           <span className="text-purple-400">🌀 {rp} RP</span>
           <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
           <div className="flex items-center gap-1 ml-2">
-            <button
-              onClick={() => setFontSize(prev => { const n = prev === 'base' ? 'sm' : 'xs'; localStorage.setItem('game_fontSize', n); return n; })}
-              disabled={fontSize === 'xs'}
-              className="px-1.5 py-0.5 border border-gray-700 rounded text-gray-500 hover:text-amber-400 hover:border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed transition select-none"
-              style={{ fontSize: '11px', lineHeight: 1 }}>A-</button>
-            <button
-              onClick={() => setFontSize(prev => { const n = prev === 'xs' ? 'sm' : 'base'; localStorage.setItem('game_fontSize', n); return n; })}
-              disabled={fontSize === 'base'}
-              className="px-1.5 py-0.5 border border-gray-700 rounded text-gray-500 hover:text-amber-400 hover:border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed transition select-none"
-              style={{ fontSize: '13px', lineHeight: 1 }}>A+</button>
-
-            {/* BGM toggle */}
+            {/* BGM quick toggle in HUD */}
             <button
               onClick={toggleBgm}
               title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
@@ -1319,8 +1301,6 @@ export default function GameWorld() {
               style={{ lineHeight: 1 }}>
               {bgmEnabled ? '🎵' : '🔇'}
             </button>
-
-            {/* Volume slider — แสดงเฉพาะตอน bgm เปิด */}
             {bgmEnabled && (
               <input
                 type="range" min="0" max="1" step="0.05"
@@ -2404,51 +2384,13 @@ export default function GameWorld() {
                     </div>
                   )}
 
-                  {/* ── ACCESSIBILITY ── */}
+                  {/* ── ACCESSIBILITY hint ── */}
                   {settingsStep === 'status' && (
-                    <div className="border border-gray-800 rounded p-3 space-y-3 mt-1">
-                      <p className="text-amber-400 text-xs font-bold">🔆 การแสดงผล</p>
-
-                      {/* Brightness */}
-                      <div>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-gray-400">ความสว่างข้อความ</span>
-                          <span className="text-amber-400">
-                            {brightness === 1.0 ? 'ปกติ' : `+${Math.round((brightness - 1) * 100)}%`}
-                          </span>
-                        </div>
-                        <input
-                          type="range" min="1.0" max="2.0" step="0.05"
-                          value={brightness}
-                          onChange={e => handleBrightnessChange(parseFloat(e.target.value))}
-                          className="w-full accent-amber-500 cursor-pointer"
-                        />
-                        <div className="flex justify-between text-gray-600 text-xs mt-0.5">
-                          <span>ปกติ</span>
-                          <span>สว่างมาก</span>
-                        </div>
-                      </div>
-
-                      {/* Font size */}
-                      <div>
-                        <p className="text-gray-400 text-xs mb-1.5">ขนาดตัวหนังสือ</p>
-                        <div className="flex gap-2">
-                          {['xs','sm','base'].map(sz => (
-                            <button key={sz}
-                              onClick={() => { setFontSize(sz); localStorage.setItem('game_fontSize', sz); }}
-                              className={`flex-1 py-1 rounded border text-xs transition ${fontSize === sz ? 'border-amber-500 text-amber-400 bg-amber-900/20' : 'border-gray-700 text-gray-500 hover:border-gray-600'}`}>
-                              {sz === 'xs' ? 'เล็ก' : sz === 'sm' ? 'กลาง' : 'ใหญ่'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {brightness !== 1.0 && (
-                        <button onClick={() => handleBrightnessChange(1.0)}
-                          className="text-xs text-gray-600 hover:text-gray-400 transition">
-                          รีเซ็ตความสว่าง
-                        </button>
-                      )}
+                    <div className="border border-gray-800 rounded p-3 mt-1">
+                      <p className="text-gray-500 text-xs">
+                        ⚙ ปรับธีม / ขนาดตัวอักษร / ความสว่าง / BGM
+                        ได้ที่ปุ่ม <span className="text-amber-500 font-bold">⚙</span> มุมขวาล่าง
+                      </p>
                     </div>
                   )}
                 </div>
@@ -2636,6 +2578,17 @@ export default function GameWorld() {
           </div>
         </div>
       </div>
+
+      {/* ── Display Settings Panel (theme/font/brightness/BGM) ── */}
+      <AshenveilSettings
+        {...ashSettings}
+        bgm={{
+          enabled:  bgmEnabled,
+          volume:   bgmVolume,
+          onToggle: toggleBgm,
+          onVolume: (v) => { setBgmVolume(v); localStorage.setItem('game_bgm_vol', String(v)); },
+        }}
+      />
     </>
   );
 }
