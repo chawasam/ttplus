@@ -51,26 +51,6 @@ const nextConfig = {
     minimumCacheTTL: 3600,
   },
 
-  // ===== Rewrites: /ashenveil → serves /ASHENVEIL content (URL ไม่เปลี่ยน) =====
-  async rewrites() {
-    return [
-      { source: '/ashenveil',       destination: '/ASHENVEIL'       },
-      { source: '/ashenveil/world', destination: '/ASHENVEIL/world' },
-    ];
-  },
-
-  // ===== Redirects: ทุก alias → /ashenveil (canonical URL) =====
-  async redirects() {
-    return [
-      // uppercase → canonical lowercase
-      { source: '/ASHENVEIL',       destination: '/ashenveil',       permanent: false },
-      { source: '/ASHENVEIL/world', destination: '/ashenveil/world', permanent: false },
-      // /game/* legacy alias
-      { source: '/game',            destination: '/ashenveil',       permanent: false },
-      { source: '/game/world',      destination: '/ashenveil/world', permanent: false },
-    ];
-  },
-
   async headers() {
     return [
       // ===== หน้าหลัก (ทุกหน้ายกเว้น /widget/*) =====
