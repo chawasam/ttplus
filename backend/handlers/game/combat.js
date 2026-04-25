@@ -15,6 +15,16 @@ const { checkAchievements, pushGameEvent } = require('./achievements');
 // We keep a local 1-minute write-through cache to avoid redundant reads inside a single request.
 const _battleCache = new Map();  // battleId → state (in-request cache only)
 
+// ── In-memory cooldown per uid สำหรับ battle action (1 วินาที) ──────────────
+const _actionCooldown = new Map(); // uid → lastActionMs
+const ACTION_COOLDOWN_MS = 1000;
+setInterval(() => {
+  const cutoff = Date.now() - ACTION_COOLDOWN_MS * 10;
+  for (const [k, v] of _actionCooldown.entries()) {
+    if (v < cutoff) _actionCooldown.delete(k);
+  }
+}, 60 * 1000);
+
 async function saveBattle(db, battleId, state) {
   await db.collection('game_battles').doc(battleId).set({
     battleId,
@@ -171,6 +181,13 @@ async function processAction(req, res) {
   const { battleId, action, skillId, itemInstanceId } = req.body;
   const uid = req.user.uid;
   const db  = admin.firestore();
+
+  // ── Per-uid action cooldown (1 วินาที) ──
+  const lastAction = _actionCooldown.get(uid) || 0;
+  if (Date.now() - lastAction < ACTION_COOLDOWN_MS) {
+    return res.status(429).json({ error: 'Action เร็วเกินไป กรุณารอสักครู่' });
+  }
+  _actionCooldown.set(uid, Date.now());
 
   const state = await loadBattle(db, battleId);
   if (!state || state.uid !== uid) {

@@ -25,19 +25,43 @@ const leaderboard  = require('../handlers/game/leaderboard');
 const worldBoss    = require('../handlers/game/worldBoss');
 const crafting     = require('../handlers/game/crafting');
 
-// ===== Game-specific rate limiters =====
+// ===== Game-specific rate limiters (per UID, ไม่ใช่ per IP) =====
+// keyGenerator ใช้ uid หลัง verifyToken รันแล้ว
+const uidKey = (req) => req.user?.uid || req.ip;
+
 const gameLimiter = rateLimit({
-  windowMs: 60 * 1000, max: 60,
+  windowMs: 10 * 1000,   // 10 วินาที
+  max: 20,               // 20 req / 10s per uid (~2/s burst OK)
+  keyGenerator: uidKey,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many game requests. Slow down!' },
 });
 
 const battleLimiter = rateLimit({
-  windowMs: 60 * 1000, max: 30,
-  message: { error: 'Too many battle actions' },
+  windowMs: 5 * 1000,    // 5 วินาที
+  max: 6,                // 6 req / 5s per uid (~1/s)
+  keyGenerator: uidKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Battle actions too fast — wait a moment.' },
+});
+
+const exploreLimiter = rateLimit({
+  windowMs: 5 * 1000,    // 5 วินาที
+  max: 3,                // max 3 explores / 5s per uid (server cooldown ดักด้านใน explore.js ด้วย)
+  keyGenerator: uidKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Exploring too fast — slow down.' },
 });
 
 const shopLimiter = rateLimit({
-  windowMs: 60 * 1000, max: 20,
+  windowMs: 30 * 1000,   // 30 วินาที
+  max: 15,               // 15 req / 30s per uid
+  keyGenerator: uidKey,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many shop requests' },
 });
 
@@ -59,7 +83,7 @@ router.get ('/currency/balance',     currency.getBalance);
 router.post('/currency/redeem-rp',   currency.redeemRealmPoints);
 
 // ----- Explore -----
-router.post('/explore',  explore.explore);
+router.post('/explore',  exploreLimiter, explore.explore);
 router.post('/travel',   explore.travel);
 
 // ----- Combat -----

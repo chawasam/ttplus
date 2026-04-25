@@ -4,7 +4,8 @@ const { getZone, getExploreEvent } = require('../../data/maps');
 const { getItem, rollItem }        = require('../../data/items');
 const { addGold }                  = require('./currency');
 
-const STAMINA_COST = 20; // ต่อ exploration action (ใหม่: max 200, regen ช้า)
+const STAMINA_COST    = 20;   // ต่อ exploration action (ใหม่: max 200, regen ช้า)
+const EXPLORE_COOLDOWN_MS = 3000; // server-side cooldown 3 วินาที ป้องกัน bot spam
 const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
@@ -31,6 +32,18 @@ async function explore(req, res) {
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
+
+    // ── Server-side cooldown (3s) ป้องกัน bot spam ──────────────────────────
+    if (char.lastExploreAt) {
+      const lastMs = char.lastExploreAt.toMillis
+        ? char.lastExploreAt.toMillis()
+        : Number(char.lastExploreAt);
+      const elapsed = Date.now() - lastMs;
+      if (elapsed < EXPLORE_COOLDOWN_MS) {
+        const wait = Math.ceil((EXPLORE_COOLDOWN_MS - elapsed) / 1000);
+        return res.status(429).json({ error: `รอ ${wait} วินาทีก่อน explore ใหม่` });
+      }
+    }
 
     // ตรวจ level requirement
     const [minLv, maxLv] = zoneDef.level;
@@ -64,6 +77,7 @@ async function explore(req, res) {
     const updates = {
       stamina:          char.stamina - STAMINA_COST,
       lastActiveAt:     admin.firestore.FieldValue.serverTimestamp(),
+      lastExploreAt:    admin.firestore.FieldValue.serverTimestamp(), // cooldown tracking
       explorationCount: admin.firestore.FieldValue.increment(1),
     };
 
