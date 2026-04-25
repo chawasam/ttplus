@@ -1397,9 +1397,11 @@ export default function GameWorld() {
       )}
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col"
         style={{
-          fontFamily: "'Courier New', Courier, monospace",
-          fontSize:   fontPx,
-          filter:     ashFilter,
+          fontFamily:      "'Courier New', Courier, monospace",
+          fontSize:        fontPx,
+          filter:          ashFilter,
+          transform:       ashSettings.scale !== 1.0 ? `scale(${ashSettings.scale})` : undefined,
+          transformOrigin: 'top center',
         }}>
 
         {/* ── STATUS BAR ── */}

@@ -224,7 +224,7 @@ export default function GameIndex() {
       </Head>
 
       <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col items-center justify-center p-4"
-        style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: settings.fontPx, filter: settings.cssFilter }}>
+        style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: settings.fontPx, filter: settings.cssFilter, transform: settings.scale !== 1.0 ? `scale(${settings.scale})` : undefined, transformOrigin: 'top center' }}>
 
         {/* ── Title Block ── */}
         <div className="text-center mb-8">

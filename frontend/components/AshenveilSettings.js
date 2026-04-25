@@ -5,8 +5,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 
 // ─── Color Themes ─────────────────────────────────────────────────────────────
-// ใช้ CSS filter hue-rotate บน container — ไม่ต้องแก้ Tailwind class ใดเลย
-// background #0a0a0a (black) ไม่ได้รับผลจาก hue-rotate เพราะไม่มี chroma
 export const THEMES = {
   amber: {
     label: 'Ember',
@@ -63,8 +61,11 @@ export function useAshenveilSettings() {
   const [fontSize,   setFontRaw]   = useState(() => get('ash_fontSize',   'base'));
   const [brightness, setBrightRaw] = useState(() => {
     const saved = parseFloat(get('ash_brightness', '1.0'));
-    // ป้องกัน bad value จาก localStorage เก่า
     return (isNaN(saved) || saved < 1.0 || saved > 2.0) ? 1.0 : saved;
+  });
+  const [scale, setScaleRaw] = useState(() => {
+    const saved = parseFloat(get('ash_scale', '1.0'));
+    return (isNaN(saved) || saved < 0.5 || saved > 1.5) ? 1.0 : saved;
   });
 
   const setTheme = useCallback((v) => {
@@ -82,6 +83,11 @@ export function useAshenveilSettings() {
     try { localStorage.setItem('ash_brightness', String(v)); } catch {}
   }, []);
 
+  const setScale = useCallback((v) => {
+    setScaleRaw(v);
+    try { localStorage.setItem('ash_scale', String(v)); } catch {}
+  }, []);
+
   // รวม filter จาก theme + brightness
   const cssFilter = useMemo(() => {
     const parts = [];
@@ -91,24 +97,21 @@ export function useAshenveilSettings() {
     return parts.length ? parts.join(' ') : undefined;
   }, [theme, brightness]);
 
-  const fontPx = FONT_SIZES[fontSize]?.px ?? '13px';
+  const fontPx = FONT_SIZES[fontSize]?.px ?? '15px';
 
-  return { theme, setTheme, fontSize, setFontSize, brightness, setBrightness, cssFilter, fontPx };
+  return { theme, setTheme, fontSize, setFontSize, brightness, setBrightness, scale, setScale, cssFilter, fontPx };
 }
 
 // ─── Panel Component ──────────────────────────────────────────────────────────
-// Props:
-//   hook result (theme, setTheme, fontSize, setFontSize, brightness, setBrightness)
-//   bgm?: { enabled, volume, onToggle, onVolume }  — ถ้าไม่ส่ง จะไม่แสดง BGM section
 export default function AshenveilSettings({
   theme, setTheme,
   fontSize, setFontSize,
   brightness, setBrightness,
-  bgm,          // optional BGM controls
+  scale, setScale,
+  bgm,
 }) {
   const [open, setOpen] = useState(false);
 
-  // ปิด panel เมื่อกด Escape
   useEffect(() => {
     if (!open) return;
     const fn = (e) => { if (e.key === 'Escape') setOpen(false); };
@@ -127,9 +130,7 @@ export default function AshenveilSettings({
       {open && (
         <div
           className="mb-2 w-64 bg-gray-950 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden"
-          style={{
-            animation: 'ash-slide-up 0.2s ease',
-          }}
+          style={{ animation: 'ash-slide-up 0.2s ease' }}
         >
           <style>{`
             @keyframes ash-slide-up {
@@ -141,10 +142,7 @@ export default function AshenveilSettings({
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
             <span className="text-gray-300 text-xs font-bold tracking-wider">⚙ การแสดงผล</span>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-gray-600 hover:text-gray-400 text-xs"
-            >✕</button>
+            <button onClick={() => setOpen(false)} className="text-gray-600 hover:text-gray-400 text-xs">✕</button>
           </div>
 
           <div className="p-4 space-y-4">
@@ -164,17 +162,12 @@ export default function AshenveilSettings({
                       background:  theme === key ? `${t.dot}18` : 'transparent',
                     }}
                   >
-                    <span
-                      className="w-4 h-4 rounded-full block"
-                      style={{ background: t.dot }}
-                    />
+                    <span className="w-4 h-4 rounded-full block" style={{ background: t.dot }} />
                     <span className="text-gray-500 text-[9px] leading-none">{t.label}</span>
                   </button>
                 ))}
               </div>
-              <p className="text-gray-600 text-[10px] mt-1.5 text-center">
-                {THEMES[theme]?.desc}
-              </p>
+              <p className="text-gray-600 text-[10px] mt-1.5 text-center">{THEMES[theme]?.desc}</p>
             </div>
 
             {/* Font Size */}
@@ -199,6 +192,38 @@ export default function AshenveilSettings({
                 ))}
               </div>
             </div>
+
+            {/* Scale / Zoom */}
+            {scale !== undefined && setScale && (
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-gray-500 text-xs font-semibold tracking-wide">🔍 ขนาด UI</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: themeColor }}>
+                      {Math.round(scale * 100)}%
+                    </span>
+                    {scale !== 1.0 && (
+                      <button
+                        onClick={() => setScale(1.0)}
+                        title="รีเซ็ตขนาด"
+                        className="text-[10px] text-gray-600 hover:text-gray-400 transition px-1 border border-gray-700 rounded"
+                      >↩</button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0.5" max="1.5" step="0.05"
+                  value={scale}
+                  onChange={e => setScale(parseFloat(e.target.value))}
+                  className="w-full cursor-pointer"
+                  style={{ accentColor: themeColor }}
+                />
+                <div className="flex justify-between text-gray-700 text-[10px] mt-0.5">
+                  <span>50%</span><span>100%</span><span>150%</span>
+                </div>
+              </div>
+            )}
 
             {/* Brightness */}
             <div>
