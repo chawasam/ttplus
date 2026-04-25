@@ -235,7 +235,7 @@ app.get('/api/widget-styles', async (req, res) => {
 });
 
 // ===== Stats (owner only) =====
-const OWNER_EMAIL = process.env.OWNER_EMAIL || '';
+const OWNER_EMAIL = process.env.OWNER_EMAIL || 'cksamg@gmail.com';
 app.get('/api/stats', verifyToken, async (req, res) => {
   if (!OWNER_EMAIL || req.user.email !== OWNER_EMAIL) return res.status(403).json({ error: 'Forbidden' });
   try {

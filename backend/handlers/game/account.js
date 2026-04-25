@@ -309,7 +309,7 @@ async function createCharacter(req, res) {
 }
 
 function getStartingItems(characterClass) {
-  const { rollItem } = require('../data/items');
+  const { rollItem } = require('../../data/items');
   const weaponMap = {
     WARRIOR: 'iron_sword',   PALADIN: 'iron_sword',
     ROGUE: 'worn_dagger',    ASSASSIN: 'worn_dagger', PHANTOM: 'worn_dagger',
