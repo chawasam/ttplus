@@ -53,13 +53,6 @@ export default function GameWorld() {
     return 'sm';
   });
 
-  const cycleFontSize = useCallback(() => {
-    setFontSize(prev => {
-      const next = prev === 'xs' ? 'sm' : prev === 'sm' ? 'base' : 'xs';
-      if (typeof window !== 'undefined') localStorage.setItem('game_fontSize', next);
-      return next;
-    });
-  }, []);
 
   // ===== Init =====
   useEffect(() => {
@@ -307,13 +300,18 @@ export default function GameWorld() {
           <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
           <span className="text-purple-400">🌀 {rp} RP</span>
           <span className="text-gray-600 ml-auto">📍 {getZoneName(zone)}</span>
-          <button onClick={cycleFontSize}
-            title={`ขนาดตัวอักษร: ${fontSize === 'xs' ? 'เล็ก' : fontSize === 'sm' ? 'กลาง' : 'ใหญ่'} → คลิกเปลี่ยน`}
-            className="text-gray-600 hover:text-amber-500 transition font-bold select-none ml-1"
-            style={{ fontSize: '14px', lineHeight: 1 }}>
-            {fontSize === 'xs' ? 'A' : fontSize === 'sm' ? 'A' : 'A'}
-            <sup style={{ fontSize: '8px' }}>{fontSize === 'xs' ? '-' : fontSize === 'sm' ? '·' : '+'}</sup>
-          </button>
+          <div className="flex items-center gap-1 ml-2">
+            <button
+              onClick={() => setFontSize(prev => { const n = prev === 'base' ? 'sm' : 'xs'; localStorage.setItem('game_fontSize', n); return n; })}
+              disabled={fontSize === 'xs'}
+              className="px-1.5 py-0.5 border border-gray-700 rounded text-gray-500 hover:text-amber-400 hover:border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed transition select-none"
+              style={{ fontSize: '11px', lineHeight: 1 }}>A-</button>
+            <button
+              onClick={() => setFontSize(prev => { const n = prev === 'xs' ? 'sm' : 'base'; localStorage.setItem('game_fontSize', n); return n; })}
+              disabled={fontSize === 'base'}
+              className="px-1.5 py-0.5 border border-gray-700 rounded text-gray-500 hover:text-amber-400 hover:border-amber-700 disabled:opacity-30 disabled:cursor-not-allowed transition select-none"
+              style={{ fontSize: '13px', lineHeight: 1 }}>A+</button>
+          </div>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
