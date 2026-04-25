@@ -574,6 +574,12 @@ function summarizeDungeon(d) {
     id: d.id, name: d.name, nameTH: d.nameTH, emoji: d.emoji,
     region: d.region, desc: d.desc, difficulty: d.difficulty,
     difficultyLabel: d.difficultyLabel, totalRooms: d.totalRooms,
+    // room map data สำหรับ frontend แสดง minimap
+    roomMap: (d.rooms || []).map(r => ({
+      index: r.room,
+      type:  r.type,   // 'combat' | 'trap' | 'treasure' | 'rest' | 'boss'
+      name:  r.name,
+    })),
   };
 }
 

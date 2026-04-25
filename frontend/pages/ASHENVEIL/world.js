@@ -1787,30 +1787,92 @@ export default function GameWorld() {
               {/* DUNGEON ROOM */}
               {screen === SCREENS.DUNGEON_ROOM && dungeonRoom && (
                 <div>
-                  {/* Room log */}
-                  <div className="max-h-28 overflow-y-auto mb-2">
-                    {dungeonLog.slice(-12).map((line, i) => (
-                      <p key={i} className={`text-xs leading-relaxed ${
-                        line.startsWith('─') ? 'text-gray-700' :
-                        line.startsWith('✅') || line.startsWith('🏆') ? 'text-green-400' :
-                        line.startsWith('💀') || line.startsWith('🩸') ? 'text-red-400' :
-                        line.startsWith('💰') ? 'text-yellow-400' :
-                        line.startsWith('💚') ? 'text-green-400' :
-                        line.startsWith('📍') ? 'text-amber-400' :
-                        'text-amber-100/80'
-                      }`}>{line}</p>
-                    ))}
-                  </div>
+                  {/* ── Dungeon Minimap ── */}
+                  {(() => {
+                    const ROOM_ICON = {
+                      combat:   { emoji: '⚔️', color: 'text-red-400',    border: 'border-red-900',    bg: 'bg-red-950/60'    },
+                      trap:     { emoji: '⚡', color: 'text-yellow-400', border: 'border-yellow-900', bg: 'bg-yellow-950/60' },
+                      treasure: { emoji: '💰', color: 'text-amber-400',  border: 'border-amber-800',  bg: 'bg-amber-950/60'  },
+                      rest:     { emoji: '💚', color: 'text-green-400',  border: 'border-green-900',  bg: 'bg-green-950/60'  },
+                      boss:     { emoji: '💀', color: 'text-red-300',    border: 'border-red-700',    bg: 'bg-red-900/40'    },
+                    };
+                    const rooms   = dungeonInfo?.roomMap || [];
+                    const current = dungeonRun?.currentRoom || 0;
 
-                  {/* Progress bar */}
-                  <div className="flex items-center gap-2 text-xs text-gray-400 mb-2">
-                    <span>{dungeonInfo?.emoji} {dungeonInfo?.nameTH}</span>
-                    <span className="ml-auto">ห้อง {(dungeonRun?.currentRoom || 0) + 1}/{dungeonRun?.totalRooms}</span>
-                  </div>
-                  <div className="w-full h-1 bg-gray-800 rounded mb-3">
-                    <div className="h-1 bg-amber-700 rounded transition-all"
-                      style={{ width: `${((dungeonRun?.currentRoom || 0) / (dungeonRun?.totalRooms || 1)) * 100}%` }} />
-                  </div>
+                    if (rooms.length === 0) return null;
+
+                    return (
+                      <div className="mb-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-gray-500">{dungeonInfo?.emoji} {dungeonInfo?.nameTH}</span>
+                          <span className="text-xs text-gray-600">ห้อง {current + 1} / {rooms.length}</span>
+                        </div>
+
+                        {/* Room tiles */}
+                        <div className="flex gap-1 items-center flex-wrap">
+                          {rooms.map((r, idx) => {
+                            const isCurrent = idx === current;
+                            const isCleared = idx < current;
+                            const icon      = ROOM_ICON[r.type] || ROOM_ICON.combat;
+                            return (
+                              <div key={idx} className="flex items-center gap-1">
+                                <div title={r.name || r.type}
+                                  className={`relative flex items-center justify-center w-8 h-8 rounded border text-sm transition-all ${
+                                    isCurrent ? `${icon.border} ${icon.bg} ring-1 ring-amber-500 scale-110 shadow-lg shadow-amber-900/40` :
+                                    isCleared ? 'border-gray-800 bg-gray-900/50 opacity-40' :
+                                                'border-gray-800 bg-black/30 opacity-60'
+                                  }`}>
+                                  {isCleared ? (
+                                    <span className="text-green-700 text-xs">✓</span>
+                                  ) : (
+                                    <span className={isCurrent ? icon.color : 'grayscale opacity-50'}
+                                      style={isCurrent ? {} : { filter: 'grayscale(1)' }}>
+                                      {icon.emoji}
+                                    </span>
+                                  )}
+                                  {isCurrent && (
+                                    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-amber-400 text-xs leading-none">▾</span>
+                                  )}
+                                </div>
+                                {/* Connector line (ยกเว้นหลังห้องสุดท้าย) */}
+                                {idx < rooms.length - 1 && (
+                                  <div className={`w-2 h-px ${idx < current ? 'bg-gray-700' : 'bg-gray-800'}`} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Current room label */}
+                        <p className="text-xs text-amber-300/70 mt-1.5">
+                          {dungeonRoom.name || (ROOM_ICON[dungeonRoom.type]?.emoji + ' ' + dungeonRoom.type)}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Room description */}
+                  {dungeonRoom.desc && (
+                    <p className="text-gray-400 text-xs leading-relaxed mb-2 italic">{dungeonRoom.desc}</p>
+                  )}
+
+                  {/* Room log */}
+                  {dungeonLog.length > 0 && (
+                    <div className="max-h-24 overflow-y-auto mb-3 border border-gray-900 rounded p-1.5 bg-black/20">
+                      {dungeonLog.slice(-10).map((line, i) => (
+                        <p key={i} className={`text-xs leading-relaxed ${
+                          line.startsWith('─') ? 'text-gray-800' :
+                          line.startsWith('✅') || line.startsWith('🏆') ? 'text-green-400' :
+                          line.startsWith('💀') || line.startsWith('🩸') ? 'text-red-400' :
+                          line.startsWith('💰') ? 'text-yellow-400' :
+                          line.startsWith('💚') ? 'text-green-400' :
+                          line.startsWith('📍') ? 'text-amber-400' :
+                          'text-amber-100/70'
+                        }`}>{line}</p>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Room type actions */}
                   <div className="grid grid-cols-2 gap-2">
