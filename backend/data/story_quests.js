@@ -303,6 +303,301 @@ const STORY_QUESTS = [
     completionText: 'Elder Maren โอบกอดคุณอย่างไม่คาดคิด "เราทุกคนยังอยู่ได้เพราะคุณ ไปเถอะ ยังมีอีก 6 Shard ที่ต้องการความช่วยเหลือ..." เขาส่งสัญลักษณ์โบราณให้ "นี่คือ Seal of Ashenveil — จะช่วยพิสูจน์ว่าคุณปกป้อง Shard นี้มา"',
   },
 
+  // ══════════════════════════════════════════
+  //  ACT 4 — THE SHATTERED CITY
+  // ══════════════════════════════════════════
+
+  {
+    id:      'SQ_400',
+    act:     4,
+    chapter: 'Act 4 — เมืองแตกสลาย',
+    name:    'เงาแห่งจักรวรรดิเก่า',
+    desc:    'World Core ชิ้นที่สองถูกบันทึกว่าซ่อนอยู่ในซากเมือง Archon โบราณ ทางตะวันออกของ Ashenveil Mira ช่างตีเหล็กรู้เส้นทางเข้าไป',
+    prereqs: ['SQ_301'],
+    autoStart: true,
+    minLevel: 10,
+    giverNpc: 'elder_maren',
+    steps: [
+      {
+        id:    'talk_mira_ruins',
+        type:  'talk',
+        target: 'mira',
+        count: 1,
+        hint:  'ถาม Mira ช่างตีเหล็กเรื่องเส้นทางเข้า City Ruins',
+      },
+      {
+        id:    'travel_ruins',
+        type:  'travel',
+        zone:  'city_ruins',
+        count: 1,
+        hint:  'เดินทางไปยังซากเมือง',
+      },
+      {
+        id:    'explore_ruins',
+        type:  'explore',
+        zone:  'city_ruins',
+        count: 5,
+        hint:  'ค้นหาในซากเมือง 5 ครั้ง — ร่องรอยของ World Core ต้องมีที่ไหนสักแห่ง',
+      },
+      {
+        id:    'kill_ruins_guardians',
+        type:  'kill',
+        monsterId: null,
+        zone:  'city_ruins',
+        count: 8,
+        hint:  'Golem ยามรักษาการณ์เก่ายังทำงานอยู่ — กำจัด 8 ตัวเพื่อเปิดทางเข้า',
+      },
+      {
+        id:    'talk_mira_ruins_02',
+        type:  'talk',
+        target: 'mira',
+        count: 1,
+        hint:  'รายงาน Mira เรื่องที่ค้นพบ',
+      },
+    ],
+    rewards: { xp: 1500, gold: 900, items: ['void_crystal', 'ancient_scroll'] },
+    completionText: 'Mira จ้องดู Fragment ในมือคุณด้วยสายตาซับซ้อน "นี่คือสิ่งที่พ่อข้าค้นหามาตลอดชีวิต..." เธอหยุดนิดหนึ่ง "ตามข้ามาก่อน มีอะไรอยากให้เห็น"',
+  },
+
+  {
+    id:      'SQ_401',
+    act:     4,
+    chapter: 'Act 4 — เมืองแตกสลาย',
+    name:    'ความลับของช่างตีเหล็ก',
+    desc:    'Mira มีความลับเกี่ยวกับ The Sundering ที่ไม่เคยบอกใคร ฟังเรื่องของเธอแล้วนำข้อมูลกลับไปให้ Elder Maren',
+    prereqs: ['SQ_400'],
+    autoStart: true,
+    giverNpc: 'mira',
+    steps: [
+      {
+        id:    'talk_mira_secret',
+        type:  'talk',
+        target: 'mira',
+        count: 1,
+        hint:  'ฟังเรื่องราวความลับของ Mira',
+      },
+      {
+        id:    'kill_marshlands_vanguard',
+        type:  'kill',
+        monsterId: null,
+        zone:  'city_ruins',
+        count: 5,
+        hint:  'สังหาร Void Vanguard ที่ Mira ชี้เป้าให้ 5 ตัว — พวกมันรู้ตำแหน่ง World Core',
+      },
+      {
+        id:    'talk_maren_act4',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'นำข้อมูลที่ได้กลับไปให้ Elder Maren',
+      },
+    ],
+    rewards: { xp: 800, gold: 600 },
+    completionText: 'Elder Maren ถอนหายใจยาว "พ่อของ Mira... เป็นหนึ่งในสภา Archon ที่ช่วย Vorath ทำ The Sundering เธอต้องแบกภาระนั้นมาตลอด" เขาพลิกแผนที่ "World Core ชิ้นต่อไปอยู่ในหนองสาปแช่ง ระวังตัว"',
+  },
+
+  // ══════════════════════════════════════════
+  //  ACT 5 — THE CURSED MARSHLANDS
+  // ══════════════════════════════════════════
+
+  {
+    id:      'SQ_500',
+    act:     5,
+    chapter: 'Act 5 — หนองสาปแช่ง',
+    name:    'เสียงร้องจากหนอง',
+    desc:    'หนองสาปแช่งเต็มไปด้วยพลัง Void เข้มข้นที่สุดนอกจาก Vorath Citadel สิ่งมีชีวิตในนั้นเปลี่ยนรูปร่างไปแล้ว ต้องผ่านเข้าไปหา World Core ชิ้นที่สาม',
+    prereqs: ['SQ_401'],
+    autoStart: true,
+    minLevel: 18,
+    giverNpc: 'elder_maren',
+    steps: [
+      {
+        id:    'travel_marshlands',
+        type:  'travel',
+        zone:  'cursed_marshlands',
+        count: 1,
+        hint:  'เดินทางไปยังหนองสาปแช่ง',
+      },
+      {
+        id:    'survive_marsh',
+        type:  'kill',
+        monsterId: null,
+        zone:  'cursed_marshlands',
+        count: 12,
+        hint:  'รอดชีวิตจากการโจมตีของสัตว์ประหลาดในหนอง — สังหาร 12 ตัว',
+      },
+      {
+        id:    'explore_marsh_core',
+        type:  'explore',
+        zone:  'cursed_marshlands',
+        count: 5,
+        hint:  'ค้นหา World Core Fragment ในส่วนลึกของหนอง 5 ครั้ง',
+      },
+      {
+        id:    'talk_maren_marsh',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'ส่ง Fragment ที่ 4 ให้ Elder Maren',
+      },
+    ],
+    rewards: { xp: 3000, gold: 1800, items: ['void_crystal', 'void_crystal', 'health_potion'] },
+    completionText: 'Elder Maren จัด Fragment ทั้ง 4 ชิ้นวางไว้ข้างกัน แสงสีม่วงเรืองรองออกมา "4 ชิ้น... ยังขาดอีก 3 Vorath คงรู้ว่าเราใกล้เข้ามาแล้ว เขาจะไม่รอ Lyra เด็กสาวเพิ่งเห็นนิมิตบางอย่าง ไปถามเธอดู"',
+  },
+
+  {
+    id:      'SQ_501',
+    act:     5,
+    chapter: 'Act 5 — หนองสาปแช่ง',
+    name:    'ชายขอบแห่ง Void',
+    desc:    'Lyra เห็นนิมิตสถานที่ที่ World Core ชิ้นที่ 5 และ 6 ซ่อนอยู่ — Void Frontier ที่ซึ่งความจริงและ Void แยกกันไม่ออก',
+    prereqs: ['SQ_500'],
+    autoStart: true,
+    minLevel: 28,
+    giverNpc: 'lyra',
+    steps: [
+      {
+        id:    'talk_lyra_vision',
+        type:  'talk',
+        target: 'lyra',
+        count: 1,
+        hint:  'ฟังนิมิตของ Lyra เกี่ยวกับ Void Frontier',
+      },
+      {
+        id:    'travel_void',
+        type:  'travel',
+        zone:  'void_frontier',
+        count: 1,
+        hint:  'เดินทางไปยัง Void Frontier',
+      },
+      {
+        id:    'explore_void',
+        type:  'explore',
+        zone:  'void_frontier',
+        count: 6,
+        hint:  'ค้นหาใน Void Frontier 6 ครั้ง — ความจริงและ Void ผสมกันที่นี่',
+      },
+      {
+        id:    'kill_void_born',
+        type:  'kill',
+        monsterId: null,
+        zone:  'void_frontier',
+        count: 15,
+        hint:  'สิ่งที่ถือกำเนิดจาก Void — สังหาร 15 ตัว',
+      },
+      {
+        id:    'talk_lyra_return',
+        type:  'talk',
+        target: 'lyra',
+        count: 1,
+        hint:  'กลับมารายงาน Lyra',
+      },
+    ],
+    rewards: { xp: 5000, gold: 3000, items: ['void_crystal', 'void_crystal', 'ancient_scroll', 'health_potion'] },
+    completionText: 'Lyra กอด Fragment ทั้งสองไว้ แล้วเงยหน้าด้วยน้ำตา "ข้าเห็นในนิมิต... Vorath ไม่ได้เป็นผู้ร้ายตลอด เขาสร้าง The Sundering เพื่อปกป้องบางสิ่ง แต่มันผิดพลาด..." เธอส่ง Fragment กลับ "ไปที่ Shadowfell ชิ้นสุดท้ายอยู่กับผู้พิทักษ์เงา"',
+  },
+
+  // ══════════════════════════════════════════
+  //  ACT 6 — THE FINAL RECKONING
+  // ══════════════════════════════════════════
+
+  {
+    id:      'SQ_600',
+    act:     6,
+    chapter: 'Act 6 — การเผชิญหน้าครั้งสุดท้าย',
+    name:    'ผู้พิทักษ์เงาสุดท้าย',
+    desc:    'Shadowfell Depths คือดินแดนที่เงาของผู้ตายมาอาศัย World Core ชิ้นสุดท้ายถูกปกป้องโดย Shade Sovereign — วิญญาณ Archon ที่เลือกอยู่เฝ้าแทนการเข้าสู่ Void',
+    prereqs: ['SQ_501'],
+    autoStart: true,
+    minLevel: 38,
+    giverNpc: 'elder_maren',
+    steps: [
+      {
+        id:    'talk_maren_final_prep',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'รับคำสั่งสุดท้ายจาก Elder Maren ก่อนเข้า Shadowfell',
+      },
+      {
+        id:    'travel_shadowfell',
+        type:  'travel',
+        zone:  'shadowfell_depths',
+        count: 1,
+        hint:  'เดินทางลงสู่ Shadowfell Depths',
+      },
+      {
+        id:    'kill_shadow_guards',
+        type:  'kill',
+        monsterId: null,
+        zone:  'shadowfell_depths',
+        count: 20,
+        hint:  'ผ่านด่านทหารเงา — สังหาร 20 ตัว เพื่อเข้าถึง Shade Sovereign',
+      },
+      {
+        id:    'explore_shadowfell',
+        type:  'explore',
+        zone:  'shadowfell_depths',
+        count: 7,
+        hint:  'ค้นหา World Core Fragment ที่ซ่อนอยู่ในความมืด 7 ครั้ง',
+      },
+      {
+        id:    'talk_all_npcs',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'กลับมาหา Elder Maren พร้อม Fragment ทั้ง 7 ชิ้น',
+      },
+    ],
+    rewards: { xp: 10000, gold: 6000, items: ['void_crystal', 'void_crystal', 'void_crystal', 'ancient_scroll', 'health_potion', 'mana_potion'] },
+    completionText: 'Elder Maren วาง Fragment ทั้ง 7 ชิ้นเป็นวงกลม แสงสีทองระเบิดออกมา World Core สมบูรณ์อีกครั้ง ทุกคนในห้องรู้สึกถึงพลังที่เปลี่ยนไป "ตอนนี้..." Elder Maren หันมายิ้ม "ถึงเวลาเผชิญหน้ากับ Vorath เป็นครั้งสุดท้าย ไป Vorath Citadel เถอะ"',
+  },
+
+  {
+    id:      'SQ_601',
+    act:     6,
+    chapter: 'Act 6 — การเผชิญหน้าครั้งสุดท้าย',
+    name:    'วันสิ้นสุดของ The Void',
+    desc:    'Vorath Citadel — ปราสาทที่ Vorath สร้างจากความเจ็บปวดและโดดเดี่ยวตลอด 500 ปี เขาไม่ใช่ผู้ร้าย เขาคือคนที่สูญเสียทุกอย่างและไม่รู้จะหยุด World Core จะเป็นกุญแจสู่ความจริง',
+    prereqs: ['SQ_600'],
+    autoStart: true,
+    minLevel: 50,
+    giverNpc: 'elder_maren',
+    steps: [
+      {
+        id:    'travel_citadel',
+        type:  'travel',
+        zone:  'vorath_citadel',
+        count: 1,
+        hint:  'เดินทางไปยัง Vorath Citadel',
+      },
+      {
+        id:    'kill_citadel_guardians',
+        type:  'kill',
+        monsterId: null,
+        zone:  'vorath_citadel',
+        count: 25,
+        hint:  'ฝ่าแนวป้องกันของ Vorath — สังหารผู้พิทักษ์ 25 ตัว',
+      },
+      {
+        id:    'explore_citadel_throne',
+        type:  'explore',
+        zone:  'vorath_citadel',
+        count: 5,
+        hint:  'ค้นหาห้องบัลลังก์ของ Vorath ในปราสาท 5 ครั้ง',
+      },
+      {
+        id:    'talk_maren_epilogue',
+        type:  'talk',
+        target: 'elder_maren',
+        count: 1,
+        hint:  'กลับมาหา Elder Maren — บทสุดท้ายของ Ashenveil ใกล้เข้ามาแล้ว',
+      },
+    ],
+    rewards: { xp: 20000, gold: 10000, items: ['void_crystal', 'void_crystal', 'void_crystal', 'ancient_scroll', 'health_potion', 'mana_potion', 'antidote'] },
+    completionText: 'Vorath ยืนอยู่กลางบัลลังก์ที่พังทลาย เมื่อเห็น World Core เขาหยุดนิ่ง ใบหน้าที่แข็งกระด้างค่อยๆ อ่อนลง "500 ปี... ข้าทำทั้งหมดนี้เพื่อปกป้องมัน แต่กลับทำลายทุกอย่างแทน" เขาก้มหัว "เอาไปเถอะ ใช้ให้เป็นประโยชน์" Ashenveil Shard เงียบลงในคืนนั้น The Resonance หยุดสั่นสะเทือน และดาวเริ่มปรากฏบนท้องฟ้าที่ดำมืดมานานหลายศตวรรษ',
+  },
+
 ];
 
 // helper

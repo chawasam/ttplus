@@ -1,6 +1,6 @@
 // handlers/game/combat.js — Server-side battle logic
 const admin  = require('firebase-admin');
-const { getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
+const { MONSTERS, getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
 const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
@@ -9,35 +9,137 @@ const { trackStoryStep }        = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill }              = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
+const { logReward } = require('../../utils/anticheat');
 
-// Active battles in memory (battleId → state)
-const activeBattles = new Map();
+// Active battles — persisted in Firestore (game_battles collection)
+// Each document: { battleId, uid, state: <JSON>, createdAt, updatedAt }
+// We keep a local 1-minute write-through cache to avoid redundant reads inside a single request.
+const _battleCache = new Map();  // battleId → state (in-request cache only)
+
+// ── In-memory cooldown per uid สำหรับ battle action (1 วินาที) ──────────────
+const _actionCooldown = new Map(); // uid → lastActionMs
+const ACTION_COOLDOWN_MS = 1000;
+setInterval(() => {
+  const cutoff = Date.now() - ACTION_COOLDOWN_MS * 10;
+  for (const [k, v] of _actionCooldown.entries()) {
+    if (v < cutoff) _actionCooldown.delete(k);
+  }
+}, 60 * 1000);
+
+async function saveBattle(db, battleId, state) {
+  await db.collection('game_battles').doc(battleId).set({
+    battleId,
+    uid:       state.uid,
+    state:     JSON.stringify(state),  // Firestore can't store complex nested Maps
+    createdAt: state.createdAt || Date.now(),
+    updatedAt: Date.now(),
+  });
+  _battleCache.set(battleId, state);
+}
+
+async function loadBattle(db, battleId) {
+  if (_battleCache.has(battleId)) return _battleCache.get(battleId);
+  const doc = await db.collection('game_battles').doc(battleId).get();
+  if (!doc.exists) return null;
+  const parsed = JSON.parse(doc.data().state);
+  _battleCache.set(battleId, parsed);
+  return parsed;
+}
+
+async function deleteBattle(db, battleId) {
+  _battleCache.delete(battleId);
+  await db.collection('game_battles').doc(battleId).delete().catch(() => {});
+}
 
 // ===== Start battle =====
 async function startBattle(req, res) {
-  // dungeonRunId: ถ้าอยู่ใน Dungeon ให้ส่ง runId มาด้วย
-  // bossData: ข้อมูล boss inline จาก dungeon room (สำหรับ boss rooms)
-  const { zone, monsterId, dungeonRunId, bossData } = req.body;
+  // bossData จาก client ถูกยกเลิกทั้งหมด — monster ทุกตัวโหลดจาก server data เท่านั้น
+  const { zone, monsterId, dungeonRunId } = req.body;
   const uid = req.user.uid;
 
+  const db = admin.firestore();
   let monster;
-  if (bossData) {
-    // Inline boss (dungeon boss rooms)
-    monster = {
-      ...bossData,
-      goldReward:  bossData.goldReward || [0, 0],
-      flee_chance: bossData.flee_chance ?? 0.1,
-      drops:       bossData.drops || [],
-      attackMsg:   bossData.attackMsg || ['โจมตี'],
-    };
+
+  if (dungeonRunId) {
+    // ── Dungeon battle: load room + monster from Firestore (server-side) ─────
+    const runDoc = await db.collection('game_dungeons').doc(dungeonRunId).get();
+    if (!runDoc.exists)           return res.status(400).json({ error: 'ไม่พบ Dungeon run' });
+    const run = runDoc.data();
+    if (run.uid !== uid)          return res.status(403).json({ error: 'ไม่ใช่ Dungeon run ของคุณ' });
+    if (run.status !== 'active')  return res.status(400).json({ error: 'Dungeon run นี้ไม่ active แล้ว' });
+
+    const { getDungeon } = require('../../data/dungeons');
+    const dungeon = getDungeon(run.dungeonId);
+    const room    = dungeon?.rooms[run.currentRoom];
+    if (!room || (room.type !== 'combat' && room.type !== 'boss')) {
+      return res.status(400).json({ error: 'ห้องปัจจุบันไม่ใช่ห้องต่อสู้' });
+    }
+    // boss rooms ใช้ room.boss โดยตรง (room.monsterId ไม่มีสำหรับ boss type)
+    if (room.type === 'boss') {
+      monster = room.boss;
+    } else {
+      monster = getMonster(room.monsterId) || getDungeonMonster(room.monsterId);
+    }
+    if (!monster) return res.status(400).json({ error: `ไม่พบมอนสเตอร์ในห้องนี้: ${room.monsterId || 'boss'}` });
+
   } else if (monsterId) {
+    // ── Validate monsterId อยู่ใน zone ที่ถูกต้อง ────────────────────────────
+    // ใช้ zone จาก request body ก่อน (ส่งมาจาก explore encounter)
+    // ถ้าไม่มี zone ใน request → โหลด character location จาก Firestore
+    const { getZone } = require('../../data/maps');
+
+    let validationZone = zone || null;     // zone จาก explore result
+    let charLevelForZone = 1;
+
+    const acctForZone = await db.collection('game_accounts').doc(uid).get();
+    const charIdForZone = acctForZone.data()?.characterId;
+    if (charIdForZone) {
+      const charForZone = await db.collection('game_characters').doc(charIdForZone).get();
+      charLevelForZone = charForZone.data()?.level || 1;
+      if (!validationZone) {
+        // ไม่มี zone ใน request — fallback to stored location
+        validationZone = charForZone.data()?.location || 'town_outskirts';
+      }
+    }
+
+    if (validationZone) {
+      const zoneDef = getZone(validationZone);
+      if (!zoneDef) return res.status(400).json({ error: 'Zone ไม่ถูกต้อง' });
+
+      // ตรวจ level requirement ของ zone (ป้องกันส่ง zone สูงเกินมาตรง ๆ)
+      const [minLv] = zoneDef.level || [1];
+      if (charLevelForZone < minLv) {
+        return res.status(403).json({ error: `Level ไม่ถึง — Zone นี้ต้องการ Level ${minLv}` });
+      }
+
+      const allowedMonsters = zoneDef.monsters || [];
+      if (allowedMonsters.length > 0 && !allowedMonsters.includes(monsterId)) {
+        return res.status(403).json({ error: `มอนสเตอร์นี้ไม่ได้อยู่ใน zone ${zoneDef.nameTH}` });
+      }
+    }
     monster = getMonster(monsterId) || getDungeonMonster(monsterId);
   } else {
     monster = getRandomMonster(zone || 'town_outskirts');
   }
   if (!monster) return res.status(400).json({ error: 'ไม่พบมอนสเตอร์' });
 
-  const db = admin.firestore();
+  // ── Zone Boss cooldown check ────────────────────────────────────────────
+  if (monster.special === 'zone_boss') {
+    const acct2 = await db.collection('game_accounts').doc(uid).get();
+    const kills = acct2.data()?.zoneBossKills || {};
+    const lastKill = kills[monster.monsterId] || 0;
+    const cooldownMs = (monster.cooldownHours || 24) * 3600 * 1000;
+    const elapsed = Date.now() - lastKill;
+    if (elapsed < cooldownMs) {
+      const remaining = Math.ceil((cooldownMs - elapsed) / 3600000);
+      return res.status(400).json({
+        error: `⏳ ${monster.name} กำลังฟื้นร่าง — อีก ${remaining} ชั่วโมงจะกลับมา`,
+        cooldownRemaining: cooldownMs - elapsed,
+      });
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const accountDoc = await db.collection('game_accounts').doc(uid).get();
     if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
@@ -54,9 +156,28 @@ async function startBattle(req, res) {
     // Passive skill bonuses applied at battle start
     const className = (char.class || '').toLowerCase();
     let passiveAtk = char.atk, passiveDef = char.def, passiveCrit = 0.1, passiveMpRegen = 0;
-    if (className === 'warrior') passiveDef = Math.floor(char.def * 1.1);   // Iron Will: DEF +10%
-    if (className === 'mage')    passiveMpRegen = 5;                         // Mana Flow: +5 MP/turn
-    if (className === 'archer')  passiveCrit = 0.15;                         // Keen Senses: Crit +5%
+    // Iron Will (warrior): DEF +10%
+    if (className === 'warrior')     passiveDef     = Math.floor(char.def * 1.1);
+    // Overclock (engineer): DEF +15%
+    if (className === 'engineer')    passiveDef     = Math.floor(char.def * 1.15);
+    // Rune Forge (runesmith): ATK +10%
+    if (className === 'runesmith')   passiveAtk     = Math.floor(char.atk * 1.1);
+    // Mana Flow (mage): +5 MP/turn
+    if (className === 'mage')        passiveMpRegen = 5;
+    // Inspiring Melody (bard): +5 MP/turn + ATK +5%
+    if (className === 'bard')      { passiveMpRegen = 5; passiveAtk = Math.floor(char.atk * 1.05); }
+    // Forest Stride (ranger): Crit +5%
+    if (className === 'ranger')      passiveCrit    = 0.15;
+    // True Sight (soulseer): Crit +8%
+    if (className === 'soulseer')    passiveCrit    = 0.18;
+    // Lethal Focus (assassin): Crit +10%
+    if (className === 'assassin')    passiveCrit    = 0.20;
+    // Shadow Veil (rogue): flee 90% — handled at flee action
+    // Bloodthirst (berserker): ATK +20% at <50% HP — handled per turn
+    // Divine Grace (cleric): +8 HP/turn — handled per turn
+    // Undying (deathknight): +15 HP/turn — handled per turn
+    // Elemental Harmony (shaman): +5 HP +5 MP/turn — handled per turn
+    // Others: handled per turn or at specific events
 
     const battleId = `battle_${uid}_${Date.now()}`;
     const state = {
@@ -103,15 +224,15 @@ async function startBattle(req, res) {
         attackMsg: monster.attackMsg,
         statusAttack: monster.statusAttack || null,
         flee_chance: monster.flee_chance || 0.7,
+        // Boss phase 2 support
+        phase2:        monster.phase2 || null,
+        phase2Applied: false,
       },
       log: [`${monster.emoji} ${monster.name} ปรากฏตัว!`, monster.desc],
       createdAt: Date.now(),
     };
 
-    activeBattles.set(battleId, state);
-    for (const [k, v] of activeBattles.entries()) {
-      if (Date.now() - v.createdAt > 3600_000) activeBattles.delete(k);
-    }
+    await saveBattle(db, battleId, state);
 
     // Build skill info for frontend
     const { getClassSkills } = require('../../data/skills');
@@ -128,8 +249,16 @@ async function startBattle(req, res) {
 async function processAction(req, res) {
   const { battleId, action, skillId, itemInstanceId } = req.body;
   const uid = req.user.uid;
+  const db  = admin.firestore();
 
-  const state = activeBattles.get(battleId);
+  // ── Per-uid action cooldown (1 วินาที) ──
+  const lastAction = _actionCooldown.get(uid) || 0;
+  if (Date.now() - lastAction < ACTION_COOLDOWN_MS) {
+    return res.status(429).json({ error: 'Action เร็วเกินไป กรุณารอสักครู่' });
+  }
+  _actionCooldown.set(uid, Date.now());
+
+  const state = await loadBattle(db, battleId);
   if (!state || state.uid !== uid) {
     return res.status(404).json({ error: 'ไม่พบ Battle หรือหมดเวลา' });
   }
@@ -158,11 +287,13 @@ async function processAction(req, res) {
     }
 
   } else if (action === 'flee') {
+    // Rogue Shadow Veil passive: flee chance = 90%
+    const fleeThreshold = state.charClass === 'rogue' ? 0.9 : state.enemy.flee_chance;
     const fleeRoll = Math.random();
-    if (fleeRoll < state.enemy.flee_chance) {
+    if (fleeRoll < fleeThreshold) {
       log.push('🏃 คุณหนีออกมาได้!');
       state.result = 'fled';
-      activeBattles.delete(battleId);
+      await deleteBattle(db, battleId);
       return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'fled' } });
     } else {
       log.push('❌ หนีไม่ได้! ' + state.enemy.name + ' ขวางทางอยู่');
@@ -177,13 +308,29 @@ async function processAction(req, res) {
     return res.status(400).json({ error: 'action ไม่ถูกต้อง' });
   }
 
+  // ===== Boss Phase 2 transition =====
+  if (
+    !state.enemy.phase2Applied &&
+    state.enemy.phase2 &&
+    state.enemy.hp > 0 &&
+    state.enemy.hp <= Math.floor(state.enemy.hpMax * (state.enemy.phase2.trigger || 0.5))
+  ) {
+    const p2 = state.enemy.phase2;
+    state.enemy.phase2Applied = true;
+    if (p2.atkMult)   state.enemy.atk = Math.round(state.enemy.atk * p2.atkMult);
+    if (p2.defMult)   state.enemy.def = Math.round(state.enemy.def * p2.defMult);
+    if (p2.attackMsg) state.enemy.attackMsg = p2.attackMsg;
+    if (p2.regen !== undefined) state.enemy.regen = p2.regen;
+    log.push(p2.phaseMsg || `🔥 ${state.enemy.name} เข้าสู่ Phase 2!`);
+  }
+
   // ===== Check enemy dead =====
   if (state.enemy.hp <= 0) {
     log.push(`💀 ${state.enemy.name} พ่ายแพ้!`);
     const rewards = await grantRewards(uid, state);
     log.push(...rewards.log);
     state.result = 'victory';
-    activeBattles.delete(battleId);
+    await deleteBattle(db, battleId);
 
     // Track daily + weekly + story/side quest step
     trackQuestProgress(uid, 'kill', 1).catch(() => {});
@@ -224,6 +371,39 @@ async function processAction(req, res) {
   // Mage passive: MP regen per turn
   if (state.player.mpRegen > 0) {
     state.player.mp = Math.min(state.player.mpMax, state.player.mp + state.player.mpRegen);
+  }
+
+  // ── Per-turn passive effects ─────────────────────────────────────────────
+  const cls = state.charClass;
+
+  // Cleric: Divine Grace — +8 HP/turn
+  if (cls === 'cleric' && state.player.hp > 0) {
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + 8);
+    log.push('💚 Divine Grace ฟื้นฟู 8 HP');
+  }
+  // Deathknight: Undying — +15 HP/turn
+  if (cls === 'deathknight' && state.player.hp > 0) {
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + 15);
+    log.push('💀 Undying ฟื้นฟู 15 HP');
+  }
+  // Shaman: Elemental Harmony — +5 HP +5 MP/turn
+  if (cls === 'shaman' && state.player.hp > 0) {
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + 5);
+    state.player.mp = Math.min(state.player.mpMax, state.player.mp + 5);
+    log.push('🌊 Elemental Harmony ฟื้นฟู 5 HP + 5 MP');
+  }
+  // Bard: Inspiring Melody — +5 MP/turn (on top of mana_flow handled in mpRegen)
+  if (cls === 'bard') {
+    state.player.mp = Math.min(state.player.mpMax, state.player.mp + 5);
+  }
+
+  // Berserker: Bloodthirst — ATK +20% เมื่อ HP < 50% (เกิดครั้งเดียว)
+  if (cls === 'berserker' && !state.berserkerRageActive) {
+    if (state.player.hp <= Math.floor(state.player.hpMax * 0.5)) {
+      state.berserkerRageActive = true;
+      state.player.atk = Math.round(state.player.atk * 1.2);
+      log.push('🔥 Bloodthirst ทำงาน! ATK +20% (HP ต่ำกว่า 50%)');
+    }
   }
 
   // Process player buffs (atkMult/defMult/critBonus) — apply/tick
@@ -282,7 +462,6 @@ async function processAction(req, res) {
 
     // Fail dungeon run if in a dungeon
     if (state.dungeonRunId) {
-      const db = admin.firestore();
       await db.collection('game_dungeons').doc(state.dungeonRunId).update({
         status:   'failed',
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -291,13 +470,14 @@ async function processAction(req, res) {
     }
 
     state.result = 'defeat';
-    activeBattles.delete(battleId);
+    await deleteBattle(db, battleId);
     // Achievement check for death
     checkAchievements(uid, 'death', 1).catch(() => {});
     return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
   }
 
   state.turn++;
+  await saveBattle(db, battleId, state);
   return res.json({ battleId, state: { ...sanitizeState(state), log, result: null } });
 }
 
@@ -465,24 +645,42 @@ async function grantRewards(uid, state) {
   const log     = [];
   const rewards = { xp: state.enemy.xpReward, gold: 0, items: [] };
 
-  // Gold reward
+  // Load account (needed for active boosts + charId)
+  const accountDoc    = await db.collection('game_accounts').doc(uid).get();
+  const accountData   = accountDoc.data() || {};
+  const activeBoosts  = accountData.activeBoosts || {};
+  const now           = Date.now();
+
+  // Gold reward (with optional boost)
   const [minG, maxG] = state.enemy.goldReward || [0, 0];
-  const gold = Math.floor(Math.random() * (maxG - minG + 1)) + minG;
+  let gold = Math.floor(Math.random() * (maxG - minG + 1)) + minG;
+  const goldBoost = activeBoosts.gold_boost;
+  if (goldBoost && goldBoost.expiresAt > now && gold > 0) {
+    gold = Math.floor(gold * (goldBoost.multiplier || 2));
+    log.push(`💰 Gold Boost ×${goldBoost.multiplier || 2} ใช้งานอยู่!`);
+  }
   if (gold > 0) {
     await addGold(uid, gold, 'combat_drop');
     rewards.gold = gold;
     log.push(`💰 ได้รับ ${gold} Gold`);
   }
 
-  // XP
-  const accountDoc = await db.collection('game_accounts').doc(uid).get();
-  const charId     = accountDoc.data()?.characterId;
+  // XP (with optional boost)
+  const charId = accountData.characterId;
   if (charId) {
+    let xpGained = state.enemy.xpReward;
+    const xpBoost = activeBoosts.xp_boost;
+    if (xpBoost && xpBoost.expiresAt > now) {
+      xpGained = Math.floor(xpGained * (xpBoost.multiplier || 2));
+      log.push(`⭐ XP Boost ×${xpBoost.multiplier || 2} ใช้งานอยู่!`);
+    }
+    rewards.xp = xpGained;
+
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
-    const newXp   = (char.xp || 0) + state.enemy.xpReward;
-    log.push(`⭐ ได้รับ ${state.enemy.xpReward} XP`);
+    const newXp   = (char.xp || 0) + xpGained;
+    log.push(`⭐ ได้รับ ${xpGained} XP`);
 
     // Level up check
     const updates = { xp: newXp, hp: state.player.hp, mp: state.player.mp, monstersKilled: admin.firestore.FieldValue.increment(1) };
@@ -490,7 +688,7 @@ async function grantRewards(uid, state) {
       const newLevel = char.level + 1;
       updates.level    = newLevel;
       updates.xp       = newXp - char.xpToNext;
-      updates.xpToNext = Math.floor(char.xpToNext * 1.5);
+      updates.xpToNext = Math.floor(200 * Math.pow(newLevel, 1.9)); // lv50≈9เดือน, lv99≈2ปี
       updates.hpMax    = char.hpMax + 10;
       updates.hp       = updates.hpMax; // เต็มตอน level up
       updates.mpMax    = char.mpMax + 5;
@@ -501,6 +699,16 @@ async function grantRewards(uid, state) {
       rewards.levelUp = newLevel;
     }
     await charRef.update(updates);
+  }
+
+  // Zone Boss kill record
+  if (state.enemy.monsterId && MONSTERS[state.enemy.monsterId]?.special === 'zone_boss') {
+    try {
+      await db.collection('game_accounts').doc(uid).set(
+        { zoneBossKills: { [state.enemy.monsterId]: Date.now() } },
+        { merge: true }
+      );
+    } catch {}
   }
 
   // Item drops
@@ -516,6 +724,14 @@ async function grantRewards(uid, state) {
       }
     }
   }
+
+  // ── Anti-cheat: log reward event ─────────────────────────────────────────
+  logReward(uid, 'combat_drop', {
+    xp:      rewards.xp || 0,
+    gold:    rewards.gold || 0,
+    items:   rewards.items || [],
+    levelUp: rewards.levelUp || null,
+  }).catch(() => {});
 
   return { ...rewards, log };
 }
@@ -604,4 +820,26 @@ async function rest(req, res) {
   }
 }
 
-module.exports = { startBattle, processAction, rest };
+// ===== Cleanup stale battles (> 2 hours old) =====
+// Call periodically from server.js or on startup
+async function cleanupStaleBattles() {
+  try {
+    const db  = admin.firestore();
+    const cutoff = Date.now() - 2 * 3600 * 1000; // 2 hours ago
+    const snap = await db.collection('game_battles')
+      .where('updatedAt', '<', cutoff)
+      .limit(50)
+      .get();
+    if (snap.empty) return;
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    console.log(`[Combat] 🧹 Cleaned up ${snap.size} stale battles`);
+    // Also clear local cache entries that are gone
+    for (const doc of snap.docs) _battleCache.delete(doc.id);
+  } catch (err) {
+    console.error('[Combat] cleanupStaleBattles:', err.message);
+  }
+}
+
+module.exports = { startBattle, processAction, rest, cleanupStaleBattles };
