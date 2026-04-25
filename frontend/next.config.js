@@ -51,18 +51,6 @@ const nextConfig = {
     minimumCacheTTL: 3600,
   },
 
-  // ===== URL redirects (case-insensitive aliases) =====
-  async redirects() {
-    return [
-      // lowercase → uppercase (Linux filesystem is case-sensitive)
-      { source: '/ashenveil',       destination: '/ASHENVEIL',       permanent: false },
-      { source: '/ashenveil/world', destination: '/ASHENVEIL/world', permanent: false },
-      // /game/* ← legacy alias (in case bookmarks exist)
-      { source: '/game',            destination: '/ASHENVEIL',       permanent: false },
-      { source: '/game/world',      destination: '/ASHENVEIL/world', permanent: false },
-    ];
-  },
-
   async headers() {
     return [
       // ===== หน้าหลัก (ทุกหน้ายกเว้น /widget/*) =====

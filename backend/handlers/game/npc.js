@@ -6,8 +6,6 @@ const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements }   = require('./achievements');
-const { STORY_QUESTS }        = require('../../data/story_quests');
-const { SIDE_QUESTS }         = require('../../data/side_quests');
 
 const GIFT_DAILY_LIMIT = 3; // ครั้งต่อ NPC ต่อวัน
 const DECAY_PER_DAY    = 1; // affection ลดต่อวันที่ไม่ได้คุย
@@ -196,55 +194,18 @@ async function talkToNPC(req, res) {
 
   const db = admin.firestore();
   try {
-    const [affDoc, questDoc] = await Promise.all([
-      db.collection('game_npc_affection').doc(uid).get(),
-      db.collection('game_quest_state').doc(uid).get(),
-    ]);
-
-    const affData  = affDoc.exists  ? affDoc.data()  : {};
-    const questData = questDoc.exists ? questDoc.data() : {};
-    const npcAff   = affData[npcId] || { affection: 0 };
+    const affDoc  = await db.collection('game_npc_affection').doc(uid).get();
+    const affData = affDoc.exists ? affDoc.data() : {};
+    const npcAff  = affData[npcId] || { affection: 0 };
 
     // Apply daily decay
     await applyDecay(uid, npcId, npcAff, db);
 
-    const affection   = npcAff.affection || 0;
-    const tier        = getAffectionTier(affection);
-    const giftUsed    = getGiftUsedToday(npcAff);
+    const dialog     = getDialog(npc, npcAff.affection || 0);
+    const tier       = getAffectionTier(npcAff.affection || 0);
+    const giftUsed   = getGiftUsedToday(npcAff);
 
-    // ── Quest-aware dialog ──────────────────────────────────────────────────
-    // ค้นหา active quest step ที่ type='talk' และ target ตรงกับ npcId นี้
-    // quest state format: { storyActive: { SQ_000: { stepIndex, stepProgress } }, sideActive: {...} }
-    let questLines = null;
-    let questContext = null; // { questId, stepId, questName }
-
-    const findTalkStep = (activeMap, questDefs) => {
-      for (const [questId, qState] of Object.entries(activeMap || {})) {
-        const questDef = questDefs.find(q => q.id === questId);
-        if (!questDef || !Array.isArray(questDef.steps)) continue;
-        const step = questDef.steps[qState.stepIndex ?? 0];
-        if (!step) continue;
-        if (step.type !== 'talk') continue;
-        if (step.target !== npcId) continue;
-        // Match found!
-        const questDialog = npc.questDialogs?.[step.id];
-        if (questDialog?.lines?.length) {
-          questLines   = questDialog.lines;
-          questContext = { questId, stepId: step.id, questName: questDef.name || questId };
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // ตรวจ story quests ก่อน แล้วค่อย side quests
-    findTalkStep(questData.storyActive, STORY_QUESTS) ||
-    findTalkStep(questData.sideActive,  SIDE_QUESTS);
-
-    // ── Fallback to affection dialog ────────────────────────────────────────
-    const genericDialog = getDialog(npc, affection);
-
-    // Track story/side quest step — talk event (triggers quest engine)
+    // Track story/side quest step — talk event
     trackStoryStep(uid, 'talk', { npcId }).catch(() => {});
 
     return res.json({
@@ -253,18 +214,13 @@ async function talkToNPC(req, res) {
       emoji:         npc.emoji,
       title:         npc.title,
       personality:   npc.personality,
-      // dialog = single string (generic) — สำหรับ backward compat
-      dialog:        questLines ? questLines[0] : genericDialog,
-      // lines = array — frontend ใช้ทำ typewriter multi-line
-      lines:         questLines || [genericDialog],
-      isQuestDialog: !!questLines,
-      questContext,
-      affection,
+      dialog,
+      affection:     npcAff.affection || 0,
       tier,
       giftUsedToday: giftUsed,
       giftLimit:     GIFT_DAILY_LIMIT,
       isShopkeeper:  npc.isShopkeeper,
-      bondUnlocked:  affection >= 100,
+      bondUnlocked:  (npcAff.affection || 0) >= 100,
     });
   } catch (err) {
     console.error('[NPC] talkToNPC:', err.message);

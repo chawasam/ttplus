@@ -142,23 +142,6 @@ async function syncAccount(req, res) {
 
     await ref.update({ lastLoginAt: admin.firestore.FieldValue.serverTimestamp(), dailyStreak: newStreak });
 
-    // ── Fetch character preview (name, race, class, level) for Lobby screen ──
-    let charPreview = {};
-    if (data.characterId) {
-      try {
-        const charDoc = await db.collection('game_characters').doc(data.characterId).get();
-        if (charDoc.exists) {
-          const c = charDoc.data();
-          charPreview = {
-            charName:  c.name  || '',
-            charRace:  c.race  || '',
-            charClass: c.class || '',
-            charLevel: c.level || 1,
-          };
-        }
-      } catch {}
-    }
-
     return res.json({
       account: {
         uid,
@@ -170,7 +153,6 @@ async function syncAccount(req, res) {
         gold:           data.gold || 0,
         realmPoints:    data.realmPoints || 0,
         dailyStreak:    newStreak,
-        ...charPreview,  // charName, charRace, charClass, charLevel
       },
       isNew: false,
     });
@@ -589,71 +571,6 @@ async function loadCharacter(req, res) {
   }
 }
 
-// ===== Delete Character =====
-// ลบ character + inventory + equipment + quest_state + npc_affection
-// account.characterId จะถูก reset เป็น null
-async function deleteCharacter(req, res) {
-  const uid = req.user.uid;
-  const db  = admin.firestore();
-
-  try {
-    const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-
-    const charId = accountDoc.data().characterId;
-    if (!charId) return res.status(400).json({ error: 'ไม่มี Character ให้ลบ' });
-
-    // ── ลบทุก sub-collections ที่เกี่ยวข้อง (batch per 500) ──
-    const collectionsToClean = [
-      db.collection('game_inventory').where('uid', '==', uid),
-      db.collection('game_quest_state').where('uid', '==', uid),
-      db.collection('game_npc_affection').where('uid', '==', uid),
-    ];
-
-    for (const query of collectionsToClean) {
-      let snap = await query.get();
-      while (!snap.empty) {
-        const batch = db.batch();
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        if (snap.docs.length < 500) break;
-        snap = await query.get();
-      }
-    }
-
-    // ลบ character document
-    await db.collection('game_characters').doc(charId).delete();
-
-    // ลบ equipment document (ถ้ามี)
-    await db.collection('game_equipment').doc(charId).delete().catch(() => {});
-
-    // ลบ active battles (ถ้ามี)
-    const battleSnap = await db.collection('game_battles').where('uid', '==', uid).get();
-    if (!battleSnap.empty) {
-      const b = db.batch();
-      battleSnap.docs.forEach(d => b.delete(d.ref));
-      await b.commit();
-    }
-
-    // Reset account — เก็บ gold, realmPoints, tiktokVerified, unlockedRaces, etc.
-    await accountRef.update({
-      characterId:       null,
-      // Reset zone boss kills ด้วยเพราะตัวละครใหม่ต้องเริ่มใหม่
-      zoneBossKills:     {},
-      activeBoosts:      {},
-      pendingClassChange: admin.firestore.FieldValue.delete(),
-      pendingNameChange:  admin.firestore.FieldValue.delete(),
-    });
-
-    console.log(`[Account] 🗑️ uid=${uid} deleted character ${charId}`);
-    return res.json({ success: true, msg: '🗑️ ลบตัวละครสำเร็จ — สร้างตัวใหม่ได้เลย' });
-  } catch (err) {
-    console.error('[Game/Account] deleteCharacter:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-}
-
 // ===== Get Unlocked Races + Progress =====
 async function getUnlockedRaces(req, res) {
   const uid = req.user.uid;
@@ -691,7 +608,7 @@ async function getUnlockedRaces(req, res) {
 
 module.exports = {
   syncAccount, requestVerifyCode, getVerifyStatus,
-  createCharacter, loadCharacter, deleteCharacter,
+  createCharacter, loadCharacter,
   getUnlockedRaces,
   checkChatVerify,
   // pendingVerifications ถูกย้ายไป Firestore แล้ว — ไม่ export อีกต่อไป

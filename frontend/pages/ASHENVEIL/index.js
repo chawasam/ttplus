@@ -75,6 +75,8 @@ export default function GameIndex() {
   const [user,         setUser]         = useState(null);
   const [account,      setAccount]      = useState(null);   // { characterId, tiktokVerified, tiktokUniqueId, ... }
   const [charInfo,     setCharInfo]     = useState(null);   // { name, race, class, level } — loaded after sync
+  const [syncError,    setSyncError]    = useState(null);   // error message ถ้า syncAccount ล้มเหลว
+  const [loadingMsg,   setLoadingMsg]   = useState('กำลังโหลด...');
 
   // TikTok link state
   const [tiktokInput,  setTiktokInput]  = useState('');
@@ -91,34 +93,41 @@ export default function GameIndex() {
   const [raceProgress,  setRaceProgress]  = useState({});
 
   // ===== Auth state =====
+  const doSync = useCallback(async (u) => {
+    setSyncError(null);
+    setLoadingMsg('กำลังโหลดข้อมูลบัญชี...');
+    setStep(STEP.LOADING);
+    try {
+      const { data } = await syncAccount();
+      setAccount(data.account);
+
+      // ─── KEY FIX: characterId ตรวจก่อน tiktokVerified ───
+      if (data.account.characterId) {
+        setStep(STEP.LOBBY);
+      } else {
+        setLoadingMsg('กำลังโหลดข้อมูลเผ่า...');
+        try {
+          const ur = await getUnlockedRaces();
+          setUnlockedRaces(ur.data.unlockedRaces || []);
+          setRaceProgress(ur.data.progress   || {});
+        } catch {}
+        setStep(STEP.LOBBY);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'ไม่สามารถเชื่อมต่อ server ได้';
+      setSyncError(msg);
+      setStep(STEP.LOGIN);
+    }
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) { setStep(STEP.LOGIN); return; }
       setUser(u);
-      try {
-        const { data } = await syncAccount();
-        setAccount(data.account);
-
-        // ─── KEY FIX: characterId ตรวจก่อน tiktokVerified ───
-        if (data.account.characterId) {
-          // มีตัวละคร → ไปหน้า Lobby เพื่อกด "เข้าเกม"
-          setStep(STEP.LOBBY);
-        } else {
-          // ไม่มีตัวละคร → โหลด races แล้วไปสร้าง
-          try {
-            const ur = await getUnlockedRaces();
-            setUnlockedRaces(ur.data.unlockedRaces || []);
-            setRaceProgress(ur.data.progress   || {});
-          } catch {}
-          setStep(STEP.LOBBY);  // ยัง LOBBY แต่ section จะแสดง CREATE_CHAR
-        }
-      } catch {
-        toast.error('โหลดข้อมูลไม่สำเร็จ กรุณา refresh');
-        setStep(STEP.LOGIN);
-      }
+      await doSync(u);
     });
     return () => unsub();
-  }, []);
+  }, [doSync]);
 
   // ===== Google Login =====
   const handleLogin = useCallback(async () => {
@@ -227,21 +236,38 @@ export default function GameIndex() {
 
           {/* ── LOADING ── */}
           {step === STEP.LOADING && (
-            <div className="text-center text-amber-600 animate-pulse py-8">กำลังโหลด...</div>
+            <div className="text-center py-8 space-y-3">
+              <div className="w-8 h-8 border-2 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-amber-600 text-sm animate-pulse">{loadingMsg}</p>
+            </div>
           )}
 
           {/* ── LOGIN ── */}
           {step === STEP.LOGIN && (
             <Box title="เข้าสู่โลก Ashenveil">
-              <p className="text-gray-400 text-sm mb-6 text-center leading-relaxed">
-                ดินแดนนี้รอผู้กล้ามานานแล้ว<br/>
-                <span className="text-gray-500 text-xs">ลงทะเบียนด้วย Google เพื่อเริ่มต้น</span>
-              </p>
+              {syncError ? (
+                /* ── Error state ── */
+                <div className="mb-4 bg-red-950/30 border border-red-900/50 rounded p-3 space-y-2">
+                  <p className="text-red-400 text-xs font-bold">⚠️ เชื่อมต่อไม่สำเร็จ</p>
+                  <p className="text-red-300 text-xs">{syncError}</p>
+                  {user && (
+                    <button onClick={() => doSync(user)}
+                      className="w-full py-1.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 transition text-xs rounded">
+                      ลองใหม่อีกครั้ง
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm mb-6 text-center leading-relaxed">
+                  ดินแดนนี้รอผู้กล้ามานานแล้ว<br/>
+                  <span className="text-gray-500 text-xs">ลงทะเบียนด้วย Google เพื่อเริ่มต้น</span>
+                </p>
+              )}
               <button onClick={handleLogin}
                 className="w-full py-3 rounded border border-amber-600 text-amber-400 hover:bg-amber-900/20 transition font-bold tracking-wider">
                 [ เข้าสู่ระบบด้วย Google ]
               </button>
-              <p className="text-gray-600 text-xs text-center mt-4">ไม่มีคู่มือ — ทุกอย่างค้นพบได้ด้วยตัวเอง</p>
+              {!syncError && <p className="text-gray-600 text-xs text-center mt-4">ไม่มีคู่มือ — ทุกอย่างค้นพบได้ด้วยตัวเอง</p>}
             </Box>
           )}
 
