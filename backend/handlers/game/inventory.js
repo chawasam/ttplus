@@ -33,6 +33,9 @@ async function getInventory(req, res) {
         type:        def?.type || 'UNKNOWN',
         desc:        def?.desc || '',
         sellPrice:   def?.sellPrice || 0,
+        buyPrice:    def?.buyPrice || 0,
+        levelReq:    def?.levelReq || 1,
+        base:        def?.base || {},
         obtainedAt:  d.obtainedAt,
         rolls:       d.rolls || {},
         sockets:     d.sockets || 0,
@@ -219,6 +222,7 @@ async function getShopItems(req, res) {
       buyPrice:  def.buyPrice,
       desc:      def.desc,
       type:      def.type,
+      base:      def.base || {},
       levelReq:  def.levelReq || 1,
     };
   }).filter(Boolean);

@@ -153,6 +153,7 @@ export default function GameWorld() {
   const [battleLog,     setBattleLog]    = useState([]);
   const [battleSkills,  setBattleSkills] = useState([]);  // available skills in current battle
   const [battleRewards, setBattleRewards] = useState(null); // rewards to show on victory screen
+  const [itemModal,    setItemModal]    = useState(null);  // item being previewed { item, context:'inv'|'shop' }
   const [inventory,  setInventory]  = useState([]);
   const [equipment,  setEquipment]  = useState({});
   const [shopItems,  setShopItems]  = useState([]);
@@ -2354,7 +2355,9 @@ export default function GameWorld() {
                   </div>
                   {inventory.length === 0 && <p className="text-gray-500 text-xs">ว่างเปล่า...</p>}
                   {inventory.map(item => (
-                    <div key={item.instanceId} className={`flex items-center gap-2 py-1 border-b border-gray-900 border-l-2 pl-2 text-xs ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
+                    <div key={item.instanceId}
+                      onClick={() => setItemModal({ item, context: 'inv' })}
+                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-xs cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
                         {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
@@ -2364,19 +2367,8 @@ export default function GameWorld() {
                           {GRADE_LABEL[item.grade]}
                         </span>
                       )}
-                      {item.equipped && <span className="text-amber-600 text-xs">[ใส่อยู่]</span>}
-                      {!item.equipped && ['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (
-                        <button onClick={() => handleEquip(item.instanceId, item.type)}
-                          className="text-blue-500 hover:text-blue-300 text-xs">ใส่</button>
-                      )}
-                      {['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (item.enhancement || 0) < 10 && (
-                        <button onClick={() => openEnhance(item.instanceId, item.name)}
-                          className="text-amber-600 hover:text-amber-400 text-xs">+{(item.enhancement||0)+1}↑</button>
-                      )}
-                      {!item.equipped && (
-                        <button onClick={() => handleSell(item.instanceId, item.name)}
-                          className="text-gray-400 hover:text-gray-200 text-xs">{item.sellPrice}G ขาย</button>
-                      )}
+                      {item.equipped && <span className="text-amber-600 text-[10px] shrink-0">[ใส่อยู่]</span>}
+                      <span className="text-gray-700 text-[10px] shrink-0">ℹ️</span>
                     </div>
                   ))}
                 </div>
@@ -2390,13 +2382,13 @@ export default function GameWorld() {
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
                   {shopItems.map(item => (
-                    <div key={item.itemId} className={`flex items-center gap-2 py-1 border-b border-gray-900 border-l-2 pl-2 text-xs ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
+                    <div key={item.itemId}
+                      onClick={() => setItemModal({ item, context: 'shop' })}
+                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-xs cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>{item.name}</span>
-                      <span className="text-yellow-600">{item.buyPrice}G</span>
-                      <button onClick={() => handleBuy(item.itemId, item.name, item.buyPrice)}
-                        disabled={gold < item.buyPrice}
-                        className="text-green-500 hover:text-green-300 disabled:text-gray-700 text-xs">ซื้อ</button>
+                      <span className="text-yellow-600 shrink-0">{item.buyPrice}G</span>
+                      <span className="text-gray-700 text-[10px] shrink-0">ℹ️</span>
                     </div>
                   ))}
                 </div>
@@ -4237,6 +4229,141 @@ export default function GameWorld() {
           onVolume: (v) => { setBgmVolume(v); localStorage.setItem('game_bgm_vol', String(v)); },
         }}
       />
+
+      {/* ── Item Detail Modal ── */}
+      {itemModal && (() => {
+        const { item, context } = itemModal;
+        const isInv  = context === 'inv';
+        const isShop = context === 'shop';
+
+        // stat label map
+        const STAT_LABEL = {
+          atk: '⚔️ โจมตี', def: '🛡️ ป้องกัน', mag: '✨ เวทย์',
+          spd: '💨 ความเร็ว', hp: '❤️ HP', mp: '💧 MP',
+          hp_bonus: '❤️ HP เพิ่ม', block_rate: '🛡️ บล็อค%',
+          atk_spd: '⚡ ความเร็วโจมตี',
+        };
+        const TYPE_LABEL = {
+          MAIN_HAND:'อาวุธ', OFF_HAND:'โล่/มือซ้าย', HEAD:'หมวก',
+          CHEST:'เกราะ', GLOVES:'ถุงมือ', LEGS:'กางเกง', FEET:'รองเท้า',
+          RING_L:'แหวนซ้าย', RING_R:'แหวนขวา',
+          CONSUMABLE:'ของใช้', MATERIAL:'วัตถุดิบ', JUNK:'ของเก่า', RELIC:'ของโบราณ',
+        };
+
+        const baseStats  = item.base || {};
+        const rollStats  = item.rolls || {};
+        const hasStats   = Object.keys(baseStats).length > 0 || Object.keys(rollStats).length > 0;
+        const canEquip   = isInv && !item.equipped && ['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type);
+        const canEnhance = isInv && ['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (item.enhancement || 0) < 10;
+        const canSell    = isInv && !item.equipped;
+        const canBuy     = isShop && (char?.gold ?? gold) >= (item.buyPrice || 0);
+
+        return (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4"
+            onClick={() => setItemModal(null)}>
+            <div className="w-full max-w-sm bg-[#111] border border-gray-700 rounded-xl p-4 space-y-3"
+              onClick={e => e.stopPropagation()}
+              style={{ fontFamily: "'Courier New', Courier, monospace", fontSize: '13px' }}>
+
+              {/* Header */}
+              <div className="flex items-start gap-3">
+                <span className="text-4xl">{item.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-bold text-base leading-tight ${GRADE_COLOR[item.grade] || 'text-gray-300'}`}>
+                    {item.name}{(item.enhancement || 0) > 0 ? ` +${item.enhancement}` : ''}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {item.grade && GRADE_LABEL[item.grade] && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${GRADE_COLOR[item.grade]} border-current opacity-80`}>
+                        {GRADE_LABEL[item.grade]}
+                      </span>
+                    )}
+                    <span className="text-gray-500 text-[11px]">{TYPE_LABEL[item.type] || item.type}</span>
+                    {item.levelReq > 1 && <span className="text-gray-600 text-[11px]">Lv.{item.levelReq}+</span>}
+                    {item.equipped && <span className="text-amber-500 text-[11px]">✓ ใส่อยู่</span>}
+                  </div>
+                </div>
+                <button onClick={() => setItemModal(null)}
+                  className="text-gray-600 hover:text-gray-300 text-lg leading-none shrink-0">✕</button>
+              </div>
+
+              {/* Description */}
+              {item.desc && (
+                <p className="text-gray-400 text-[12px] leading-relaxed border-l-2 border-gray-800 pl-2 italic">
+                  {item.desc}
+                </p>
+              )}
+
+              {/* Stats */}
+              {hasStats && (
+                <div className="border border-gray-800 rounded p-2 space-y-1">
+                  <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1">สถิติ</p>
+                  {Object.entries(baseStats).map(([k, v]) => (
+                    <div key={k} className="flex justify-between text-xs">
+                      <span className="text-gray-500">{STAT_LABEL[k] || k}</span>
+                      <span className="text-amber-300">+{v}</span>
+                    </div>
+                  ))}
+                  {Object.entries(rollStats).map(([k, v]) => (
+                    <div key={k} className="flex justify-between text-xs">
+                      <span className="text-gray-500">{STAT_LABEL[k] || k} <span className="text-purple-600">(random)</span></span>
+                      <span className="text-purple-300">+{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Price info */}
+              <div className="flex gap-3 text-xs text-gray-500">
+                {isShop && item.buyPrice > 0 && (
+                  <span>💰 ราคา: <span className="text-yellow-400">{item.buyPrice}G</span></span>
+                )}
+                {item.sellPrice > 0 && (
+                  <span>🪙 ขาย: <span className="text-gray-400">{item.sellPrice}G</span></span>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 pt-1">
+                {canEquip && (
+                  <button onClick={() => { handleEquip(item.instanceId, item.type); setItemModal(null); }}
+                    disabled={busy}
+                    className="flex-1 py-2 border border-blue-700 text-blue-400 hover:bg-blue-900/20 rounded text-xs disabled:opacity-40">
+                    ✅ ใส่
+                  </button>
+                )}
+                {item.equipped && isInv && (
+                  <button onClick={() => { handleUnequip && handleUnequip(item.instanceId, item.equipped); setItemModal(null); }}
+                    disabled={busy}
+                    className="flex-1 py-2 border border-gray-700 text-gray-400 hover:bg-gray-900/30 rounded text-xs disabled:opacity-40">
+                    ↩ ถอด
+                  </button>
+                )}
+                {canEnhance && (
+                  <button onClick={() => { openEnhance(item.instanceId, item.name); setItemModal(null); }}
+                    className="flex-1 py-2 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                    🔨 +{(item.enhancement||0)+1}↑ Enhance
+                  </button>
+                )}
+                {canSell && (
+                  <button onClick={() => { handleSell(item.instanceId, item.name); setItemModal(null); }}
+                    disabled={busy}
+                    className="flex-1 py-2 border border-gray-700 text-gray-500 hover:bg-gray-900/20 rounded text-xs disabled:opacity-40">
+                    🪙 ขาย {item.sellPrice}G
+                  </button>
+                )}
+                {isShop && (
+                  <button onClick={() => { handleBuy(item.itemId, item.name, item.buyPrice); setItemModal(null); }}
+                    disabled={busy || gold < (item.buyPrice || 0)}
+                    className="flex-1 py-2 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs disabled:opacity-40 disabled:text-gray-600">
+                    {gold >= (item.buyPrice || 0) ? `🛒 ซื้อ ${item.buyPrice}G` : '💸 Gold ไม่พอ'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
