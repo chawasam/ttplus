@@ -1062,10 +1062,10 @@ export default function GameWorld() {
     try {
       const { data } = await battleAction(battle.battleId, action, opts);
       setBattle(data.state);
-      setBattleLog(prev => [...prev, '─────', ...(data.log || [])]);
+      setBattleLog(prev => [...prev, '─────', ...(data.state?.log || [])]);
 
-      if (data.result === 'victory') {
-        const rewards = data.rewards || {};
+      if (data.state?.result === 'victory') {
+        const rewards = data.state?.rewards || {};
         if (rewards.gold) setGold(g => g + rewards.gold);
         if (rewards.levelUp) setChar(c => c ? { ...c, level: rewards.levelUp } : c);
 
@@ -1110,7 +1110,7 @@ export default function GameWorld() {
         } else {
           setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1200);
         }
-      } else if (data.result === 'defeat') {
+      } else if (data.state?.result === 'defeat') {
         // Was dungeon? Run is already failed by backend
         if (data.dungeonRunId) {
           setDungeonRun(null);
@@ -1118,7 +1118,7 @@ export default function GameWorld() {
           setDungeonRoom(null);
         }
         setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1500);
-      } else if (data.result === 'fled') {
+      } else if (data.state?.result === 'fled') {
         setTimeout(() => { setBattle(null); setScreen(dungeonRunId ? SCREENS.DUNGEON_ROOM : SCREENS.WORLD); }, 1000);
       } else {
         setChar(c => c ? { ...c, hp: data.state.player.hp, mp: data.state.player.mp } : c);
@@ -2202,9 +2202,16 @@ export default function GameWorld() {
                       )}
                     </>
                   ) : (
-                    <p className={`text-center text-sm ${battle.result === 'victory' ? 'text-green-400' : 'text-red-400'}`}>
-                      {battle.result === 'victory' ? '🏆 ชนะแล้ว!' : battle.result === 'defeat' ? '💀 พ่ายแพ้...' : '🏃 หนีได้!'}
-                    </p>
+                    <button
+                      onClick={() => { setBattle(null); setScreen(SCREENS.WORLD); }}
+                      className={`w-full text-center text-sm py-2 rounded border ${
+                        battle.result === 'victory'
+                          ? 'text-green-400 border-green-800 hover:bg-green-900/30'
+                          : 'text-red-400 border-red-900 hover:bg-red-900/30'
+                      }`}
+                    >
+                      {battle.result === 'victory' ? '🏆 ชนะแล้ว! (กดเพื่อออก)' : battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
+                    </button>
                   )}
                 </div>
               )}
