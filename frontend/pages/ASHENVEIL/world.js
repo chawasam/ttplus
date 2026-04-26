@@ -211,7 +211,8 @@ export default function GameWorld() {
   const [enhanceTarget,  setEnhanceTarget]  = useState(null);   // { instanceId, name }
   const [enhanceLoading, setEnhanceLoading] = useState(false);
 
-  // ── Weekly Quests ──
+  // ── Quest Tab (daily + weekly combined) ──
+  const [questTab,       setQuestTab]       = useState('daily'); // 'daily' | 'weekly'
   const [weeklyData,     setWeeklyData]     = useState(null);   // { weekKey, quests, allCompleted, bonusClaimed, bonus }
   const [weeklyBadge,    setWeeklyBadge]    = useState(false);
 
@@ -344,10 +345,11 @@ export default function GameWorld() {
     } catch {}
   }, []);
 
-  const openQuests = useCallback(async () => {
+  const openQuests = useCallback(async (tab = 'daily') => {
+    setQuestTab(tab);
     setScreen(SCREENS.QUESTS);
-    await loadQuests();
-  }, [loadQuests]);
+    await Promise.all([loadQuests(), loadWeeklyQuests()]);
+  }, [loadQuests, loadWeeklyQuests]);
 
   const handleClaimQuest = useCallback(async (questId) => {
     try {
@@ -607,8 +609,9 @@ export default function GameWorld() {
   }, []);
 
   const openWeeklyQuests = useCallback(async () => {
-    setScreen(SCREENS.WEEKLY_QUESTS);
-    await loadWeeklyQuests();
+    setQuestTab('weekly');
+    setScreen(SCREENS.QUESTS);
+    await Promise.all([loadQuests(), loadWeeklyQuests()]);
   }, [loadWeeklyQuests]);
 
   const handleClaimWeekly = useCallback(async (questId) => {
@@ -1883,20 +1886,15 @@ export default function GameWorld() {
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
                     <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
                     <Btn onClick={() => setScreen('travel')} disabled={busy}>🗺️ เดินทาง</Btn>
-                    <button onClick={openQuests} disabled={busy}
+                    <button onClick={() => openQuests('daily')} disabled={busy}
                       className="relative px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
                       📋 ภารกิจ
-                      {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
+                      {(questBadge || weeklyBadge) && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
                     <Btn onClick={openMainQuestLog} disabled={busy}>📖 Story</Btn>
                     <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
                     <Btn onClick={openCharacter}    disabled={busy}>📊 ตัวละคร</Btn>
-                    <button onClick={openWeeklyQuests} disabled={busy}
-                      className="relative px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
-                      📅 Weekly
-                      {weeklyBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />}
-                    </button>
                     <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
                     <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
                     <Btn onClick={openWorldBoss}    disabled={busy}>💀 World Boss</Btn>
@@ -2682,74 +2680,153 @@ export default function GameWorld() {
               {/* DAILY QUESTS */}
               {screen === SCREENS.QUESTS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
+                  {/* Header + back */}
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-400 text-xs">[ 📋 ภารกิจประจำวัน{questData?.date ? ` — ${questData.date}` : ''} ]</p>
+                    <p className="text-gray-400 text-xs">[ 📋 ภารกิจ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
-                  {!questData ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
-                  ) : (
-                    <>
-                      {questData.quests.map(q => (
-                        <div key={q.id} className={`border rounded p-2 text-xs ${
-                          q.claimed   ? 'border-gray-900 opacity-40' :
-                          q.completed ? 'border-green-800' :
-                                        'border-gray-800'
+                  {/* Sub-tabs */}
+                  <div className="flex gap-1 mb-2">
+                    {[
+                      { key: 'daily',  label: '📋 รายวัน',     badge: questBadge },
+                      { key: 'weekly', label: '📅 รายสัปดาห์', badge: weeklyBadge },
+                    ].map(({ key, label, badge }) => (
+                      <button key={key} onClick={() => setQuestTab(key)}
+                        className={`relative px-3 py-1 text-xs rounded border transition ${
+                          questTab === key
+                            ? 'border-amber-600 text-amber-300 bg-amber-900/20'
+                            : 'border-gray-800 text-gray-500 hover:text-gray-300'
                         }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="flex-1 text-amber-200">{q.name}</span>
-                            {q.claimed ? (
-                              <span className="text-gray-400">✓ รับแล้ว</span>
-                            ) : q.completed ? (
-                              <button onClick={() => handleClaimQuest(q.id)}
-                                className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
-                                รับรางวัล
-                              </button>
-                            ) : (
-                              <span className="text-gray-400">{q.progress}/{q.target}</span>
+                        {label}
+                        {badge && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-green-500" />}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ── Daily tab ── */}
+                  {questTab === 'daily' && (
+                    !questData ? (
+                      <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    ) : (
+                      <>
+                        <p className="text-gray-600 text-xs mb-1">{questData.date || ''}</p>
+                        {questData.quests.map(q => (
+                          <div key={q.id} className={`border rounded p-2 text-xs ${
+                            q.claimed   ? 'border-gray-900 opacity-40' :
+                            q.completed ? 'border-green-800' : 'border-gray-800'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className="flex-1 text-amber-200">{q.name}</span>
+                              {q.claimed ? (
+                                <span className="text-gray-400">✓ รับแล้ว</span>
+                              ) : q.completed ? (
+                                <button onClick={() => handleClaimQuest(q.id)}
+                                  className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
+                                  รับรางวัล
+                                </button>
+                              ) : (
+                                <span className="text-gray-400">{q.progress}/{q.target}</span>
+                              )}
+                            </div>
+                            <p className="text-gray-400 mt-0.5">{q.desc}</p>
+                            {!q.claimed && (
+                              <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
+                                <div className="h-0.5 bg-amber-700 rounded transition-all"
+                                  style={{ width: `${Math.min(100, ((q.progress || 0) / q.target) * 100)}%` }} />
+                              </div>
+                            )}
+                            {!q.claimed && (
+                              <p className="text-yellow-500 mt-0.5">💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP</p>
                             )}
                           </div>
-                          <p className="text-gray-400 mt-0.5">{q.desc}</p>
-                          {/* Progress bar */}
-                          {!q.claimed && (
-                            <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
-                              <div className="h-0.5 bg-amber-700 rounded transition-all"
-                                style={{ width: `${Math.min(100, ((q.progress || 0) / q.target) * 100)}%` }} />
-                            </div>
-                          )}
-                          {!q.claimed && (
-                            <p className="text-yellow-500 mt-0.5">💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP</p>
-                          )}
+                        ))}
+                        {/* Bonus */}
+                        <div className={`border rounded p-2 text-xs ${
+                          questData.bonusClaimed ? 'border-gray-900 opacity-40' :
+                          questData.allCompleted ? 'border-amber-700 bg-amber-900/10' : 'border-gray-800 opacity-60'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 text-amber-300">{questData.bonus?.label || '🎁 ครบทุกภารกิจ'}</span>
+                            {questData.bonusClaimed ? (
+                              <span className="text-gray-400">✓ รับแล้ว</span>
+                            ) : questData.allCompleted ? (
+                              <button onClick={() => handleClaimQuest('bonus')}
+                                className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
+                                🎁 รับ!
+                              </button>
+                            ) : (
+                              <span className="text-gray-500">ยังไม่ครบ</span>
+                            )}
+                          </div>
+                          <p className="text-yellow-500 mt-0.5">💰 {questData.bonus?.gold}G · ⭐ {questData.bonus?.xp} XP · 🧪 Potion</p>
                         </div>
-                      ))}
-
-                      {/* Bonus reward */}
-                      <div className={`border rounded p-2 text-xs ${
-                        questData.bonusClaimed ? 'border-gray-900 opacity-40' :
-                        questData.allCompleted ? 'border-amber-700 bg-amber-900/10' :
-                                                 'border-gray-800 opacity-60'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <span className="flex-1 text-amber-300">{questData.bonus?.label || '🎁 ครบทุกภารกิจ'}</span>
-                          {questData.bonusClaimed ? (
-                            <span className="text-gray-400">✓ รับแล้ว</span>
-                          ) : questData.allCompleted ? (
-                            <button onClick={() => handleClaimQuest('bonus')}
-                              className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
-                              🎁 รับ!
-                            </button>
-                          ) : (
-                            <span className="text-gray-500">ยังไม่ครบ</span>
-                          )}
-                        </div>
-                        <p className="text-yellow-500 mt-0.5">
-                          💰 {questData.bonus?.gold}G · ⭐ {questData.bonus?.xp} XP · 🧪 Potion
-                        </p>
-                      </div>
-                    </>
+                      </>
+                    )
                   )}
 
+                  {/* ── Weekly tab ── */}
+                  {questTab === 'weekly' && (
+                    !weeklyData ? (
+                      <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    ) : (
+                      <>
+                        <p className="text-gray-600 text-xs mb-1">{weeklyData.weekKey ? `สัปดาห์ ${weeklyData.weekKey}` : ''}</p>
+                        {weeklyData.quests.map(q => (
+                          <div key={q.id} className={`border rounded p-2 text-xs ${
+                            q.claimed   ? 'border-gray-900 opacity-40' :
+                            q.completed ? 'border-green-800' : 'border-gray-800'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className="flex-1 text-amber-200">{q.name}</span>
+                              {q.claimed ? (
+                                <span className="text-gray-400">✓ รับแล้ว</span>
+                              ) : q.completed ? (
+                                <button onClick={() => handleClaimWeekly(q.id)}
+                                  className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
+                                  รับรางวัล
+                                </button>
+                              ) : (
+                                <span className="text-gray-400">{q.progress}/{q.target}</span>
+                              )}
+                            </div>
+                            <p className="text-gray-400 mt-0.5">{q.desc}</p>
+                            {!q.claimed && (
+                              <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
+                                <div className="h-0.5 bg-purple-700 rounded transition-all"
+                                  style={{ width: `${Math.min(100, ((q.progress || 0) / q.target) * 100)}%` }} />
+                              </div>
+                            )}
+                            {!q.claimed && (
+                              <p className="text-purple-400 mt-0.5">
+                                💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP{q.reward.items?.length ? ` · 📦 x${q.reward.items.length}` : ''}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                        {/* Weekly bonus */}
+                        <div className={`border rounded p-2 text-xs ${
+                          weeklyData.bonusClaimed ? 'border-gray-900 opacity-40' :
+                          weeklyData.allCompleted ? 'border-amber-700 bg-amber-900/10' : 'border-gray-800 opacity-60'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 text-amber-300">{weeklyData.bonus?.label || '🏆 ครบทุก Weekly Quest!'}</span>
+                            {weeklyData.bonusClaimed ? (
+                              <span className="text-gray-400">✓ รับแล้ว</span>
+                            ) : weeklyData.allCompleted ? (
+                              <button onClick={() => handleClaimWeekly('bonus')}
+                                className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
+                                🏆 รับ!
+                              </button>
+                            ) : (
+                              <span className="text-gray-500">ยังไม่ครบ</span>
+                            )}
+                          </div>
+                          <p className="text-purple-400 mt-0.5">💰 {weeklyData.bonus?.gold}G · ⭐ {weeklyData.bonus?.xp} XP · 📦 ของพิเศษ</p>
+                        </div>
+                      </>
+                    )
+                  )}
                 </div>
               )}
 
@@ -3715,80 +3792,6 @@ Ashenveil จะได้รับรุ่งอรุณใหม่
                         className="w-full px-3 py-2 border border-amber-700 text-amber-300 hover:border-amber-500 hover:bg-amber-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded font-bold">
                         🔨 Enhance +{enhanceInfo.nextLevel}
                       </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* WEEKLY QUESTS */}
-              {screen === SCREENS.WEEKLY_QUESTS && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-400 text-xs">[ 📅 Weekly Quests{weeklyData?.weekKey ? ` — สัปดาห์ ${weeklyData.weekKey}` : ''} ]</p>
-                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
-                  </div>
-
-                  {!weeklyData ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
-                  ) : (
-                    <>
-                      {weeklyData.quests.map(q => (
-                        <div key={q.id} className={`border rounded p-2 text-xs ${
-                          q.claimed   ? 'border-gray-900 opacity-40' :
-                          q.completed ? 'border-green-800' :
-                                        'border-gray-800'
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="flex-1 text-amber-200">{q.name}</span>
-                            {q.claimed ? (
-                              <span className="text-gray-400">✓ รับแล้ว</span>
-                            ) : q.completed ? (
-                              <button onClick={() => handleClaimWeekly(q.id)}
-                                className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
-                                รับรางวัล
-                              </button>
-                            ) : (
-                              <span className="text-gray-400">{q.progress}/{q.target}</span>
-                            )}
-                          </div>
-                          <p className="text-gray-400 mt-0.5">{q.desc}</p>
-                          {!q.claimed && (
-                            <div className="w-full h-0.5 bg-gray-800 rounded mt-1">
-                              <div className="h-0.5 bg-purple-700 rounded transition-all"
-                                style={{ width: `${Math.min(100, ((q.progress || 0) / q.target) * 100)}%` }} />
-                            </div>
-                          )}
-                          {!q.claimed && (
-                            <p className="text-purple-500 mt-0.5">
-                              💰 {q.reward.gold}G · ⭐ {q.reward.xp} XP{q.reward.items?.length ? ` · 📦 x${q.reward.items.length}` : ''}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-
-                      {/* Weekly bonus */}
-                      <div className={`border rounded p-2 text-xs ${
-                        weeklyData.bonusClaimed ? 'border-gray-900 opacity-40' :
-                        weeklyData.allCompleted ? 'border-amber-700 bg-amber-900/10' :
-                                                   'border-gray-800 opacity-60'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <span className="flex-1 text-amber-300">{weeklyData.bonus?.label || '🏆 ครบทุก Weekly Quest!'}</span>
-                          {weeklyData.bonusClaimed ? (
-                            <span className="text-gray-400">✓ รับแล้ว</span>
-                          ) : weeklyData.allCompleted ? (
-                            <button onClick={() => handleClaimWeekly('bonus')}
-                              className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
-                              🏆 รับ!
-                            </button>
-                          ) : (
-                            <span className="text-gray-500">ยังไม่ครบ</span>
-                          )}
-                        </div>
-                        <p className="text-purple-500 mt-0.5">
-                          💰 {weeklyData.bonus?.gold}G · ⭐ {weeklyData.bonus?.xp} XP · 📦 ของพิเศษ
-                        </p>
-                      </div>
                     </>
                   )}
                 </div>
