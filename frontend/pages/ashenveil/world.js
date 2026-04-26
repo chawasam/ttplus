@@ -134,9 +134,10 @@ const GRADE_LABEL = {
 
 export default function GameWorld() {
   const router    = useRouter();
-  const logEndRef = useRef(null);
-  const audioRef  = useRef(null);   // HTMLAudioElement
-  const bgmKeyRef = useRef('');     // track กำลังเล่นอยู่
+  const logEndRef  = useRef(null);
+  const audioRef   = useRef(null);   // HTMLAudioElement
+  const bgmKeyRef  = useRef('');     // track กำลังเล่นอยู่
+  const screenRef  = useRef(SCREENS.WORLD); // mirror of screen for popstate handler
 
   const [loading,    setLoading]    = useState(true);
   const [char,       setChar]       = useState(null);
@@ -894,6 +895,41 @@ export default function GameWorld() {
       }
     };
   }, []);
+
+  // ── Keep screenRef in sync (for popstate closure) ──
+  useEffect(() => { screenRef.current = screen; }, [screen]);
+
+  // ── Mobile back-button interception ──
+  // Push a dummy history entry on mount so the phone's back button fires
+  // popstate instead of navigating away. Re-push after every in-game back
+  // so the buffer is always there.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.history.pushState({ ashenveil: true }, '');
+
+    const handlePopState = () => {
+      const s = screenRef.current;
+      if (s === SCREENS.WORLD) {
+        // On main screen — let browser navigate back naturally (no re-push)
+        return;
+      }
+      // Handle back in-game -----------------------------------------------
+      if (s === SCREENS.ENHANCE) {
+        setScreen(SCREENS.INVENTORY);
+      } else if (s === SCREENS.BATTLE) {
+        // Don't silently cancel a battle; just go to world and clear state
+        setBattle(null);
+        setScreen(SCREENS.WORLD);
+      } else {
+        setScreen(SCREENS.WORLD);
+      }
+      // Replenish the buffer entry so the next back press is also caught
+      window.history.pushState({ ashenveil: true }, '');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []); // ← run once on mount only (uses screenRef, not screen directly)
 
   // ── Quest real-time notifications (socket events from quest_engine) ──
   const showQuestPopup = useCallback((data) => {
