@@ -93,15 +93,17 @@ const ZONE_BGM = {
 
 // Full zone list for travel screen (minLevel gating)
 const ZONE_LIST = [
-  { id: 'town_square',       name: '🏘️ Town Square',        lv: 'Safe',    minLevel: 1  },
-  { id: 'town_outskirts',    name: '🌾 ชานเมือง',           lv: 'Lv.1+',   minLevel: 1  },
-  { id: 'forest_path',       name: '🌲 ทางป่า',             lv: 'Lv.3+',   minLevel: 3  },
-  { id: 'dark_cave',         name: '🕳️ ถ้ำมืด',            lv: 'Lv.5+',   minLevel: 5  },
-  { id: 'city_ruins',        name: '🏚️ ซากเมือง',          lv: 'Lv.10+',  minLevel: 10 },
-  { id: 'cursed_marshlands', name: '🌿 หนองสาปแช่ง',       lv: 'Lv.18+',  minLevel: 18 },
-  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',        lv: 'Lv.28+',  minLevel: 28 },
-  { id: 'shadowfell_depths', name: '🌑 ห้วงลึกแห่งเงา',    lv: 'Lv.38+',  minLevel: 38 },
-  { id: 'vorath_citadel',    name: '🏰 ป้อมปราการ Vorath',  lv: 'Lv.50+',  minLevel: 50 },
+  // Safe zone
+  { id: 'town_square',       name: '🏘️ Town Square',        lv: 'Safe',    minLevel: 1,  safe: true,  monsters: 0, hasBoss: false },
+  // Combat zones
+  { id: 'town_outskirts',    name: '🌾 ชานเมือง',           lv: 'Lv.1+',   minLevel: 1,  safe: false, monsters: 2, hasBoss: true  },
+  { id: 'forest_path',       name: '🌲 ทางป่า',             lv: 'Lv.3+',   minLevel: 3,  safe: false, monsters: 4, hasBoss: true  },
+  { id: 'dark_cave',         name: '🕳️ ถ้ำมืด',            lv: 'Lv.5+',   minLevel: 5,  safe: false, monsters: 3, hasBoss: true  },
+  { id: 'city_ruins',        name: '🏚️ ซากเมือง',          lv: 'Lv.10+',  minLevel: 10, safe: false, monsters: 5, hasBoss: true  },
+  { id: 'cursed_marshlands', name: '🌿 หนองสาปแช่ง',       lv: 'Lv.18+',  minLevel: 18, safe: false, monsters: 4, hasBoss: true  },
+  { id: 'void_frontier',     name: '🌀 ชายขอบ Void',        lv: 'Lv.28+',  minLevel: 28, safe: false, monsters: 3, hasBoss: true  },
+  { id: 'shadowfell_depths', name: '🌑 ห้วงลึกแห่งเงา',    lv: 'Lv.38+',  minLevel: 38, safe: false, monsters: 4, hasBoss: true  },
+  { id: 'vorath_citadel',    name: '🏰 ป้อมปราการ Vorath',  lv: 'Lv.50+',  minLevel: 50, safe: false, monsters: 3, hasBoss: true  },
 ];
 
 const GRADE_COLOR = {
@@ -1833,33 +1835,64 @@ export default function GameWorld() {
               )}
 
               {/* TRAVEL */}
-              {screen === 'travel' && (
-                <div>
-                  <p className="text-gray-400 text-xs mb-3">[ เลือก Zone — Lv.{char?.level || 1} ]</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ZONE_LIST.map(z => {
-                      const locked   = (char?.level || 1) < z.minLevel;
-                      const isCurrent = z.id === zone;
-                      return (
-                        <button key={z.id}
-                          onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
-                          disabled={busy || isCurrent || locked}
-                          className={`px-3 py-2 border text-xs rounded transition text-left ${
-                            isCurrent  ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
-                            locked     ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
-                                         'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 disabled:opacity-40'
-                          }`}>
-                          <div>{z.name}</div>
-                          <div className={`text-xs mt-0.5 ${locked ? 'text-red-600' : 'text-gray-400'}`}>
-                            {locked ? `🔒 ต้อง Lv.${z.minLevel}` : isCurrent ? '📍 อยู่ที่นี่' : z.lv}
-                          </div>
-                        </button>
-                      );
-                    })}
+              {screen === 'travel' && (() => {
+                const charLv = char?.level || 1;
+                const safeZones   = ZONE_LIST.filter(z => z.safe);
+                const combatZones = ZONE_LIST.filter(z => !z.safe);
+                const renderZone  = (z) => {
+                  const locked    = charLv < z.minLevel;
+                  const isCurrent = z.id === zone;
+                  return (
+                    <button key={z.id}
+                      onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
+                      disabled={busy || isCurrent || locked}
+                      className={`px-3 py-2 border text-xs rounded transition text-left relative ${
+                        isCurrent ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
+                        locked    ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
+                                    'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10'
+                      }`}>
+                      {/* Boss badge */}
+                      {z.hasBoss && !locked && (
+                        <span className="absolute top-1 right-1 text-[9px] px-1 py-0.5 rounded bg-yellow-900/60 text-yellow-400 border border-yellow-800/60 leading-none">
+                          👑
+                        </span>
+                      )}
+                      <div className="font-medium">{z.name}</div>
+                      <div className={`mt-0.5 flex items-center gap-1.5 ${locked ? 'text-red-700' : 'text-gray-500'}`}>
+                        {locked ? (
+                          <span>🔒 ต้อง Lv.{z.minLevel}</span>
+                        ) : isCurrent ? (
+                          <span className="text-amber-500">📍 อยู่ที่นี่</span>
+                        ) : (
+                          <>
+                            <span>{z.lv}</span>
+                            {z.monsters > 0 && <span>· ⚔️ {z.monsters}</span>}
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  );
+                };
+                return (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-3">[ เลือก Zone — Lv.{charLv} ]</p>
+
+                    {/* Safe zones */}
+                    <p className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mb-1.5">🏙️ Safe Zone</p>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      {safeZones.map(renderZone)}
+                    </div>
+
+                    {/* Combat zones */}
+                    <p className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mb-1.5">⚔️ Combat Zones</p>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      {combatZones.map(renderZone)}
+                    </div>
+
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* EXPLORE RESULT */}
               {screen === SCREENS.EXPLORE && (
