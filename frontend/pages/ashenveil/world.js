@@ -1875,7 +1875,10 @@ export default function GameWorld() {
                 };
                 return (
                   <div>
-                    <p className="text-gray-400 text-xs mb-3">[ เลือก Zone — Lv.{charLv} ]</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-gray-400 text-xs">[ เลือก Zone — Lv.{charLv} ]</p>
+                      <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                    </div>
 
                     {/* Safe zones */}
                     <p className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mb-1.5">🏙️ Safe Zone</p>
@@ -1885,11 +1888,9 @@ export default function GameWorld() {
 
                     {/* Combat zones */}
                     <p className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mb-1.5">⚔️ Combat Zones</p>
-                    <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="grid grid-cols-2 gap-2">
                       {combatZones.map(renderZone)}
                     </div>
-
-                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
                 );
               })()}
@@ -1897,7 +1898,10 @@ export default function GameWorld() {
               {/* EXPLORE RESULT */}
               {screen === SCREENS.EXPLORE && (
                 <div>
-                  <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ Town</Btn>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-xs">[ 🔍 ผลการสำรวจ ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
                 </div>
               )}
 
@@ -2219,7 +2223,10 @@ export default function GameWorld() {
               {/* INVENTORY */}
               {screen === SCREENS.INVENTORY && (
                 <div className="max-h-60 overflow-y-auto">
-                  <p className="text-gray-400 text-xs mb-2">[ Inventory — คลิกเพื่อจัดการ ]</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-xs">[ 🎒 Inventory — คลิกเพื่อจัดการ ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
                   {inventory.length === 0 && <p className="text-gray-500 text-xs">ว่างเปล่า...</p>}
                   {inventory.map(item => (
                     <div key={item.instanceId} className={`flex items-center gap-2 py-1 border-b border-gray-900 border-l-2 pl-2 text-xs ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
@@ -2247,14 +2254,16 @@ export default function GameWorld() {
                       )}
                     </div>
                   ))}
-                  <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-2">← กลับ</Btn>
                 </div>
               )}
 
               {/* SHOP */}
               {screen === SCREENS.SHOP && (
                 <div className="max-h-60 overflow-y-auto">
-                  <p className="text-gray-400 text-xs mb-2">[ ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-xs">[ 🛒 ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
                   {shopItems.map(item => (
                     <div key={item.itemId} className={`flex items-center gap-2 py-1 border-b border-gray-900 border-l-2 pl-2 text-xs ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
@@ -2265,7 +2274,6 @@ export default function GameWorld() {
                         className="text-green-500 hover:text-green-300 disabled:text-gray-700 text-xs">ซื้อ</button>
                     </div>
                   ))}
-                  <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-2">← กลับ</Btn>
                 </div>
               )}
 
@@ -2284,7 +2292,10 @@ export default function GameWorld() {
                     const getTier = (aff) => TIER_INFO.find(t => aff >= t.min) || TIER_INFO[TIER_INFO.length - 1];
                     return (
                       <div>
-                        <p className="text-gray-500 text-xs mb-3">[ 👥 NPC — ความสัมพันธ์ ]</p>
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-gray-500 text-xs">[ 👥 NPC — ความสัมพันธ์ ]</p>
+                          <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                        </div>
                         <div className="space-y-2">
                           {npcs.map(n => {
                             const tier = getTier(n.affection);
@@ -2322,7 +2333,6 @@ export default function GameWorld() {
                             );
                           })}
                         </div>
-                        <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-3">← กลับ</Btn>
                       </div>
                     );
                   })()}
@@ -2332,7 +2342,10 @@ export default function GameWorld() {
               {/* DUNGEON LIST */}
               {screen === SCREENS.DUNGEON_LIST && (
                 <div className="max-h-72 overflow-y-auto">
-                  <p className="text-gray-400 text-xs mb-3">[ 🏰 เลือก Dungeon ]</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-gray-400 text-xs">[ 🏰 เลือก Dungeon ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
 
                   {/* ── Featured Dungeon Banner ── */}
                   {featuredData?.featured && (
@@ -2386,7 +2399,6 @@ export default function GameWorld() {
                       </div>
                     </div>
                   ))}
-                  <Btn onClick={() => setScreen(SCREENS.WORLD)} className="mt-1">← กลับ</Btn>
                 </div>
               )}
 
@@ -2554,8 +2566,8 @@ export default function GameWorld() {
               {screen === SCREENS.QUESTS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-400 text-xs">[ 📋 ภารกิจประจำวัน ]</p>
-                    {questData?.date && <p className="text-gray-500 text-xs">{questData.date}</p>}
+                    <p className="text-gray-400 text-xs">[ 📋 ภารกิจประจำวัน{questData?.date ? ` — ${questData.date}` : ''} ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {!questData ? (
@@ -2621,7 +2633,6 @@ export default function GameWorld() {
                     </>
                   )}
 
-                  <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                 </div>
               )}
 
@@ -3296,8 +3307,7 @@ export default function GameWorld() {
               {screen === SCREENS.WEEKLY_QUESTS && (
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-400 text-xs">[ 📅 Weekly Quests ]</p>
-                    {weeklyData?.weekKey && <p className="text-gray-500 text-xs">สัปดาห์ {weeklyData.weekKey}</p>}
+                    <p className="text-gray-400 text-xs">[ 📅 Weekly Quests{weeklyData?.weekKey ? ` — สัปดาห์ ${weeklyData.weekKey}` : ''} ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -3492,7 +3502,10 @@ export default function GameWorld() {
               {/* SETTINGS */}
               {screen === SCREENS.SETTINGS && (
                 <div className="max-h-80 overflow-y-auto space-y-3">
-                  <p className="text-gray-400 text-xs">[ ⚙️ ตั้งค่า ]</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-gray-400 text-xs">[ ⚙️ ตั้งค่า ]</p>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
 
                   {/* ── STATUS STEP ── */}
                   {settingsStep === 'status' && (
@@ -3531,7 +3544,6 @@ export default function GameWorld() {
                           </button>
                         </div>
                       )}
-                      <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                     </div>
                   )}
 
