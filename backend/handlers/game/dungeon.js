@@ -17,15 +17,15 @@ function resolveMonster(monsterId) {
 }
 
 // ===== Helper: get current dungeon run =====
+// Note: single-field query only (no composite index needed)
 async function getCurrentRun(uid) {
   const db = admin.firestore();
   const snap = await db.collection('game_dungeons')
     .where('uid', '==', uid)
-    .where('status', '==', 'active')
-    .limit(1)
     .get();
-  if (snap.empty) return null;
-  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  const active = snap.docs.find(d => d.data().status === 'active');
+  if (!active) return null;
+  return { id: active.id, ...active.data() };
 }
 
 // ===== List Dungeons =====
@@ -47,17 +47,18 @@ async function listDungeons(req, res) {
       if (charDoc.exists) charLevel = charDoc.data().level || 1;
     }
 
-    // Load recent completions for cooldown info (sort in-memory — ไม่ต้อง composite index)
-    const completedSnap = await db.collection('game_dungeons')
+    // Load all user's dungeon docs — filter/sort in-memory (no composite index needed)
+    const allDungeonSnap = await db.collection('game_dungeons')
       .where('uid', '==', uid)
-      .where('status', '==', 'completed')
       .get();
 
     const lastClear = {};
-    // sort desc by completedAt in memory
-    const sortedDocs = completedSnap.docs.sort((a, b) =>
-      (b.data().completedAt?.toMillis?.() || 0) - (a.data().completedAt?.toMillis?.() || 0)
-    );
+    // Filter to completed only, sort desc by completedAt
+    const sortedDocs = allDungeonSnap.docs
+      .filter(d => d.data().status === 'completed')
+      .sort((a, b) =>
+        (b.data().completedAt?.toMillis?.() || 0) - (a.data().completedAt?.toMillis?.() || 0)
+      );
     for (const doc of sortedDocs) {
       const d = doc.data();
       if (!lastClear[d.dungeonId]) {
@@ -160,16 +161,18 @@ async function enterDungeon(req, res) {
       return res.status(400).json({ error: 'HP หมด ต้อง Rest ก่อน' });
     }
 
-    // Check cooldown (sort in-memory — ไม่ต้อง composite index)
+    // Check cooldown — single-field query then filter in-memory (no composite index needed)
     const cooldownMs = dungeon.clearCooldownHours * 3600_000;
-    const completedSnap = await db.collection('game_dungeons')
+    const allRunsSnap = await db.collection('game_dungeons')
       .where('uid', '==', uid)
-      .where('dungeonId', '==', dungeonId)
-      .where('status', '==', 'completed')
       .get();
+    const completedDocs = allRunsSnap.docs.filter(d => {
+      const dd = d.data();
+      return dd.status === 'completed' && dd.dungeonId === dungeonId;
+    });
 
-    if (!completedSnap.empty) {
-      const lastComplete = completedSnap.docs.reduce((best, doc) => {
+    if (completedDocs.length > 0) {
+      const lastComplete = completedDocs.reduce((best, doc) => {
         const ms = doc.data().completedAt?.toMillis?.() || 0;
         return ms > best ? ms : best;
       }, 0);
