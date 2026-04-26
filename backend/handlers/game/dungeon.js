@@ -9,7 +9,6 @@ const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { broadcastAll } = require('../../lib/emitter');
-const { getFeaturedDungeon, getCurrentWeekStr } = require('../../data/featured_dungeon');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -17,15 +16,15 @@ function resolveMonster(monsterId) {
 }
 
 // ===== Helper: get current dungeon run =====
-// Note: single-field query only (no composite index needed)
 async function getCurrentRun(uid) {
   const db = admin.firestore();
   const snap = await db.collection('game_dungeons')
     .where('uid', '==', uid)
+    .where('status', '==', 'active')
+    .limit(1)
     .get();
-  const active = snap.docs.find(d => d.data().status === 'active');
-  if (!active) return null;
-  return { id: active.id, ...active.data() };
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
 // ===== List Dungeons =====
@@ -47,18 +46,17 @@ async function listDungeons(req, res) {
       if (charDoc.exists) charLevel = charDoc.data().level || 1;
     }
 
-    // Load all user's dungeon docs — filter/sort in-memory (no composite index needed)
-    const allDungeonSnap = await db.collection('game_dungeons')
+    // Load recent completions for cooldown info (sort in-memory — ไม่ต้อง composite index)
+    const completedSnap = await db.collection('game_dungeons')
       .where('uid', '==', uid)
+      .where('status', '==', 'completed')
       .get();
 
     const lastClear = {};
-    // Filter to completed only, sort desc by completedAt
-    const sortedDocs = allDungeonSnap.docs
-      .filter(d => d.data().status === 'completed')
-      .sort((a, b) =>
-        (b.data().completedAt?.toMillis?.() || 0) - (a.data().completedAt?.toMillis?.() || 0)
-      );
+    // sort desc by completedAt in memory
+    const sortedDocs = completedSnap.docs.sort((a, b) =>
+      (b.data().completedAt?.toMillis?.() || 0) - (a.data().completedAt?.toMillis?.() || 0)
+    );
     for (const doc of sortedDocs) {
       const d = doc.data();
       if (!lastClear[d.dungeonId]) {
@@ -161,18 +159,16 @@ async function enterDungeon(req, res) {
       return res.status(400).json({ error: 'HP หมด ต้อง Rest ก่อน' });
     }
 
-    // Check cooldown — single-field query then filter in-memory (no composite index needed)
+    // Check cooldown (sort in-memory — ไม่ต้อง composite index)
     const cooldownMs = dungeon.clearCooldownHours * 3600_000;
-    const allRunsSnap = await db.collection('game_dungeons')
+    const completedSnap = await db.collection('game_dungeons')
       .where('uid', '==', uid)
+      .where('dungeonId', '==', dungeonId)
+      .where('status', '==', 'completed')
       .get();
-    const completedDocs = allRunsSnap.docs.filter(d => {
-      const dd = d.data();
-      return dd.status === 'completed' && dd.dungeonId === dungeonId;
-    });
 
-    if (completedDocs.length > 0) {
-      const lastComplete = completedDocs.reduce((best, doc) => {
+    if (!completedSnap.empty) {
+      const lastComplete = completedSnap.docs.reduce((best, doc) => {
         const ms = doc.data().completedAt?.toMillis?.() || 0;
         return ms > best ? ms : best;
       }, 0);
@@ -406,7 +402,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       log.push(`🎉 Level Up! → Level ${charUpdate.level}`);
     }
 
-    // Item rewards (dungeon clear — better quality chances than explore)
+    // Item rewards
     const lootItems = [];
     const count = cr.itemCount || 1;
     const pool  = [...(cr.itemPool || [])];
@@ -415,49 +411,19 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       const itemId = pool.splice(idx, 1)[0];
       const itemDef = getItem(itemId);
       if (itemDef) {
-        const instance = rollItem(itemId, { normal: 50, fine: 30, superior: 16, masterwork: 4 });
-        if (instance) {
-          await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
-          lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji, quality: instance.quality });
-          log.push(`📦 ได้รับ ${itemDef.emoji} ${itemDef.name}`);
-        }
+        const instanceId = `inv_${uid}_${Date.now()}_${i}`;
+        await db.collection('game_inventory').add({
+          uid,
+          itemId,
+          instanceId,
+          enhancement: 0,
+          equipped: false,
+          obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji });
+        log.push(`📦 ได้รับ ${itemDef.emoji} ${itemDef.name}`);
       }
     }
-
-    // ─── Featured Dungeon weekly bonus ───────────────────────────
-    let featuredBonus = null;
-    try {
-      const featured = getFeaturedDungeon();
-      const weekStr  = getCurrentWeekStr();
-      if (run.dungeonId === featured.dungeonId) {
-        const featRef  = db.collection('game_featured_dungeon').doc(uid);
-        const featDoc  = await featRef.get();
-        const alreadyClaimed = featDoc.exists && featDoc.data().claimedWeek === weekStr;
-        if (!alreadyClaimed) {
-          const bonusXp   = Math.floor((cr.xp || 0) * (featured.xpMultiplier - 1));
-          const bonusGold = Math.floor(goldBonus * (featured.goldMultiplier - 1));
-          if (bonusGold > 0) await addGold(uid, bonusGold, 'featured_dungeon_bonus');
-          if (bonusXp  > 0) charUpdate.xp = (charUpdate.xp !== undefined ? charUpdate.xp : newXp) + bonusXp;
-          const bonusItemId  = featured.bonusItem;
-          const bonusItemDef = getItem(bonusItemId);
-          if (bonusItemDef) {
-            const instanceId = `inv_${uid}_fd_${Date.now()}`;
-            await db.collection('game_inventory').add({
-              uid, itemId: bonusItemId, instanceId, enhancement: 0,
-              equipped: false, obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            lootItems.push({ itemId: bonusItemId, name: bonusItemDef.name, emoji: bonusItemDef.emoji });
-            log.push(`⭐ Featured Bonus: ${bonusItemDef.emoji} ${bonusItemDef.name}`);
-          }
-          log.push(`⭐ Featured Dungeon! รับโบนัส XP +${bonusXp}, Gold +${bonusGold}`);
-          await featRef.set({ uid, claimedWeek: weekStr, claimedAt: admin.firestore.FieldValue.serverTimestamp() });
-          featuredBonus = { xp: bonusXp, gold: bonusGold, item: bonusItemDef ? { itemId: bonusItemId, name: bonusItemDef.name, emoji: bonusItemDef.emoji } : null };
-        }
-      }
-    } catch (fe) {
-      console.error('[Dungeon] featuredBonus error:', fe.message);
-    }
-    // ─────────────────────────────────────────────────────────────
 
     // Update dungeon run
     await db.collection('game_dungeons').doc(run.id).update({
@@ -497,7 +463,6 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       log,
       clearRewards: { gold: goldBonus, xp: cr.xp, items: lootItems },
       newLevel: charUpdate.level || null,
-      featuredBonus,
     });
 
   } catch (err) {
@@ -577,17 +542,18 @@ async function onDungeonBattleWin(uid, runId) {
       // Grant loot items
       const lootItems = [];
       const pool  = [...(cr.itemPool || [])];
-      // Final boss loot — highest quality chances
+      const { getItem, rollItem } = require('../../data/items');
       for (let i = 0; i < (cr.itemCount || 1) && pool.length > 0; i++) {
         const idx    = Math.floor(Math.random() * pool.length);
         const itemId = pool.splice(idx, 1)[0];
         const itemDef = getItem(itemId);
         if (itemDef) {
-          const instance = rollItem(itemId, { normal: 30, fine: 35, superior: 25, masterwork: 10 });
-          if (instance) {
-            await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
-            lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji, quality: instance.quality });
-          }
+          const instanceId = `inv_${uid}_${Date.now()}_${i}`;
+          await db.collection('game_inventory').add({
+            uid, itemId, instanceId, enhancement: 0, equipped: false,
+            obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji });
         }
       }
 

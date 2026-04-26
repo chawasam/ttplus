@@ -86,18 +86,6 @@ const nextConfig = {
       },
     ];
   },
-
-  // ===== Legacy /game routes → /ashenveil =====
-  // หมายเหตุ: ลบ /ASHENVEIL redirect ออกแล้ว!
-  // Next.js ใช้ path-to-regexp แบบ case-insensitive (sensitive: false)
-  // ทำให้ source: '/ASHENVEIL' match '/ashenveil' ด้วย → redirect loop 307
-  async redirects() {
-    return [
-      // Legacy /game routes → /ashenveil (ยังคงไว้เพราะ /game ≠ /ashenveil)
-      { source: '/game',              destination: '/ashenveil',         permanent: false },
-      { source: '/game/:path*',       destination: '/ashenveil/:path*',  permanent: false },
-    ];
-  },
 };
 
 module.exports = nextConfig;

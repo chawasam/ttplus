@@ -163,17 +163,4 @@ async function redeemRealmPoints(req, res) {
   }
 }
 
-// ===== Get gold balance for a UID (internal helper — used by dailyShop, etc.) =====
-async function getGold(uid) {
-  const db = admin.firestore();
-  try {
-    const doc = await db.collection('game_accounts').doc(uid).get();
-    if (!doc.exists) return 0;
-    return doc.data().gold || 0;
-  } catch (err) {
-    console.error('[Currency] getGold:', err.message);
-    return 0;
-  }
-}
-
-module.exports = { addGold, deductGold, getBalance, getGold, addRealmPoints, redeemRealmPoints };
+module.exports = { addGold, deductGold, getBalance, addRealmPoints, redeemRealmPoints };

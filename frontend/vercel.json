@@ -2,5 +2,9 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "redirects": [
+    { "source": "/game",       "destination": "/ASHENVEIL",       "permanent": true },
+    { "source": "/game/world", "destination": "/ASHENVEIL/world", "permanent": true }
+  ]
 }

@@ -699,29 +699,6 @@ const SLOT_NAMES = {
   AMULET: 'สร้อยคอ', BELT: 'เข็มขัด', RELIC: 'โบราณวัตถุ',
 };
 
-// ── Item Quality (Tier) System ────────────────────────────────────────────────
-// Quality is rolled when an item drops and stored on the instance.
-// It applies a stat multiplier to the item's rolled stats.
-const ITEM_QUALITY = {
-  normal:     { label: 'ปกติ',       color: '#9ca3af', mult: 1.0 },
-  fine:       { label: 'ดี',         color: '#4ade80', mult: 1.2 },
-  superior:   { label: 'ยอดเยี่ยม',  color: '#60a5fa', mult: 1.5 },
-  masterwork: { label: 'ศิลปิน',     color: '#a78bfa', mult: 2.0 },
-};
-
-// Default drop chances (sum should = 100)
-const DEFAULT_QUALITY_CHANCES = { normal: 75, fine: 18, superior: 6, masterwork: 1 };
-
-function rollQuality(chances = DEFAULT_QUALITY_CHANCES) {
-  const r = Math.random() * 100;
-  let acc = 0;
-  for (const [q, w] of Object.entries(chances)) {
-    acc += w;
-    if (r < acc) return q;
-  }
-  return 'normal';
-}
-
 function getItem(itemId) {
   return ITEMS[itemId] || null;
 }
@@ -731,20 +708,17 @@ function getItemsByType(type) {
 }
 
 // Roll random stats when item drops
-// chances: optional quality weight map e.g. { normal:75, fine:18, superior:6, masterwork:1 }
-function rollItem(itemId, chances) {
+function rollItem(itemId) {
   const def = getItem(itemId);
   if (!def) return null;
   const rolled = {};
   for (const [stat, [min, max]] of Object.entries(def.rolls || {})) {
     rolled[stat] = Math.floor(Math.random() * (max - min + 1)) + min;
   }
-  const quality = rollQuality(chances);
   return {
     itemId,
     instanceId: `inst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     grade:       def.grade,
-    quality,
     enhancement: 0,
     durability:  100,
     rolls:       rolled,
@@ -755,4 +729,4 @@ function rollItem(itemId, chances) {
   };
 }
 
-module.exports = { ITEMS, ITEM_QUALITY, GRADE_ORDER, GRADE_COLOR, SLOT_NAMES, getItem, getItemsByType, rollItem };
+module.exports = { ITEMS, GRADE_ORDER, GRADE_COLOR, SLOT_NAMES, getItem, getItemsByType, rollItem };

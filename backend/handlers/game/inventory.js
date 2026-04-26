@@ -1,6 +1,6 @@
 // handlers/game/inventory.js — Inventory + Equipment + NPC Market
 const admin = require('firebase-admin');
-const { getItem, SLOT_NAMES, GRADE_COLOR, ITEM_QUALITY } = require('../../data/items');
+const { getItem, SLOT_NAMES, GRADE_COLOR } = require('../../data/items');
 const { deductGold, addGold } = require('./currency');
 const { SHOP_INVENTORY } = require('../../data/maps');
 
@@ -14,54 +14,31 @@ async function getInventory(req, res) {
   try {
     const snap = await db.collection('game_inventory')
       .where('uid', '==', uid)
+      .orderBy('obtainedAt', 'desc')
       .limit(200).get();
 
     const items = snap.docs.map(doc => {
       const d   = doc.data();
       const def = getItem(d.itemId);
-      const quality     = d.quality || 'normal';
-      const qualityInfo = ITEM_QUALITY[quality] || ITEM_QUALITY.normal;
-      const qualityMult = qualityInfo.mult;
-      // Apply quality multiplier to rolled stats
-      const rawRolls    = d.rolls || {};
-      const scaledRolls = {};
-      for (const [stat, val] of Object.entries(rawRolls)) {
-        scaledRolls[stat] = Math.round(val * qualityMult);
-      }
       return {
-        docId:        doc.id,
-        instanceId:   d.instanceId,
-        itemId:       d.itemId,
-        name:         def?.name || d.itemId,
-        emoji:        def?.emoji || '📦',
-        grade:        d.grade,
-        gradeColor:   GRADE_COLOR[d.grade] || '#9ca3af',
-        quality,
-        qualityLabel: qualityInfo.label,
-        qualityColor: qualityInfo.color,
-        qualityMult,
-        enhancement:  d.enhancement || 0,
-        durability:   d.durability,
-        equipped:     d.equipped || null,
-        type:         def?.type || 'UNKNOWN',
-        desc:         def?.desc || '',
-        sellPrice:    def?.sellPrice || 0,
-        buyPrice:     def?.buyPrice || 0,
-        levelReq:     def?.levelReq || 1,
-        base:         def?.base || {},
-        obtainedAt:   d.obtainedAt,
-        rolls:        scaledRolls,
-        rollsRaw:     rawRolls,
-        sockets:      d.sockets || 0,
-        gem_slots:    d.gem_slots || [],
+        docId:       doc.id,
+        instanceId:  d.instanceId,
+        itemId:      d.itemId,
+        name:        def?.name || d.itemId,
+        emoji:       def?.emoji || '📦',
+        grade:       d.grade,
+        gradeColor:  GRADE_COLOR[d.grade] || '#9ca3af',
+        enhancement: d.enhancement || 0,
+        durability:  d.durability,
+        equipped:    d.equipped || null,
+        type:        def?.type || 'UNKNOWN',
+        desc:        def?.desc || '',
+        sellPrice:   def?.sellPrice || 0,
+        obtainedAt:  d.obtainedAt,
+        rolls:       d.rolls || {},
+        sockets:     d.sockets || 0,
+        gem_slots:   d.gem_slots || [],
       };
-    });
-
-    // Sort newest first in JS — avoids composite index requirement
-    items.sort((a, b) => {
-      const ta = a.obtainedAt?.toMillis?.() ?? 0;
-      const tb = b.obtainedAt?.toMillis?.() ?? 0;
-      return tb - ta;
     });
 
     const equipDoc = await db.collection('game_equipment').doc(uid).get();
@@ -236,7 +213,6 @@ async function getShopItems(req, res) {
       buyPrice:  def.buyPrice,
       desc:      def.desc,
       type:      def.type,
-      base:      def.base || {},
       levelReq:  def.levelReq || 1,
     };
   }).filter(Boolean);

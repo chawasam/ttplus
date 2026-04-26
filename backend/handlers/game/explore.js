@@ -110,8 +110,7 @@ async function explore(req, res) {
     // ── 6. Process event ──────────────────────────────────────────────────
     if (result.type === 'item') {
       for (const itemId of (result.items || [])) {
-        // Exploration drops: mostly normal quality, rare fine/superior
-        const instance = rollItem(itemId, { normal: 74, fine: 20, superior: 5, masterwork: 1 });
+        const instance = rollItem(itemId);
         if (instance) {
           await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
           const def = getItem(itemId);
