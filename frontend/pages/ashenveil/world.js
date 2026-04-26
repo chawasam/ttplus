@@ -140,6 +140,7 @@ export default function GameWorld() {
   const screenRef     = useRef(SCREENS.WORLD); // mirror of screen for popstate handler
   const exitWarning   = useRef(false);         // true = back ครั้งแรกถูกกดแล้ว
   const exitWarnTimer = useRef(null);           // timeout ล้าง warning
+  const victoryTimer  = useRef(null);           // safety auto-dismiss สำหรับ victory screen
 
   const [loading,    setLoading]    = useState(true);
   const [char,       setChar]       = useState(null);
@@ -148,9 +149,10 @@ export default function GameWorld() {
   const [screen,     setScreen]     = useState(SCREENS.WORLD);
   const [zone,       setZone]       = useState('town_square');
   const [gameLog,    setGameLog]    = useState(['⚔️ ยินดีต้อนรับสู่ Ashenveil: The Shattered Age', '500 ปีหลัง The Sundering โลกแตกออกเป็น Shard...', '─────────────────────────']);
-  const [battle,     setBattle]     = useState(null);
-  const [battleLog,  setBattleLog]  = useState([]);
-  const [battleSkills, setBattleSkills] = useState([]);  // available skills in current battle
+  const [battle,        setBattle]       = useState(null);
+  const [battleLog,     setBattleLog]    = useState([]);
+  const [battleSkills,  setBattleSkills] = useState([]);  // available skills in current battle
+  const [battleRewards, setBattleRewards] = useState(null); // rewards to show on victory screen
   const [inventory,  setInventory]  = useState([]);
   const [equipment,  setEquipment]  = useState({});
   const [shopItems,  setShopItems]  = useState([]);
@@ -1128,13 +1130,14 @@ export default function GameWorld() {
 
         // Was this a dungeon battle?
         if (data.dungeonRunId) {
+          // Dungeon: auto-advance to next room after brief pause (player sees result in log)
           setTimeout(async () => {
             setBattle(null);
+            setBattleRewards(null);
 
             // Backend told us dungeon was cleared (boss killed)
             if (data.dungeonCleared) {
               const cr = data.dungeonClearRewards || {};
-              // Add clear gold to balance (boss gold already counted in rewards)
               if (cr.gold) setGold(g => g + cr.gold);
               if (data.dungeonNewLevel) setChar(c => c ? { ...c, level: data.dungeonNewLevel } : c);
               setDungeonReward({
@@ -1163,9 +1166,17 @@ export default function GameWorld() {
             } catch {
               setScreen(SCREENS.WORLD);
             }
-          }, 1200);
+          }, 2000);
         } else {
-          setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1200);
+          // Regular battle: show rewards, wait for player to dismiss manually
+          setBattleRewards(rewards);
+          // Safety auto-dismiss after 30s in case player forgets
+          clearTimeout(victoryTimer.current);
+          victoryTimer.current = setTimeout(() => {
+            setBattle(null);
+            setBattleRewards(null);
+            setScreen(SCREENS.WORLD);
+          }, 30000);
         }
       } else if (data.state?.result === 'defeat') {
         // Was dungeon? Run is already failed by backend
@@ -1186,6 +1197,14 @@ export default function GameWorld() {
       setBusy(false);
     }
   }, [battle, busy]);
+
+  // ── Player manually dismisses victory screen ──
+  const handleVictoryDismiss = useCallback(() => {
+    clearTimeout(victoryTimer.current);
+    setBattle(null);
+    setBattleRewards(null);
+    setScreen(SCREENS.WORLD);
+  }, []);
 
   const handleRest = useCallback(async () => {
     if (busy) return;
@@ -2262,16 +2281,65 @@ export default function GameWorld() {
                         </div>
                       )}
                     </>
+                  ) : battle.result === 'victory' ? (
+                    /* ── Victory screen: rewards + manual dismiss ── */
+                    <div className="space-y-2">
+                      <p className="text-center text-green-400 font-bold text-sm">🏆 ชนะแล้ว!</p>
+
+                      {/* Rewards panel */}
+                      {battleRewards && (
+                        <div className="border border-green-900/50 rounded p-2 bg-green-950/10 text-xs space-y-1">
+                          <p className="text-gray-600 text-[10px] mb-1 uppercase tracking-widest">รางวัลที่ได้รับ</p>
+                          {(battleRewards.gold || 0) > 0 && (
+                            <p className="text-yellow-400">💰 +{battleRewards.gold} Gold</p>
+                          )}
+                          {(battleRewards.xp || 0) > 0 && (
+                            <p className="text-purple-400">⭐ +{battleRewards.xp} XP</p>
+                          )}
+                          {battleRewards.levelUp && (
+                            <p className="text-amber-300 font-bold animate-pulse">🎉 Level Up! → Lv.{battleRewards.levelUp}</p>
+                          )}
+                          {battleRewards.items?.length > 0 ? (
+                            <div className="pt-1 mt-1 border-t border-green-900/30 space-y-0.5">
+                              <p className="text-gray-600 text-[10px]">ไอเทม drop:</p>
+                              {battleRewards.items.map((item, i) => (
+                                <p key={i} className="text-blue-300">
+                                  {item.emoji || '📦'} {item.name}
+                                  {item.grade && item.grade !== 'common' && (
+                                    <span className={`ml-1 text-[9px] ${
+                                      item.grade === 'mythic'    ? 'text-red-400'    :
+                                      item.grade === 'legendary' ? 'text-amber-400'  :
+                                      item.grade === 'epic'      ? 'text-purple-400' :
+                                      item.grade === 'rare'      ? 'text-blue-400'   : 'text-gray-500'
+                                    }`}>[{item.grade.toUpperCase()}]</span>
+                                  )}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            !battleRewards.gold && !battleRewards.xp && (
+                              <p className="text-gray-700">— ไม่มีไอเทม drop —</p>
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      <button onClick={handleVictoryDismiss}
+                        className="w-full text-center text-sm py-2 rounded border text-green-400 border-green-800 hover:bg-green-900/30 active:bg-green-900/50">
+                        ▶ ดำเนินการต่อ
+                      </button>
+                    </div>
                   ) : (
+                    /* ── Defeat / Fled: auto-dismiss, button as fallback ── */
                     <button
-                      onClick={() => { setBattle(null); setScreen(SCREENS.WORLD); }}
+                      onClick={() => { setBattle(null); setBattleRewards(null); setScreen(SCREENS.WORLD); }}
                       className={`w-full text-center text-sm py-2 rounded border ${
-                        battle.result === 'victory'
-                          ? 'text-green-400 border-green-800 hover:bg-green-900/30'
-                          : 'text-red-400 border-red-900 hover:bg-red-900/30'
+                        battle.result === 'defeat'
+                          ? 'text-red-400 border-red-900 hover:bg-red-900/30'
+                          : 'text-gray-400 border-gray-800 hover:bg-gray-900/30'
                       }`}
                     >
-                      {battle.result === 'victory' ? '🏆 ชนะแล้ว! (กดเพื่อออก)' : battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
+                      {battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
                     </button>
                   )}
                 </div>
