@@ -345,6 +345,17 @@ export default function GameWorld() {
     } catch {}
   }, []);
 
+  // declared here (before openQuests) to avoid temporal dead zone in deps array
+  const loadWeeklyQuests = useCallback(async () => {
+    try {
+      const { data } = await getWeeklyQuests();
+      setWeeklyData(data);
+      const hasUnclaimed = data.quests.some(q => q.completed && !q.claimed)
+        || (data.allCompleted && !data.bonusClaimed);
+      setWeeklyBadge(hasUnclaimed);
+    } catch {}
+  }, []);
+
   const openQuests = useCallback(async (tab = 'daily') => {
     setQuestTab(tab);
     setScreen(SCREENS.QUESTS);
@@ -598,16 +609,6 @@ export default function GameWorld() {
   }, [enhanceTarget, enhanceInfo, addLog]);
 
   // ===== Weekly Quests =====
-  const loadWeeklyQuests = useCallback(async () => {
-    try {
-      const { data } = await getWeeklyQuests();
-      setWeeklyData(data);
-      const hasUnclaimed = data.quests.some(q => q.completed && !q.claimed)
-        || (data.allCompleted && !data.bonusClaimed);
-      setWeeklyBadge(hasUnclaimed);
-    } catch {}
-  }, []);
-
   const openWeeklyQuests = useCallback(async () => {
     setQuestTab('weekly');
     setScreen(SCREENS.QUESTS);
