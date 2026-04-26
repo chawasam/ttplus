@@ -45,10 +45,10 @@ async function getAchievements(req, res) {
       };
     });
 
-    const total    = achievements.length;
-    const done     = achievements.filter(a => a.unlocked).length;
+    const totalCount    = achievements.length;
+    const unlockedCount = achievements.filter(a => a.unlocked).length;
 
-    return res.json({ achievements, done, total, unlockedTitles, equippedTitle });
+    return res.json({ achievements, unlockedCount, totalCount, unlockedTitles, equippedTitle });
   } catch (err) {
     console.error('[Achievements] getAchievements:', err.message);
     return res.status(500).json({ error: 'Server error' });
@@ -151,13 +151,11 @@ async function buildStats(uid, char, db) {
   const affData = affSnap.exists ? affSnap.data() : {};
   const bonds   = Object.values(affData).filter(a => (a.affection || 0) >= 100).length;
 
-  // Enhancement max (from inventory)
+  // Enhancement max (from inventory) — compute in memory to avoid needing composite index
   const invSnap = await db.collection('game_inventory')
     .where('uid', '==', uid)
-    .orderBy('enhancement', 'desc')
-    .limit(1)
     .get();
-  const enhMax = invSnap.empty ? 0 : (invSnap.docs[0].data().enhancement || 0);
+  const enhMax = invSnap.empty ? 0 : Math.max(0, ...invSnap.docs.map(d => d.data().enhancement || 0));
 
   // Weekly completions (from weekly achievement counter in achievements doc)
   const achDoc = await db.collection('game_achievements').doc(uid).get();
