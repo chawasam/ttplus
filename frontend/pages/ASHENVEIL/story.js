@@ -73,7 +73,7 @@ export default function StoryPage() {
         <div style={{ background: 'linear-gradient(135deg,#080a0f 0%,#0a0a20 50%,#080a0f 100%)', borderBottom: '1px solid #1a1a3a', padding: '24px 20px 16px' }}>
           <div style={{ maxWidth: 640, margin: '0 auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Link href="/ASHENVEIL/world" style={{ color: '#6b7280', textDecoration: 'none', fontSize: 12 }}>← กลับเกม</Link>
+              <Link href="/ashenveil/world" style={{ color: '#6b7280', textDecoration: 'none', fontSize: 12 }}>← กลับเกม</Link>
               <span style={{ color: '#4f46e5', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>The Shattered Age</span>
             </div>
             <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0 }}>📖 Story & Lore</h1>

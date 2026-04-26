@@ -1762,7 +1762,7 @@ export default function AdminPage() {
   // Auth guard
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) { router.replace('/ASHENVEIL'); return; }
+      if (!user) { router.replace('/ashenveil'); return; }
       try {
         const r = await api.get('/api/game/audit/summary');
         setSummary(r.data);
@@ -1771,7 +1771,7 @@ export default function AdminPage() {
       } catch (err) {
         if (err.response?.status === 403) {
           toast.error(`ไม่มีสิทธิ์ Admin — UID: ${user.uid.slice(0,12)}… ตรวจสอบ ADMIN_UID ใน Railway`);
-          router.replace('/ASHENVEIL');
+          router.replace('/ashenveil');
         } else if (err.response?.status === 503) {
           toast.error('ADMIN_UID ยังไม่ได้ตั้งค่าใน Railway env');
           setAuthed(true);
@@ -1848,7 +1848,7 @@ export default function AdminPage() {
                 background:'transparent', cursor:'pointer', fontSize:13 }}>
               ↻ Refresh
             </button>
-            <button onClick={() => router.push('/ASHENVEIL')}
+            <button onClick={() => router.push('/ashenveil')}
               style={{ padding:'7px 16px', borderRadius:8, border:'1px solid #374151', color:'#6b7280',
                 background:'transparent', cursor:'pointer', fontSize:13 }}>
               ← เกม

@@ -86,6 +86,26 @@ const nextConfig = {
       },
     ];
   },
+
+  // ===== URL Normalization: /ASHENVEIL → /ashenveil (canonical lowercase) =====
+  async redirects() {
+    return [
+      // Redirect uppercase → lowercase (301 permanent)
+      { source: '/ASHENVEIL',         destination: '/ashenveil',         permanent: true },
+      { source: '/ASHENVEIL/:path*',  destination: '/ashenveil/:path*',  permanent: true },
+      // Legacy /game routes → lowercase
+      { source: '/game',              destination: '/ashenveil',         permanent: true },
+      { source: '/game/:path*',       destination: '/ashenveil/:path*',  permanent: true },
+    ];
+  },
+
+  async rewrites() {
+    return [
+      // Serve /ashenveil/* content from pages/ASHENVEIL/* (internal rewrite, URL stays lowercase)
+      { source: '/ashenveil',         destination: '/ASHENVEIL'         },
+      { source: '/ashenveil/:path*',  destination: '/ASHENVEIL/:path*'  },
+    ];
+  },
 };
 
 module.exports = nextConfig;
