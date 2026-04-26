@@ -1232,8 +1232,457 @@ const ROADMAP = [
   { phase:'Phase 8', label:'Content Expansion', status:'planned', items:['New Zones (Lv.60-99)','New Boss Types','New Class (x5)','Legendary Equipment','Story Chapters 2-3'] },
 ];
 
+// ─── Feature Details — คลิกได้เพื่อดูรายละเอียด ──────────────────────────────
+const FEATURE_DETAILS = {
+  // ── DONE: improvement suggestions ──
+  'Status Effects': {
+    phase:'Phase 1-2', status:'done',
+    summary:'BURN/BLEED/POISON พร้อมแล้ว — แต่ยังปรับปรุงได้อีก',
+    improvements:[
+      { icon:'🛡️', text:'เพิ่ม Immunity visual (เช่น shield glow เมื่อ mob immune to BURN)' },
+      { icon:'💀', text:'Debuff stacking cap — ป้องกัน BLEED×10 ทำ damage ผิดปกติ' },
+      { icon:'🔀', text:'Cross-debuff reaction: BURN + BLEED = HEMORRHAGE (bonus damage)' },
+      { icon:'⏱️', text:'Debuff timer bar แสดงใน battle UI ว่าอีกกี่ turn จะหาย' },
+    ],
+  },
+  'Guard/Block': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Guard action block damage ได้แล้ว',
+    improvements:[
+      { icon:'⚔️', text:'Counter-Attack: Guard สำเร็จ → ได้ free attack ในครั้งเดียวกัน' },
+      { icon:'💎', text:'Unbreakable Guard Limit Break สำหรับ WARRIOR — block 100% 1 turn' },
+      { icon:'📊', text:'แสดง damage absorbed ในหน้า battle log' },
+    ],
+  },
+  'Crits': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Crit + Super Crit ทำงานแล้ว',
+    improvements:[
+      { icon:'🔥', text:'Crit Streak Bonus: crit 3 ครั้งติด → +15% crit damage ชั่วคราว' },
+      { icon:'✨', text:'Super Crit explosion animation ที่โดดเด่นกว่านี้ (screen flash)' },
+      { icon:'📈', text:'แสดง Crit Rate % ในหน้า character stats' },
+    ],
+  },
+  'Skill Synergy': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Combo system (MARKED + Heavy Strike = EXECUTION) พร้อมแล้ว',
+    improvements:[
+      { icon:'🎭', text:'Cross-class synergy: WARRIOR MARK + MAGE spell = Arcane Execution' },
+      { icon:'📖', text:'Synergy Codex — หน้ารวมคอมโบทั้งหมดให้ผู้เล่นค้น' },
+      { icon:'⚡', text:'Double Synergy: trigger 2 combos ในทีเดียว เมื่อมี buff พิเศษ' },
+    ],
+  },
+  'Momentum': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Momentum bar 0-100 ทำงานแล้ว',
+    improvements:[
+      { icon:'💔', text:'Momentum decay on death — reset เป็น 0 เมื่อตาย เพิ่ม stakes' },
+      { icon:'🎁', text:'Momentum Potion item — เพิ่ม momentum +30 ทันที (craft ได้)' },
+      { icon:'📡', text:'Momentum shared progress ในหน้า OBS widget' },
+    ],
+  },
+  'Limit Break': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Per-class Limit Break animations และ multiplier พร้อมแล้ว',
+    improvements:[
+      { icon:'🎬', text:'Full-screen cinematic flash ตอน Limit Break activate' },
+      { icon:'⏳', text:'Cooldown indicator หลัง Limit Break ใช้ไปแล้ว (3-turn lockout)' },
+      { icon:'🌟', text:'Legendary Limit Break: ปลดล็อคเมื่อ Lv.80+ ทำ ×2 effect' },
+    ],
+  },
+  'Enemy Counter': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Enemy reaction/counter system ทำงานแล้ว',
+    improvements:[
+      { icon:'💡', text:'Telegraph animation — แสดง icon ก่อน 1 turn ว่า mob จะ counter' },
+      { icon:'🔵', text:'Counter-Counter: skill พิเศษที่ interrupt mob counter ได้' },
+      { icon:'📚', text:'Bestiary — รวมข้อมูล counter pattern ของ mob แต่ละตัว' },
+    ],
+  },
+  'Elemental Damage': {
+    phase:'Phase 1-2', status:'done',
+    summary:'Fire/Ice/Lightning/Void/Holy/Shadow damage ทำงานแล้ว',
+    improvements:[
+      { icon:'🛡️', text:'Elemental Resistance gear — แต่ละ zone มี resist set ที่เหมาะสม' },
+      { icon:'🌍', text:'Zone elemental theme — cursed_marshlands mob ควร resistant ต่อ Poison' },
+      { icon:'⚡', text:'Elemental Chain Reaction: Ice + Lightning = Shatter (x1.5 damage)' },
+    ],
+  },
+  'Berserker Rage': {
+    phase:'Phase 3', status:'done',
+    summary:'Rage stacks 0-10 → FRENZY mode พร้อมแล้ว',
+    improvements:[
+      { icon:'🔥', text:'Rage Aura visual: ไฟล้อมตัวละครเมื่อ Rage ≥7' },
+      { icon:'🧪', text:'Rage Potion: item ที่เพิ่ม Rage +3 ทันที (craft จาก Monster Blood)' },
+      { icon:'💀', text:'Blood Frenzy passive: ยิ่ง HP ต่ำ ยิ่ง Rage สะสมเร็ว' },
+    ],
+  },
+  'Engineer Turret': {
+    phase:'Phase 3', status:'done',
+    summary:'Auto-attack turret ทุก turn พร้อมแล้ว',
+    improvements:[
+      { icon:'⚙️', text:'Turret Upgrade Tree: Lv.1 basic → Lv.3 laser → Lv.5 mortar' },
+      { icon:'🤖', text:'Dual Turret Limit Break: วาง turret 2 ตัวพร้อมกัน 3 turns' },
+      { icon:'💣', text:'Turret Overcharge: sacrifice turret เพื่อระเบิด deal massive damage' },
+    ],
+  },
+  'Necromancer Shards': {
+    phase:'Phase 3', status:'done',
+    summary:'Soul Shards → Raise Dead minion system พร้อมแล้ว',
+    improvements:[
+      { icon:'👾', text:'Minion AI: command minion ให้ attack specific target หรือ defend' },
+      { icon:'💀', text:'Horde Mode Limit Break: raise minion 3 ตัวพร้อมกัน (1 turn duration)' },
+      { icon:'🦴', text:'Minion Tier: ศัตรูที่แกร่งกว่าเมื่อตายให้ minion ที่แกร่งกว่า' },
+    ],
+  },
+  'Rifter Charges': {
+    phase:'Phase 3', status:'done',
+    summary:'Void Charges 0-5 → burst release พร้อมแล้ว',
+    improvements:[
+      { icon:'🌀', text:'Dimensional Portal animation เมื่อ release charges ครบ 5' },
+      { icon:'⚡', text:'Void Overcharge: charge เกิน 5 → unstable state, bonus damage แต่ self-damage' },
+      { icon:'🎯', text:'Charge Targeting: เลือก mob target ก่อน release เพื่อ bonus precision' },
+    ],
+  },
+  'Bard Song': {
+    phase:'Phase 3', status:'done',
+    summary:'Song stacking buffs พร้อมแล้ว',
+    improvements:[
+      { icon:'🎵', text:'Melody Combos: 3 songs ต่างกัน → Harmony buff (+20% all stats)' },
+      { icon:'🏰', text:'Guild Song Sharing: Bard ใน Guild สามารถ buff คนในกิลด์ได้ (Phase 7)' },
+      { icon:'🎶', text:'Song of Silence: special song ที่ silence mob 2 turns' },
+    ],
+  },
+  'Phantom Ethereal': {
+    phase:'Phase 3', status:'done',
+    summary:'Ethereal Plane dodge mode พร้อมแล้ว',
+    improvements:[
+      { icon:'👻', text:'Phase Through Boss: Ethereal ทำให้ dodge Boss attack ได้ 1 ครั้ง' },
+      { icon:'⚡', text:'Ethereal Strike: โจมตีจาก ethereal plane deal +50% damage' },
+      { icon:'🌙', text:'Shadow Merge: รวมร่างกับ shadow เพื่อ stealth 1 turn ไม่โดน attack' },
+    ],
+  },
+  'Gift→Gold→RP': {
+    phase:'Phase 4', status:'done',
+    summary:'TikTok gift → Gold/RP conversion ทำงานแล้ว',
+    improvements:[
+      { icon:'🎁', text:'Gift Multiplier Events: ช่วงเทศกาล gift ได้ RP ×2 (seasonal event)' },
+      { icon:'🔥', text:'Gift Streak Bonus: gift ติดต่อกัน 5 ครั้ง → bonus RP +20%' },
+      { icon:'📊', text:'Gift Leaderboard: แสดงใน OBS ว่าใครให้ gift มากสุดวันนี้' },
+    ],
+  },
+  'RP Shop': {
+    phase:'Phase 4', status:'done',
+    summary:'RP exchange shop พร้อมแล้ว',
+    improvements:[
+      { icon:'⏰', text:'Limited-time RP items: flash sale 30 นาที สุ่มทุก 6 ชั่วโมง' },
+      { icon:'🎰', text:'RP Gacha: random item tier draw (ไม่ให้ pay-to-win แต่ cosmetic)' },
+      { icon:'🌟', text:'VIP RP Track: สมาชิก TikTok subscriber ได้ RP rate พิเศษ' },
+    ],
+  },
+  'Crafting': {
+    phase:'Phase 4', status:'done',
+    summary:'Item crafting system พร้อมแล้ว',
+    improvements:[
+      { icon:'📜', text:'Legendary Recipe Discovery: drop จาก boss เท่านั้น (excitement factor)' },
+      { icon:'⚗️', text:'Crafting Mastery: craft อย่างเดียวกัน 10 ครั้ง → unlock enhanced version' },
+      { icon:'🔮', text:'Enchanting Station: เพิ่ม bonus stat ให้ existing item (endgame activity)' },
+    ],
+  },
+  'Weekly Quests': {
+    phase:'Phase 4', status:'done',
+    summary:'Weekly quest system พร้อมแล้ว',
+    improvements:[
+      { icon:'📖', text:'Monthly Narrative Quest: quest chain ยาว 4 ตอนต่อเดือน มีเรื่องราว' },
+      { icon:'🏆', text:'Hardcore Weekly: quest ยากพิเศษ ให้ Legendary reward เมื่อทำสำเร็จ' },
+      { icon:'👥', text:'Guild Weekly: quest ที่ทั้ง guild ต้องช่วยกัน complete (Phase 7)' },
+    ],
+  },
+  'Achievements': {
+    phase:'Phase 4', status:'done',
+    summary:'Achievement system พร้อมแล้ว',
+    improvements:[
+      { icon:'🔒', text:'Hidden Achievements: ค้นพบได้เมื่อทำ action ลึกลับ (ฆ่า boss ด้วย 1 HP เหลือ ฯลฯ)' },
+      { icon:'🎖️', text:'Achievement Medals: badge สวมใส่ได้ แสดงใน TikTok comment' },
+      { icon:'📡', text:'OBS Achievement Pop: แสดง achievement unlock บน stream ทันที' },
+    ],
+  },
+  'World Boss': {
+    phase:'Phase 4', status:'done',
+    summary:'World Boss encounter พร้อมแล้ว',
+    improvements:[
+      { icon:'👑', text:'Multiple World Bosses: ให้ active พร้อมกัน 2-3 ตัว schedule ต่างเวลา' },
+      { icon:'📅', text:'Boss Schedule Widget: OBS overlay แสดง next world boss เวลาไหน' },
+      { icon:'🏅', text:'Contribution Leaderboard: ผู้เล่นที่ damage boss มากสุดได้ bonus loot' },
+    ],
+  },
+
+  // ── CURRENT: Phase 5 Admin Tools ──
+  'Economy Calculator': {
+    phase:'Phase 5', status:'current',
+    summary:'Economy calculator พร้อมใช้งานแล้ว ✅',
+    todos:[
+      { done:true, text:'XP curve visualization + daily income calculator' },
+      { done:true, text:'Zone-by-zone gold breakdown' },
+      { done:true, text:'Milestone timeline table' },
+      { done:true, text:'Debounce slider + fix card key bug' },
+    ],
+    next:'ไม่มีงานค้าง — พร้อมแล้ว',
+  },
+  'RP Monitor': {
+    phase:'Phase 5', status:'current',
+    summary:'RP Monitor + fraud detection พร้อมแล้ว ✅',
+    todos:[
+      { done:true, text:'Player RP leaderboard + search' },
+      { done:true, text:'Hourly cap violation flags' },
+      { done:true, text:'Manual flag + resolve workflow' },
+    ],
+    next:'ไม่มีงานค้าง — พร้อมแล้ว',
+  },
+  'Bug Radar': {
+    phase:'Phase 5', status:'current',
+    summary:'Bug auto-detection dashboard พร้อมแล้ว ✅',
+    todos:[
+      { done:true, text:'Error pattern detection จาก activity log' },
+      { done:true, text:'Suspicious behavior flags' },
+      { done:true, text:'Priority severity scoring' },
+    ],
+    next:'ไม่มีงานค้าง — พร้อมแล้ว',
+  },
+  'Churn Predictor': {
+    phase:'Phase 5', status:'current',
+    summary:'Churn risk score + boredom predictor พร้อมแล้ว ✅',
+    todos:[
+      { done:true, text:'Risk scoring algorithm (0-100)' },
+      { done:true, text:'Inactivity day tracking' },
+      { done:true, text:'Recommended action per player' },
+    ],
+    next:'ไม่มีงานค้าง — พร้อมแล้ว',
+  },
+  'Roadmap Tracker': {
+    phase:'Phase 5', status:'current',
+    summary:'Roadmap + Competitor comparison พร้อมแล้ว ✅ (หน้านี้!)',
+    todos:[
+      { done:true, text:'Phase progress visualization' },
+      { done:true, text:'Competitor feature score comparison' },
+      { done:true, text:'คลิก feature เพื่อดู detail + suggestions' },
+    ],
+    next:'ไม่มีงานค้าง — พร้อมแล้ว',
+  },
+  'Push Advisor': {
+    phase:'Phase 5', status:'current',
+    summary:'Real-time push advisor + bonus analytics พร้อมแล้ว ✅',
+    todos:[
+      { done:true, text:'Activity pattern analysis' },
+      { done:true, text:'Best time to push recommendations' },
+      { done:true, text:'Zone + class distribution insights' },
+    ],
+    next:'ไม่มีงานค้าง — พร้อมแล้ว',
+  },
+
+  // ── PLANNED: Phase 6 ──
+  'Seasonal Events': {
+    phase:'Phase 6', status:'planned',
+    summary:'Event พิเศษตามช่วงเวลาของปี — สำคัญมากสำหรับ retention',
+    effort:'2-3 สัปดาห์',
+    priority:'🔴 สูงมาก — ผู้เล่น end-game จะ churn ถ้าไม่มี fresh content',
+    todos:[
+      { done:false, text:'Halloween Event (ต.ค.): mob แต่งผีหลอน, XP ×1.5, exclusive cosmetic' },
+      { done:false, text:'New Year Login Bonus (ม.ค.): 7-day mega reward calendar' },
+      { done:false, text:'Valentine RP Discount (ก.พ.): RP shop -30% สำหรับ pair bonuses' },
+      { done:false, text:'Backend: event schedule table + active_event flag ใน config' },
+      { done:false, text:'Frontend: seasonal theme overlay + event countdown widget' },
+    ],
+  },
+  'Streak Rewards++': {
+    phase:'Phase 6', status:'planned',
+    summary:'เพิ่ม tier ให้ login streak ที่มีอยู่แล้ว',
+    effort:'1 สัปดาห์',
+    priority:'🟡 กลาง — เพิ่ม retention ง่าย cost ต่ำ',
+    todos:[
+      { done:false, text:'7-day streak: Rare item box' },
+      { done:false, text:'14-day streak: Epic equipment piece' },
+      { done:false, text:'30-day streak: Legendary title + exclusive cosmetic' },
+      { done:false, text:'Streak Freeze item: ใช้เมื่อ miss 1 วัน ไม่ให้ streak หัก (ซื้อด้วย RP)' },
+      { done:false, text:'OBS widget: แสดง streak count ผู้เล่นใน live stream' },
+    ],
+  },
+  'Leaderboard Widget': {
+    phase:'Phase 6', status:'planned',
+    summary:'OBS browser source แสดง top players แบบ real-time',
+    effort:'1 สัปดาห์',
+    priority:'🟡 กลาง — เพิ่ม engagement สำหรับผู้ชม TikTok Live',
+    todos:[
+      { done:false, text:'API endpoint: GET /widget/leaderboard (top 5 by XP/Gold/Level)' },
+      { done:false, text:'Widget page /widget/leaderboard — animated live rankings' },
+      { done:false, text:'Streamer config: เลือก sort by XP | Gold | Level | Streak' },
+      { done:false, text:'Auto-refresh ทุก 30 วินาที โดยไม่ reload หน้า' },
+      { done:false, text:'Highlight when rank changes (animate up/down arrow)' },
+    ],
+  },
+  'Login Bonus Expansion': {
+    phase:'Phase 6', status:'planned',
+    summary:'ขยาย login bonus ให้หลากหลายและน่าสนใจกว่าเดิม',
+    effort:'4-5 วัน',
+    priority:'🟢 ต่ำ — ดีแต่ไม่ urgent',
+    todos:[
+      { done:false, text:'Mega Bonus Week: 7 วันพิเศษต่อเดือน bonus ×3' },
+      { done:false, text:'VIP Login Track: TikTok Subscriber ได้ parallel bonus track ที่ดีกว่า' },
+      { done:false, text:'Bonus Calendar UI: แสดงรายวันว่าวันไหนได้อะไร' },
+      { done:false, text:'Milestone Login Rewards: login ครบ 100/365 วัน ได้ exclusive item' },
+    ],
+  },
+  'Achievement Titles in OBS': {
+    phase:'Phase 6', status:'planned',
+    summary:'แสดง title/badge ของผู้เล่นใน TikTok comment อัตโนมัติ',
+    effort:'1 สัปดาห์',
+    priority:'🟡 กลาง — ดี สำหรับ social proof ใน stream',
+    todos:[
+      { done:false, text:'Title system: achievement unlock → ได้ title string (เช่น "Dragon Slayer")' },
+      { done:false, text:'TikTok comment hook: ตรวจจับ comment → overlay username + title ใน OBS' },
+      { done:false, text:'Widget /widget/comment-overlay แสดง comment + title badge' },
+      { done:false, text:'Equip Title UI: ผู้เล่นเลือก title ที่จะแสดง (มีหลายตัว)' },
+    ],
+  },
+
+  // ── PLANNED: Phase 7 ──
+  'Guild System': {
+    phase:'Phase 7', status:'planned',
+    summary:'สร้าง / เข้าร่วม guild — content สำคัญสำหรับ social retention',
+    effort:'4-6 สัปดาห์',
+    priority:'🔴 สูง — endgame ขาด guild จะทำให้ผู้เล่น Lv.60+ เลิก',
+    todos:[
+      { done:false, text:'Guild document ใน Firestore: name, members[], bank_gold, level' },
+      { done:false, text:'Create/Join/Leave guild endpoints' },
+      { done:false, text:'Guild Bank: member deposit gold → guild fund events/boss' },
+      { done:false, text:'Guild Boss: exclusive weekly boss สำหรับ guild เท่านั้น' },
+      { done:false, text:'Guild Weekly Quest: ทุกคนช่วยกัน complete ได้ shared reward' },
+      { done:false, text:'Frontend: Guild Hall page ใน /ashenveil/guild' },
+    ],
+  },
+  'PVP Arena': {
+    phase:'Phase 7', status:'planned',
+    summary:'Turn-based 1v1 ระหว่างผู้เล่น พร้อม ELO ranking',
+    effort:'4-5 สัปดาห์',
+    priority:'🔴 สูง — ผู้เล่น competitive ต้องการ PVP เพื่ออยู่ long-term',
+    todos:[
+      { done:false, text:'Arena match-making: ELO-based pairing (±200 ELO)' },
+      { done:false, text:'Async PVP: challenge ผู้เล่นคนอื่น → ตอบรับภายใน 24h' },
+      { done:false, text:'Arena Token: currency พิเศษจาก PVP → แลก exclusive gear' },
+      { done:false, text:'Season ranking: reset รายเดือน, top 10 ได้ Legendary reward' },
+      { done:false, text:'Frontend: Arena page + challenge flow + ELO display' },
+    ],
+  },
+  'Player Trading': {
+    phase:'Phase 7', status:'planned',
+    summary:'Item marketplace ระหว่างผู้เล่น',
+    effort:'3-4 สัปดาห์',
+    priority:'🟡 กลาง — เพิ่ม economy depth แต่ต้องระวัง duplication exploit',
+    todos:[
+      { done:false, text:'Trade Request: ส่ง offer item A แลก item B โดยตรง' },
+      { done:false, text:'Marketplace Listing: วาง item ให้คนอื่น bid gold' },
+      { done:false, text:'Anti-exploit: validate item ownership ก่อน transfer ทุกครั้ง' },
+      { done:false, text:'Trade History log: เก็บทุก transaction ใน Firestore' },
+      { done:false, text:'Trade Tax: 5% gold cut ป้องกัน gold duplication' },
+    ],
+  },
+  'Chat in-game': {
+    phase:'Phase 7', status:'planned',
+    summary:'Global / Guild chat system ใน game',
+    effort:'2-3 สัปดาห์',
+    priority:'🟡 กลาง — social feature ที่ดี แต่ TikTok Live comment ทำหน้าที่นี้แทนได้บางส่วน',
+    todos:[
+      { done:false, text:'WebSocket chat channel: global + guild namespace' },
+      { done:false, text:'Emote system: shortcode → emoji (เช่น :sword: → ⚔️)' },
+      { done:false, text:'Message moderation: auto-filter + manual ban' },
+      { done:false, text:'Chat bubble ใน battle screen สำหรับ quick emotes' },
+    ],
+  },
+  'Friend System': {
+    phase:'Phase 7', status:'planned',
+    summary:'Friend list + co-op battle invite',
+    effort:'2 สัปดาห์',
+    priority:'🟢 ต่ำ — nice-to-have แต่ guild ควร priority กว่า',
+    todos:[
+      { done:false, text:'Friend Request: ส่ง/รับคำขอ เป็น friend' },
+      { done:false, text:'Friend List page: ดู online status, level, last active' },
+      { done:false, text:'Co-op Invite: ชวน friend ลง dungeon ด้วยกัน (shared loot)' },
+      { done:false, text:'Friend Activity Feed: เห็นว่า friend ไป zone ไหน kill อะไร' },
+    ],
+  },
+
+  // ── PLANNED: Phase 8 ──
+  'New Zones (Lv.60-99)': {
+    phase:'Phase 8', status:'planned',
+    summary:'เพิ่ม zones สำหรับ end-game player (ปัจจุบัน cap ที่ vorath_citadel Lv.52)',
+    effort:'3-4 สัปดาห์',
+    priority:'🔴 สูงมาก — ผู้เล่น Lv.60+ ไม่มีที่ฟาร์ม จะ churn แน่นอน',
+    todos:[
+      { done:false, text:'Abyssal Void (Lv.60-75): void-type monsters, void resistance gear drop' },
+      { done:false, text:"Vorath's Sanctum (Lv.76-99): post-game area หลังฆ่า Vorath แล้ว" },
+      { done:false, text:'New monster data ใน monsters.js + zone config ใน ZONE_MONSTERS' },
+      { done:false, text:'Frontend: zone unlock condition (ต้องผ่าน previous zone boss)' },
+      { done:false, text:'Zone storyline: ทำไมมี zone ใหม่หลัง Vorath ตาย' },
+    ],
+  },
+  'New Boss Types': {
+    phase:'Phase 8', status:'planned',
+    summary:'Boss รูปแบบใหม่ที่ท้าทายกว่า Vorath',
+    effort:'2-3 สัปดาห์',
+    priority:'🔴 สูง — boss variety ทำให้ game ไม่จำเจ',
+    todos:[
+      { done:false, text:'Elemental Dragon: phase 2 เปลี่ยน element ทุก 5 turns' },
+      { done:false, text:'Void Titan: absorb player skills แล้วใช้กลับ (counter-meta)' },
+      { done:false, text:'Undead Legion: boss spawn minion ทุก 3 turns' },
+      { done:false, text:'Duo Boss: 2 boss ต่อสู้พร้อมกัน (ยากที่สุดใน game)' },
+      { done:false, text:'Boss-specific loot table: unique legendary per boss type' },
+    ],
+  },
+  'New Class (x5)': {
+    phase:'Phase 8', status:'planned',
+    summary:'เพิ่ม 5 class ใหม่ เน้น playstyle ที่ยังไม่มี',
+    effort:'6-8 สัปดาห์',
+    priority:'🟡 กลาง — content expansion ดี แต่ balance ยาก',
+    todos:[
+      { done:false, text:'Paladin: Holy shield + heal hybrid — tank ที่ support ได้' },
+      { done:false, text:'Alchemist: Potion throwing combat — item-based attacker' },
+      { done:false, text:'Summoner: multi-minion commander (ต่างจาก Necromancer ที่ undead)' },
+      { done:false, text:'Dark Priest: AoE curse/debuff specialist — shadow healer' },
+      { done:false, text:'Warlord: battlefield commander — buff allies, debuff enemies' },
+      { done:false, text:'Balance test: 50 mock battles ต่อ class ก่อน release' },
+    ],
+  },
+  'Legendary Equipment': {
+    phase:'Phase 8', status:'planned',
+    summary:'Tier สูงกว่า Epic — class-locked, ต้องหา recipe ก่อน',
+    effort:'2 สัปดาห์',
+    priority:'🟡 กลาง — endgame gear progression เพิ่ม replay value',
+    todos:[
+      { done:false, text:'Legendary tier ใน item schema (rarity: legendary)' },
+      { done:false, text:'Recipe drop จาก Phase 8 boss เท่านั้น' },
+      { done:false, text:'Class-lock requirement: WARRIOR legendary ใช้ได้เฉพาะ WARRIOR' },
+      { done:false, text:'Unique passive per legendary: เช่น ดาบ "Soul Reaper" steal HP on kill' },
+      { done:false, text:'Legendary forge: crafting station ใหม่ ต้องใช้ materials หายาก' },
+    ],
+  },
+  'Story Chapters 2-3': {
+    phase:'Phase 8', status:'planned',
+    summary:'เรื่องราวต่อจาก Vorath defeated — antagonist ใหม่',
+    effort:'3-4 สัปดาห์',
+    priority:'🟢 ต่ำ — story ดีสำหรับ dedicated player แต่ไม่ urgent',
+    todos:[
+      { done:false, text:'Chapter 2: The Void Awakens — Vorath เป็นแค่ pawns ของ Void God' },
+      { done:false, text:'Chapter 3: Return to Origin — ผู้เล่นกลับไปต้นกำเนิด Ashenveil' },
+      { done:false, text:'New NPC: Seraph (ฝ่ายดีที่แท้จริง) + Null (antagonist ใหม่)' },
+      { done:false, text:'Story quest chain 12 ตอน เชื่อมกับ Phase 8 zones' },
+      { done:false, text:'Cutscene improvements: animated text + character art per NPC' },
+    ],
+  },
+};
+
 function RoadmapTab() {
   const [showCat, setShowCat] = React.useState(null);
+  const [selectedFeature, setSelectedFeature] = React.useState(null);
 
   const allFeatures = COMPETITOR_FEATURES.flatMap(c => c.features);
   const avgScore = Math.round(allFeatures.reduce((s,f)=>s+f.score,0)/allFeatures.length);
@@ -1259,7 +1708,10 @@ function RoadmapTab() {
 
       {/* Roadmap */}
       <div style={{ ...card }}>
-        <div style={{ color:'#9ca3af', fontSize:12, fontWeight:700, marginBottom:16 }}>📍 Roadmap Progress</div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <div style={{ color:'#9ca3af', fontSize:12, fontWeight:700 }}>📍 Roadmap Progress</div>
+          <div style={{ color:'#4b5563', fontSize:11 }}>คลิก feature เพื่อดูรายละเอียด / แนะนำการพัฒนา</div>
+        </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {ROADMAP.map(p => (
             <div key={p.phase} style={{ display:'flex', gap:14, padding:'12px 16px', background:'#1f2937', borderRadius:10,
@@ -1271,18 +1723,118 @@ function RoadmapTab() {
               <div style={{ flex:1 }}>
                 <div style={{ color:'#e5e7eb', fontSize:13, fontWeight:600, marginBottom:6 }}>{p.label}</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {p.items.map(item => (
-                    <span key={item} style={{ background:'#111827', color: p.status==='done'?'#34d399':p.status==='current'?'#f59e0b':'#6b7280',
-                      borderRadius:6, padding:'2px 8px', fontSize:11 }}>
-                      {p.status==='done'?'✓ ':''}{item}
-                    </span>
-                  ))}
+                  {p.items.map(item => {
+                    const isSelected = selectedFeature === item;
+                    const hasDetail = !!FEATURE_DETAILS[item];
+                    const baseColor = p.status==='done'?'#34d399':p.status==='current'?'#f59e0b':'#6b7280';
+                    return (
+                      <span key={item}
+                        onClick={() => hasDetail && setSelectedFeature(isSelected ? null : item)}
+                        title={hasDetail ? 'คลิกเพื่อดูรายละเอียด' : ''}
+                        style={{
+                          background: isSelected ? baseColor + '33' : '#111827',
+                          color: isSelected ? baseColor : baseColor,
+                          border: isSelected ? `1px solid ${baseColor}` : '1px solid transparent',
+                          borderRadius:6, padding:'3px 10px', fontSize:11,
+                          cursor: hasDetail ? 'pointer' : 'default',
+                          transition:'all .15s',
+                          userSelect:'none',
+                        }}>
+                        {p.status==='done'?'✓ ':p.status==='current'?'⚙ ':''}{item}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Feature Detail Panel */}
+      {selectedFeature && FEATURE_DETAILS[selectedFeature] && (() => {
+        const d = FEATURE_DETAILS[selectedFeature];
+        const col = d.status==='done'?'#34d399':d.status==='current'?'#f59e0b':'#818cf8';
+        return (
+          <div style={{ ...card, border:`1px solid ${col}44`, position:'relative' }}>
+            {/* close button */}
+            <button onClick={()=>setSelectedFeature(null)}
+              style={{ position:'absolute', top:12, right:12, background:'transparent', border:'none',
+                color:'#4b5563', cursor:'pointer', fontSize:18, lineHeight:1 }}>✕</button>
+
+            {/* Header */}
+            <div style={{ display:'flex', gap:10, alignItems:'flex-start', marginBottom:16, paddingRight:32 }}>
+              <div>
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4 }}>
+                  <span style={{ color:col, fontWeight:800, fontSize:16 }}>{selectedFeature}</span>
+                  <span style={{ ...badge(col) }}>{d.phase}</span>
+                  {d.status==='done' && <span style={{ ...badge('#34d399') }}>✅ Implemented</span>}
+                  {d.status==='current' && <span style={{ ...badge('#f59e0b') }}>🔨 In Progress</span>}
+                  {d.status==='planned' && <span style={{ ...badge('#818cf8') }}>📋 Planned</span>}
+                </div>
+                <div style={{ color:'#9ca3af', fontSize:12 }}>{d.summary}</div>
+              </div>
+            </div>
+
+            {/* DONE: improvement suggestions */}
+            {d.improvements && (
+              <div>
+                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:10, textTransform:'uppercase', letterSpacing:1 }}>
+                  💡 แนะนำการพัฒนาต่อ
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {d.improvements.map((imp,i) => (
+                    <div key={i} style={{ display:'flex', gap:10, padding:'10px 14px',
+                      background:'#1f2937', borderRadius:8, alignItems:'flex-start' }}>
+                      <span style={{ fontSize:16, flexShrink:0 }}>{imp.icon}</span>
+                      <span style={{ color:'#d1d5db', fontSize:12, lineHeight:1.5 }}>{imp.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* PLANNED/CURRENT: todo list */}
+            {d.todos && (
+              <div>
+                {d.effort && (
+                  <div style={{ display:'flex', gap:16, marginBottom:12 }}>
+                    <div style={{ padding:'6px 14px', background:'#1f2937', borderRadius:8, fontSize:12 }}>
+                      <span style={{ color:'#6b7280' }}>⏱ ประมาณ: </span>
+                      <span style={{ color:'#e5e7eb', fontWeight:700 }}>{d.effort}</span>
+                    </div>
+                    {d.priority && (
+                      <div style={{ padding:'6px 14px', background:'#1f2937', borderRadius:8, fontSize:12, flex:1 }}>
+                        <span style={{ color:'#6b7280' }}>Priority: </span>
+                        <span style={{ color:'#e5e7eb' }}>{d.priority}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:10, textTransform:'uppercase', letterSpacing:1 }}>
+                  {d.status==='current' ? '✅ สิ่งที่ทำแล้ว / ยังค้าง' : '📋 สิ่งที่ต้องทำ'}
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {d.todos.map((t,i) => (
+                    <div key={i} style={{ display:'flex', gap:10, padding:'8px 12px',
+                      background:'#1f2937', borderRadius:8, alignItems:'flex-start' }}>
+                      <span style={{ fontSize:14, flexShrink:0, marginTop:1 }}>{t.done ? '✅' : '⬜'}</span>
+                      <span style={{ color: t.done ? '#6b7280' : '#d1d5db', fontSize:12,
+                        lineHeight:1.5, textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
+                    </div>
+                  ))}
+                </div>
+                {d.next && (
+                  <div style={{ marginTop:10, padding:'8px 14px', background:'#34d39911', borderRadius:8,
+                    border:'1px solid #34d39944', color:'#34d399', fontSize:12 }}>
+                    ✔ {d.next}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Competitor comparison */}
       <div style={{ ...card }}>
