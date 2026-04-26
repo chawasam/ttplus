@@ -1709,9 +1709,26 @@ export default function GameWorld() {
                 <div>
                   {!battle.result ? (
                     <>
-                      {/* ── Enemy info ── */}
+                      {/* ── Enemy info + Type badge ── */}
                       <div className="flex gap-2 mb-1 text-xs text-gray-500 items-center flex-wrap">
                         <span className="text-red-400 font-semibold">👹 {battle.enemy.name}: {battle.enemy.hp}/{battle.enemy.hpMax} HP</span>
+                        {/* Phase 2A: Monster Type Badge */}
+                        {battle.enemy.type && battle.enemy.type !== 'unknown' && (() => {
+                          const typeStyle = {
+                            beast:    'bg-green-950/60 text-green-400 border-green-800',
+                            undead:   'bg-purple-950/60 text-purple-300 border-purple-800',
+                            void:     'bg-indigo-950/60 text-indigo-300 border-indigo-800',
+                            human:    'bg-blue-950/60 text-blue-300 border-blue-800',
+                            construct:'bg-yellow-950/60 text-yellow-300 border-yellow-800',
+                            demon:    'bg-red-950/60 text-red-300 border-red-800',
+                          }[battle.enemy.type] || 'bg-gray-900/60 text-gray-400 border-gray-700';
+                          const typeIcon = { beast:'🐾', undead:'💀', void:'🌀', human:'👤', construct:'⚙️', demon:'👿' }[battle.enemy.type] || '❓';
+                          return (
+                            <span className={`text-[10px] px-1.5 py-0.5 border rounded font-semibold ${typeStyle}`}>
+                              {typeIcon} {battle.enemy.type.toUpperCase()}
+                            </span>
+                          );
+                        })()}
                         <span className="text-blue-400">💧 {battle.player?.mp}/{battle.player?.mpMax} MP</span>
                         <span className="ml-auto">Turn {battle.turn}</span>
                         {(battle.comboCount || 0) >= 3 && (
@@ -1720,6 +1737,152 @@ export default function GameWorld() {
                           </span>
                         )}
                       </div>
+
+                      {/* Phase 2C: Momentum Bar */}
+                      <div className="mb-1.5">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[10px] text-yellow-500 font-semibold">⚡ Momentum</span>
+                          <span className="text-[10px] text-yellow-400">{battle.momentum || 0}/100</span>
+                          {battle.limitBreakReady && (
+                            <span className="text-[10px] text-yellow-300 animate-pulse font-bold ml-1">— LIMIT BREAK READY!</span>
+                          )}
+                        </div>
+                        <div className="w-full h-2 bg-gray-900 rounded-full border border-gray-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${battle.limitBreakReady ? 'bg-gradient-to-r from-yellow-500 to-orange-400 animate-pulse' : (battle.momentum || 0) >= 70 ? 'bg-gradient-to-r from-yellow-700 to-yellow-500' : (battle.momentum || 0) >= 40 ? 'bg-gradient-to-r from-blue-800 to-blue-600' : 'bg-blue-900'}`}
+                            style={{ width: `${Math.min(100, battle.momentum || 0)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Phase 3: Class-specific resource bars */}
+                      {/* Berserker: Rage Stacks */}
+                      {battle.rageStacks !== undefined && (
+                        <div className="mb-1.5 flex items-center gap-2">
+                          <span className="text-[10px] text-red-400 font-semibold w-16 shrink-0">🔥 Rage</span>
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 10 }).map((_, i) => (
+                              <div key={i} className={`w-3 h-3 rounded-sm border transition-all ${
+                                i < battle.rageStacks
+                                  ? 'bg-red-500 border-red-400'
+                                  : 'bg-gray-900 border-gray-800'
+                              }`} />
+                            ))}
+                          </div>
+                          <span className={`text-[10px] ml-1 ${battle.frenzying ? 'text-orange-300 font-bold animate-pulse' : 'text-gray-600'}`}>
+                            {battle.frenzying ? '💢 FRENZY!' : `×${battle.rageStacks || 0} ATK +${(battle.rageStacks || 0) * 5}%`}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Engineer: Turret status */}
+                      {battle.turret !== undefined && (
+                        <div className="mb-1.5 flex items-center gap-2">
+                          <span className="text-[10px] text-yellow-500 font-semibold w-16 shrink-0">⚙️ Turret</span>
+                          {battle.turret ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex gap-0.5">
+                                {Array.from({ length: 4 }).map((_, i) => (
+                                  <div key={i} className={`w-3 h-3 rounded-sm border ${
+                                    i < battle.turret.turnsLeft ? 'bg-yellow-600 border-yellow-500' : 'bg-gray-900 border-gray-800'
+                                  }`} />
+                                ))}
+                              </div>
+                              <span className="text-[10px] text-yellow-400">{battle.turret.dmg} dmg/turn</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-gray-600">ไม่มี Turret — ใช้ Deploy Turret</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Necromancer: Soul Shards + Minions */}
+                      {battle.soulShards !== undefined && (
+                        <div className="mb-1.5 flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-purple-400 font-semibold w-16 shrink-0">🦴 Soul</span>
+                          <div className="flex gap-1">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                              <div key={i} className={`w-4 h-4 rounded border text-[8px] flex items-center justify-center ${
+                                i < battle.soulShards ? 'bg-purple-900/60 border-purple-600 text-purple-300' : 'bg-gray-900 border-gray-800 text-gray-700'
+                              }`}>💀</div>
+                            ))}
+                          </div>
+                          {(battle.minions?.length || 0) > 0 && (
+                            <div className="flex gap-1">
+                              {battle.minions.map((m, i) => (
+                                <span key={i} className="text-[9px] px-1 border border-purple-800 text-purple-400 rounded">
+                                  🦴{m.dmg}({m.turnsLeft}t)
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Rifter: Void Charges */}
+                      {battle.voidCharges !== undefined && (
+                        <div className="mb-1.5 flex items-center gap-2">
+                          <span className="text-[10px] text-indigo-400 font-semibold w-16 shrink-0">⚡ Void</span>
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <div key={i} className={`w-3.5 h-3.5 rounded-full border transition-all ${
+                                i < battle.voidCharges
+                                  ? 'bg-indigo-500 border-indigo-300 shadow-sm shadow-indigo-500'
+                                  : 'bg-gray-900 border-gray-700'
+                              }`} />
+                            ))}
+                          </div>
+                          {battle.voidCharges >= 5 && (
+                            <span className="text-[10px] text-indigo-300 animate-pulse font-bold ml-1">⚡ MAX! Release!</span>
+                          )}
+                          {battle.voidCharges > 0 && battle.voidCharges < 5 && (
+                            <span className="text-[10px] text-indigo-500">{battle.voidCharges * 25} bonus dmg ready</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Phase 3E: Bard Song Stacks ── */}
+                      {battle.songStacks !== undefined && (
+                        <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-yellow-400 font-semibold w-14 flex-shrink-0">🎵 Song</span>
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 10 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className={`w-3 h-3 rounded-sm border transition-all ${
+                                  i < (battle.songStacks || 0)
+                                    ? 'bg-yellow-500 border-yellow-400'
+                                    : 'bg-gray-900 border-gray-800'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          {battle.songActive && battle.songStacks > 0 ? (
+                            <span className="text-[10px] text-yellow-300 font-bold">ATK +{(battle.songStacks || 0) * 3}%</span>
+                          ) : battle.songActive ? (
+                            <span className="text-[10px] text-yellow-600 italic">กำลังเล่น...</span>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {/* ── Phase 3F: Phantom Ethereal Plane ── */}
+                      {battle.etherealPlane !== undefined && (
+                        <div className={`mb-1.5 flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${
+                          battle.etherealPlane
+                            ? 'bg-gray-800/80 border-gray-400/60 animate-pulse'
+                            : 'bg-gray-950 border-gray-800'
+                        }`}>
+                          <span className="text-[10px] text-gray-300 font-semibold">👻 Plane</span>
+                          {battle.etherealPlane ? (
+                            <>
+                              <span className="text-[10px] text-gray-200 font-bold ml-1">ETHEREAL</span>
+                              <span className="text-[10px] text-blue-400 ml-auto">Phys -50% ({battle.etherealTurns}t)</span>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-gray-600 ml-1">Material</span>
+                          )}
+                        </div>
+                      )}
 
                       {/* ── Telegraphed move warning ── */}
                       {battle.telegraphMove && (
@@ -1731,9 +1894,9 @@ export default function GameWorld() {
                       )}
 
                       {/* ── Enemy status chips ── */}
-                      {battle.enemy?.status?.length > 0 && (
+                      {(battle.enemy?.status?.length > 0 || battle.enemy?.shieldPhase || battle.enemy?.evasionPhase) && (
                         <div className="flex gap-1 mb-1 flex-wrap">
-                          {battle.enemy.status.map((s, i) => {
+                          {(battle.enemy?.status || []).map((s, i) => {
                             const statusColor = { STUN:'text-yellow-400 border-yellow-800', SLOW:'text-blue-400 border-blue-800', BURN:'text-orange-400 border-orange-800', BLEED:'text-red-400 border-red-800', POISON:'text-green-400 border-green-800', CURSE:'text-purple-400 border-purple-800', MARKED:'text-pink-400 border-pink-800' }[s.type] || 'text-gray-400 border-gray-700';
                             const statusIcon  = { STUN:'😵', SLOW:'🐢', BURN:'🔥', BLEED:'🩸', POISON:'☠️', CURSE:'💜', MARKED:'🎯' }[s.type] || '⚠️';
                             return (
@@ -1742,6 +1905,16 @@ export default function GameWorld() {
                               </span>
                             );
                           })}
+                          {battle.enemy?.shieldPhase && (
+                            <span className="text-[10px] px-1 border border-cyan-700 text-cyan-400 rounded animate-pulse">
+                              🛡️ SHIELD({battle.enemy.shieldPhase.turnsLeft}t)
+                            </span>
+                          )}
+                          {battle.enemy?.evasionPhase && (
+                            <span className="text-[10px] px-1 border border-gray-500 text-gray-300 rounded animate-pulse">
+                              💨 EVADE {Math.round((battle.enemy.evasionPhase.dodgeRate || 0) * 100)}%({battle.enemy.evasionPhase.turnsLeft}t)
+                            </span>
+                          )}
                         </div>
                       )}
 
@@ -1772,7 +1945,7 @@ export default function GameWorld() {
                       )}
 
                       {/* ── Action buttons ── */}
-                      <div className="grid grid-cols-3 gap-1.5 mb-2">
+                      <div className="grid grid-cols-3 gap-1.5 mb-1.5">
                         <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>⚔️ โจมตี</Btn>
                         <button
                           onClick={() => handleBattleAction('guard')} disabled={busy}
@@ -1786,17 +1959,48 @@ export default function GameWorld() {
                         </button>
                       </div>
 
+                      {/* Phase 2C: Limit Break button — spans full width when ready */}
+                      {battle.limitBreakReady && (
+                        <button
+                          onClick={() => handleBattleAction('limit_break')} disabled={busy}
+                          className="w-full mb-1.5 px-3 py-2 rounded border-2 border-yellow-500 bg-yellow-950/60 text-yellow-300 hover:bg-yellow-900/40 font-bold text-xs transition animate-pulse disabled:opacity-30">
+                          ⚡💥 LIMIT BREAK — ปล่อยพลังสูงสุด!!
+                        </button>
+                      )}
+
                       {/* ── Skill buttons ── */}
                       {battleSkills.length > 0 && (
                         <div className="grid grid-cols-2 gap-1">
-                          {battleSkills.map(sk => (
-                            <button key={sk.id}
-                              onClick={() => handleBattleAction('skill', { skillId: sk.id })}
-                              disabled={busy || (battle.player?.mp || 0) < sk.mpCost}
-                              className="px-2 py-1.5 border border-blue-900 text-blue-300 hover:border-blue-600 hover:bg-blue-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded">
-                              {sk.name} <span className="text-blue-600">({sk.mpCost}MP)</span>
-                            </button>
-                          ))}
+                          {battleSkills.map(sk => {
+                            // Phase 2A: highlight skill if it has type advantage
+                            const hasTypeAdv = sk.bonusVsType?.includes(battle.enemy?.type);
+                            // Phase 3G: element weakness/resist indicator
+                            const enemyType = battle.enemy?.type;
+                            const elemMods = { beast:{fire:1.5,void:0.7}, undead:{ice:0.7,holy:2.0,shadow:0.7}, void:{fire:0.7,void:0.5,holy:1.5}, human:{void:1.5,shadow:1.2}, construct:{lightning:1.5,arcane:0.8}, demon:{fire:0.7,ice:1.5,holy:2.0,shadow:0.7} };
+                            const elemIcons = { fire:'🔥', ice:'❄️', lightning:'⚡', void:'🌌', holy:'✨', shadow:'🌑', arcane:'🔮' };
+                            const elemMod = sk.element && enemyType ? (elemMods[enemyType]?.[sk.element] || 1.0) : 1.0;
+                            const isWeakness = elemMod > 1.0;
+                            const isResist = elemMod < 1.0;
+                            const elemIcon = sk.element ? elemIcons[sk.element] : null;
+                            return (
+                              <button key={sk.id}
+                                onClick={() => handleBattleAction('skill', { skillId: sk.id })}
+                                disabled={busy || (battle.player?.mp || 0) < sk.mpCost}
+                                className={`px-2 py-1.5 border text-blue-300 hover:bg-blue-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded ${
+                                  hasTypeAdv ? 'border-yellow-600 bg-yellow-950/20 text-yellow-300 hover:bg-yellow-900/30' :
+                                  isWeakness ? 'border-orange-700 bg-orange-950/10 text-orange-300 hover:bg-orange-900/20' :
+                                  isResist   ? 'border-gray-700 bg-gray-950/10 text-gray-500' :
+                                               'border-blue-900 hover:border-blue-600'
+                                }`}>
+                                {hasTypeAdv && <span className="text-yellow-400">⚡ </span>}
+                                {!hasTypeAdv && elemIcon && <span className={isWeakness ? 'text-orange-400' : isResist ? 'text-gray-600' : 'text-gray-500'}>{elemIcon} </span>}
+                                {sk.name}
+                                <span className={hasTypeAdv ? 'text-yellow-700' : isWeakness ? 'text-orange-700' : isResist ? 'text-gray-700' : 'text-blue-600'}> ({sk.mpCost}MP)</span>
+                                {isWeakness && <span className="text-orange-500 text-[9px] ml-0.5">×{elemMod}</span>}
+                                {isResist && <span className="text-gray-600 text-[9px] ml-0.5">×{elemMod}</span>}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </>

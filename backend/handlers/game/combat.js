@@ -213,6 +213,7 @@ async function startBattle(req, res) {
         name:      monster.name,
         emoji:     monster.emoji,
         desc:      monster.desc,
+        type:      monster.type || 'unknown',  // beast/undead/void/human/construct/demon
         hp:        monster.hp,
         hpMax:     monster.hp,
         atk:       monster.atk,
@@ -226,13 +227,39 @@ async function startBattle(req, res) {
         attackMsg: monster.attackMsg,
         statusAttack: monster.statusAttack || null,
         flee_chance: monster.flee_chance || 0.7,
+        moves:     monster.moves || [],
         // Boss phase 2 support
         phase2:        monster.phase2 || null,
         phase2Applied: false,
+        counters:      monster.counters || [],  // Phase 2D counter definitions
+        shieldPhase:   null,  // { defMult, turnsLeft } when active
+        evasionPhase:  null,  // { dodgeRate, turnsLeft } when active
       },
       log: [`${monster.emoji} ${monster.name} ปรากฏตัว!`, monster.desc],
       comboCount:    0,     // consecutive hit streak
       telegraphMove: null,  // move enemy is preparing for NEXT turn
+      momentum:      0,     // 0-100 battle momentum, fills on hit/crit → Limit Break at 100
+      limitBreakReady: false,
+      // ── Phase 3: Class-specific resources ──────────────────────
+      // Berserker: Rage stacks (0-10), +5% ATK each, FRENZY at 10
+      rageStacks:     className === 'berserker'   ? 0 : undefined,
+      frenzying:      className === 'berserker'   ? false : undefined, // double-attack flag
+      // Engineer: active turret { dmg, turnsLeft } or null
+      turret:         className === 'engineer'    ? null : undefined,
+      // Necromancer: soul shards (0-3) + minion army
+      soulShards:     className === 'necromancer' ? 0 : undefined,
+      minions:        className === 'necromancer' ? [] : undefined, // [{ dmg, turnsLeft }]
+      // Rifter: void charges (0-5), release for burst
+      voidCharges:    className === 'rifter'      ? 0 : undefined,
+      // Enemy counter tracking
+      consecutiveAttacks: 0,   // how many consecutive normal attacks player has done
+      counterTriggered:   {},  // { 'hpBelow_0.5': true } — prevents re-firing one-time counters
+      // Bard: song stacks (0-10), +3% ATK each turn a song buff is active
+      songStacks:     className === 'bard'        ? 0 : undefined,
+      songActive:     className === 'bard'        ? false : undefined,
+      // Phantom: ethereal plane toggle — physical damage -50% while ethereal
+      etherealPlane:  className === 'phantom'     ? false : undefined,
+      etherealTurns:  className === 'phantom'     ? 0 : undefined,
       createdAt: Date.now(),
     };
 
@@ -326,15 +353,40 @@ async function processAction(req, res) {
     else if (combo >= 5) { dmg = Math.floor(dmg * 1.15); }
     else if (combo >= 3) { dmg = Math.floor(dmg * 1.05); }
 
-    state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
+    // ── Phase 3F: Phantom Ethereal — regular attack damage -30% ──
+    if (state.charClass === 'phantom' && state.etherealPlane) {
+      dmg = Math.floor(dmg * 0.7);
+    }
 
-    let attackLabel = `⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage`;
-    if (playerSlow)   attackLabel += ' (ช้าลง ⚠️)';
-    if (markedBuff)   attackLabel += ' (🎯 Marked!)';
-    log.push(attackLabel);
-    if (combo === 10)      log.push('🔥🔥 RAMPAGE ×10! +25% damage!');
-    else if (combo === 5)  log.push('🔥 COMBO ×5! +15% damage!');
-    else if (combo >= 3)   log.push(`🔥 Combo ×${combo}`);
+    // ── Phase 2D: Enemy Evasion Phase — chance to dodge ──
+    let attackDodged = false;
+    if (state.enemy.evasionPhase?.turnsLeft > 0) {
+      if (Math.random() < state.enemy.evasionPhase.dodgeRate) {
+        log.push(`💨 ${state.enemy.name} หลบหลีก! MISS! (Evasion Phase ${state.enemy.evasionPhase.turnsLeft} turns left)`);
+        state.comboCount = 0;  // Miss breaks combo
+        attackDodged = true;
+      }
+    }
+
+    if (!attackDodged) state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
+
+    if (!attackDodged) {
+      let attackLabel = `⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage`;
+      if (playerSlow)   attackLabel += ' (ช้าลง ⚠️)';
+      if (markedBuff)   attackLabel += ' (🎯 Marked!)';
+      log.push(attackLabel);
+      if (combo === 10)      log.push('🔥🔥 RAMPAGE ×10! +25% damage!');
+      else if (combo === 5)  log.push('🔥 COMBO ×5! +15% damage!');
+      else if (combo >= 3)   log.push(`🔥 Combo ×${combo}`);
+
+      // ── Momentum build ──
+      const momGain = isSuperCrit ? 20 : isCrit ? 15 : 10;
+      state.momentum = Math.min(100, (state.momentum || 0) + momGain);
+      if (state.momentum >= 100 && !state.limitBreakReady) {
+        state.limitBreakReady = true;
+        log.push('⚡ LIMIT BREAK พร้อมแล้ว! กด Limit Break เพื่อปล่อยพลังสูงสุด!');
+      }
+    }
 
   } else if (action === 'skill') {
     // ─── USE SKILL ───
@@ -366,6 +418,17 @@ async function processAction(req, res) {
     log.push('🛡️ ตั้งท่ารับ — ลด damage 45% รอบนี้ (+5 MP)');
     if (state.charClass === 'warrior') log.push('🗡️ Iron Will: ลด damage 60%!');
 
+  } else if (action === 'limit_break') {
+    // ── LIMIT BREAK: ปล่อยพลังสูงสุดของ class ──
+    if (!state.limitBreakReady) {
+      return res.status(400).json({ error: 'Limit Break ยังไม่พร้อม — ต้องการ Momentum เต็ม 100' });
+    }
+    const lbResult = applyLimitBreak(state, log);
+    if (!lbResult.success) return res.status(400).json({ error: lbResult.error });
+    state.momentum = 0;
+    state.limitBreakReady = false;
+    state.comboCount = (state.comboCount || 0) + 1;  // Limit break continues combo
+
   } else if (action === 'item') {
     // ใช้ item consumable (ใช้ได้แม้ถูก stun)
     state.comboCount = 0;  // Using item breaks combo
@@ -374,6 +437,28 @@ async function processAction(req, res) {
 
   } else if (!isPlayerStunned) {
     return res.status(400).json({ error: 'action ไม่ถูกต้อง' });
+  }
+
+  // ===== Phase 2D: Enemy Counter / Reaction checks =====
+  if (state.enemy.hp > 0) {
+    const counterLog = checkEnemyCounters(state, action);
+    log.push(...counterLog);
+    // Tick evasion phase after player acts
+    if (state.enemy.evasionPhase) {
+      state.enemy.evasionPhase.turnsLeft--;
+      if (state.enemy.evasionPhase.turnsLeft <= 0) {
+        state.enemy.evasionPhase = null;
+        log.push(`💨 ${state.enemy.name} หยุด Evasion Phase`);
+      }
+    }
+    // If counter killed player
+    if (state.player.hp <= 0) {
+      log.push('💀 คุณพ่ายแพ้โดยการโต้กลับของ ' + state.enemy.name);
+      await handlePlayerDeath(uid, state);
+      state.result = 'defeat';
+      await deleteBattle(db, battleId);
+      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
+    }
   }
 
   // ===== Boss Phase 2 transition =====
@@ -395,6 +480,13 @@ async function processAction(req, res) {
   // ===== Check enemy dead =====
   if (state.enemy.hp <= 0) {
     log.push(`💀 ${state.enemy.name} พ่ายแพ้!`);
+    // Phase 3C: Necromancer gains soul shard on kill
+    if (state.charClass === 'necromancer' && state.soulShards !== undefined) {
+      if (state.soulShards < 3) {
+        state.soulShards++;
+        log.push(`🦴 Soul Shard! (${state.soulShards}/3) — ใช้ Bone Explosion ×2 shards เพื่อ Raise Dead`);
+      }
+    }
     const rewards = await grantRewards(uid, state);
     log.push(...rewards.log);
     state.result = 'victory';
@@ -474,6 +566,21 @@ async function processAction(req, res) {
     }
   }
 
+  // ── Phase 2D: Tick down enemy shield phase ──
+  if (state.enemy.shieldPhase) {
+    state.enemy.shieldPhase.turnsLeft--;
+    if (state.enemy.shieldPhase.turnsLeft <= 0) {
+      // Restore DEF (reverse the defMult that was applied)
+      if (state.enemy.shieldPhase.defMult > 0) {
+        state.enemy.def = Math.floor(state.enemy.def / state.enemy.shieldPhase.defMult);
+      }
+      state.enemy.shieldPhase = null;
+      log.push(`🛡️ ${state.enemy.name} Shield Phase สิ้นสุด — DEF กลับสู่ปกติ`);
+    } else {
+      log.push(`🛡️ Shield Phase active (${state.enemy.shieldPhase.turnsLeft} turns left)`);
+    }
+  }
+
   // Process player buffs (atkMult/defMult/critBonus) — apply/tick
   processBuff(state.player, log);
 
@@ -522,6 +629,18 @@ async function processAction(req, res) {
     let rawEnemyDmg = calcDamage(enemyAtk, state.player.def);
     if (usedMove?.dmgMult) rawEnemyDmg = Math.floor(rawEnemyDmg * usedMove.dmgMult);
 
+    // ── Phase 3F: Phantom Ethereal Plane — physical damage -50% ──
+    if (state.charClass === 'phantom' && state.etherealPlane) {
+      rawEnemyDmg = Math.floor(rawEnemyDmg * 0.5);
+      log.push(`👻 Ethereal Plane! Physical damage halved! (${state.etherealTurns - 1} turns left)`);
+      state.etherealTurns = (state.etherealTurns || 1) - 1;
+      if (state.etherealTurns <= 0) {
+        state.etherealPlane = false;
+        state.etherealTurns = 0;
+        log.push('👻 กลับสู่ Material Plane');
+      }
+    }
+
     // ── Guard damage reduction ──
     let guardMult = 1.0;
     if (state.player.isGuarding) {
@@ -538,6 +657,19 @@ async function processAction(req, res) {
 
     const guardLabel = guardMult < 1.0 ? ` 🛡️ GUARDED! (-${Math.round((1 - guardMult) * 100)}%)` : '';
     log.push(`👹 ${state.enemy.name} ${moveName}${attackMsg}! ${enemyDmg} damage${slowBuff ? ' (ช้าลง)' : ''}${guardLabel}`);
+
+    // ── Phase 3A: Berserker Rage — รับ damage → +1 Rage ──────────
+    if (state.charClass === 'berserker' && enemyDmg > 0 && state.rageStacks !== undefined) {
+      const prevRage = state.rageStacks;
+      state.rageStacks = Math.min(10, state.rageStacks + 1);
+      // Each rage stack: +5% ATK (recalculate from base)
+      state.player.atk = Math.floor(state.player.atkBase * (1 + state.rageStacks * 0.05));
+      log.push(`🔥 Rage! Stack ×${state.rageStacks} — ATK +${state.rageStacks * 5}%`);
+      if (state.rageStacks >= 10 && !state.frenzying) {
+        state.frenzying = true;
+        log.push('💢 FRENZY!! การโจมตีครั้งต่อไปจะฟาด 2 ครั้ง!!');
+      }
+    }
 
     // Apply named move special effect
     if (usedMove?.effect && guardMult === 1.0 && !state.player.status.find(s => s.type === usedMove.effect.type)) {
@@ -584,9 +716,330 @@ async function processAction(req, res) {
     return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
   }
 
+  // ── Phase 3: Per-turn class mechanics (after enemy turn) ─────────
+
+  // 3A: Berserker FRENZY — bonus attack this turn if frenzying
+  if (state.charClass === 'berserker' && state.frenzying && state.enemy.hp > 0 && state.player.hp > 0) {
+    state.frenzying = false;
+    state.rageStacks = 0;
+    // Reset ATK to base (rage buff gone)
+    state.player.atk = state.player.atkBase;
+    const frenzyDmg = calcDamage(state.player.atk, state.enemy.def);
+    state.enemy.hp = Math.max(0, state.enemy.hp - frenzyDmg);
+    log.push(`💢 FRENZY 2nd STRIKE! ${frenzyDmg} damage! (Rage reset)`);
+    if (state.enemy.hp <= 0) {
+      log.push(`💀 ${state.enemy.name} พ่ายแพ้! (FRENZY finish)`);
+      const rewards = await grantRewards(uid, state);
+      log.push(...rewards.log);
+      state.result = 'victory';
+      await deleteBattle(db, battleId);
+      trackQuestProgress(uid, 'kill', 1).catch(() => {});
+      trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
+      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(() => {});
+      checkAchievements(uid, 'kill', 1).catch(() => {});
+      pushGameEvent(uid, { type: 'kill', msg: `⚔️ สังหาร ${state.enemy.emoji} ${state.enemy.name}! (FRENZY!)`, char: uid }).catch(() => {});
+      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory' }, rewards });
+    }
+  }
+
+  // 3B: Engineer Turret — fires every turn
+  if (state.charClass === 'engineer' && state.turret?.active && state.enemy.hp > 0) {
+    const tDmg = state.turret.dmg || 12;
+    state.enemy.hp = Math.max(0, state.enemy.hp - tDmg);
+    state.turret.turnsLeft--;
+    log.push(`⚙️ Turret fires! ${tDmg} damage (${state.turret.turnsLeft} turns left)`);
+    if (state.turret.turnsLeft <= 0) {
+      state.turret = null;
+      log.push('⚙️ Turret สิ้นสุดการทำงาน');
+    }
+    if (state.enemy.hp <= 0) {
+      log.push(`💀 ${state.enemy.name} พ่ายแพ้! (Turret finish)`);
+      const rewards = await grantRewards(uid, state);
+      log.push(...rewards.log);
+      state.result = 'victory';
+      await deleteBattle(db, battleId);
+      trackQuestProgress(uid, 'kill', 1).catch(() => {});
+      trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
+      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(() => {});
+      checkAchievements(uid, 'kill', 1).catch(() => {});
+      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory' } });
+    }
+  }
+
+  // 3C: Necromancer Minions — process each minion
+  if (state.charClass === 'necromancer' && state.minions?.length > 0 && state.enemy.hp > 0) {
+    const aliveMinions = [];
+    for (const m of state.minions) {
+      const mDmg = m.dmg || 8;
+      state.enemy.hp = Math.max(0, state.enemy.hp - mDmg);
+      log.push(`🦴 Skeleton โจมตี! ${mDmg} damage (${m.turnsLeft - 1} turns left)`);
+      if (m.turnsLeft - 1 > 0) aliveMinions.push({ ...m, turnsLeft: m.turnsLeft - 1 });
+      else log.push('💀 Skeleton สลายไปแล้ว');
+    }
+    state.minions = aliveMinions;
+    if (state.enemy.hp <= 0) {
+      log.push(`💀 ${state.enemy.name} พ่ายแพ้! (Minion finish)`);
+      const rewards = await grantRewards(uid, state);
+      log.push(...rewards.log);
+      state.result = 'victory';
+      await deleteBattle(db, battleId);
+      trackQuestProgress(uid, 'kill', 1).catch(() => {});
+      trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
+      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(() => {});
+      checkAchievements(uid, 'kill', 1).catch(() => {});
+      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory' } });
+    }
+  }
+
+  // 3E: Bard Song Stacking — +3% ATK per turn while a song buff is active (max 10 stacks)
+  if (state.charClass === 'bard' && state.songActive && state.player.hp > 0) {
+    const hasSongBuff = (state.player.buffs || []).some(b => b.isSong);
+    if (hasSongBuff) {
+      if ((state.songStacks || 0) < 10) {
+        state.songStacks = (state.songStacks || 0) + 1;
+        // Recalculate ATK with song bonus (+3% per stack, stacked on atkBase)
+        const songMult = 1 + state.songStacks * 0.03;
+        state.player.atk = Math.floor(state.player.atkBase * songMult);
+        log.push(`🎵 Song Stack ×${state.songStacks}! ATK +${state.songStacks * 3}% (${state.player.atk})`);
+      }
+    } else {
+      // Song buff expired — reset ATK and song state
+      if (state.songStacks > 0) {
+        state.player.atk = state.player.atkBase;
+        log.push(`🎵 เพลงสิ้นสุด — ATK กลับสู่ปกติ (Song Stack ×${state.songStacks} หมดอายุ)`);
+        state.songStacks = 0;
+      }
+      state.songActive = false;
+    }
+  }
+
   state.turn++;
   await saveBattle(db, battleId, state);
   return res.json({ battleId, state: { ...sanitizeState(state), log, result: null } });
+}
+
+// ─── Phase 3G: Elemental Damage System ───────────────────────────
+// element → modifier per monster TYPE
+// >1.0 = weakness (takes more damage), <1.0 = resistance (takes less damage)
+const TYPE_ELEMENT_MODIFIERS = {
+  beast:     { fire: 1.5, ice: 1.0, lightning: 1.0, void: 0.7, holy: 1.0, shadow: 1.0, arcane: 1.0 },
+  undead:    { fire: 1.0, ice: 0.7, lightning: 1.0, void: 1.0, holy: 2.0, shadow: 0.7, arcane: 1.0 },
+  void:      { fire: 0.7, ice: 1.0, lightning: 1.0, void: 0.5, holy: 1.5, shadow: 1.0, arcane: 1.2 },
+  human:     { fire: 1.0, ice: 1.0, lightning: 1.0, void: 1.5, holy: 1.0, shadow: 1.2, arcane: 1.0 },
+  construct: { fire: 1.0, ice: 1.0, lightning: 1.5, void: 1.0, holy: 1.0, shadow: 1.0, arcane: 0.8 },
+  demon:     { fire: 0.7, ice: 1.5, lightning: 1.0, void: 1.0, holy: 2.0, shadow: 0.7, arcane: 1.0 },
+};
+
+const ELEMENT_ICONS = { fire:'🔥', ice:'❄️', lightning:'⚡', void:'🌌', holy:'✨', shadow:'🌑', arcane:'🔮' };
+
+function checkElementModifier(skillDef, enemyType, dmg) {
+  if (!skillDef.element || !enemyType || enemyType === 'unknown') return null;
+  const typeRow = TYPE_ELEMENT_MODIFIERS[enemyType];
+  if (!typeRow) return null;
+  const mod = typeRow[skillDef.element];
+  if (!mod || mod === 1.0) return null;
+  const newDmg = Math.floor(dmg * mod);
+  const icon = ELEMENT_ICONS[skillDef.element] || '✨';
+  if (mod > 1.0) {
+    return { dmg: newDmg, msg: `${icon} WEAKNESS! ×${mod.toFixed(1)} — ${newDmg} damage!`, type: 'weakness' };
+  } else {
+    return { dmg: newDmg, msg: `${icon} RESIST! ×${mod.toFixed(1)} — ${newDmg} damage`, type: 'resist' };
+  }
+}
+
+// ─── Phase 2D: Enemy Counter / Reaction System ───────────────────
+// Called after any player action; applies counter effects to battle state
+// Returns array of log strings
+function checkEnemyCounters(state, playerAction) {
+  const counters = state.enemy.counters;
+  if (!counters || !Array.isArray(counters) || state.enemy.hp <= 0) return [];
+  const log = [];
+  const triggered = state.counterTriggered || {};
+
+  for (const counter of counters) {
+    const key = `${counter.trigger}_${counter.count || counter.threshold || 'any'}`;
+    const r = counter.response;
+
+    // ── consecutiveAttack: player uses normal attack N times in a row ──
+    if (counter.trigger === 'consecutiveAttack') {
+      if (playerAction === 'attack') {
+        state.consecutiveAttacks = (state.consecutiveAttacks || 0) + 1;
+      } else {
+        state.consecutiveAttacks = 0;  // reset on skill/guard/other
+      }
+      if ((state.consecutiveAttacks || 0) >= counter.count) {
+        // fire counter (can repeat)
+        state.consecutiveAttacks = 0;
+        if (r.type === 'counterAttack') {
+          const cDmg = Math.max(1, Math.floor(calcDamage(state.enemy.atk, state.player.def) * (r.dmgMult || 1.5)));
+          state.player.hp = Math.max(0, state.player.hp - cDmg);
+          log.push(r.log || '⚡ Counter Attack!');
+          log.push(`💥 Counter Attack: ${cDmg} damage!!`);
+        }
+      }
+    }
+
+    // ── hpBelow: one-time trigger when enemy HP drops below threshold ──
+    if (counter.trigger === 'hpBelow' && !triggered[key]) {
+      const hpPct = state.enemy.hp / state.enemy.hpMax;
+      if (hpPct <= counter.threshold) {
+        triggered[key] = true;
+        if (r.type === 'enrage') {
+          state.enemy.atk = Math.floor(state.enemy.atk * (r.atkMult || 1.3));
+          if (r.defMult) state.enemy.def = Math.floor(state.enemy.def * r.defMult);
+          log.push(r.log || `💢 ${state.enemy.name} ENRAGE!`);
+        } else if (r.type === 'shieldPhase') {
+          state.enemy.shieldPhase = { defMult: r.defMult || 0.3, turnsLeft: r.duration || 2 };
+          state.enemy.def = Math.floor(state.enemy.def * (r.defMult || 0.3));
+          log.push(r.log || `🛡️ ${state.enemy.name} Shield Phase!`);
+        } else if (r.type === 'evasionPhase') {
+          state.enemy.evasionPhase = { dodgeRate: r.dodgeRate || 0.4, turnsLeft: r.duration || 1 };
+          log.push(r.log || `💨 ${state.enemy.name} Evasion Phase!`);
+        }
+      }
+    }
+
+    // ── statusApplied: one-time trigger when a status is applied to enemy ──
+    if (counter.trigger === 'statusApplied' && !triggered[key]) {
+      if (state.enemy.status.length > 0) {
+        triggered[key] = true;
+        if (r.type === 'enrage') {
+          state.enemy.atk = Math.floor(state.enemy.atk * (r.atkMult || 1.3));
+          if (r.defMult) state.enemy.def = Math.floor(state.enemy.def * r.defMult);
+          log.push(r.log || `💢 ${state.enemy.name} ENRAGE! (status reaction)`);
+        } else if (r.type === 'evasionPhase') {
+          state.enemy.evasionPhase = { dodgeRate: r.dodgeRate || 0.35, turnsLeft: r.duration || 1 };
+          log.push(r.log || `💨 ${state.enemy.name} หลบภัย!`);
+        }
+      }
+    }
+  }
+  state.counterTriggered = triggered;
+  return log;
+}
+
+// ─── Phase 2B: Skill Synergy Combos ─────────────────────────────
+// Returns { dmg, msg } if synergy fires, null otherwise
+const SYNERGY_MAP = {
+  // skillId → { requiredStatus, multiplier, name, removeStatus }
+  heavy_strike:       { req: 'MARKED',  mult: 2.0, name: '⚔️ MARKED EXECUTION! ×2.0',     remove: false },
+  fireball:           { req: 'BURN',    mult: 1.8, name: '🔥 INCINERATE! ×1.8',            remove: false },
+  shadow_strike:      { req: 'BLEED',   mult: 1.6, name: '🩸 HEMORRHAGE! ×1.6',            remove: false },
+  void_hex:           { req: 'CURSE',   mult: 1.7, name: '🌑 VOID DOOM! ×1.7',             remove: false },
+  poison_arrow:       { req: 'POISON',  mult: 1.5, name: '☠️ TOXIC OVERDOSE! ×1.5',        remove: false },
+  dimensional_slash:  { req: 'SLOW',    mult: 1.5, name: '🌀 FROZEN SLASH! ×1.5',          remove: false },
+  death_bolt:         { req: 'MARKED',  mult: 1.5, name: '💀 DEATH MARK! ×1.5',            remove: false },
+  bone_explosion:     { req: 'STUN',    mult: 1.6, name: '💥 SHATTER! ×1.6',               remove: false },
+  execute:            { req: 'SLOW',    mult: 1.4, name: '⚰️ REAPER\'S TIMING! ×1.4',      remove: false },
+  holy_nova:          { req: 'BURN',    mult: 1.5, name: '✨ HOLY SEAR! ×1.5',             remove: false },
+  primal_strike:      { req: 'POISON',  mult: 1.4, name: '🐾 VENOM HUNT! ×1.4',           remove: false },
+};
+
+function checkSynergy(skillId, enemyStatus, currentDmg, enemyName) {
+  const syn = SYNERGY_MAP[skillId];
+  if (!syn) return null;
+  const hasStatus = enemyStatus.some(s => s.type === syn.req);
+  if (!hasStatus) return null;
+  const newDmg = Math.floor(currentDmg * syn.mult);
+  return {
+    dmg: newDmg,
+    msg: `✨ SYNERGY! ${syn.name} — ${enemyName} เสียหาย ${newDmg}!`,
+  };
+}
+
+// ─── Phase 2C: Limit Break per class ─────────────────────────────
+const LIMIT_BREAK_DEFS = {
+  warrior:     { name: '⚔️ Titan Slam',      dmgMult: 5.0, magicDamage: false, armorPierce: false, selfHeal: 0,    effect: { type: 'STUN', duration: 2 } },
+  rogue:       { name: '🌑 Shadowstorm',      dmgMult: 6.0, magicDamage: false, armorPierce: false, selfHeal: 0,    forceCrit: true },
+  cleric:      { name: '⚡ Holy Judgment',    dmgMult: 4.0, magicDamage: true,  armorPierce: false, selfHeal: 0.30, effect: { type: 'STUN', duration: 1 } },
+  ranger:      { name: '🏹 Arrow Storm',      dmgMult: 4.0, magicDamage: false, armorPierce: false, selfHeal: 0,    multiHit: 3 },
+  mage:        { name: '🔥 Arcane Explosion', dmgMult: 8.0, magicDamage: true,  armorPierce: true,  selfHeal: 0 },
+  bard:        { name: '🎵 Grand Finale',     dmgMult: 3.0, magicDamage: true,  armorPierce: false, selfHeal: 0,    selfBuff: { atkMult: 1.8, duration: 2 } },
+  berserker:   { name: '💢 Berserk OMEGA',   dmgMult: 7.0, magicDamage: false, armorPierce: false, selfHeal: 0,    multiHit: 3, selfDmgPct: 0.15 },
+  engineer:    { name: '💣 Mega Bomb',        dmgMult: 5.0, magicDamage: false, armorPierce: false, selfHeal: 0,    effect: { type: 'BURN', duration: 3, dmgPerTurn: 20 } },
+  runesmith:   { name: '🔮 Master Rune',      dmgMult: 6.0, magicDamage: false, armorPierce: true,  selfHeal: 0 },
+  assassin:    { name: '⚰️ Death Blossom',    dmgMult: 4.0, magicDamage: false, armorPierce: true,  selfHeal: 0,    multiHit: 3, forceCrit: true },
+  hexblade:    { name: '🌑 Soul Shatter',     dmgMult: 6.0, magicDamage: true,  armorPierce: true,  selfHeal: 0,    effect: { type: 'CURSE', duration: 3, dmgPerTurn: 20 } },
+  phantom:     { name: '👻 Phase Collapse',   dmgMult: 5.0, magicDamage: true,  armorPierce: true,  selfHeal: 0 },
+  deathknight: { name: '💀 Death\'s Embrace', dmgMult: 4.0, magicDamage: false, armorPierce: false, selfHeal: 0.5 },
+  necromancer: { name: '💀 Lich Burst',       dmgMult: 5.5, magicDamage: true,  armorPierce: true,  selfHeal: 0,    selfDmgPct: 0.1 },
+  gravecaller: { name: '🪦 Grave Explosion',  dmgMult: 5.0, magicDamage: true,  armorPierce: false, selfHeal: 0,    multiHit: 2, effect: { type: 'STUN', duration: 1 } },
+  voidwalker:  { name: '🌀 Void Rupture',     dmgMult: 6.0, magicDamage: false, armorPierce: true,  selfHeal: 0 },
+  rifter:      { name: '💥 Rift Collapse',    dmgMult: 3.0, magicDamage: false, armorPierce: false, selfHeal: 0,    multiHit: 4, forceCrit: true },
+  soulseer:    { name: '⭐ Fate Seal',        dmgMult: 5.0, magicDamage: true,  armorPierce: false, selfHeal: 0,    effect: { type: 'MARKED', dmgMultiplier: 2.0, duration: 3 } },
+  wildguard:   { name: '🦁 Wild Surge',       dmgMult: 4.0, magicDamage: false, armorPierce: false, selfHeal: 0.20, selfBuff: { defMult: 2.0, duration: 2 } },
+  tracker:     { name: '🦊 Death Hunt',       dmgMult: 6.0, magicDamage: false, armorPierce: false, selfHeal: 0 },
+  shaman:      { name: '🌊 Spirit Wave',      dmgMult: 5.0, magicDamage: true,  armorPierce: true,  selfHeal: 0.20, multiHit: 2 },
+};
+
+function applyLimitBreak(state, log) {
+  const lbDef = LIMIT_BREAK_DEFS[state.charClass];
+  if (!lbDef) return { success: false, error: `ไม่มี Limit Break สำหรับ class ${state.charClass}` };
+
+  log.push(`⚡💥 LIMIT BREAK — ${lbDef.name}!!`);
+
+  const hits = lbDef.multiHit || 1;
+  let totalDmg = 0;
+
+  for (let h = 0; h < hits; h++) {
+    let dmg;
+    if (lbDef.magicDamage) {
+      dmg = Math.floor(state.player.mag * lbDef.dmgMult);
+    } else {
+      if (lbDef.armorPierce) {
+        dmg = Math.floor(state.player.atk * lbDef.dmgMult);
+      } else {
+        dmg = Math.floor(calcDamage(state.player.atk, state.enemy.def) * lbDef.dmgMult);
+      }
+    }
+    // Limit break always super-crits if forceCrit
+    if (lbDef.forceCrit) {
+      const cm = state.player.critMult || 1.5;
+      dmg = Math.floor(dmg * cm);
+    }
+    state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
+    totalDmg += dmg;
+    if (hits > 1) log.push(`  💥 Hit ${h + 1}: ${dmg} damage`);
+  }
+  if (hits === 1) log.push(`💥 ${lbDef.name}: ${totalDmg} damage${lbDef.magicDamage ? ' (magic)' : ''}!`);
+  else log.push(`💥 Total: ${totalDmg} damage!`);
+
+  // Self heal
+  if (lbDef.selfHeal > 0) {
+    const healed = Math.floor(state.player.hpMax * lbDef.selfHeal);
+    state.player.hp = Math.min(state.player.hpMax, state.player.hp + healed);
+    log.push(`💚 ฟื้นฟู ${healed} HP จาก ${lbDef.name}`);
+  }
+
+  // Self damage
+  if (lbDef.selfDmgPct > 0) {
+    const selfDmg = Math.floor(state.player.hpMax * lbDef.selfDmgPct);
+    state.player.hp = Math.max(1, state.player.hp - selfDmg);
+    log.push(`🩸 เสีย ${selfDmg} HP จากพลังที่ปลดปล่อย`);
+  }
+
+  // Apply effect to enemy
+  if (lbDef.effect) {
+    const ef = lbDef.effect;
+    state.enemy.status = state.enemy.status.filter(s => s.type !== ef.type);
+    if (ef.type === 'STUN')   state.enemy.status.push({ type: 'STUN',  duration: ef.duration });
+    if (ef.type === 'BURN')   state.enemy.status.push({ type: 'BURN',  duration: ef.duration, dmgPerTurn: ef.dmgPerTurn || 15 });
+    if (ef.type === 'CURSE')  state.enemy.status.push({ type: 'CURSE', duration: ef.duration, dmgPerTurn: ef.dmgPerTurn || 15 });
+    if (ef.type === 'MARKED') state.enemy.status.push({ type: 'MARKED',duration: ef.duration, dmgMultiplier: ef.dmgMultiplier || 1.5, defMult: 1.0 });
+    log.push(`⚠️ ${state.enemy.name} ถูก ${ef.type} จาก ${lbDef.name}!`);
+  }
+
+  // Self buff
+  if (lbDef.selfBuff) {
+    const buff = { ...lbDef.selfBuff, appliedAt: state.turn };
+    state.player.buffs = state.player.buffs || [];
+    if (buff.atkMult) state.player.atk = Math.floor(state.player.atkBase * buff.atkMult);
+    if (buff.defMult) state.player.def = Math.floor(state.player.defBase * buff.defMult);
+    state.player.buffs.push(buff);
+    log.push(`🔥 ATK พุ่งสูงสุด! +${Math.round((buff.atkMult - 1) * 100)}% (${buff.duration} เทิร์น)`);
+  }
+
+  return { success: true };
 }
 
 // ─── Pick Named Enemy Move (weighted random) ──────────────────────
@@ -672,6 +1125,44 @@ function applySkill(state, skillId, log) {
       if (isCC) { dmg = Math.floor(dmg * 4); log.push('🥷 Backstab! ×4 damage (CC target)!'); }
     }
 
+    // ── Phase 2A: bonusVsType — Type Advantage ──
+    if (skillDef.bonusVsType?.length && state.enemy.type) {
+      if (skillDef.bonusVsType.includes(state.enemy.type)) {
+        const typeMult = skillDef.bonusMult || 1.5;
+        dmg = Math.floor(dmg * typeMult);
+        const typeLabel = state.enemy.type.charAt(0).toUpperCase() + state.enemy.type.slice(1);
+        log.push(`⚡ Type Advantage! vs ${typeLabel} — ×${typeMult} damage!`);
+      }
+    }
+
+    // ── Phase 3G: Elemental Weakness / Resistance ──
+    const elemResult = checkElementModifier(skillDef, state.enemy.type, dmg);
+    if (elemResult) {
+      dmg = elemResult.dmg;
+      log.push(elemResult.msg);
+    }
+
+    // ── Phase 2B: Skill Synergy Combos ──
+    const synergyResult = checkSynergy(skillDef.id, state.enemy.status, dmg, state.enemy.name);
+    if (synergyResult) {
+      dmg = synergyResult.dmg;
+      log.push(synergyResult.msg);
+    }
+
+    // ── Phase 3F: Phantom Ethereal — physical skill damage -30% ──
+    if (state.charClass === 'phantom' && state.etherealPlane && !skillDef.magicDamage) {
+      dmg = Math.floor(dmg * 0.7);
+      log.push('👻 Ethereal Plane: Physical attack power -30%');
+    }
+
+    // ── Momentum build from skills ──
+    const skillMomGain = (isSuperCrit2 ? 20 : isCrit2 ? 15 : 12);
+    state.momentum = Math.min(100, (state.momentum || 0) + skillMomGain);
+    if (state.momentum >= 100 && !state.limitBreakReady) {
+      state.limitBreakReady = true;
+      log.push('⚡ LIMIT BREAK พร้อมแล้ว! กด Limit Break เพื่อปล่อยพลังสูงสุด!');
+    }
+
     // Skills count as combo hits
     state.comboCount = (state.comboCount || 0) + 1;
     const sCombo = state.comboCount;
@@ -727,6 +1218,56 @@ function applySkill(state, skillId, log) {
       state.enemy.status.push({ type: 'MARKED', duration: ef.duration, dmgMultiplier: ef.dmgMultiplier || 1.0, defMult: ef.defMult || 1.0 });
       log.push(`🎯 รีเฟรช Mark บน ${state.enemy.name}!`);
     }
+  }
+
+  // ── Phase 3B: Engineer — deploy_turret skill ─────────────────────
+  if (skillDef.id === 'deploy_turret' && state.charClass === 'engineer') {
+    state.turret = { active: true, dmg: Math.floor(10 + (state.player.atk || 20) * 0.3), turnsLeft: 4 };
+    log.push(`⚙️ Turret ติดตั้งแล้ว! ยิง ${state.turret.dmg} damage ทุก turn เป็นเวลา 4 turns`);
+  }
+
+  // ── Phase 3C: Necromancer — bone_explosion spends soul shards ─────
+  if (skillDef.id === 'bone_explosion' && state.charClass === 'necromancer') {
+    if ((state.soulShards || 0) >= 2) {
+      state.soulShards -= 2;
+      const minionDmg = Math.floor(6 + (state.player.mag || 30) * 0.15);
+      state.minions = state.minions || [];
+      state.minions.push({ dmg: minionDmg, turnsLeft: 5 });
+      log.push(`🦴 Raise Dead! Skeleton (${minionDmg} dmg/turn, 5 turns) ถูกปลุก! (-2 Soul Shards)`);
+    }
+  }
+
+  // ── Phase 3D: Rifter — rift_punch builds void charges ────────────
+  if (skillDef.id === 'rift_punch' && state.charClass === 'rifter') {
+    state.voidCharges = Math.min(5, (state.voidCharges || 0) + 1);
+    log.push(`⚡ Void Charge! ×${state.voidCharges}`);
+    if (state.voidCharges >= 5) {
+      log.push('⚡ VOID CHARGED MAX! phase_assault จะระเบิดพลัง!');
+    }
+  }
+
+  // ── Phase 3D: Rifter — phase_assault releases all charges ─────────
+  if (skillDef.id === 'phase_assault' && state.charClass === 'rifter' && (state.voidCharges || 0) > 0) {
+    const chargeDmg = state.voidCharges * 25;
+    state.enemy.hp = Math.max(0, state.enemy.hp - chargeDmg);
+    log.push(`💥 VOID RELEASE! ${state.voidCharges} charges × 25 = ${chargeDmg} bonus damage!!`);
+    state.voidCharges = 0;
+  }
+
+  // ── Phase 3E: Bard — battle_hymn triggers song stacking ──────────
+  if (skillDef.id === 'battle_hymn' && state.charClass === 'bard') {
+    state.songActive = true;
+    // Mark the buff so per-turn logic can detect it
+    const lastBuff = (state.player.buffs || []).slice(-1)[0];
+    if (lastBuff) lastBuff.isSong = true;
+    log.push(`🎵 Battle Hymn! Song Stacking เริ่มต้น — ATK จะเพิ่ม +3% ต่อ turn สูงสุด ×10!`);
+  }
+
+  // ── Phase 3F: Phantom — phase_shift enters ethereal plane ────────
+  if (skillDef.id === 'phase_shift' && state.charClass === 'phantom') {
+    state.etherealPlane = true;
+    state.etherealTurns = 2;
+    log.push('👻 เข้าสู่ Ethereal Plane! รับ Physical Damage -50% เป็นเวลา 2 turns!');
   }
 
   return { success: true, goFirst: skillDef.goFirst || false };
@@ -992,7 +1533,22 @@ function sanitizeState(state) {
     result:         state.result,
     charClass:      state.charClass,
     unlockedSkills: state.unlockedSkills,
-    comboCount:     state.comboCount || 0,
+    comboCount:       state.comboCount || 0,
+    momentum:         Math.min(100, state.momentum || 0),
+    limitBreakReady:  state.limitBreakReady || false,
+    // Phase 3: class resources
+    rageStacks:       state.rageStacks,
+    frenzying:        state.frenzying,
+    turret:           state.turret ? { dmg: state.turret.dmg, turnsLeft: state.turret.turnsLeft } : null,
+    soulShards:       state.soulShards,
+    minions:          state.minions ? state.minions.map(m => ({ dmg: m.dmg, turnsLeft: m.turnsLeft })) : null,
+    voidCharges:      state.voidCharges,
+    // Phase 3E: Bard song stacking
+    songStacks:       state.songStacks,
+    songActive:       state.songActive,
+    // Phase 3F: Phantom ethereal plane
+    etherealPlane:    state.etherealPlane,
+    etherealTurns:    state.etherealTurns,
     telegraphMove:  state.telegraphMove ? {
       name:        state.telegraphMove.name,
       emoji:       state.telegraphMove.emoji || '⚠️',
@@ -1015,13 +1571,17 @@ function sanitizeState(state) {
       })),
     },
     enemy: {
-      monsterId: state.enemy.monsterId,
-      name:      state.enemy.name,
-      emoji:     state.enemy.emoji,
-      desc:      state.enemy.desc,
-      hp:        state.enemy.hp,
-      hpMax:     state.enemy.hpMax,
-      status:    state.enemy.status,
+      monsterId:    state.enemy.monsterId,
+      name:         state.enemy.name,
+      emoji:        state.enemy.emoji,
+      desc:         state.enemy.desc,
+      type:         state.enemy.type || 'unknown',
+      hp:           state.enemy.hp,
+      hpMax:        state.enemy.hpMax,
+      status:       state.enemy.status,
+      // Phase 2D: counter state indicators for frontend
+      shieldPhase:  state.enemy.shieldPhase ? { turnsLeft: state.enemy.shieldPhase.turnsLeft } : null,
+      evasionPhase: state.enemy.evasionPhase ? { turnsLeft: state.enemy.evasionPhase.turnsLeft, dodgeRate: state.enemy.evasionPhase.dodgeRate } : null,
     },
   };
 }
