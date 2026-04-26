@@ -115,6 +115,11 @@ router.post('/quests/claim', quests.claimReward);
 router.get ('/quest-log',          questEngine.getQuestLog);
 router.post('/quest-log/accept',   questEngine.acceptSideQuest);
 
+// ----- Main Quest (Vorath / The Shattered Age) -----
+router.get ('/quest-main',            questEngine.getMainQuestLog);
+router.post('/quest-main/lore',       questEngine.collectLore);
+router.post('/quest-main/choice',     questEngine.makeQuestChoice);
+
 // ----- RP Shop -----
 router.get ('/rp-shop',                  shopLimiter, rpShop.getRPShop);
 router.post('/rp-shop/buy',              shopLimiter, rpShop.buyRPItem);

@@ -9,7 +9,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getDungeons, getDungeonRun, enterDungeon, dungeonAction, dungeonFlee,
          requestVerify, getVerifyStatus,
          getQuests, claimQuestReward,
-         getQuestLog, acceptSideQuest,
+         getQuestLog, acceptSideQuest, getMainQuestLog, collectLore, makeQuestChoice,
          getRPShop, buyRPItem,
          getSkills, unlockSkill,
          getCharacterProfile, allocateStat, equipTitle,
@@ -167,7 +167,11 @@ export default function GameWorld() {
 
   // ── Quest Log (Story + Side) ──
   const [questLog,       setQuestLog]       = useState(null);   // { story, sideActive, sideCompleted, sideAvailable }
-  const [questLogTab,    setQuestLogTab]    = useState('story');  // 'story' | 'side'
+  const [questLogTab,    setQuestLogTab]    = useState('story');  // 'story' | 'side' | 'main'
+
+  // ── Main Quest Log (Vorath / The Shattered Age) ──
+  const [mainQuestLog,   setMainQuestLog]   = useState(null);   // { quests, currentAct, choiceFlags, loreFragments }
+  const [mainQuestTab,   setMainQuestTab]   = useState('quests'); // 'quests' | 'lore'
 
   // ── RP Shop ──
   const [rpShopItems,    setRPShopItems]    = useState([]);
@@ -343,6 +347,31 @@ export default function GameWorld() {
     setScreen(SCREENS.QUEST_LOG);
     await loadQuestLog();
   }, [loadQuestLog]);
+
+  // ===== Main Quest Log (Vorath / The Shattered Age) =====
+  const loadMainQuestLog = useCallback(async () => {
+    try {
+      const { data } = await getMainQuestLog();
+      setMainQuestLog(data);
+    } catch {}
+  }, []);
+
+  const openMainQuestLog = useCallback(async () => {
+    setMainQuestTab('quests');
+    setScreen(SCREENS.QUEST_LOG);
+    setQuestLogTab('main');
+    await loadMainQuestLog();
+  }, [loadMainQuestLog]);
+
+  const handleMakeChoice = useCallback(async (choiceKey, choice, label) => {
+    try {
+      const { data } = await makeQuestChoice(choiceKey, choice);
+      toast.success(`✨ เลือก: ${label}`);
+      setMainQuestLog(prev => prev ? { ...prev, choiceFlags: { ...prev.choiceFlags, [choiceKey]: choice } } : prev);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ไม่สามารถเลือกได้');
+    }
+  }, []);
 
   const handleAcceptSideQuest = useCallback(async (questId, questName) => {
     try {
@@ -1646,6 +1675,7 @@ export default function GameWorld() {
                       📋 ภารกิจ
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
+                    <Btn onClick={openMainQuestLog} disabled={busy}>🌑 Vorath</Btn>
                     <Btn onClick={openQuestLog}     disabled={busy}>📖 เนื้อเรื่อง</Btn>
                     <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
@@ -2460,20 +2490,210 @@ export default function GameWorld() {
                 <div className="max-h-screen overflow-y-auto space-y-2">
                   {/* Tab switcher */}
                   <div className="flex gap-1 mb-3 sticky top-0 bg-black/80 backdrop-blur py-1 z-10">
-                    {['story', 'side'].map(tab => (
-                      <button key={tab} onClick={() => setQuestLogTab(tab)}
-                        className={`px-3 py-1 text-xs rounded border transition ${
-                          questLogTab === tab
+                    {[
+                      { key: 'main',  label: '🌑 เนื้อเรื่องหลัก' },
+                      { key: 'story', label: '📖 เนื้อเรื่อง' },
+                      { key: 'side',  label: '⚔️ ภารกิจพิเศษ' },
+                    ].map(({ key, label }) => (
+                      <button key={key} onClick={() => {
+                        setQuestLogTab(key);
+                        if (key === 'main' && !mainQuestLog) loadMainQuestLog();
+                        if ((key === 'story' || key === 'side') && !questLog) loadQuestLog();
+                      }}
+                        className={`px-2 py-1 text-xs rounded border transition ${
+                          questLogTab === key
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
                             : 'border-gray-700 text-gray-400 hover:text-gray-200'
                         }`}>
-                        {tab === 'story' ? '📖 เนื้อเรื่อง' : '⚔️ ภารกิจพิเศษ'}
+                        {label}
                       </button>
                     ))}
                     <Btn onClick={() => setScreen(SCREENS.WORLD)} className="ml-auto text-xs">← กลับ</Btn>
                   </div>
 
-                  {!questLog ? (
+                  {/* ── MAIN QUEST TAB (Vorath / The Shattered Age) ── */}
+                  {questLogTab === 'main' && (
+                    !mainQuestLog ? (
+                      <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {/* Act progress banner */}
+                        <div className="border border-purple-900 rounded-lg p-3 bg-purple-950/20 text-center">
+                          <p className="text-purple-400 text-xs font-bold tracking-wider uppercase">The Shattered Age</p>
+                          <p className="text-gray-300 text-sm mt-1">Act {mainQuestLog.currentAct} / 5</p>
+                          <div className="flex gap-1 justify-center mt-2">
+                            {[1,2,3,4,5].map(a => (
+                              <div key={a} className={`h-1 w-8 rounded-full transition-all ${
+                                a < mainQuestLog.currentAct ? 'bg-purple-600' :
+                                a === mainQuestLog.currentAct ? 'bg-purple-400' : 'bg-gray-800'
+                              }`} />
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Sub-tab: quests / lore */}
+                        <div className="flex gap-1">
+                          {[{ key:'quests', label:'📜 ภารกิจ' }, { key:'lore', label:'📚 Lore Fragments' }].map(({ key, label }) => (
+                            <button key={key} onClick={() => setMainQuestTab(key)}
+                              className={`px-2 py-1 text-xs rounded border transition ${
+                                mainQuestTab === key
+                                  ? 'border-purple-700 text-purple-300 bg-purple-900/20'
+                                  : 'border-gray-800 text-gray-500 hover:text-gray-300'
+                              }`}>
+                              {label}
+                              {key === 'lore' && <span className="ml-1 text-gray-600">({mainQuestLog.loreFragments?.length || 0}/10)</span>}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Quest list */}
+                        {mainQuestTab === 'quests' && (() => {
+                          const ACT_INFO = {
+                            1: { title: 'เมืองที่ถูกลืม',    emoji: '🏚️' },
+                            2: { title: 'คนตายพูดได้',       emoji: '💀' },
+                            3: { title: 'ตราที่พัง',         emoji: '🔮' },
+                            4: { title: 'ด้านที่มองไม่เห็น', emoji: '🌑' },
+                            5: { title: 'เทพผู้ถูกลืม',     emoji: '⚡' },
+                          };
+                          const byAct = mainQuestLog.quests.reduce((acc, q) => {
+                            if (!acc[q.act]) acc[q.act] = [];
+                            acc[q.act].push(q);
+                            return acc;
+                          }, {});
+                          return (
+                            <div className="space-y-3">
+                              {Object.keys(byAct).sort((a,b) => +a - +b).map(act => {
+                                const quests   = byAct[act];
+                                const info     = ACT_INFO[act] || { title: `Act ${act}`, emoji: '📜' };
+                                const done     = quests.filter(q => q.status === 'completed').length;
+                                const hasActive = quests.some(q => q.status === 'active');
+                                return (
+                                  <div key={act} className={`border rounded-lg overflow-hidden ${
+                                    hasActive ? 'border-purple-900' : 'border-gray-900'
+                                  }`}>
+                                    <div className={`flex items-center gap-2 px-3 py-2 ${
+                                      hasActive ? 'bg-purple-950/30' : 'bg-gray-950/50'
+                                    }`}>
+                                      <span className="text-base">{info.emoji}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`text-xs font-bold ${hasActive ? 'text-purple-300' : 'text-gray-600'}`}>
+                                          Act {act} — {info.title}
+                                        </p>
+                                      </div>
+                                      <span className="text-gray-700 text-xs">{done}/{quests.length}</span>
+                                    </div>
+                                    <div className="divide-y divide-gray-900/60">
+                                      {quests.map(q => (
+                                        <div key={q.id} className={`px-3 py-2.5 text-xs transition ${
+                                          q.status === 'completed' ? 'opacity-35' :
+                                          q.status === 'locked'    ? 'opacity-20' : ''
+                                        }`}>
+                                          <div className="flex items-start gap-2">
+                                            <span className={`shrink-0 mt-0.5 ${
+                                              q.status === 'completed' ? 'text-green-600' :
+                                              q.status === 'active'    ? 'text-purple-400' : 'text-gray-700'
+                                            }`}>
+                                              {q.status === 'completed' ? '✅' : q.status === 'active' ? '▶' : '🔒'}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                              <p className={`font-semibold leading-snug ${
+                                                q.status === 'active' ? 'text-purple-200' : 'text-gray-500'
+                                              }`}>{q.name}</p>
+                                              {q.status === 'active' && q.narrative && (
+                                                <p className="text-gray-400 leading-relaxed mt-1 italic text-xs">
+                                                  "{q.narrative.substring(0, 150)}{q.narrative.length > 150 ? '…' : ''}"
+                                                </p>
+                                              )}
+                                              {q.status === 'active' && q.currentStep && (
+                                                <div className="mt-2 space-y-1">
+                                                  <p className="text-gray-300 leading-relaxed">{q.currentStep.hint}</p>
+                                                  {q.currentStep.count > 1 && (
+                                                    <div className="flex items-center gap-2">
+                                                      <div className="flex-1 h-1 bg-gray-800 rounded-full">
+                                                        <div className="h-1 bg-purple-600 rounded-full transition-all"
+                                                          style={{ width: `${Math.min(100, ((q.currentStep.progress||0) / q.currentStep.count) * 100)}%` }} />
+                                                      </div>
+                                                      <span className="text-gray-500 text-xs">
+                                                        {q.currentStep.progress||0}/{q.currentStep.count}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                  <p className="text-gray-700 text-xs">
+                                                    ขั้น {(q.currentStep.stepIndex||0)+1} / {q.currentStep.totalSteps}
+                                                  </p>
+                                                </div>
+                                              )}
+                                              {/* Vorath ending choice */}
+                                              {q.status === 'active' && q.currentStep?.type === 'choice' &&
+                                               q.currentStep?.choiceKey === 'vorath_ending' &&
+                                               !mainQuestLog.choiceFlags?.vorath_ending && (
+                                                <div className="mt-2 flex gap-2">
+                                                  <button onClick={() => handleMakeChoice('vorath_ending', 'accord', 'ส่ง Vorath กลับบ้าน')}
+                                                    className="flex-1 px-2 py-1.5 rounded border border-purple-800 text-purple-300 text-xs hover:bg-purple-900/30 transition">
+                                                    🌑 ส่ง Vorath กลับบ้าน
+                                                  </button>
+                                                  <button onClick={() => handleMakeChoice('vorath_ending', 'seal', 'ผนึก Vorath ใหม่')}
+                                                    className="flex-1 px-2 py-1.5 rounded border border-red-900 text-red-400 text-xs hover:bg-red-900/20 transition">
+                                                    🔒 ผนึก Vorath ใหม่
+                                                  </button>
+                                                </div>
+                                              )}
+                                              {/* Show chosen ending */}
+                                              {mainQuestLog.choiceFlags?.vorath_ending && q.currentStep?.choiceKey === 'vorath_ending' && (
+                                                <p className="mt-1 text-purple-500 text-xs italic">
+                                                  เลือกแล้ว: {mainQuestLog.choiceFlags.vorath_ending === 'accord' ? '🌑 ส่ง Vorath กลับบ้าน' : '🔒 ผนึก Vorath ใหม่'}
+                                                </p>
+                                              )}
+                                              {q.status === 'completed' && q.completionText && (
+                                                <p className="text-gray-600 italic mt-1 text-xs leading-relaxed">
+                                                  "{q.completionText.substring(0, 100)}{q.completionText.length > 100 ? '…' : ''}"
+                                                </p>
+                                              )}
+                                              <p className="text-yellow-800 mt-1 text-xs">
+                                                🎁 {q.rewards?.xp} XP · {q.rewards?.gold}G
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Lore fragments tab */}
+                        {mainQuestTab === 'lore' && (
+                          <div className="space-y-2">
+                            {mainQuestLog.loreFragments?.length === 0 ? (
+                              <div className="border border-gray-900 rounded p-4 text-center">
+                                <p className="text-gray-600 text-xs">ยังไม่พบ Lore Fragment</p>
+                                <p className="text-gray-700 text-xs mt-1">สำรวจโลก, กำจัดบอส และพูดคุยกับ NPC เพื่อค้นหาเรื่องราว</p>
+                              </div>
+                            ) : mainQuestLog.loreFragments.map(frag => (
+                              <div key={frag.id} className="border border-indigo-900 rounded-lg p-3 bg-indigo-950/20">
+                                <div className="flex items-start gap-2">
+                                  <span className="text-indigo-400 text-sm shrink-0">📜</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-indigo-300 text-xs font-bold">{frag.title}</p>
+                                    <p className="text-gray-400 text-xs mt-1 leading-relaxed whitespace-pre-line">
+                                      {frag.content}
+                                    </p>
+                                    <p className="text-gray-700 text-xs mt-1">📍 {frag.zone?.replace(/_/g,' ')}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
+
+                  {/* ── OLD QUEST TABS (story / side) ── */}
+                  {(questLogTab === 'story' || questLogTab === 'side') && (!questLog ? (
                     <p className="text-gray-400 text-xs">กำลังโหลด...</p>
                   ) : questLogTab === 'story' ? (
                     /* ── STORY TAB — จัดกลุ่มตาม Act ── */
@@ -2680,7 +2900,7 @@ export default function GameWorld() {
                       </div>
                       );
                     })()
-                  )}
+                  ))}
                 </div>
               )}
 

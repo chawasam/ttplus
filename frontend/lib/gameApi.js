@@ -94,3 +94,9 @@ export const getDungeonRun    = ()               => api.get('/api/game/dungeon/r
 export const enterDungeon     = (dungeonId)      => api.post('/api/game/dungeon/enter', { dungeonId });
 export const dungeonAction    = (action)         => api.post('/api/game/dungeon/action', { action });
 export const dungeonFlee      = ()               => api.post('/api/game/dungeon/flee');
+
+
+// ===== Main Quest (Vorath / The Shattered Age) =====
+export const getMainQuestLog  = ()                        => api.get('/api/game/quest-main');
+export const collectLore      = (loreId)                  => api.post('/api/game/quest-main/lore', { loreId });
+export const makeQuestChoice  = (choiceKey, choice)       => api.post('/api/game/quest-main/choice', { choiceKey, choice });

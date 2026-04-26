@@ -8,8 +8,8 @@ const { logReward }                = require('../../utils/anticheat');
 const STAMINA_COST        = 20;
 const EXPLORE_COOLDOWN_MS = 3000; // 3 วินาที
 
-const { trackQuestProgress }  = require('./quests');
-const { trackStoryStep }      = require('./quest_engine');
+const { trackQuestProgress }              = require("./quests");
+const { trackStoryStep, trackMainQuestStep } = require("./quest_engine");
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements }   = require('./achievements');
 
@@ -137,6 +137,7 @@ async function explore(req, res) {
     // ── 7. Quest + achievement tracking ──────────────────────────────────
     trackQuestProgress(uid, 'explore', 1).catch(() => {});
     trackStoryStep(uid, 'explore', { zone }).catch(() => {});
+    trackMainQuestStep(uid, 'explore', { zone }).catch(() => {});
     trackWeeklyProgress(uid, 'explore', 1).catch(() => {});
     checkAchievements(uid, 'explore', 1).catch(() => {});
 
@@ -175,6 +176,7 @@ async function travel(req, res) {
 
     await db.collection('game_characters').doc(charId).update({ location: zone });
     trackStoryStep(uid, 'travel', { zone }).catch(() => {});
+    trackMainQuestStep(uid, 'travel', { zone }).catch(() => {});
 
     return res.json({
       success:    true,

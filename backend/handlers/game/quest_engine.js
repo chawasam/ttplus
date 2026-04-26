@@ -483,4 +483,293 @@ async function completeQuestInternal(uid, quest, type, db) {
   }
 }
 
-module.exports = { getQuestLog, acceptSideQuest, trackStoryStep };
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN QUEST ENGINE (Vorath / The Shattered Age)
+// Firestore: game_main_quests/{uid}
+// ═══════════════════════════════════════════════════════════════════
+const { MAIN_QUESTS, getMainQuest, getAutoStartableQuests } = require('../../data/quests_main');
+const { getLoreFragment } = require('../../data/lore');
+
+// ─── Get or init main quest state ────────────────────────────────
+async function getOrInitMainState(uid, db) {
+  const ref  = db.collection('game_main_quests').doc(uid);
+  const snap = await ref.get();
+
+  if (snap.exists) {
+    const data = snap.data();
+    return { ref, data: ensureMainAutoStart(data) };
+  }
+
+  // First time — initialize, auto-start MQ_101
+  const data = {
+    completedQuests: [],
+    activeQuests:    { MQ_101: { stepIndex: 0, stepProgress: 0 } },
+    choiceFlags:     { vorath_ending: null },
+    loreFragments:   [],
+    npcAffectionUnlocks: { lyra: false, sythara: false, corvin: false },
+    currentAct:      1,
+    initialized:     true,
+  };
+  await ref.set(data);
+  return { ref, data };
+}
+
+function ensureMainAutoStart(data) {
+  const updated = {
+    ...data,
+    activeQuests:    { ...(data.activeQuests || {}) },
+    completedQuests: [...(data.completedQuests || [])],
+    choiceFlags:     { vorath_ending: null, ...(data.choiceFlags || {}) },
+    loreFragments:   [...(data.loreFragments || [])],
+  };
+  // Auto-start any quest whose prereqs are met
+  const autoStartable = getAutoStartableQuests(updated.completedQuests);
+  for (const q of autoStartable) {
+    if (!updated.activeQuests[q.id]) {
+      updated.activeQuests[q.id] = { stepIndex: 0, stepProgress: 0 };
+    }
+  }
+  // Update currentAct
+  const allActive = Object.keys(updated.activeQuests);
+  if (allActive.length > 0) {
+    const maxAct = Math.max(...allActive.map(id => getMainQuest(id)?.act || 1));
+    updated.currentAct = maxAct;
+  }
+  return updated;
+}
+
+// ─── GET /api/game/quest-main ─────────────────────────────────────
+async function getMainQuestLog(req, res) {
+  const uid = req.user.uid;
+  const db  = admin.firestore();
+  try {
+    const { data } = await getOrInitMainState(uid, db);
+
+    // Build quest list with status
+    const quests = MAIN_QUESTS.map(q => {
+      let status = 'locked';
+      if (data.completedQuests.includes(q.id)) status = 'completed';
+      else if (data.activeQuests[q.id])         status = 'active';
+
+      const activeState = data.activeQuests[q.id];
+      let currentStep = null;
+      if (status === 'active' && activeState) {
+        const step = q.steps[activeState.stepIndex];
+        if (step) {
+          currentStep = {
+            ...step,
+            stepIndex:   activeState.stepIndex,
+            totalSteps:  q.steps.length,
+            progress:    activeState.stepProgress || 0,
+          };
+        }
+      }
+
+      return {
+        id:            q.id,
+        act:           q.act,
+        actTitle:      q.actTitle,
+        name:          q.name,
+        nameEN:        q.nameEN,
+        zone:          q.zone,
+        desc:          q.desc,
+        narrative:     q.narrative,
+        rewards:       q.rewards,
+        status,
+        currentStep,
+        completionText: status === 'completed' ? q.completionText : null,
+      };
+    });
+
+    // Lore fragments collected
+    const loreIds  = data.loreFragments || [];
+    const loreList = loreIds.map(id => getLoreFragment(id)).filter(Boolean);
+
+    return res.json({
+      quests,
+      currentAct:    data.currentAct || 1,
+      choiceFlags:   data.choiceFlags || {},
+      loreFragments: loreList,
+    });
+  } catch (err) {
+    console.error('[MainQuest] getMainQuestLog:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── POST /api/game/quest-main/lore  { loreId } ──────────────────
+async function collectLore(req, res) {
+  const uid    = req.user.uid;
+  const { loreId } = req.body;
+  if (!loreId) return res.status(400).json({ error: 'loreId required' });
+
+  const frag = getLoreFragment(Number(loreId));
+  if (!frag) return res.status(404).json({ error: 'Lore fragment not found' });
+
+  const db = admin.firestore();
+  try {
+    const { ref, data } = await getOrInitMainState(uid, db);
+    if (data.loreFragments.includes(Number(loreId))) {
+      return res.json({ success: true, alreadyCollected: true, fragment: frag });
+    }
+
+    const newFrags = [...data.loreFragments, Number(loreId)];
+    await ref.update({ loreFragments: newFrags });
+
+    // Try to advance any active main quest step that requires this lore
+    await trackMainQuestStep_internal(uid, db, 'lore_collect', { loreId: Number(loreId) });
+
+    emitToUser(uid, 'lore_found', { fragment: frag });
+    return res.json({ success: true, fragment: frag });
+  } catch (err) {
+    console.error('[MainQuest] collectLore:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── POST /api/game/quest-main/choice  { choiceKey, choice } ─────
+async function makeQuestChoice(req, res) {
+  const uid = req.user.uid;
+  const { choiceKey, choice } = req.body;
+  if (!choiceKey || !choice) return res.status(400).json({ error: 'choiceKey and choice required' });
+
+  const db = admin.firestore();
+  try {
+    const { ref, data } = await getOrInitMainState(uid, db);
+    const newFlags = { ...(data.choiceFlags || {}), [choiceKey]: choice };
+    await ref.update({ choiceFlags: newFlags });
+
+    // Advance any choice step
+    await trackMainQuestStep_internal(uid, db, 'choice', { choiceKey });
+
+    return res.json({ success: true, choiceKey, choice });
+  } catch (err) {
+    console.error('[MainQuest] makeQuestChoice:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ─── Internal: track a step progress in active main quests ───────
+async function trackMainQuestStep_internal(uid, db, type, params = {}) {
+  try {
+    const { ref, data } = await getOrInitMainState(uid, db);
+    const updates = { activeQuests: { ...data.activeQuests }, completedQuests: [...data.completedQuests] };
+    let changed = false;
+
+    for (const questId of Object.keys(updates.activeQuests)) {
+      const quest     = getMainQuest(questId);
+      if (!quest) continue;
+      const state     = updates.activeQuests[questId];
+      const stepDef   = quest.steps[state.stepIndex];
+      if (!stepDef) continue;
+
+      // Check if this event matches the current step
+      let matches = false;
+      if (type === 'talk'        && stepDef.type === 'talk'        && stepDef.npcId === params.npcId) matches = true;
+      if (type === 'kill'        && stepDef.type === 'kill') {
+        const zoneMatch   = !stepDef.zone   || stepDef.zone   === params.zone;
+        const monsterMatch= !stepDef.monsterId || stepDef.monsterId === params.monsterId;
+        if (zoneMatch && monsterMatch) matches = true;
+      }
+      if (type === 'explore'     && stepDef.type === 'explore'   && (!stepDef.zone || stepDef.zone === params.zone)) matches = true;
+      if (type === 'travel'      && stepDef.type === 'travel'    && (!stepDef.zone || stepDef.zone === params.zone)) matches = true;
+      if (type === 'dungeon_clear' && stepDef.type === 'dungeon_clear' && stepDef.dungeonId === params.dungeonId) matches = true;
+      if (type === 'lore_collect'&& stepDef.type === 'lore_collect' && stepDef.loreId === params.loreId) matches = true;
+      if (type === 'choice'      && stepDef.type === 'choice'    && stepDef.choiceKey === params.choiceKey) matches = true;
+
+      if (!matches) continue;
+
+      // Increment progress
+      state.stepProgress = (state.stepProgress || 0) + 1;
+      const required = stepDef.count || 1;
+
+      if (state.stepProgress >= required) {
+        // Move to next step
+        state.stepIndex    = (state.stepIndex || 0) + 1;
+        state.stepProgress = 0;
+
+        if (state.stepIndex >= quest.steps.length) {
+          // Quest complete
+          delete updates.activeQuests[questId];
+          updates.completedQuests.push(questId);
+          changed = true;
+
+          // Give rewards
+          await completeMainQuestReward(uid, db, quest);
+
+          // Auto-start next quest
+          const newAutoStart = getAutoStartableQuests(updates.completedQuests);
+          for (const nq of newAutoStart) {
+            if (!updates.activeQuests[nq.id] && !updates.completedQuests.includes(nq.id)) {
+              updates.activeQuests[nq.id] = { stepIndex: 0, stepProgress: 0 };
+            }
+          }
+
+          emitToUser(uid, 'main_quest_complete', { questId, questName: quest.name });
+        }
+        changed = true;
+      } else {
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      // Update currentAct
+      const allActive = Object.keys(updates.activeQuests);
+      if (allActive.length > 0) {
+        updates.currentAct = Math.max(...allActive.map(id => getMainQuest(id)?.act || 1));
+      }
+      await ref.update(updates);
+    }
+  } catch (err) {
+    console.error('[MainQuest] trackMainQuestStep_internal:', err.message);
+  }
+}
+
+// ─── Public: called from other handlers (combat, explore, npc) ────
+async function trackMainQuestStep(uid, type, params = {}) {
+  const db = admin.firestore();
+  await trackMainQuestStep_internal(uid, db, type, params);
+}
+
+// ─── Give main quest completion reward ────────────────────────────
+async function completeMainQuestReward(uid, db, quest) {
+  try {
+    const { xp = 0, gold = 0 } = quest.rewards || {};
+    if (gold > 0) await addGold(uid, gold, 'main_quest');
+    if (xp > 0) {
+      const accountDoc = await db.collection('game_accounts').doc(uid).get();
+      if (accountDoc.exists) {
+        const charId = accountDoc.data().characterId;
+        if (charId) {
+          const charRef = db.collection('game_characters').doc(charId);
+          const charDoc = await charRef.get();
+          if (charDoc.exists) {
+            const char    = charDoc.data();
+            const newXp   = (char.xp || 0) + xp;
+            const updates = { xp: newXp };
+            if (newXp >= (char.xpToNext || 100)) {
+              updates.level      = (char.level || 1) + 1;
+              updates.xp         = newXp - (char.xpToNext || 100);
+              updates.xpToNext   = Math.floor(200 * Math.pow(updates.level, 1.9));
+              updates.hpMax      = char.hpMax + 10;
+              updates.hp         = char.hpMax + 10;
+              updates.mpMax      = char.mpMax + 5;
+              updates.mp         = char.mpMax + 5;
+              updates.statPoints  = (char.statPoints  || 0) + 3;
+              updates.skillPoints = (char.skillPoints || 0) + 1;
+            }
+            await charRef.update(updates);
+          }
+        }
+      }
+    }
+    console.log(`[MainQuest] ✅ Quest "${quest.id}" completed for ${uid} (+${xp} XP, +${gold} gold)`);
+  } catch (err) {
+    console.error('[MainQuest] completeMainQuestReward:', err.message);
+  }
+}
+
+
+module.exports = { getQuestLog, acceptSideQuest, trackStoryStep, getMainQuestLog, trackMainQuestStep, collectLore, makeQuestChoice };

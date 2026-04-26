@@ -2,8 +2,8 @@
 const admin  = require('firebase-admin');
 const { getNPC, getAllNPCs, getGiftReaction, getAffectionTier, BOND_ITEMS, TIER_GIFT_BACK } = require('../../data/npcs');
 const { getItem, rollItem } = require('../../data/items');
-const { trackQuestProgress }  = require('./quests');
-const { trackStoryStep }      = require('./quest_engine');
+const { trackQuestProgress }                = require("./quests");
+const { trackStoryStep, trackMainQuestStep } = require("./quest_engine");
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements }   = require('./achievements');
 const { STORY_QUESTS }        = require('../../data/story_quests');
@@ -246,6 +246,7 @@ async function talkToNPC(req, res) {
 
     // Track story/side quest step — talk event (triggers quest engine)
     trackStoryStep(uid, 'talk', { npcId }).catch(() => {});
+    trackMainQuestStep(uid, 'talk', { npcId }).catch(() => {});
 
     return res.json({
       npcId,

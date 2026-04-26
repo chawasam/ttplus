@@ -5,7 +5,7 @@ const { getDungeonMonster }  = require('../../data/dungeons');
 const { getItem, rollItem }  = require('../../data/items');
 const { addGold }            = require('./currency');
 const { trackQuestProgress }    = require('./quests');
-const { trackStoryStep }        = require('./quest_engine');
+const { trackStoryStep, trackMainQuestStep } = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill }              = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
@@ -510,6 +510,10 @@ async function processAction(req, res) {
     trackStoryStep(uid, 'kill', {
       monsterId: state.enemy.monsterId,
       zone:      state.zone, // null inside dungeons, zone string in world
+    }).catch(() => {});
+    trackMainQuestStep(uid, 'kill', {
+      monsterId: state.enemy.monsterId,
+      zone:      state.zone,
     }).catch(() => {});
     // Achievements + overlay event
     checkAchievements(uid, 'kill', 1).catch(() => {});
