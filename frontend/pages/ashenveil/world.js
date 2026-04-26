@@ -2909,8 +2909,8 @@ export default function GameWorld() {
                   {/* Tab switcher */}
                   <div className="flex gap-1 mb-3 sticky top-0 bg-black/80 backdrop-blur py-1 z-10">
                     {[
-                      { key: 'main',  label: '🌑 เนื้อเรื่องหลัก' },
-                      { key: 'story', label: '📖 เนื้อเรื่อง' },
+                      { key: 'main',  label: '🌑 บันทึกการผจญภัย' },
+                      { key: 'story', label: '📋 ภารกิจ Story' },
                       { key: 'side',  label: '⚔️ ภารกิจพิเศษ' },
                     ].map(({ key, label }) => (
                       <button key={key} onClick={() => {
