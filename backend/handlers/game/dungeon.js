@@ -406,7 +406,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       log.push(`🎉 Level Up! → Level ${charUpdate.level}`);
     }
 
-    // Item rewards
+    // Item rewards (dungeon clear — better quality chances than explore)
     const lootItems = [];
     const count = cr.itemCount || 1;
     const pool  = [...(cr.itemPool || [])];
@@ -415,17 +415,12 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       const itemId = pool.splice(idx, 1)[0];
       const itemDef = getItem(itemId);
       if (itemDef) {
-        const instanceId = `inv_${uid}_${Date.now()}_${i}`;
-        await db.collection('game_inventory').add({
-          uid,
-          itemId,
-          instanceId,
-          enhancement: 0,
-          equipped: false,
-          obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji });
-        log.push(`📦 ได้รับ ${itemDef.emoji} ${itemDef.name}`);
+        const instance = rollItem(itemId, { normal: 50, fine: 30, superior: 16, masterwork: 4 });
+        if (instance) {
+          await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+          lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji, quality: instance.quality });
+          log.push(`📦 ได้รับ ${itemDef.emoji} ${itemDef.name}`);
+        }
       }
     }
 
@@ -582,18 +577,17 @@ async function onDungeonBattleWin(uid, runId) {
       // Grant loot items
       const lootItems = [];
       const pool  = [...(cr.itemPool || [])];
-      const { getItem, rollItem } = require('../../data/items');
+      // Final boss loot — highest quality chances
       for (let i = 0; i < (cr.itemCount || 1) && pool.length > 0; i++) {
         const idx    = Math.floor(Math.random() * pool.length);
         const itemId = pool.splice(idx, 1)[0];
         const itemDef = getItem(itemId);
         if (itemDef) {
-          const instanceId = `inv_${uid}_${Date.now()}_${i}`;
-          await db.collection('game_inventory').add({
-            uid, itemId, instanceId, enhancement: 0, equipped: false,
-            obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji });
+          const instance = rollItem(itemId, { normal: 30, fine: 35, superior: 25, masterwork: 10 });
+          if (instance) {
+            await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+            lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji, quality: instance.quality });
+          }
         }
       }
 

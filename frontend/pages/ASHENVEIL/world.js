@@ -2365,6 +2365,12 @@ export default function GameWorld() {
                           {GRADE_LABEL[item.grade]}
                         </span>
                       )}
+                      {item.quality && item.quality !== 'normal' && (
+                        <span className="text-[9px] px-1 py-0.5 rounded shrink-0 font-bold"
+                          style={{ color: item.qualityColor, border: `1px solid ${item.qualityColor}`, opacity: 0.85 }}>
+                          {item.qualityLabel}
+                        </span>
+                      )}
                       {item.equipped && <span className="text-amber-600 text-[10px] shrink-0">[ใส่อยู่]</span>}
                       <span className="text-gray-700 text-[10px] shrink-0">ℹ️</span>
                     </div>
@@ -4682,6 +4688,12 @@ Ashenveil จะได้รับรุ่งอรุณใหม่
                         {GRADE_LABEL[item.grade]}
                       </span>
                     )}
+                    {item.quality && item.quality !== 'normal' && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                        style={{ color: item.qualityColor, border: `1px solid ${item.qualityColor}` }}>
+                        ✦ {item.qualityLabel} (×{item.qualityMult})
+                      </span>
+                    )}
                     <span className="text-gray-500 text-[11px]">{TYPE_LABEL[item.type] || item.type}</span>
                     {item.levelReq > 1 && <span className="text-gray-600 text-[11px]">Lv.{item.levelReq}+</span>}
                     {item.equipped && <span className="text-amber-500 text-[11px]">✓ ใส่อยู่</span>}
@@ -4710,8 +4722,13 @@ Ashenveil จะได้รับรุ่งอรุณใหม่
                   ))}
                   {Object.entries(rollStats).map(([k, v]) => (
                     <div key={k} className="flex justify-between text-xs">
-                      <span className="text-gray-500">{STAT_LABEL[k] || k} <span className="text-purple-600">(random)</span></span>
-                      <span className="text-purple-300">+{v}</span>
+                      <span className="text-gray-500">{STAT_LABEL[k] || k}
+                        {item.quality && item.quality !== 'normal'
+                          ? <span style={{ color: item.qualityColor }}> ({item.qualityLabel})</span>
+                          : <span className="text-purple-600"> (random)</span>
+                        }
+                      </span>
+                      <span style={{ color: item.quality && item.quality !== 'normal' ? item.qualityColor : '#d8b4fe' }}>+{v}</span>
                     </div>
                   ))}
                 </div>
