@@ -154,6 +154,7 @@ export default function GameWorld() {
   const [battleSkills,  setBattleSkills] = useState([]);  // available skills in current battle
   const [battleRewards, setBattleRewards] = useState(null); // rewards to show on victory screen
   const [itemModal,    setItemModal]    = useState(null);  // item being previewed { item, context:'inv'|'shop' }
+  const [skillModal,   setSkillModal]   = useState(null);  // skill being previewed (skill object)
   const [inventory,  setInventory]  = useState([]);
   const [equipment,  setEquipment]  = useState({});
   const [shopItems,  setShopItems]  = useState([]);
@@ -3258,13 +3259,15 @@ export default function GameWorld() {
                       )}
 
                       {/* Active skills */}
-                      <p className="text-gray-500 text-xs">[ Active Skills ]</p>
+                      <p className="text-gray-500 text-xs">[ Active Skills — กดเพื่อดูรายละเอียด ]</p>
                       {(skillsData.skills || []).map(sk => (
-                        <div key={sk.id} className={`border rounded p-2 text-xs ${
-                          sk.unlocked    ? 'border-blue-800 bg-blue-900/10' :
-                          sk.canUnlock   ? 'border-gray-700' :
-                                           'border-gray-900 opacity-50'
-                        }`}>
+                        <div key={sk.id}
+                          onClick={() => setSkillModal(sk)}
+                          className={`border rounded p-2 text-xs cursor-pointer transition-colors ${
+                            sk.unlocked    ? 'border-blue-800 bg-blue-900/10 hover:bg-blue-900/20' :
+                            sk.canUnlock   ? 'border-gray-700 hover:border-gray-500' :
+                                             'border-gray-900 opacity-50'
+                          }`}>
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <p className={`font-bold ${sk.unlocked ? 'text-blue-300' : 'text-amber-200'}`}>
@@ -3272,16 +3275,17 @@ export default function GameWorld() {
                                 {sk.unlocked && <span className="text-blue-600 font-normal ml-1 text-xs">✓ ปลดแล้ว</span>}
                                 {sk.levelLocked && !sk.unlocked && <span className="text-red-700 font-normal ml-1 text-xs">🔒 Lv.{sk.minLevel}</span>}
                               </p>
-                              <p className="text-gray-300 mt-0.5 leading-relaxed">{sk.desc}</p>
-                              <div className="flex gap-3 mt-1 text-gray-400">
+                              <p className="text-gray-400 mt-0.5 truncate">{sk.desc}</p>
+                              <div className="flex gap-3 mt-1 text-gray-500">
                                 <span>💧 {sk.mpCost} MP</span>
                                 <span>Lv.{sk.minLevel}+</span>
                                 <span>⚡ {sk.skillPointCost} SP</span>
+                                {sk.element && <span className="text-purple-400">{sk.element}</span>}
                               </div>
                             </div>
                             {!sk.unlocked && (
                               <button
-                                onClick={() => handleUnlockSkill(sk.id, sk.name, sk.skillPointCost)}
+                                onClick={e => { e.stopPropagation(); handleUnlockSkill(sk.id, sk.name, sk.skillPointCost); }}
                                 disabled={!sk.canUnlock}
                                 className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-30 disabled:cursor-not-allowed">
                                 ปลดล็อค
@@ -4231,6 +4235,107 @@ export default function GameWorld() {
       />
 
       {/* ── Item Detail Modal ── */}
+      {/* ===== SKILL DETAIL MODAL ===== */}
+      {skillModal && (() => {
+        const sk = skillModal;
+        const ELEMENT_COLOR = { fire:'text-orange-400', ice:'text-cyan-400', lightning:'text-yellow-300',
+          holy:'text-yellow-200', shadow:'text-purple-400', void:'text-indigo-400',
+          poison:'text-green-400', wind:'text-teal-300' };
+        const EFFECT_LABEL = { STUN:'💫 สตัน', BURN:'🔥 ลุกไหม้', BLEED:'🩸 เลือดออก',
+          POISON:'☠️ พิษ', SLOW:'🐢 ช้าลง', BLIND:'🌑 ตาบอด', FREEZE:'❄️ แช่แข็ง', MARK:'🎯 ติดมาร์ค' };
+        const TYPE_LABEL = { beast:'สัตว์', undead:'อันเดด', demon:'ปีศาจ', construct:'กลไก',
+          humanoid:'มนุษย์', dragon:'มังกร', elemental:'ธาตุ', plant:'พืช' };
+        return (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center"
+            onClick={() => setSkillModal(null)}>
+            <div className="w-full max-w-sm bg-gray-950 border border-gray-700 rounded-t-2xl p-4 space-y-3"
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className={`text-base font-bold ${sk.unlocked ? 'text-blue-300' : 'text-amber-200'}`}>{sk.name}</p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {sk.unlocked && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400 border border-blue-800">✓ ปลดล็อคแล้ว</span>}
+                    {sk.levelLocked && !sk.unlocked && <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-900">🔒 ต้อง Lv.{sk.minLevel}</span>}
+                    {sk.element && <span className={`text-xs px-1.5 py-0.5 rounded border border-gray-700 ${ELEMENT_COLOR[sk.element] || 'text-gray-400'}`}>{sk.element.toUpperCase()}</span>}
+                    {sk.magicDamage && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400 border border-purple-900">Magic</span>}
+                    {sk.goFirst && <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-900">⚡ โจมตีก่อน</span>}
+                  </div>
+                </div>
+                <button onClick={() => setSkillModal(null)} className="ml-2 text-gray-500 hover:text-white text-lg leading-none">✕</button>
+              </div>
+
+              {/* Description */}
+              <p className="text-gray-300 text-xs leading-relaxed border-l-2 border-gray-700 pl-2 italic">{sk.desc}</p>
+
+              {/* Stats */}
+              <div className="space-y-1.5 text-xs">
+                <p className="text-gray-500 uppercase tracking-wide text-[10px]">[ สถิติ ]</p>
+
+                {/* Cost row */}
+                <div className="flex gap-4 text-gray-300">
+                  <span>💧 MP: <span className="text-blue-300 font-bold">{sk.mpCost}</span></span>
+                  <span>Lv. <span className="text-amber-300 font-bold">{sk.minLevel}+</span></span>
+                  <span>⚡ <span className="text-amber-400 font-bold">{sk.skillPointCost}</span> SP</span>
+                </div>
+
+                {/* Damage */}
+                {sk.damage > 0 && (
+                  <div className="flex gap-2 items-center">
+                    <span className="text-gray-400">ดาเมจ:</span>
+                    <span className={`font-bold text-sm ${sk.magicDamage ? 'text-purple-300' : 'text-red-300'}`}>{sk.damage}×</span>
+                    <span className="text-gray-500">{sk.magicDamage ? '(Magic — ไม่ถูก DEF ลด)' : '(Physical)'}</span>
+                  </div>
+                )}
+
+                {/* Self buff */}
+                {sk.selfBuff && (
+                  <div className="bg-green-900/10 border border-green-900/40 rounded p-2 space-y-0.5">
+                    <p className="text-green-400 font-bold">🌿 Buff ตัวเอง ({sk.selfBuff.duration} เทิร์น)</p>
+                    {sk.selfBuff.healPercent && <p className="text-green-300">❤️ ฟื้นฟู HP +{Math.round(sk.selfBuff.healPercent * 100)}% hpMax</p>}
+                    {sk.selfBuff.atkMult && <p className="text-red-300">⚔️ ATK ×{sk.selfBuff.atkMult} ({sk.selfBuff.atkMult > 1 ? '+' : ''}{Math.round((sk.selfBuff.atkMult - 1) * 100)}%)</p>}
+                    {sk.selfBuff.defMult && <p className="text-blue-300">🛡️ DEF ×{sk.selfBuff.defMult} ({sk.selfBuff.defMult > 1 ? '+' : ''}{Math.round((sk.selfBuff.defMult - 1) * 100)}%)</p>}
+                    {sk.selfBuff.critBonus && <p className="text-yellow-300">💥 Crit +{Math.round(sk.selfBuff.critBonus * 100)}%</p>}
+                    {sk.selfBuff.spdMult && <p className="text-teal-300">💨 SPD ×{sk.selfBuff.spdMult}</p>}
+                  </div>
+                )}
+
+                {/* Enemy effect */}
+                {sk.effect && (
+                  <div className="bg-red-900/10 border border-red-900/40 rounded p-2 space-y-0.5">
+                    <p className="text-red-400 font-bold">{EFFECT_LABEL[sk.effect.type] || sk.effect.type} ({sk.effect.duration} เทิร์น)</p>
+                    {sk.effect.dmgPerTurn && <p className="text-orange-300">🩸 {sk.effect.dmgPerTurn} ดาเมจ/เทิร์น</p>}
+                    {sk.effect.atkMult !== undefined && sk.effect.atkMult < 1 && <p className="text-gray-400">⚔️ ATK ลด {Math.round((1 - sk.effect.atkMult) * 100)}%</p>}
+                  </div>
+                )}
+
+                {/* Bonus vs CC */}
+                {sk.bonusVsCC && (
+                  <p className="text-yellow-300">🎯 โบนัสดาเมจ {sk.bonusVsCC.multiplier}× เมื่อ Enemy สตัน/ช้า</p>
+                )}
+
+                {/* Bonus vs type */}
+                {sk.bonusVsType && sk.bonusVsType.length > 0 && (
+                  <p className="text-cyan-300">🏹 +{Math.round((sk.bonusMult - 1) * 100)}% vs {sk.bonusVsType.map(t => TYPE_LABEL[t] || t).join(', ')}</p>
+                )}
+              </div>
+
+              {/* Unlock button */}
+              {!sk.unlocked && (
+                <button
+                  onClick={() => { handleUnlockSkill(sk.id, sk.name, sk.skillPointCost); setSkillModal(null); }}
+                  disabled={!sk.canUnlock}
+                  className="w-full py-2.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed">
+                  {sk.levelLocked ? `🔒 ต้องการ Lv.${sk.minLevel}` : sk.canUnlock ? `✨ ปลดล็อค (${sk.skillPointCost} SP)` : `⚡ SP ไม่พอ (ต้องการ ${sk.skillPointCost})`}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ===== ITEM DETAIL MODAL ===== */}
       {itemModal && (() => {
         const { item, context } = itemModal;
         const isInv  = context === 'inv';
