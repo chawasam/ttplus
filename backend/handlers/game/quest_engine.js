@@ -615,13 +615,75 @@ async function collectLore(req, res) {
     }
 
     const newFrags = [...data.loreFragments, Number(loreId)];
-    await ref.update({ loreFragments: newFrags });
+    const updates  = { loreFragments: newFrags };
+
+    // ─── Completionist reward: collect all 10 base fragments ────────
+    const LORE_COMPLETIONIST_COUNT = 10;
+    const COMPLETIONIST_TITLE      = 'ผู้รู้ความจริง';
+    const COMPLETIONIST_SECRET_ID  = 11;
+    const COMPLETIONIST_XP         = 2000;
+
+    let completionistBonus = null;
+    const baseFragsCollected = newFrags.filter(id => id <= LORE_COMPLETIONIST_COUNT).length;
+    const alreadyRewarded    = data.loreCompletionistRewarded || false;
+
+    if (baseFragsCollected >= LORE_COMPLETIONIST_COUNT && !alreadyRewarded) {
+      updates.loreCompletionistRewarded = true;
+      // Auto-collect secret fragment #11
+      if (!newFrags.includes(COMPLETIONIST_SECRET_ID)) {
+        updates.loreFragments = [...newFrags, COMPLETIONIST_SECRET_ID];
+      }
+
+      // Grant XP + title on character
+      try {
+        const accountDoc = await db.collection('game_accounts').doc(uid).get();
+        if (accountDoc.exists) {
+          const charId = accountDoc.data().characterId;
+          if (charId) {
+            const charRef = db.collection('game_characters').doc(charId);
+            const charDoc = await charRef.get();
+            const char    = charDoc.data();
+            const newXp   = (char.xp || 0) + COMPLETIONIST_XP;
+            const charUpdates = {
+              xp: newXp,
+              unlockedTitles: admin.firestore.FieldValue.arrayUnion(COMPLETIONIST_TITLE),
+            };
+            if (newXp >= (char.xpToNext || 100)) {
+              charUpdates.level    = (char.level || 1) + 1;
+              charUpdates.xp       = newXp - (char.xpToNext || 100);
+              charUpdates.xpToNext = Math.floor(200 * Math.pow(charUpdates.level, 1.9));
+              charUpdates.hpMax    = char.hpMax + 10;
+              charUpdates.hp       = char.hpMax + 10;
+              charUpdates.mpMax    = char.mpMax + 5;
+              charUpdates.mp       = char.mpMax + 5;
+              charUpdates.statPoints  = (char.statPoints  || 0) + 3;
+              charUpdates.skillPoints = (char.skillPoints || 0) + 1;
+            }
+            await charRef.update(charUpdates);
+          }
+        }
+      } catch (e) {
+        console.error('[Lore] completionist XP grant error:', e.message);
+      }
+
+      const secretFrag = getLoreFragment(COMPLETIONIST_SECRET_ID);
+      completionistBonus = {
+        xp: COMPLETIONIST_XP,
+        title: COMPLETIONIST_TITLE,
+        secretFragment: secretFrag,
+      };
+      emitToUser(uid, 'lore_completionist', completionistBonus);
+      console.log(`[Lore] 🏆 Completionist reward granted to ${uid}`);
+    }
+    // ────────────────────────────────────────────────────────────────
+
+    await ref.update(updates);
 
     // Try to advance any active main quest step that requires this lore
     await trackMainQuestStep_internal(uid, db, 'lore_collect', { loreId: Number(loreId) });
 
     emitToUser(uid, 'lore_found', { fragment: frag });
-    return res.json({ success: true, fragment: frag });
+    return res.json({ success: true, fragment: frag, completionistBonus });
   } catch (err) {
     console.error('[MainQuest] collectLore:', err.message);
     return res.status(500).json({ error: 'Server error' });

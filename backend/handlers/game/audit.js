@@ -300,11 +300,113 @@ async function getItemStats(req, res) {
   }
 }
 
+// ── GET /api/game/audit/gamedata — Game Database (read-only) ─────────────────
+async function getGameData(req, res) {
+  try {
+    const { MONSTERS }   = require('../../data/monsters');
+    const { NPCS }       = require('../../data/npcs');
+    const { ZONES }      = require('../../data/maps');
+
+    const monsters = Object.values(MONSTERS).map(m => ({
+      monsterId:  m.monsterId,
+      name:       m.name,
+      emoji:      m.emoji,
+      zone:       m.zone,
+      type:       m.type,
+      level:      m.level,
+      hp:         m.hp,
+      atk:        m.atk,
+      def:        m.def,
+      spd:        m.spd,
+      element:    m.element || null,
+      rank:       m.rank || null,
+      xpReward:   m.xpReward,
+      goldMin:    Array.isArray(m.goldReward) ? m.goldReward[0] : m.goldReward,
+      goldMax:    Array.isArray(m.goldReward) ? m.goldReward[1] : m.goldReward,
+      flee_chance:m.flee_chance,
+      desc:       m.desc,
+      attackMsg:  m.attackMsg || [],
+      drops:      m.drops || [],
+      skills:     m.skills || [],
+      counterAttack: m.counterAttack || null,
+      isBoss:     m.isBoss || false,
+    }));
+
+    const npcs = Object.values(NPCS).map(n => ({
+      npcId:        n.npcId,
+      name:         n.name,
+      emoji:        n.emoji,
+      title:        n.title,
+      zone:         n.zone,
+      isShopkeeper: n.isShopkeeper || false,
+      personality:  n.personality,
+      likes:        n.likes || [],
+      neutral:      n.neutral || [],
+      hates:        n.hates || [],
+      likeBonus:    n.likeBonus,
+      hatePenalty:  n.hatePenalty,
+      decayPerDay:  n.decayPerDay,
+      decayFloor:   n.decayFloor,
+      bondItem:     n.bondItem,
+      bondDesc:     n.bondDesc,
+      dialogs:      n.dialogs || {},
+      specialEvent: n.specialEvent || null,
+    }));
+
+    const zones = Object.values(ZONES).map(z => ({
+      zoneId:      z.zoneId,
+      name:        z.name,
+      nameTH:      z.nameTH,
+      icon:        z.icon,
+      shard:       z.shard,
+      levelMin:    Array.isArray(z.level) ? z.level[0] : 1,
+      levelMax:    Array.isArray(z.level) ? z.level[1] : 99,
+      minLevel:    z.minLevel,
+      canFight:    z.canFight || false,
+      canExplore:  z.canExplore || false,
+      monsters:    z.monsters || [],
+      npcs:        z.npcs || [],
+      connections: z.connections || [],
+      zoneBossId:  z.zoneBossId || null,
+      atmosphere:  z.atmosphere || [],
+      events:      (z.events || []).map(e => ({
+        id:     e.id,
+        weight: e.weight,
+        type:   e.result?.type,
+        msg:    e.result?.msg,
+      })),
+    }));
+
+    const { ITEMS } = require('../../data/items');
+    const items = Object.values(ITEMS).map(it => ({
+      itemId:    it.itemId,
+      name:      it.name,
+      emoji:     it.emoji,
+      grade:     it.grade,
+      type:      it.type,
+      levelReq:  it.levelReq || 1,
+      classReq:  it.classReq || [],
+      base:      it.base || {},
+      rolls:     it.rolls || {},
+      sockets:   it.sockets || 0,
+      desc:      it.desc || '',
+      sellPrice: it.sellPrice || 0,
+      buyPrice:  it.buyPrice || 0,
+      effect:    it.effect || null,
+    }));
+
+    return res.json({ monsters, npcs, zones, items });
+  } catch (err) {
+    console.error('[Audit] getGameData:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 module.exports = {
   requireAdmin,
   getFlags, getPlayerHistory, resolveFlag, getSummary,
   getActivity, getPlayers, manualFlag, getBugs,
-  getSkillStats, getItemStats,
+  getSkillStats, getItemStats, getGameData,
 };
 
 // ── GET /api/game/audit/bugs — Bug Radar auto-detection ──────────────────────

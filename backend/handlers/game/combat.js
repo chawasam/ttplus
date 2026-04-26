@@ -489,6 +489,48 @@ async function processAction(req, res) {
     log.push(p2.phaseMsg || `🔥 ${state.enemy.name} เข้าสู่ Phase 2!`);
   }
 
+  // ===== Vorath True Form — Full Enemy Replacement at 30% HP =====
+  if (
+    state.enemy.monsterId === 'vorath_boss' &&
+    !state.enemy.vorathPhase2 &&
+    state.enemy.hp > 0 &&
+    state.enemy.hp <= Math.floor(state.enemy.hpMax * 0.30)
+  ) {
+    const { getMonster } = require('../data/monsters');
+    const trueForm = getMonster('vorath_true');
+    if (trueForm) {
+      state.enemy.vorathPhase2 = true;
+      // Dramatic phase entry logs
+      if (trueForm.phaseEntry?.log) {
+        log.push(...trueForm.phaseEntry.log);
+      }
+      // Replace enemy with true form (keep player HP/state)
+      state.enemy = {
+        monsterId:     trueForm.monsterId,
+        name:          trueForm.name,
+        emoji:         trueForm.emoji,
+        hp:            trueForm.hp,
+        hpMax:         trueForm.hp,
+        atk:           trueForm.atk,
+        def:           trueForm.def,
+        spd:           trueForm.spd,
+        regen:         trueForm.regen || 0,
+        type:          trueForm.type,
+        xpReward:      trueForm.xpReward,
+        goldReward:    trueForm.goldReward,
+        statusAttack:  trueForm.statusAttack || null,
+        attackMsg:     trueForm.attackMsg || [],
+        counters:      trueForm.counters || [],
+        drops:         trueForm.drops || [],
+        flee_chance:   0,
+        special:       trueForm.special,
+        phase2Applied: false,
+        phase2:        null,
+        vorathPhase2:  true, // prevent re-trigger
+      };
+    }
+  }
+
   // ===== Check enemy dead =====
   if (state.enemy.hp <= 0) {
     log.push(`💀 ${state.enemy.name} พ่ายแพ้!`);

@@ -722,6 +722,63 @@ const MONSTERS = {
     cooldownHours: 48,
   },
 
+  // ===== VORATH — True Form (Phase 2, triggers when vorath_boss reaches 30% HP) =====
+  vorath_true: {
+    monsterId: 'vorath_true', name: 'Vorath — The Forgotten God', emoji: '🌑',
+    zone: 'vorath_citadel', type: 'void',
+    level: 65, xpReward: 15000, goldReward: [5000, 8000],
+    hp: 5000, atk: 420, def: 80, spd: 40,
+    regen: 0, // ไม่ regen — ทุกอย่างอยู่ที่การโจมตี
+    statusAttack: { type: 'VOID_DRAIN', chance: 0.6, duration: 2, dmgPerTurn: 120 },
+    desc: '🌑 ตัวตนที่แท้จริงของ Vorath ปรากฏออกมา — ไม่ใช่ความโกรธหรือความชั่วร้าย แต่เป็นความเจ็บปวดของการถูกกักขังมาห้าร้อยปี',
+    phaseEntry: {
+      log: [
+        '🌑 "พอแล้ว..."',
+        '🌑 Avatar พังสลาย — แสงสีม่วงระเบิดออกจากกลางกาย',
+        '🌑 เสียงหึ่งที่ดังกึกก้องทั่ว Citadel — แล้วทุกอย่างก็เงียบ',
+        '🌑 Vorath ตัวจริงปรากฏออกมา...',
+        '🌑 "เจ้ามาไกลมาก ฉันจะดูว่าเจ้าสมกับที่จะได้รับคำตอบไหม"',
+      ],
+    },
+    attackMsg: [
+      '"ห้าร้อยปีในความมืด" — Void Surge',
+      '"ฉันแค่อยากกลับบ้าน" — Despair Wave',
+      '"ทำไมพวกเจ้าต้องกลัวสิ่งที่ไม่เข้าใจ?" — Reality Crack',
+      'Void Tendril ม้วนรอบร่าง',
+      '"ฉันยังคงจำ Void ได้ — บ้านของฉัน"',
+    ],
+    counters: [
+      { trigger: 'consecutiveAttack', count: 2,
+        response: { type: 'counterAttack', dmgMult: 3.0,
+          log: '🌑 "เจ้าโจมตีโดยไม่ฟัง!" — VOID RETALIATION ×3.0!!' } },
+      { trigger: 'hpBelow', threshold: 0.5,
+        response: { type: 'healSelf', amount: 500,
+          log: '🌑 Vorath ดึงพลัง Void กลับ — ฟื้นฟู 500 HP!' } },
+      { trigger: 'hpBelow', threshold: 0.2,
+        response: { type: 'enrage', atkMult: 2.0, defMult: 0.5,
+          log: '🌑 "ถ้านั่นคือสิ่งที่เจ้าต้องการ..." — FINAL VOID AWAKENING! ATK ×2!!' } },
+      { trigger: 'skillUsed',
+        response: { type: 'counterAttack', dmgMult: 1.5,
+          log: '🌑 Vorath อ่านพลังงาน Skill — VOID ABSORPTION! ×1.5 counter!' } },
+    ],
+    drops: [
+      { itemId: 'void_crystal',   chance: 1.0 },
+      { itemId: 'void_essence',   chance: 1.0 },
+      { itemId: 'chaos_shard',    chance: 1.0 },
+      { itemId: 'soul_gem',       chance: 1.0 },
+      { itemId: 'titan_core',     chance: 0.8 },
+      { itemId: 'vorath_tear',    chance: 1.0 }, // always drops
+      { itemId: 'memory_fragment', chance: 1.0 },
+      { itemId: 'ancient_scroll', chance: 1.0 },
+    ],
+    flee_chance: 0.0,
+    special: 'final_boss',
+    isPhase2: true,
+    phase2From: 'vorath_boss',
+    phase2Threshold: 0.30, // trigger เมื่อ vorath_boss HP <= 30%
+    cooldownHours: 72,
+  },
+
 };
 
 // Zone monster pools
