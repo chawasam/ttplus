@@ -632,9 +632,22 @@ const BATTLES_PER_DAY = 24;
 
 // ─── Tab: Economy Calculator ──────────────────────────────────────────────────
 function EconomyTab() {
+  // Slider UI state — updates live on every mousemove (for labels only)
+  const [targetLvSlider, setTargetLvSlider] = React.useState(50);
+  const [sessionsSlider, setSessionsSlider] = React.useState(2);
+  const [zone, setZone] = React.useState(4); // city_ruins index
+
+  // Debounced state — used for all calculations (updates 150ms after slider stops)
   const [targetLv, setTargetLv] = React.useState(50);
   const [sessionsPerDay, setSessionsPerDay] = React.useState(2);
-  const [zone, setZone] = React.useState(4); // city_ruins index
+  React.useEffect(() => {
+    const id = setTimeout(() => setTargetLv(targetLvSlider), 150);
+    return () => clearTimeout(id);
+  }, [targetLvSlider]);
+  React.useEffect(() => {
+    const id = setTimeout(() => setSessionsPerDay(sessionsSlider), 150);
+    return () => clearTimeout(id);
+  }, [sessionsSlider]);
 
   // Compute XP curve total
   const lvCurve = React.useMemo(() => {
@@ -689,17 +702,21 @@ function EconomyTab() {
         <div>
           <div style={{ color:'#9ca3af', fontSize:11, marginBottom:6 }}>เป้าหมาย Level</div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <input type="range" min={1} max={99} value={targetLv} onChange={e=>setTargetLv(+e.target.value)}
+            <input type="range" min={1} max={99} value={targetLvSlider}
+              onChange={e=>setTargetLvSlider(+e.target.value)}
+              onWheel={e=>e.currentTarget.blur()}
               style={{ flex:1, accentColor:'#f59e0b' }} />
-            <span style={{ color:'#f59e0b', fontWeight:700, minWidth:32, textAlign:'right' }}>Lv.{targetLv}</span>
+            <span style={{ color:'#f59e0b', fontWeight:700, minWidth:32, textAlign:'right' }}>Lv.{targetLvSlider}</span>
           </div>
         </div>
         <div>
           <div style={{ color:'#9ca3af', fontSize:11, marginBottom:6 }}>Session ต่อวัน</div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <input type="range" min={1} max={6} value={sessionsPerDay} onChange={e=>setSessionsPerDay(+e.target.value)}
+            <input type="range" min={1} max={6} value={sessionsSlider}
+              onChange={e=>setSessionsSlider(+e.target.value)}
+              onWheel={e=>e.currentTarget.blur()}
               style={{ flex:1, accentColor:'#818cf8' }} />
-            <span style={{ color:'#818cf8', fontWeight:700, minWidth:60, textAlign:'right' }}>{sessionsPerDay}×30m</span>
+            <span style={{ color:'#818cf8', fontWeight:700, minWidth:60, textAlign:'right' }}>{sessionsSlider}×30m</span>
           </div>
         </div>
         <div>
@@ -715,11 +732,11 @@ function EconomyTab() {
       {/* Summary cards */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
         {[
-          { label:`ถึง Lv.${targetLv} ใน`, value: daysToTarget >= 365 ? `${(daysToTarget/365).toFixed(1)} ปี` : `${daysToTarget} วัน`, color:'#f59e0b', icon:'🎯' },
+          { label:`ถึง Lv.${targetLvSlider} ใน`, value: daysToTarget >= 365 ? `${(daysToTarget/365).toFixed(1)} ปี` : `${daysToTarget} วัน`, color:'#f59e0b', icon:'🎯' },
           { label:'ถึง Lv.99 ใน', value:`${years} ปี`, color: Math.abs(+years - 3) < 0.5 ? '#34d399' : +years < 2 ? '#f87171' : '#fb923c', icon:'🏆', sub: daysTo99 + ' วัน' },
           { label:'XP ต่อวัน (avg)', value: Math.round(totalXpPerDay).toLocaleString(), color:'#34d399', icon:'⚡', sub:'combat+quest+dungeon' },
           { label:'Gold ต่อวัน (avg)', value: Math.round(totalGoldPerDay).toLocaleString() + ' 🪙', color:'#f59e0b', icon:'💰', sub: zone >= 0 ? zoneData.label : '' },
-        ].map(s => <StatCard key={s.label} {...s} />)}
+        ].map((s,i) => <StatCard key={i} {...s} />)}
       </div>
 
       {/* XP breakdown */}
