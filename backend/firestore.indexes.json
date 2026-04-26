@@ -4,6 +4,14 @@
       "collectionGroup": "game_inventory",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "uid",        "order": "ASCENDING" },
+        { "fieldPath": "obtainedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "game_inventory",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "uid",    "order": "ASCENDING" },
         { "fieldPath": "itemId", "order": "ASCENDING" }
       ]
@@ -25,5 +33,3 @@
       ]
     }
   ],
-  "fieldOverrides": []
-}
