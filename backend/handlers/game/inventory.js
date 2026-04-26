@@ -14,7 +14,6 @@ async function getInventory(req, res) {
   try {
     const snap = await db.collection('game_inventory')
       .where('uid', '==', uid)
-      .orderBy('obtainedAt', 'desc')
       .limit(200).get();
 
     const items = snap.docs.map(doc => {
@@ -39,6 +38,13 @@ async function getInventory(req, res) {
         sockets:     d.sockets || 0,
         gem_slots:   d.gem_slots || [],
       };
+    });
+
+    // Sort newest first in JS — avoids composite index requirement
+    items.sort((a, b) => {
+      const ta = a.obtainedAt?.toMillis?.() ?? 0;
+      const tb = b.obtainedAt?.toMillis?.() ?? 0;
+      return tb - ta;
     });
 
     const equipDoc = await db.collection('game_equipment').doc(uid).get();
