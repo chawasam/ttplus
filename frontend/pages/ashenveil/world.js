@@ -289,9 +289,10 @@ export default function GameWorld() {
         loadQuests().catch(() => {});
         loadQuestLog().catch(() => {});
 
-        // Show prologue on very first login
-        const pKey = `ashenveil_prologue_${data.character.characterId || u.uid}`;
+        // Show prologue on very first login (once per uid)
+        const pKey = `ashenveil_prologue_${u.uid}`;
         if (!localStorage.getItem(pKey)) {
+          localStorage.setItem(pKey, '1'); // mark seen immediately — back button won't re-trigger
           setShowPrologue(true);
           setPrologueStep(0);
         }
@@ -1546,11 +1547,8 @@ export default function GameWorld() {
         ];
         const panel = PROLOGUE_PANELS[prologueStep] || PROLOGUE_PANELS[0];
         const isLast = prologueStep >= PROLOGUE_PANELS.length - 1;
-        const charKey = `ashenveil_prologue_${char?.characterId || 'u'}`;
-
         const advance = () => {
           if (isLast) {
-            localStorage.setItem(charKey, '1');
             setShowPrologue(false);
           } else {
             setPrologueStep(s => s + 1);
