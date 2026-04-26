@@ -2450,6 +2450,446 @@ function SkillStatsTab() {
   );
 }
 
+// ─── DatabaseTab ──────────────────────────────────────────────────────────────
+const TYPE_COLOR = { beast:'#f59e0b', human:'#60a5fa', undead:'#a78bfa', void:'#818cf8',
+  elemental:'#34d399', demon:'#f87171', spirit:'#c084fc', construct:'#94a3b8' };
+const RANK_COLOR = { S:'#f59e0b', A:'#f87171', B:'#60a5fa', C:'#4ade80', D:'#94a3b8' };
+
+function DatabaseTab() {
+  const [subTab,    setSubTab]    = useState('monsters');
+  const [data,      setData]      = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [search,    setSearch]    = useState('');
+  const [zoneFilter,setZoneFilter]= useState('all');
+  const [typeFilter,setTypeFilter]= useState('all');
+  const [selected,  setSelected]  = useState(null);
+
+  useEffect(() => {
+    if (data) return;
+    setLoading(true);
+    api.get('/api/game/audit/gamedata')
+      .then(r => setData(r.data))
+      .catch(() => toast.error('โหลด gamedata ไม่ได้'))
+      .finally(() => setLoading(false));
+  }, [data]);
+
+  const exportJSON = (key) => {
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data[key], null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `ashenveil_${key}_${new Date().toISOString().slice(0,10)}.json`; a.click();
+  };
+
+  const inputStyle = { background:'#111827', border:'1px solid #374151', borderRadius:8,
+    padding:'6px 12px', color:'#e5e7eb', fontSize:13, outline:'none' };
+  const thStyle = { padding:'8px 12px', textAlign:'left', color:'#6b7280', fontSize:11,
+    fontWeight:700, letterSpacing:'0.05em', borderBottom:'1px solid #1f2937', whiteSpace:'nowrap' };
+  const tdStyle = { padding:'8px 12px', fontSize:12, borderBottom:'1px solid #111827', verticalAlign:'middle' };
+
+  // ── Monster sub-tab ──
+  const MonsterView = () => {
+    if (!data) return null;
+    const zones = [...new Set(data.monsters.map(m => m.zone))].sort();
+    const types = [...new Set(data.monsters.map(m => m.type).filter(Boolean))].sort();
+    const filtered = data.monsters.filter(m => {
+      const q = search.toLowerCase();
+      const matchQ = !q || m.name.toLowerCase().includes(q) || m.monsterId.includes(q);
+      const matchZ = zoneFilter === 'all' || m.zone === zoneFilter;
+      const matchT = typeFilter === 'all' || m.type === typeFilter;
+      return matchQ && matchZ && matchT;
+    });
+
+    return (
+      <div>
+        {/* Filters */}
+        <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+          <input style={{ ...inputStyle, width:200 }} placeholder="🔍 ค้นหา monster..." value={search}
+            onChange={e => { setSearch(e.target.value); setSelected(null); }} />
+          <select style={inputStyle} value={zoneFilter} onChange={e => { setZoneFilter(e.target.value); setSelected(null); }}>
+            <option value="all">ทุก Zone</option>
+            {zones.map(z => <option key={z} value={z}>{z}</option>)}
+          </select>
+          <select style={inputStyle} value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setSelected(null); }}>
+            <option value="all">ทุก Type</option>
+            {types.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <span style={{ color:'#4b5563', fontSize:12 }}>{filtered.length} / {data.monsters.length} monsters</span>
+          <button onClick={() => exportJSON('monsters')}
+            style={{ marginLeft:'auto', ...inputStyle, color:'#34d399', cursor:'pointer', border:'1px solid #34d39944' }}>
+            ⬇ Export JSON
+          </button>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', gap:16 }}>
+          {/* Table */}
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'#0d1117' }}>
+                  {['','ชื่อ','Zone','Lv','HP','ATK','DEF','SPD','Type','XP','Gold'].map(h =>
+                    <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(m => (
+                  <tr key={m.monsterId}
+                    onClick={() => setSelected(selected?.monsterId === m.monsterId ? null : m)}
+                    style={{ cursor:'pointer', background: selected?.monsterId === m.monsterId ? '#1a2235' : 'transparent',
+                      transition:'background .1s' }}
+                    onMouseEnter={e => { if (selected?.monsterId !== m.monsterId) e.currentTarget.style.background = '#111827'; }}
+                    onMouseLeave={e => { if (selected?.monsterId !== m.monsterId) e.currentTarget.style.background = 'transparent'; }}>
+                    <td style={tdStyle}>{m.emoji}</td>
+                    <td style={{ ...tdStyle, color:'#e5e7eb', fontWeight:600 }}>
+                      {m.name}{m.isBoss && <span style={{ ...badge('#f59e0b'), marginLeft:6, fontSize:9 }}>BOSS</span>}
+                      {m.rank && <span style={{ ...badge(RANK_COLOR[m.rank]||'#6b7280'), marginLeft:4, fontSize:9 }}>{m.rank}</span>}
+                    </td>
+                    <td style={{ ...tdStyle, color:'#6b7280', fontSize:11 }}>{m.zone}</td>
+                    <td style={{ ...tdStyle, color:'#f59e0b' }}>{m.level}</td>
+                    <td style={{ ...tdStyle, color:'#f87171' }}>{m.hp}</td>
+                    <td style={{ ...tdStyle, color:'#fb923c' }}>{m.atk}</td>
+                    <td style={{ ...tdStyle, color:'#60a5fa' }}>{m.def}</td>
+                    <td style={{ ...tdStyle, color:'#4ade80' }}>{m.spd}</td>
+                    <td style={tdStyle}>
+                      {m.type && <span style={{ ...badge(TYPE_COLOR[m.type]||'#6b7280'), fontSize:10 }}>{m.type}</span>}
+                    </td>
+                    <td style={{ ...tdStyle, color:'#a78bfa' }}>{m.xpReward}</td>
+                    <td style={{ ...tdStyle, color:'#fbbf24', fontSize:11 }}>{m.goldMin}–{m.goldMax}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Detail panel */}
+          {selected && (
+            <div style={{ ...card, borderColor:'#374151', position:'sticky', top:80, height:'fit-content', maxHeight:'80vh', overflowY:'auto' }}>
+              <div style={{ fontSize:28, marginBottom:4 }}>{selected.emoji}</div>
+              <div style={{ color:'#e5e7eb', fontWeight:800, fontSize:16 }}>{selected.name}</div>
+              <div style={{ color:'#6b7280', fontSize:11, marginBottom:12 }}>{selected.monsterId}</div>
+              {selected.desc && <p style={{ color:'#9ca3af', fontSize:12, marginBottom:12, lineHeight:1.6 }}>{selected.desc}</p>}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                {[['Level','#f59e0b',selected.level],['HP','#f87171',selected.hp],
+                  ['ATK','#fb923c',selected.atk],['DEF','#60a5fa',selected.def],
+                  ['SPD','#4ade80',selected.spd],['Flee','#9ca3af',`${Math.round((selected.flee_chance||0)*100)}%`],
+                  ['XP','#a78bfa',selected.xpReward],['Gold','#fbbf24',`${selected.goldMin}–${selected.goldMax}`],
+                ].map(([l,c,v]) => (
+                  <div key={l} style={{ background:'#0d1117', borderRadius:6, padding:'6px 10px' }}>
+                    <div style={{ color:'#4b5563', fontSize:10 }}>{l}</div>
+                    <div style={{ color:c, fontWeight:700, fontSize:14 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {selected.drops.length > 0 && (<>
+                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>DROP TABLE</div>
+                {selected.drops.map((d,i) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12,
+                    padding:'4px 0', borderBottom:'1px solid #111827' }}>
+                    <span style={{ color:'#e5e7eb' }}>{d.itemId}</span>
+                    <span style={{ color:'#f59e0b' }}>{Math.round(d.chance*100)}%</span>
+                  </div>
+                ))}
+              </>)}
+
+              {selected.attackMsg.length > 0 && (<>
+                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, margin:'12px 0 6px', letterSpacing:'0.06em' }}>ATTACK MSGS</div>
+                {selected.attackMsg.map((msg,i) => (
+                  <div key={i} style={{ color:'#9ca3af', fontSize:12, padding:'2px 0' }}>• {msg}</div>
+                ))}
+              </>)}
+
+              <button onClick={() => setSelected(null)}
+                style={{ marginTop:16, width:'100%', background:'#1f2937', border:'none',
+                  borderRadius:6, padding:'8px', color:'#6b7280', cursor:'pointer', fontSize:12 }}>
+                ✕ ปิด
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ── NPC sub-tab ──
+  const NpcView = () => {
+    if (!data) return null;
+    const zones = [...new Set(data.npcs.map(n => n.zone))].sort();
+    const filtered = data.npcs.filter(n => {
+      const q = search.toLowerCase();
+      return !q || n.name.toLowerCase().includes(q) || n.title?.toLowerCase().includes(q) || n.zone?.includes(q);
+    }).filter(n => zoneFilter === 'all' || n.zone === zoneFilter);
+
+    return (
+      <div>
+        <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+          <input style={{ ...inputStyle, width:200 }} placeholder="🔍 ค้นหา NPC..." value={search}
+            onChange={e => { setSearch(e.target.value); setSelected(null); }} />
+          <select style={inputStyle} value={zoneFilter} onChange={e => { setZoneFilter(e.target.value); setSelected(null); }}>
+            <option value="all">ทุก Zone</option>
+            {zones.map(z => <option key={z} value={z}>{z}</option>)}
+          </select>
+          <span style={{ color:'#4b5563', fontSize:12 }}>{filtered.length} / {data.npcs.length} NPCs</span>
+          <button onClick={() => exportJSON('npcs')}
+            style={{ marginLeft:'auto', ...inputStyle, color:'#34d399', cursor:'pointer', border:'1px solid #34d39944' }}>
+            ⬇ Export JSON
+          </button>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 320px' : '1fr', gap:16 }}>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'#0d1117' }}>
+                  {['','ชื่อ','Title','Zone','Shop','Likes','Hates','Decay/day'].map(h =>
+                    <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(n => (
+                  <tr key={n.npcId}
+                    onClick={() => setSelected(selected?.npcId === n.npcId ? null : n)}
+                    style={{ cursor:'pointer', background: selected?.npcId === n.npcId ? '#1a2235' : 'transparent' }}
+                    onMouseEnter={e => { if (selected?.npcId !== n.npcId) e.currentTarget.style.background = '#111827'; }}
+                    onMouseLeave={e => { if (selected?.npcId !== n.npcId) e.currentTarget.style.background = 'transparent'; }}>
+                    <td style={tdStyle}>{n.emoji}</td>
+                    <td style={{ ...tdStyle, color:'#e5e7eb', fontWeight:600 }}>{n.name}</td>
+                    <td style={{ ...tdStyle, color:'#9ca3af', fontSize:11 }}>{n.title}</td>
+                    <td style={{ ...tdStyle, color:'#6b7280', fontSize:11 }}>{n.zone}</td>
+                    <td style={tdStyle}>{n.isShopkeeper ? <span style={badge('#34d399')}>🏪 Shop</span> : '—'}</td>
+                    <td style={{ ...tdStyle, fontSize:11, color:'#fbbf24' }}>{n.likes?.slice(0,3).join(', ')}{n.likes?.length>3?'…':''}</td>
+                    <td style={{ ...tdStyle, fontSize:11, color:'#f87171' }}>{n.hates?.slice(0,3).join(', ')}{n.hates?.length>3?'…':''}</td>
+                    <td style={{ ...tdStyle, color:'#6b7280' }}>{n.decayPerDay ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {selected && (
+            <div style={{ ...card, borderColor:'#374151', position:'sticky', top:80, height:'fit-content', maxHeight:'80vh', overflowY:'auto' }}>
+              <div style={{ fontSize:28 }}>{selected.emoji}</div>
+              <div style={{ color:'#e5e7eb', fontWeight:800, fontSize:16 }}>{selected.name}</div>
+              <div style={{ color:'#6b7280', fontSize:11, marginBottom:8 }}>{selected.title} · {selected.zone}</div>
+              {selected.personality && <p style={{ color:'#9ca3af', fontSize:12, marginBottom:12, lineHeight:1.6, fontStyle:'italic' }}>"{selected.personality}"</p>}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:12 }}>
+                {[['Affection +like','#fbbf24',`+${selected.likeBonus}`],
+                  ['Affection -hate','#f87171',`-${selected.hatePenalty}`],
+                  ['Decay/day','#6b7280',selected.decayPerDay],
+                  ['Decay floor','#6b7280',selected.decayFloor],
+                ].map(([l,c,v]) => (
+                  <div key={l} style={{ background:'#0d1117', borderRadius:6, padding:'5px 8px' }}>
+                    <div style={{ color:'#4b5563', fontSize:10 }}>{l}</div>
+                    <div style={{ color:c, fontWeight:700, fontSize:13 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {selected.likes?.length > 0 && (
+                <div style={{ marginBottom:8 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:4 }}>❤️ LIKES</div>
+                  <div style={{ fontSize:11, color:'#fbbf24' }}>{selected.likes.join(', ')}</div>
+                </div>
+              )}
+              {selected.hates?.length > 0 && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:4 }}>💔 HATES</div>
+                  <div style={{ fontSize:11, color:'#f87171' }}>{selected.hates.join(', ')}</div>
+                </div>
+              )}
+
+              {Object.keys(selected.dialogs).length > 0 && (<>
+                <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>DIALOG BY AFFECTION</div>
+                {Object.entries(selected.dialogs).map(([aff, lines]) => (
+                  <div key={aff} style={{ marginBottom:8 }}>
+                    <div style={{ color:'#f59e0b', fontSize:10, fontWeight:700, marginBottom:2 }}>≥ {aff}</div>
+                    {(Array.isArray(lines) ? lines : [lines]).map((l,i) =>
+                      <div key={i} style={{ color:'#9ca3af', fontSize:11, padding:'2px 0', lineHeight:1.5 }}>"{l}"</div>)}
+                  </div>
+                ))}
+              </>)}
+
+              {selected.bondDesc && (
+                <div style={{ marginTop:10, padding:'8px', background:'#1f2937', borderRadius:6,
+                  fontSize:11, color:'#a78bfa', border:'1px solid #4b5563' }}>
+                  💝 {selected.bondDesc}
+                </div>
+              )}
+
+              <button onClick={() => setSelected(null)}
+                style={{ marginTop:16, width:'100%', background:'#1f2937', border:'none',
+                  borderRadius:6, padding:'8px', color:'#6b7280', cursor:'pointer', fontSize:12 }}>
+                ✕ ปิด
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Map/Zone sub-tab ──
+  const MapView = () => {
+    if (!data) return null;
+    const filtered = data.zones.filter(z => {
+      const q = search.toLowerCase();
+      return !q || z.name.toLowerCase().includes(q) || z.nameTH?.includes(q) || z.zoneId.includes(q);
+    });
+
+    return (
+      <div>
+        <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+          <input style={{ ...inputStyle, width:200 }} placeholder="🔍 ค้นหา zone..." value={search}
+            onChange={e => { setSearch(e.target.value); setSelected(null); }} />
+          <span style={{ color:'#4b5563', fontSize:12 }}>{filtered.length} / {data.zones.length} zones</span>
+          <button onClick={() => exportJSON('zones')}
+            style={{ marginLeft:'auto', ...inputStyle, color:'#34d399', cursor:'pointer', border:'1px solid #34d39944' }}>
+            ⬇ Export JSON
+          </button>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 320px' : '1fr', gap:16 }}>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'#0d1117' }}>
+                  {['','Zone','ชื่อไทย','Lv Range','Fight','Explore','Monsters','NPCs','Boss'].map(h =>
+                    <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(z => (
+                  <tr key={z.zoneId}
+                    onClick={() => setSelected(selected?.zoneId === z.zoneId ? null : z)}
+                    style={{ cursor:'pointer', background: selected?.zoneId === z.zoneId ? '#1a2235' : 'transparent' }}
+                    onMouseEnter={e => { if (selected?.zoneId !== z.zoneId) e.currentTarget.style.background = '#111827'; }}
+                    onMouseLeave={e => { if (selected?.zoneId !== z.zoneId) e.currentTarget.style.background = 'transparent'; }}>
+                    <td style={tdStyle}>{z.icon}</td>
+                    <td style={{ ...tdStyle, color:'#e5e7eb', fontWeight:600 }}>{z.name}</td>
+                    <td style={{ ...tdStyle, color:'#9ca3af', fontSize:11 }}>{z.nameTH}</td>
+                    <td style={{ ...tdStyle, color:'#f59e0b' }}>
+                      {z.levelMin === z.levelMax ? z.levelMin : `${z.levelMin}–${z.levelMax}`}
+                    </td>
+                    <td style={tdStyle}>{z.canFight ? <span style={badge('#f87171')}>⚔️</span> : '—'}</td>
+                    <td style={tdStyle}>{z.canExplore ? <span style={badge('#34d399')}>🔍</span> : '—'}</td>
+                    <td style={{ ...tdStyle, color:'#fb923c' }}>{z.monsters.length}</td>
+                    <td style={{ ...tdStyle, color:'#60a5fa' }}>{z.npcs.length}</td>
+                    <td style={tdStyle}>{z.zoneBossId ? <span style={badge('#a78bfa')}>👑</span> : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {selected && (
+            <div style={{ ...card, borderColor:'#374151', position:'sticky', top:80, height:'fit-content', maxHeight:'80vh', overflowY:'auto' }}>
+              <div style={{ fontSize:28 }}>{selected.icon}</div>
+              <div style={{ color:'#e5e7eb', fontWeight:800, fontSize:16 }}>{selected.name}</div>
+              <div style={{ color:'#6b7280', fontSize:12, marginBottom:12 }}>{selected.nameTH} · {selected.zoneId}</div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:12 }}>
+                {[['Level Range','#f59e0b',`${selected.levelMin}–${selected.levelMax}`],
+                  ['Min Level','#6b7280',selected.minLevel ?? '—'],
+                  ['Can Fight','#f87171',selected.canFight ? 'ใช่' : 'ไม่'],
+                  ['Can Explore','#34d399',selected.canExplore ? 'ใช่' : 'ไม่'],
+                ].map(([l,c,v]) => (
+                  <div key={l} style={{ background:'#0d1117', borderRadius:6, padding:'5px 8px' }}>
+                    <div style={{ color:'#4b5563', fontSize:10 }}>{l}</div>
+                    <div style={{ color:c, fontWeight:700, fontSize:13 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {selected.monsters.length > 0 && (
+                <div style={{ marginBottom:10 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:4 }}>⚔️ MONSTERS</div>
+                  <div style={{ fontSize:11, color:'#fb923c' }}>{selected.monsters.join(', ')}</div>
+                </div>
+              )}
+              {selected.npcs.length > 0 && (
+                <div style={{ marginBottom:10 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:4 }}>💬 NPCs</div>
+                  <div style={{ fontSize:11, color:'#60a5fa' }}>{selected.npcs.join(', ')}</div>
+                </div>
+              )}
+              {selected.zoneBossId && (
+                <div style={{ marginBottom:10 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:4 }}>👑 ZONE BOSS</div>
+                  <div style={{ fontSize:12, color:'#a78bfa' }}>{selected.zoneBossId}</div>
+                </div>
+              )}
+              {selected.connections.length > 0 && (
+                <div style={{ marginBottom:10 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:4 }}>🔗 CONNECTIONS</div>
+                  <div style={{ fontSize:11, color:'#9ca3af' }}>{selected.connections.join(' → ')}</div>
+                </div>
+              )}
+              {selected.events.length > 0 && (<>
+                <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>EXPLORE EVENTS</div>
+                {selected.events.map(e => (
+                  <div key={e.id} style={{ display:'flex', justifyContent:'space-between', fontSize:11,
+                    padding:'3px 0', borderBottom:'1px solid #111827' }}>
+                    <span style={{ color:'#9ca3af' }}>{e.type}</span>
+                    <span style={{ color:'#6b7280' }}>w:{e.weight}</span>
+                  </div>
+                ))}
+              </>)}
+              {selected.atmosphere.length > 0 && (<>
+                <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, margin:'10px 0 6px', letterSpacing:'0.06em' }}>ATMOSPHERE</div>
+                {selected.atmosphere.slice(0,2).map((a,i) =>
+                  <div key={i} style={{ color:'#9ca3af', fontSize:11, padding:'2px 0', fontStyle:'italic' }}>"{a}"</div>)}
+              </>)}
+
+              <button onClick={() => setSelected(null)}
+                style={{ marginTop:16, width:'100%', background:'#1f2937', border:'none',
+                  borderRadius:6, padding:'8px', color:'#6b7280', cursor:'pointer', fontSize:12 }}>
+                ✕ ปิด
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const SUBTABS = [
+    { key:'monsters', label:`🐉 Monsters${data ? ` (${data.monsters.length})` : ''}` },
+    { key:'npcs',     label:`👥 NPCs${data ? ` (${data.npcs.length})` : ''}` },
+    { key:'maps',     label:`🗺️ Maps${data ? ` (${data.zones.length})` : ''}` },
+  ];
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <div>
+          <div style={{ color:'#e5e7eb', fontWeight:800, fontSize:18 }}>🗄️ Game Database</div>
+          <div style={{ color:'#4b5563', fontSize:12, marginTop:2 }}>Read-only viewer — แก้ไขผ่าน code + push</div>
+        </div>
+        {loading && <div style={{ color:'#6b7280', fontSize:13 }}>⏳ กำลังโหลด...</div>}
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{ display:'flex', gap:0, borderBottom:'1px solid #1f2937', marginBottom:20 }}>
+        {SUBTABS.map(t => (
+          <button key={t.key} onClick={() => { setSubTab(t.key); setSearch(''); setZoneFilter('all'); setTypeFilter('all'); setSelected(null); }}
+            style={{ padding:'10px 20px', background:'none', border:'none', cursor:'pointer', fontSize:13,
+              fontWeight: subTab===t.key ? 700 : 400,
+              color: subTab===t.key ? '#60a5fa' : '#6b7280',
+              borderBottom: subTab===t.key ? '2px solid #60a5fa' : '2px solid transparent' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {!data && !loading && <div style={{ color:'#6b7280', textAlign:'center', padding:40 }}>กดปุ่ม refresh หรือรอโหลด...</div>}
+      {data && subTab === 'monsters' && <MonsterView />}
+      {data && subTab === 'npcs'     && <NpcView />}
+      {data && subTab === 'maps'     && <MapView />}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter();
@@ -2518,6 +2958,7 @@ export default function AdminPage() {
     { key:'insights',  label:'💡 Insights' },
     { key:'items',     label:'🛒 Item Economy' },
     { key:'skills',    label:'⚔️ Skill Stats' },
+    { key:'database',  label:'🗄️ Database' },
   ];
 
   return (
@@ -2586,6 +3027,7 @@ export default function AdminPage() {
           {tab === 'insights'  && <InsightsTab />}
           {tab === 'items'     && <ItemEconomyTab />}
           {tab === 'skills'    && <SkillStatsTab />}
+          {tab === 'database'  && <DatabaseTab />}
         </div>
       </div>
     </>

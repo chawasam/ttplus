@@ -184,6 +184,7 @@ router.get ('/audit/skill-stats',              audit.requireAdmin, audit.getSkil
 router.get ('/audit/item-stats',               audit.requireAdmin, audit.getItemStats);
 router.get ('/audit/roadmap',                  audit.requireAdmin, roadmapConfig.getRoadmap);
 router.post('/audit/roadmap',                  audit.requireAdmin, roadmapConfig.updateFeature);
+router.get ('/audit/gamedata',                 audit.requireAdmin, audit.getGameData);
 
 // ----- Dungeon -----
 router.get ('/dungeons',              dungeon.listDungeons);
