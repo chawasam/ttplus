@@ -64,12 +64,19 @@ const MONSTERS = {
 
   giant_spider: {
     monsterId: 'giant_spider', name: 'Giant Spider', emoji: '🕷️',
-    zone: 'forest_path',
+    zone: 'forest_path', type: 'beast',
     level: 4, xpReward: 28, goldReward: [8, 16],
     hp: 58, atk: 16, def: 6, spd: 12,
     statusAttack: { type: 'POISON', chance: 0.35, duration: 3, dmgPerTurn: 5 },
     desc: 'แมงมุมขนาดยักษ์ แปดตาเปล่งประกาย พิษถึงตาย',
     attackMsg: ['กัดด้วยเขี้ยวพิษ', 'ปาตาข่าย', 'ตะปบด้วยขา'],
+    moves: [
+      { name: 'ฉีกด้วยเขี้ยว',  emoji: '🕷️', dmgMult: 1.0,  weight: 50 },
+      { name: 'Web Wrap',        emoji: '🕸️', dmgMult: 0.6,  weight: 30,
+        effect: { type: 'SLOW', duration: 2, atkMult: 0.75 } },
+      { name: 'Venom Strike',    emoji: '☠️', dmgMult: 0.8,  weight: 20, telegraphed: true,
+        effect: { type: 'POISON', duration: 3, dmgPerTurn: 8 } },
+    ],
     drops: [
       { itemId: 'slime_gel', chance: 0.6 },
       { itemId: 'antidote', chance: 0.2 },
@@ -111,12 +118,17 @@ const MONSTERS = {
 
   cave_troll: {
     monsterId: 'cave_troll', name: 'Cave Troll', emoji: '👾',
-    zone: 'dark_cave',
+    zone: 'dark_cave', type: 'beast',
     level: 7, xpReward: 65, goldReward: [25, 50],
     hp: 200, atk: 28, def: 20, spd: 3,
     regen: 8,
     desc: 'ทรอลล์ใต้ถ้ำ ผิวหนาแน่น ฟื้นร่างกายตัวเองได้เรื่อยๆ',
     attackMsg: ['ทุบด้วยกำปั้นหิน', 'โยนก้อนหิน', 'ทำให้ตึงตัว'],
+    moves: [
+      { name: 'ทุบกำปั้น',      emoji: '👊', dmgMult: 1.0, weight: 50 },
+      { name: 'โยนก้อนหิน',     emoji: '🪨', dmgMult: 0.8, weight: 30 },
+      { name: 'Crushing Slam',   emoji: '💥', dmgMult: 1.6, weight: 20, telegraphed: true },
+    ],
     drops: [
       { itemId: 'iron_ore', chance: 0.7 },
       { itemId: 'steel_ingot', chance: 0.2 },
@@ -145,11 +157,17 @@ const MONSTERS = {
   // ===== ZONE: city_ruins (Lv 10-20) =====
   ruined_knight: {
     monsterId: 'ruined_knight', name: 'Ruined Knight', emoji: '🪖',
-    zone: 'city_ruins',
+    zone: 'city_ruins', type: 'undead',
     level: 10, xpReward: 90, goldReward: [35, 65],
     hp: 220, atk: 38, def: 30, spd: 5,
     desc: 'อัศวินที่ตายในสงครามและลุกขึ้นมาอีก เกราะแตกร้าวแต่ยังสู้ได้',
     attackMsg: ['ฟาดด้วยดาบสนิม', 'กดโล่เก่าทับ', 'พุ่งจากด้านหลัง'],
+    moves: [
+      { name: 'ฟันดาบสนิม',    emoji: '⚔️', dmgMult: 1.0, weight: 50 },
+      { name: 'Shield Bash',    emoji: '🛡️', dmgMult: 0.7, weight: 30,
+        effect: { type: 'STUN', duration: 1 } },
+      { name: 'Death Charge',   emoji: '💀', dmgMult: 1.5, weight: 20, telegraphed: true },
+    ],
     drops: [
       { itemId: 'iron_ore', chance: 0.6 },
       { itemId: 'steel_ingot', chance: 0.3 },
@@ -210,11 +228,17 @@ const MONSTERS = {
 
   iron_golem_shard: {
     monsterId: 'iron_golem_shard', name: 'Iron Golem Fragment', emoji: '🤖',
-    zone: 'city_ruins',
+    zone: 'city_ruins', type: 'construct',
     level: 16, xpReward: 180, goldReward: [80, 130],
     hp: 500, atk: 60, def: 45, spd: 2,
     desc: 'ชิ้นส่วนของ Iron Golem เก่าที่ยังเคลื่อนไหวได้ ทุบยาก',
     attackMsg: ['กดทับด้วยกำปั้นเหล็ก', 'ยิงไอน้ำร้อน', 'กระแทกพื้น'],
+    moves: [
+      { name: 'Iron Fist',      emoji: '🤜', dmgMult: 1.0,  weight: 45 },
+      { name: 'Steam Blast',    emoji: '💨', dmgMult: 0.9,  weight: 35,
+        effect: { type: 'BURN', duration: 2, dmgPerTurn: 10 } },
+      { name: 'Core Overload',  emoji: '⚡', dmgMult: 2.0,  weight: 20, telegraphed: true },
+    ],
     drops: [
       { itemId: 'steel_ingot', chance: 0.8 },
       { itemId: 'iron_ore', chance: 0.9 },
@@ -228,12 +252,18 @@ const MONSTERS = {
   // ===== ZONE: cursed_marshlands (Lv 18-28) =====
   bog_lurker: {
     monsterId: 'bog_lurker', name: 'Bog Lurker', emoji: '🐊',
-    zone: 'cursed_marshlands',
+    zone: 'cursed_marshlands', type: 'beast',
     level: 18, xpReward: 160, goldReward: [60, 100],
     hp: 310, atk: 65, def: 25, spd: 7,
     statusAttack: { type: 'POISON', chance: 0.4, duration: 3, dmgPerTurn: 12 },
     desc: 'สัตว์เลื้อยคลานขนาดใหญ่ที่ถูกพิษหนองสาบเข้าสิง ซ่อนอยู่ในโคลน',
     attackMsg: ['กัดดึงลงน้ำ', 'ตีด้วยหาง', 'พ่นพิษหนอง'],
+    moves: [
+      { name: 'กัดดึงลงน้ำ',   emoji: '🐊', dmgMult: 1.0, weight: 45 },
+      { name: 'Tail Sweep',     emoji: '💨', dmgMult: 0.8, weight: 30 },
+      { name: 'Bog Venom Spit', emoji: '🤢', dmgMult: 0.6, weight: 25, telegraphed: true,
+        effect: { type: 'POISON', duration: 4, dmgPerTurn: 15 } },
+    ],
     drops: [
       { itemId: 'bog_scale', chance: 0.6 },
       { itemId: 'antidote', chance: 0.4 },
@@ -279,12 +309,18 @@ const MONSTERS = {
 
   marsh_basilisk: {
     monsterId: 'marsh_basilisk', name: 'Marsh Basilisk', emoji: '🦎',
-    zone: 'cursed_marshlands',
+    zone: 'cursed_marshlands', type: 'beast',
     level: 25, xpReward: 280, goldReward: [100, 180],
     hp: 420, atk: 88, def: 35, spd: 10,
     statusAttack: { type: 'STUN', chance: 0.3, duration: 1, dmgPerTurn: 0 },
     desc: 'บาซิลิสก์หนองน้ำ สายตาทำให้เป็นหินชั่วคราว',
     attackMsg: ['จ้องตาทำให้งง', 'กัดด้วยพิษหิน', 'ตีด้วยหางหิน'],
+    moves: [
+      { name: 'กัดพิษหิน',       emoji: '🦎', dmgMult: 1.0,  weight: 40 },
+      { name: 'Tail Strike',      emoji: '💥', dmgMult: 1.2,  weight: 35 },
+      { name: 'Petrifying Gaze',  emoji: '👁️', dmgMult: 0.4,  weight: 25, telegraphed: true,
+        effect: { type: 'STUN', duration: 2 } },
+    ],
     drops: [
       { itemId: 'basilisk_scale', chance: 0.5 },
       { itemId: 'void_crystal', chance: 0.25 },
@@ -314,11 +350,17 @@ const MONSTERS = {
 
   soul_harvester: {
     monsterId: 'soul_harvester', name: 'Soul Harvester', emoji: '💀',
-    zone: 'void_frontier',
+    zone: 'void_frontier', type: 'void',
     level: 32, xpReward: 400, goldReward: [150, 250],
     hp: 480, atk: 115, def: 28, spd: 14,
     desc: 'ปีศาจเก็บเกี่ยววิญญาณ ยิ่งฆ่ายิ่งแกร่ง',
     attackMsg: ['เก็บเกี่ยววิญญาณ', 'เคียวเงาหวด', 'ดูด XP ออกจากร่าง'],
+    moves: [
+      { name: 'เคียวเงา',       emoji: '💀', dmgMult: 1.0, weight: 45 },
+      { name: 'Soul Rend',       emoji: '👻', dmgMult: 1.1, weight: 35,
+        effect: { type: 'CURSE', duration: 2, dmgPerTurn: 12 } },
+      { name: 'Harvest',         emoji: '⚰️', dmgMult: 1.8, weight: 20, telegraphed: true },
+    ],
     drops: [
       { itemId: 'void_crystal', chance: 0.6 },
       { itemId: 'void_essence', chance: 0.35 },
@@ -330,12 +372,17 @@ const MONSTERS = {
 
   void_titan: {
     monsterId: 'void_titan', name: 'Void Titan', emoji: '🌑',
-    zone: 'void_frontier',
+    zone: 'void_frontier', type: 'void',
     level: 36, xpReward: 550, goldReward: [200, 350],
     hp: 900, atk: 140, def: 50, spd: 6,
     regen: 15,
     desc: 'ไททันแห่ง Void มหาศาล ฟื้นฟูตัวเองจากพลังงานมืด',
     attackMsg: ['กำปั้นแห่ง Void', 'คลื่นพลังงานมืด', 'บดขยี้ด้วยน้ำหนัก'],
+    moves: [
+      { name: 'Void Fist',     emoji: '🌑', dmgMult: 1.0, weight: 40 },
+      { name: 'Dark Wave',     emoji: '🌊', dmgMult: 1.2, weight: 35 },
+      { name: 'Void Nova',     emoji: '💥', dmgMult: 2.5, weight: 25, telegraphed: true },
+    ],
     drops: [
       { itemId: 'void_crystal', chance: 0.8 },
       { itemId: 'void_essence', chance: 0.5 },
@@ -348,11 +395,19 @@ const MONSTERS = {
 
   chaos_elemental: {
     monsterId: 'chaos_elemental', name: 'Chaos Elemental', emoji: '🌀',
-    zone: 'void_frontier',
+    zone: 'void_frontier', type: 'void',
     level: 38, xpReward: 600, goldReward: [220, 380],
     hp: 550, atk: 155, def: 30, spd: 18,
     desc: 'ธาตุแห่งความโกลาหล ทุกตีมีองค์ประกอบแตกต่าง คาดเดาไม่ได้',
     attackMsg: ['ฟ้าผ่า Chaos', 'ไฟน้ำแข็งพร้อมกัน', 'ระเบิดพลังงานสุ่ม'],
+    moves: [
+      { name: 'Chaos Bolt',    emoji: '⚡', dmgMult: 1.0, weight: 35 },
+      { name: 'Firestorm',     emoji: '🔥', dmgMult: 1.1, weight: 30,
+        effect: { type: 'BURN', duration: 2, dmgPerTurn: 18 } },
+      { name: 'Chaos Burst',   emoji: '🌀', dmgMult: 2.2, weight: 20, telegraphed: true },
+      { name: 'Void Chill',    emoji: '❄️', dmgMult: 0.7, weight: 15,
+        effect: { type: 'SLOW', duration: 2, atkMult: 0.75 } },
+    ],
     drops: [
       { itemId: 'void_crystal', chance: 0.7 },
       { itemId: 'void_essence', chance: 0.4 },

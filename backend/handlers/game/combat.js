@@ -202,7 +202,9 @@ async function startBattle(req, res) {
         spd:        char.spd,
         mag:        char.mag,
         critChance: passiveCrit,    // base crit (with passive)
+        critMult:   className === 'assassin' ? 1.9 : 1.5, // crit damage multiplier (assassin gets 1.9)
         mpRegen:    passiveMpRegen, // MP regen per turn (mage passive)
+        isGuarding: false,          // Guard action flag
         status: [],
         buffs:  [],                 // active self-buffs { type, atkMult, defMult, critBonus, duration }
       },
@@ -229,6 +231,8 @@ async function startBattle(req, res) {
         phase2Applied: false,
       },
       log: [`${monster.emoji} ${monster.name} ปรากฏตัว!`, monster.desc],
+      comboCount:    0,     // consecutive hit streak
+      telegraphMove: null,  // move enemy is preparing for NEXT turn
       createdAt: Date.now(),
     };
 
@@ -296,12 +300,41 @@ async function processAction(req, res) {
     // Apply MARKED: ลด DEF ของศัตรูเมื่อ marked
     const markedBuff = state.enemy.status.find(s => s.type === 'MARKED');
     const effectiveDef = markedBuff ? Math.floor(state.enemy.def * (markedBuff.defMult || 1.0)) : state.enemy.def;
-    const isCrit = Math.random() < (state.player.critChance || 0.1);
+
+    // ── Crit calculation (Super Crit at critChance/3) ──
+    const critRoll  = Math.random() * 100;
+    const critPct   = (state.player.critChance || 0.1) * 100;
+    const critMult  = state.player.critMult || 1.5;
+    let isCrit      = false, isSuperCrit = false;
+    if (critRoll <= critPct / 3)      { isSuperCrit = true; }
+    else if (critRoll <= critPct)     { isCrit = true; }
+
     let dmg = calcDamage(playerAtk, effectiveDef);
     if (markedBuff?.dmgMultiplier > 1) dmg = Math.floor(dmg * markedBuff.dmgMultiplier);
-    if (isCrit) { dmg = Math.floor(dmg * 2); log.push('💥 CRITICAL HIT!'); }
+    if (isSuperCrit) { dmg = Math.floor(dmg * 2.2); log.push('🌟 SUPER CRIT!! ×2.2!'); }
+    else if (isCrit) { dmg = Math.floor(dmg * critMult); log.push('💥 CRITICAL HIT!'); }
+
+    // Soulseer passive: +8 MP on any crit
+    if ((isCrit || isSuperCrit) && state.charClass === 'soulseer') {
+      state.player.mp = Math.min(state.player.mpMax, state.player.mp + 8);
+    }
+
+    // ── Combo counter ──
+    state.comboCount = (state.comboCount || 0) + 1;
+    const combo = state.comboCount;
+    if (combo >= 10)     { dmg = Math.floor(dmg * 1.25); }
+    else if (combo >= 5) { dmg = Math.floor(dmg * 1.15); }
+    else if (combo >= 3) { dmg = Math.floor(dmg * 1.05); }
+
     state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
-    log.push(`⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage${isCrit ? ' (Critical!)' : ''}${playerSlow ? ' (ช้าลง ⚠️)' : ''}${markedBuff ? ' (🎯 Marked!)' : ''}`);
+
+    let attackLabel = `⚔️ คุณโจมตี ${state.enemy.name}! ${dmg} damage`;
+    if (playerSlow)   attackLabel += ' (ช้าลง ⚠️)';
+    if (markedBuff)   attackLabel += ' (🎯 Marked!)';
+    log.push(attackLabel);
+    if (combo === 10)      log.push('🔥🔥 RAMPAGE ×10! +25% damage!');
+    else if (combo === 5)  log.push('🔥 COMBO ×5! +15% damage!');
+    else if (combo >= 3)   log.push(`🔥 Combo ×${combo}`);
 
   } else if (action === 'skill') {
     // ─── USE SKILL ───
@@ -325,8 +358,17 @@ async function processAction(req, res) {
       log.push('❌ หนีไม่ได้! ' + state.enemy.name + ' ขวางทางอยู่');
     }
 
+  } else if (action === 'guard') {
+    // ── GUARD: ตั้งท่ารับ — ลด damage รอบนี้ + รับ MP เล็กน้อย ──
+    state.player.isGuarding = true;
+    state.player.mp = Math.min(state.player.mpMax, state.player.mp + 5);
+    state.comboCount = 0;  // Guard resets combo
+    log.push('🛡️ ตั้งท่ารับ — ลด damage 45% รอบนี้ (+5 MP)');
+    if (state.charClass === 'warrior') log.push('🗡️ Iron Will: ลด damage 60%!');
+
   } else if (action === 'item') {
     // ใช้ item consumable (ใช้ได้แม้ถูก stun)
+    state.comboCount = 0;  // Using item breaks combo
     const itemResult = await useItem(uid, itemInstanceId, state, log);
     if (!itemResult.success) return res.status(400).json({ error: itemResult.error });
 
@@ -456,20 +498,60 @@ async function processAction(req, res) {
 
   // Enemy attack (skip if stunned)
   if (!isEnemyStunned) {
+    // ── Named move: ใช้ telegraphed move ที่ประกาศไว้ หรือ pick ใหม่ ──
+    const usedMove = state.telegraphMove || pickMove(state.enemy);
+    state.telegraphMove = null;
+
     const attackMsgs = state.enemy.attackMsg;
     const attackMsg  = attackMsgs[Math.floor(Math.random() * attackMsgs.length)];
+    const moveName   = usedMove ? `[${usedMove.emoji || ''}${usedMove.name}] ` : '';
+
     // Apply SLOW debuff to enemy atk
     const slowBuff = state.enemy.status.find(s => s.type === 'SLOW');
-    const enemyAtk = slowBuff ? Math.floor(state.enemy.atk * slowBuff.atkMult) : state.enemy.atk;
+    let enemyAtk   = slowBuff ? Math.floor(state.enemy.atk * (slowBuff.atkMult || 0.75)) : state.enemy.atk;
+    // BURN debuff: -5% ATK while burning
+    if (state.enemy.status.find(s => s.type === 'BURN')) enemyAtk = Math.floor(enemyAtk * 0.95);
     // Tick SLOW duration
     if (slowBuff) {
       state.enemy.status = state.enemy.status.map(s =>
         s.type === 'SLOW' ? { ...s, duration: s.duration - 1 } : s
       ).filter(s => s.duration > 0);
     }
-    const enemyDmg = calcDamage(enemyAtk, state.player.def);
+
+    // Apply move dmgMult
+    let rawEnemyDmg = calcDamage(enemyAtk, state.player.def);
+    if (usedMove?.dmgMult) rawEnemyDmg = Math.floor(rawEnemyDmg * usedMove.dmgMult);
+
+    // ── Guard damage reduction ──
+    let guardMult = 1.0;
+    if (state.player.isGuarding) {
+      const isTelegraphedHit = !!usedMove?.telegraphed;
+      if (state.charClass === 'warrior') {
+        guardMult = isTelegraphedHit ? 0.25 : 0.40;  // warrior: 60% / 75% reduction
+      } else {
+        guardMult = isTelegraphedHit ? 0.30 : 0.55;  // others: 45% / 70% reduction
+      }
+    }
+    state.player.isGuarding = false;
+    const enemyDmg = Math.max(1, Math.floor(rawEnemyDmg * guardMult));
     state.player.hp = Math.max(0, state.player.hp - enemyDmg);
-    log.push(`👹 ${state.enemy.name} ${attackMsg}! ${enemyDmg} damage${slowBuff ? ' (ช้าลง)' : ''}`);
+
+    const guardLabel = guardMult < 1.0 ? ` 🛡️ GUARDED! (-${Math.round((1 - guardMult) * 100)}%)` : '';
+    log.push(`👹 ${state.enemy.name} ${moveName}${attackMsg}! ${enemyDmg} damage${slowBuff ? ' (ช้าลง)' : ''}${guardLabel}`);
+
+    // Apply named move special effect
+    if (usedMove?.effect && guardMult === 1.0 && !state.player.status.find(s => s.type === usedMove.effect.type)) {
+      const ef = usedMove.effect;
+      state.player.status.push({ type: ef.type, duration: ef.duration, dmgPerTurn: ef.dmgPerTurn || 0, atkMult: ef.atkMult });
+      log.push(`⚠️ คุณถูก ${ef.type} จาก ${usedMove.name}!`);
+    }
+
+    // ── Telegraph next move (if it's a telegraphed type) ──
+    const nextMove = pickMove(state.enemy);
+    if (nextMove?.telegraphed) {
+      state.telegraphMove = nextMove;
+      log.push(`⚠️ ${state.enemy.name} กำลังเตรียม "${nextMove.name}" — Guard รอบหน้าเพื่อลด damage!`);
+    }
   }
 
   // Enemy status attack
@@ -505,6 +587,18 @@ async function processAction(req, res) {
   state.turn++;
   await saveBattle(db, battleId, state);
   return res.json({ battleId, state: { ...sanitizeState(state), log, result: null } });
+}
+
+// ─── Pick Named Enemy Move (weighted random) ──────────────────────
+function pickMove(enemy) {
+  if (!enemy?.moves?.length) return null;
+  const total = enemy.moves.reduce((s, m) => s + (m.weight || 1), 0);
+  let r = Math.random() * total;
+  for (const m of enemy.moves) {
+    r -= (m.weight || 1);
+    if (r <= 0) return m;
+  }
+  return enemy.moves[0];
 }
 
 // ─── Apply Skill ─────────────────────────────────────────────────
@@ -551,15 +645,41 @@ function applySkill(state, skillId, log) {
 
   // Damage skill
   if (skillDef.damage > 0) {
-    const isCrit = Math.random() < (state.player.critChance || 0.1);
+    const critRoll2   = Math.random() * 100;
+    const critPct2    = (state.player.critChance || 0.1) * 100;
+    const critMult2   = state.player.critMult || 1.5;
+    let isCrit2 = false, isSuperCrit2 = false;
+    if (critRoll2 <= critPct2 / 3)  { isSuperCrit2 = true; }
+    else if (critRoll2 <= critPct2) { isCrit2 = true; }
+
     let dmg;
     if (skillDef.magicDamage) {
-      // Magic: ใช้ MAG, ไม่ถูก DEF ลด
       dmg = Math.floor(state.player.mag * skillDef.damage);
     } else {
       dmg = Math.floor(calcDamage(state.player.atk, state.enemy.def) * skillDef.damage);
     }
-    if (isCrit) { dmg = Math.floor(dmg * 2); log.push('💥 CRITICAL!'); }
+    if (isSuperCrit2) { dmg = Math.floor(dmg * 2.2); log.push('🌟 SUPER CRIT!! ×2.2!'); }
+    else if (isCrit2) { dmg = Math.floor(dmg * critMult2); log.push('💥 CRITICAL!'); }
+
+    // Soulseer passive: +8 MP on any crit
+    if ((isCrit2 || isSuperCrit2) && state.charClass === 'soulseer') {
+      state.player.mp = Math.min(state.player.mpMax, state.player.mp + 8);
+    }
+
+    // ── bonusVsCC: Rogue Backstab ×4 vs stunned/slowed (existing mechanic) ──
+    if (skillDef.bonusVsCC) {
+      const isCC = state.enemy.status.some(s => s.type === 'STUN' || s.type === 'SLOW');
+      if (isCC) { dmg = Math.floor(dmg * 4); log.push('🥷 Backstab! ×4 damage (CC target)!'); }
+    }
+
+    // Skills count as combo hits
+    state.comboCount = (state.comboCount || 0) + 1;
+    const sCombo = state.comboCount;
+    if (sCombo >= 10)     { dmg = Math.floor(dmg * 1.25); }
+    else if (sCombo >= 5) { dmg = Math.floor(dmg * 1.15); }
+    else if (sCombo >= 3) { dmg = Math.floor(dmg * 1.05); }
+    if (sCombo >= 5) log.push(`🔥 Combo ×${sCombo}!`);
+
     state.enemy.hp = Math.max(0, state.enemy.hp - dmg);
     log.push(`💥 ${skillDef.name}: ${dmg} damage${skillDef.magicDamage ? ' (magic)' : ''}!`);
   }
@@ -642,35 +762,59 @@ function processStatusEffects(entity, log, who) {
   const label    = who === 'player' ? 'คุณ' : entity.name;
   const remaining = [];
 
-  for (const s of entity.status) {
-    // ── POISON: ดีลเดม dmgPerTurn ──
+  for (let s of entity.status) {
+    // ── POISON: DoT คงที่ + ลด healing (flag healPenalty บน entity) ──
     if (s.type === 'POISON' && s.dmgPerTurn > 0) {
       entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
-      log.push(`☠️ ${label} ได้รับพิษ ${s.dmgPerTurn} damage`);
+      entity.healPenalty = 0.7;   // healing items จะได้แค่ 70% (ต่อเทิร์น)
+      log.push(`☠️ ${label} ได้รับพิษ ${s.dmgPerTurn} damage (healing -30%)`);
     }
 
-    // ── BURN: เหมือน Poison แต่ไฟ (dmgPerTurn สูงกว่า, duration สั้น) ──
+    // ── BURN: DoT + ลด DEF -10% (บน enemy via entity.burnDefPenalty) ──
     if (s.type === 'BURN' && s.dmgPerTurn > 0) {
       entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
+      entity.burnDefPenalty = true;  // ตรวจสอบใน enemy attack calc
       log.push(`🔥 ${label} ถูกเผาไหม้ ${s.dmgPerTurn} damage`);
     }
 
-    // ── BLEED: เลือดออก (dmgPerTurn เล็กน้อย, duration ยาว) ──
-    if (s.type === 'BLEED' && s.dmgPerTurn > 0) {
-      entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
-      log.push(`🩸 ${label} เลือดออก ${s.dmgPerTurn} damage`);
+    // ── BLEED: DoT ที่เพิ่มขึ้นทุกเทิร์น (bleedStack++) ──
+    if (s.type === 'BLEED') {
+      s = { ...s, bleedStack: (s.bleedStack || 0) + 1 };  // stack ทุกเทิร์น
+      const bleedDmg = s.dmgPerTurn + s.bleedStack - 1;   // เพิ่มขึ้นทุกเทิร์น
+      entity.hp = Math.max(0, entity.hp - bleedDmg);
+      log.push(`🩸 ${label} เลือดออก ${bleedDmg} damage${s.bleedStack > 1 ? ` (stack ×${s.bleedStack})` : ''}`);
     }
 
-    // ── CURSE: เหมือน Poison แต่ magic damage ──
-    if (s.type === 'CURSE' && s.dmgPerTurn > 0) {
-      entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
-      log.push(`💜 ${label} ถูกสาป ${s.dmgPerTurn} damage`);
+    // ── CURSE: DoT + random stat debuff (ใช้ครั้งแรกเท่านั้น) ──
+    if (s.type === 'CURSE') {
+      if (s.dmgPerTurn > 0) {
+        entity.hp = Math.max(0, entity.hp - s.dmgPerTurn);
+        log.push(`💜 ${label} ถูกสาป ${s.dmgPerTurn} damage`);
+      }
+      // Apply random stat debuff on first tick
+      if (!s.curseApplied) {
+        s = { ...s, curseApplied: true };
+        const statRoll = Math.random();
+        if (statRoll < 0.33 && entity.atk) {
+          entity.atk = Math.floor(entity.atk * 0.8);
+          log.push(`💜 คำสาป: ${label} ATK -20%!`);
+        } else if (statRoll < 0.66 && entity.def !== undefined) {
+          entity.def = Math.floor(entity.def * 0.8);
+          log.push(`💜 คำสาป: ${label} DEF -20%!`);
+        } else if (entity.spd !== undefined) {
+          entity.spd = Math.floor((entity.spd || 10) * 0.8);
+          log.push(`💜 คำสาป: ${label} SPD -20%!`);
+        }
+      }
     }
 
     // ── STUN/SLOW/MARKED: ไม่มีผล per-turn damage — จัดการใน caller ──
 
     if (s.duration > 1) remaining.push({ ...s, duration: s.duration - 1 });
     else if (s.duration === 1) {
+      // Clear penalty flags on expiry
+      if (s.type === 'POISON')  entity.healPenalty    = 1.0;
+      if (s.type === 'BURN')    entity.burnDefPenalty = false;
       log.push(`✨ ${label} หาย ${s.type}`);
     }
   }
@@ -848,6 +992,12 @@ function sanitizeState(state) {
     result:         state.result,
     charClass:      state.charClass,
     unlockedSkills: state.unlockedSkills,
+    comboCount:     state.comboCount || 0,
+    telegraphMove:  state.telegraphMove ? {
+      name:        state.telegraphMove.name,
+      emoji:       state.telegraphMove.emoji || '⚠️',
+      telegraphed: true,
+    } : null,
     player: {
       hp:         state.player.hp,
       hpMax:      state.player.hpMax,
@@ -856,6 +1006,8 @@ function sanitizeState(state) {
       atk:        state.player.atk,
       def:        state.player.def,
       critChance: state.player.critChance,
+      critMult:   state.player.critMult || 1.5,
+      isGuarding: state.player.isGuarding || false,
       status:     state.player.status,
       buffs:      (state.player.buffs || []).map(b => ({
         type:     b.atkMult ? 'ATK_BUFF' : b.critBonus ? 'CRIT_BUFF' : 'BUFF',

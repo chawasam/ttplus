@@ -1709,26 +1709,84 @@ export default function GameWorld() {
                 <div>
                   {!battle.result ? (
                     <>
-                      <div className="flex gap-2 mb-2 text-xs text-gray-500">
-                        <span className="text-red-400">👹 {battle.enemy.name}: {battle.enemy.hp}/{battle.enemy.hpMax} HP</span>
-                        <span className="text-blue-400 ml-2">💧 {battle.player?.mp}/{battle.player?.mpMax} MP</span>
+                      {/* ── Enemy info ── */}
+                      <div className="flex gap-2 mb-1 text-xs text-gray-500 items-center flex-wrap">
+                        <span className="text-red-400 font-semibold">👹 {battle.enemy.name}: {battle.enemy.hp}/{battle.enemy.hpMax} HP</span>
+                        <span className="text-blue-400">💧 {battle.player?.mp}/{battle.player?.mpMax} MP</span>
                         <span className="ml-auto">Turn {battle.turn}</span>
+                        {(battle.comboCount || 0) >= 3 && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${battle.comboCount >= 10 ? 'bg-orange-900/50 text-orange-300 border border-orange-700' : battle.comboCount >= 5 ? 'bg-red-900/40 text-red-300 border border-red-800' : 'bg-amber-900/30 text-amber-400 border border-amber-800'}`}>
+                            🔥 ×{battle.comboCount}
+                          </span>
+                        )}
                       </div>
-                      {/* Active buffs */}
+
+                      {/* ── Telegraphed move warning ── */}
+                      {battle.telegraphMove && (
+                        <div className="mb-1.5 px-2 py-1 rounded bg-red-950/60 border border-red-700/60 text-xs text-red-300 flex items-center gap-2 animate-pulse">
+                          <span>⚠️</span>
+                          <span className="font-semibold">{battle.enemy.name} กำลังชาร์จ {battle.telegraphMove.emoji} {battle.telegraphMove.name}!</span>
+                          <span className="ml-auto text-red-500">Guard เพื่อลด damage!</span>
+                        </div>
+                      )}
+
+                      {/* ── Enemy status chips ── */}
+                      {battle.enemy?.status?.length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                          {battle.enemy.status.map((s, i) => {
+                            const statusColor = { STUN:'text-yellow-400 border-yellow-800', SLOW:'text-blue-400 border-blue-800', BURN:'text-orange-400 border-orange-800', BLEED:'text-red-400 border-red-800', POISON:'text-green-400 border-green-800', CURSE:'text-purple-400 border-purple-800', MARKED:'text-pink-400 border-pink-800' }[s.type] || 'text-gray-400 border-gray-700';
+                            const statusIcon  = { STUN:'😵', SLOW:'🐢', BURN:'🔥', BLEED:'🩸', POISON:'☠️', CURSE:'💜', MARKED:'🎯' }[s.type] || '⚠️';
+                            return (
+                              <span key={i} className={`text-[10px] px-1 border rounded ${statusColor}`}>
+                                {statusIcon} {s.type}({s.duration})
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* ── Player status chips ── */}
+                      {battle.player?.status?.length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                          {battle.player.status.map((s, i) => {
+                            const statusColor = { STUN:'text-yellow-300 border-yellow-700', SLOW:'text-blue-300 border-blue-700', BURN:'text-orange-300 border-orange-700', BLEED:'text-red-300 border-red-700', POISON:'text-green-300 border-green-700', CURSE:'text-purple-300 border-purple-700' }[s.type] || 'text-gray-300 border-gray-600';
+                            const statusIcon  = { STUN:'😵', SLOW:'🐢', BURN:'🔥', BLEED:'🩸', POISON:'☠️', CURSE:'💜' }[s.type] || '⚠️';
+                            return (
+                              <span key={i} className={`text-[10px] px-1 border rounded ${statusColor} bg-gray-900/40`}>
+                                {statusIcon} คุณ {s.type}({s.duration})
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* ── Active buffs ── */}
                       {battle.player?.buffs?.length > 0 && (
                         <div className="flex gap-1 mb-1 flex-wrap">
                           {battle.player.buffs.map((b, i) => (
-                            <span key={i} className="text-xs px-1 border border-amber-800 text-amber-500 rounded">
-                              {b.name || b.type} ({b.duration}t)
+                            <span key={i} className="text-[10px] px-1 border border-amber-800 text-amber-500 rounded">
+                              {b.type === 'ATK_BUFF' ? '⚔️' : b.type === 'CRIT_BUFF' ? '🎯' : '✨'} {b.type} ({b.duration}t)
                             </span>
                           ))}
                         </div>
                       )}
-                      <div className="grid grid-cols-2 gap-2 mb-2">
+
+                      {/* ── Action buttons ── */}
+                      <div className="grid grid-cols-3 gap-1.5 mb-2">
                         <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>⚔️ โจมตี</Btn>
-                        <Btn onClick={() => handleBattleAction('flee')}   disabled={busy}>🏃 หนี</Btn>
+                        <button
+                          onClick={() => handleBattleAction('guard')} disabled={busy}
+                          className="px-2 py-1.5 border border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-800/40 transition text-xs disabled:opacity-30 rounded font-semibold">
+                          🛡️ ตั้งรับ
+                        </button>
+                        <button
+                          onClick={() => handleBattleAction('flee')} disabled={busy}
+                          className="px-2 py-1.5 border border-gray-800 text-gray-500 hover:border-gray-600 hover:text-gray-400 transition text-xs disabled:opacity-30 rounded">
+                          🏃 หนี
+                        </button>
                       </div>
-                      {/* Skill buttons */}
+
+                      {/* ── Skill buttons ── */}
                       {battleSkills.length > 0 && (
                         <div className="grid grid-cols-2 gap-1">
                           {battleSkills.map(sk => (
