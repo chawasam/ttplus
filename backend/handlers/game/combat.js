@@ -392,6 +392,18 @@ async function processAction(req, res) {
     // ─── USE SKILL ───
     const skillResult = applySkill(state, skillId, log);
     if (!skillResult.success) return res.status(400).json({ error: skillResult.error });
+
+    // Track skill usage (fire-and-forget)
+    if (skillId) {
+      const skillDef = getSkill(skillId);
+      db.collection('game_skill_stats').doc(skillId).set({
+        skillId,
+        name: skillDef?.name || skillId,
+        charClass: skillDef?.classReq?.[0] || 'any',
+        useCount: admin.firestore.FieldValue.increment(1),
+        lastUsed: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }).catch(() => {});
+    }
     // If skill has goFirst (Archer's Quick Shot), skip enemy turn this round
     if (skillResult.goFirst && state.enemy.hp > 0) {
       // Enemy turn is skipped — handled after this block

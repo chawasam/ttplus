@@ -183,6 +183,14 @@ async function sellItem(req, res) {
     await batch.commit();
 
     await addGold(uid, price, 'sell_item');
+
+    // Track item economy (fire-and-forget)
+    db.collection('game_item_stats').doc(invData.itemId).set({
+      itemId: invData.itemId, name: def.name, emoji: def.emoji || '📦', type: def.type || 'UNKNOWN',
+      sellCount: admin.firestore.FieldValue.increment(1),
+      lastSold: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true }).catch(() => {});
+
     return res.json({ success: true, gold: price, msg: `ขาย ${def.name} ได้ ${price} Gold` });
   } catch (err) {
     console.error('[Inventory] sellItem:', err.message);
@@ -235,6 +243,14 @@ async function buyItem(req, res) {
   if (!instance) return res.status(500).json({ error: 'สร้าง item ไม่สำเร็จ' });
 
   await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+
+  // Track item economy (fire-and-forget)
+  db.collection('game_item_stats').doc(itemId).set({
+    itemId, name: def.name, emoji: def.emoji || '📦', type: def.type || 'UNKNOWN',
+    buyCount: admin.firestore.FieldValue.increment(1),
+    lastBought: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(() => {});
+
   return res.json({ success: true, item: instance, goldSpent: def.buyPrice, msg: `ซื้อ ${def.name} แล้ว` });
 }
 
@@ -249,10 +265,4 @@ function isValidSlot(itemType, slot) {
 
 async function getCharDoc(uid, db) {
   const accountDoc = await db.collection('game_accounts').doc(uid).get();
-  if (!accountDoc.exists) return null;
-  const charId = accountDoc.data().characterId;
-  if (!charId) return null;
-  return db.collection('game_characters').doc(charId).get();
-}
-
-module.exports = { getInventory, equipItem, unequipItem, sellItem, getShopItems, buyItem };
+  if (!accountDoc.ex

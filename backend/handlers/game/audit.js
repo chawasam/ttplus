@@ -251,8 +251,142 @@ async function manualFlag(req, res) {
   }
 }
 
+// ── GET /api/game/audit/skill-stats ─────────────────────────────────────────
+async function getSkillStats(req, res) {
+  const db = admin.firestore();
+  try {
+    const snap = await db.collection('game_skill_stats').orderBy('useCount', 'desc').limit(100).get();
+    const skills = snap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        skillId:   d.skillId || doc.id,
+        name:      d.name || doc.id,
+        charClass: d.charClass || 'any',
+        useCount:  d.useCount || 0,
+        lastUsed:  d.lastUsed?.toDate?.()?.toISOString?.() || null,
+      };
+    });
+    return res.json({ skills, scannedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Audit] getSkillStats:', err.message);
+    return res.status(500).json({ error: 'Server error', skills: [] });
+  }
+}
+
+// ── GET /api/game/audit/item-stats ───────────────────────────────────────────
+async function getItemStats(req, res) {
+  const db = admin.firestore();
+  try {
+    const snap = await db.collection('game_item_stats').get();
+    const items = snap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        itemId:    d.itemId || doc.id,
+        name:      d.name || doc.id,
+        emoji:     d.emoji || '📦',
+        type:      d.type || 'UNKNOWN',
+        buyCount:  d.buyCount || 0,
+        sellCount: d.sellCount || 0,
+        lastBought: d.lastBought?.toDate?.()?.toISOString?.() || null,
+        lastSold:   d.lastSold?.toDate?.()?.toISOString?.() || null,
+      };
+    });
+    // Sort by buyCount desc
+    items.sort((a, b) => (b.buyCount + b.sellCount) - (a.buyCount + a.sellCount));
+    return res.json({ items, scannedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Audit] getItemStats:', err.message);
+    return res.status(500).json({ error: 'Server error', items: [] });
+  }
+}
+
 module.exports = {
   requireAdmin,
   getFlags, getPlayerHistory, resolveFlag, getSummary,
-  getActivity, getPlayers, manualFlag,
+  getActivity, getPlayers, manualFlag, getBugs,
+  getSkillStats, getItemStats,
 };
+
+// ── GET /api/game/audit/bugs — Bug Radar auto-detection ──────────────────────
+async function getBugs(req, res) {
+  const db = admin.firestore();
+  const now = Date.now();
+  const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+  const FAILED_TX_THRESHOLD_MS = 5 * 60 * 1000; // 5 min
+
+  try {
+    // 1. Stuck battles: active battles with no update > 30 min
+    const battlesSnap = await db.collection('game_battles')
+      .where('status', '==', 'active')
+      .limit(50)
+      .get();
+
+    const stuckBattles = [];
+    battlesSnap.forEach(doc => {
+      const d = doc.data();
+      const lastUpdate = d.updatedAt?.toMillis?.() || d.createdAt?.toMillis?.() || 0;
+      const age = now - lastUpdate;
+      if (age > STUCK_THRESHOLD_MS) {
+        stuckBattles.push({
+          battleId: doc.id,
+          uid: d.uid || '?',
+          minutesAgo: Math.floor(age / 60000),
+          enemy: d.enemy?.name || '?',
+          createdAt: d.createdAt?.toDate?.()?.toISOString?.() || null,
+        });
+      }
+    });
+
+    // 2. Failed transactions: processed=false older than 5 min
+    const txSnap = await db.collection('game_transactions')
+      .where('processed', '==', false)
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+
+    const failedTx = [];
+    txSnap.forEach(doc => {
+      const d = doc.data();
+      const created = d.createdAt?.toMillis?.() || 0;
+      const age = now - created;
+      if (age > FAILED_TX_THRESHOLD_MS) {
+        failedTx.push({
+          txId: doc.id,
+          uid: d.uid || '?',
+          giftName: d.giftName || '?',
+          goldEarned: d.goldEarned || 0,
+          error: d.error || null,
+          minutesAgo: Math.floor(age / 60000),
+        });
+      }
+    });
+
+    // 3. Recent auto-flags as error patterns
+    const flagsSnap = await db.collection('game_flags')
+      .where('resolved', '==', false)
+      .orderBy('ts', 'desc')
+      .limit(20)
+      .get();
+
+    const errorPatterns = [];
+    const patternMap = {};
+    flagsSnap.forEach(doc => {
+      const d = doc.data();
+      const type = (d.reason || 'unknown').replace(/\[.*?\]/g,'').trim().slice(0,40);
+      if (!patternMap[type]) patternMap[type] = { type, count:0, lastSeen: null };
+      patternMap[type].count++;
+      if (!patternMap[type].lastSeen) patternMap[type].lastSeen = d.ts?.toDate?.()?.toISOString?.() || null;
+    });
+    Object.values(patternMap).forEach(p => { if (p.count >= 2) errorPatterns.push(p); });
+
+    return res.json({
+      stuckBattles,
+      failedTx,
+      errorPatterns,
+      scannedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[Audit] getBugs:', err.message);
+    return res.status(500).json({ error: 'Server error', stuckBattles:[], failedTx:[], errorPatterns:[] });
+  }
+}

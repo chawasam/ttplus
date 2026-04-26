@@ -166,6 +166,9 @@ router.get ('/audit/player/:uid',              audit.requireAdmin, audit.getPlay
 router.get ('/audit/activity',                 audit.requireAdmin, audit.getActivity);
 router.get ('/audit/players',                  audit.requireAdmin, audit.getPlayers);
 router.post('/audit/players/:uid/flag',        audit.requireAdmin, audit.manualFlag);
+router.get ('/audit/bugs',                     audit.requireAdmin, audit.getBugs);
+router.get ('/audit/skill-stats',              audit.requireAdmin, audit.getSkillStats);
+router.get ('/audit/item-stats',               audit.requireAdmin, audit.getItemStats);
 
 // ----- Dungeon -----
 router.get ('/dungeons',              dungeon.listDungeons);
