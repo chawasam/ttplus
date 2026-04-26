@@ -1809,9 +1809,7 @@ export default function GameWorld() {
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
                     <Btn onClick={openMainQuestLog} disabled={busy}>🌑 Vorath</Btn>
-                    <Link href="/ashenveil/story" style={{ textDecoration: 'none' }}>
-                      <span className="px-3 py-2 border border-gray-700 text-indigo-300 hover:border-indigo-600 hover:bg-indigo-900/10 transition text-xs disabled:opacity-40 rounded cursor-pointer inline-block">📖 Story</span>
-                    </Link>
+                    <Btn onClick={() => router.push('/ashenveil/story')} disabled={busy}>📖 Story</Btn>
                     <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
                     <Btn onClick={openCharacter}    disabled={busy}>📊 ตัวละคร</Btn>
