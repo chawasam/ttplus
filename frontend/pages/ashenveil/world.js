@@ -1696,22 +1696,29 @@ export default function GameWorld() {
                 <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
                 <span className="text-purple-400">🌀 {rp} RP</span>
                 <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
-                <div className="flex items-center gap-1 ml-2">
-                  <button onClick={toggleBgm}
-                    title={bgmEnabled ? 'ปิดเพลง BGM' : 'เปิดเพลง BGM'}
-                    className={`px-1.5 py-0.5 border rounded transition select-none text-xs ${
-                      bgmEnabled ? 'border-amber-800 text-amber-500 hover:text-amber-300 hover:border-amber-600'
-                                 : 'border-gray-800 text-gray-700 hover:text-gray-500'}`}
-                    style={{ lineHeight: 1 }}>
-                    {bgmEnabled ? '🎵' : '🔇'}
+                {/* Font size quick controls */}
+                <div className="flex items-center gap-0.5 ml-2 select-none">
+                  <button
+                    onClick={() => {
+                      const order = ['xs','sm','base','lg'];
+                      const idx = order.indexOf(fontSize);
+                      if (idx > 0) setFontSize(order[idx - 1]);
+                    }}
+                    title="ลดขนาดตัวอักษร"
+                    className="px-1.5 py-0.5 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded text-[10px] transition leading-none">
+                    A-
                   </button>
-                  {bgmEnabled && (
-                    <input type="range" min="0" max="1" step="0.05"
-                      value={bgmVolume} onChange={handleVolumeChange}
-                      title={`Volume: ${Math.round(bgmVolume * 100)}%`}
-                      className="w-14 h-1 accent-amber-600 cursor-pointer"
-                      style={{ verticalAlign: 'middle' }} />
-                  )}
+                  <span className="text-[9px] text-gray-600 px-0.5">{FONT_SIZES[fontSize]?.label}</span>
+                  <button
+                    onClick={() => {
+                      const order = ['xs','sm','base','lg'];
+                      const idx = order.indexOf(fontSize);
+                      if (idx < order.length - 1) setFontSize(order[idx + 1]);
+                    }}
+                    title="เพิ่มขนาดตัวอักษร"
+                    className="px-1.5 py-0.5 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded text-[11px] transition leading-none">
+                    A+
+                  </button>
                 </div>
               </div>
 
@@ -1805,7 +1812,6 @@ export default function GameWorld() {
                     <Link href="/ashenveil/story" style={{ textDecoration: 'none' }}>
                       <span className="px-3 py-2 border border-gray-700 text-indigo-300 hover:border-indigo-600 hover:bg-indigo-900/10 transition text-xs disabled:opacity-40 rounded cursor-pointer inline-block">📖 Story</span>
                     </Link>
-                    <Btn onClick={openQuestLog}     disabled={busy}>📖 เนื้อเรื่อง</Btn>
                     <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
                     <Btn onClick={openCharacter}    disabled={busy}>📊 ตัวละคร</Btn>
