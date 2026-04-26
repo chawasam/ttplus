@@ -1888,8 +1888,7 @@ export default function GameWorld() {
                       📋 ภารกิจ
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
-                    <Btn onClick={openMainQuestLog} disabled={busy}>🌑 Vorath</Btn>
-                    <Btn onClick={() => router.push('/ashenveil/story')} disabled={busy}>📖 Story</Btn>
+                    <Btn onClick={openMainQuestLog} disabled={busy}>📖 Story</Btn>
                     <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
                     <Btn onClick={openCharacter}    disabled={busy}>📊 ตัวละคร</Btn>
@@ -2865,9 +2864,13 @@ export default function GameWorld() {
                           </div>
                         </div>
 
-                        {/* Sub-tab: quests / lore */}
-                        <div className="flex gap-1">
-                          {[{ key:'quests', label:'📜 ภารกิจ' }, { key:'lore', label:'📚 Lore Fragments' }].map(({ key, label }) => (
+                        {/* Sub-tab: overview / quests / lore */}
+                        <div className="flex gap-1 flex-wrap">
+                          {[
+                            { key:'overview', label:'🌍 ภาพรวม' },
+                            { key:'quests',   label:'📜 ภารกิจ' },
+                            { key:'lore',     label:'📚 Lore' },
+                          ].map(({ key, label }) => (
                             <button key={key} onClick={() => setMainQuestTab(key)}
                               className={`px-2 py-1 text-xs rounded border transition ${
                                 mainQuestTab === key
@@ -2879,6 +2882,71 @@ export default function GameWorld() {
                             </button>
                           ))}
                         </div>
+
+                        {/* Overview tab */}
+                        {mainQuestTab === 'overview' && (() => {
+                          const ACT_OVERVIEW = [
+                            { act:0, emoji:'🌑', title:'โปรล็อก — The Resonance',    subtitle:'การตื่นขึ้นของผู้เล่น',
+                              summary:'บางอย่างสั่นสะเทือนใต้ Ashenveil — Elder Maren นักวิชาการแก่แห่ง Town Square เรียกคุณมา ไปสำรวจชานเมืองและป่าทางเหนือ แต่สิ่งที่คุณพบมันลึกกว่านั้นมาก' },
+                            { act:1, emoji:'🏚️', title:'Act I — เมืองที่ถูกลืม',     subtitle:'ร่องรอยใน City Ruins',
+                              summary:'Void Rift กำลังแพร่กระจาย ห้องสมุดโบราณใน City Ruins ซ่อนบันทึกที่เปิดเผยต้นตอของ The Sundering — กลุ่มนักเวทย์ที่เรียก Vorath มาโดยตั้งใจ' },
+                            { act:2, emoji:'💀', title:'Act II — คนตายพูดได้',       subtitle:'ขุนนางและวิญญาณที่ยังไม่จากไป',
+                              summary:'The Undying Lord ขุนนางที่ถูก Void ครอบงำ รู้ความจริงเกี่ยวกับผู้ปิดผนึก — พวกเขาไม่ได้ "ตาย" แต่ถูกกักขังอยู่ระหว่างสองโลกตลอด 500 ปี' },
+                            { act:3, emoji:'🔮', title:'Act III — ตราที่พัง',        subtitle:'เส้นทางสู่ Void',
+                              summary:'ตราผนึกแตกบางส่วนแล้ว — ผ่าน Void Rift สู่ช่องว่างระหว่างโลก ที่นั่นคุณจะพบเสียงสะท้อนของผู้ปิดผนึก และตัดสินใจว่าจะช่วยพวกเขาหรือเดินหน้าต่อ' },
+                            { act:4, emoji:'🌑', title:'Act IV — ด้านที่มองไม่เห็น', subtitle:'ความจริงของ The Shattered Prophet',
+                              summary:'The Shattered Prophet — ศัตรูตัวจริง — ปรากฏตัว เขาคือลูกหลานของผู้ปิดผนึก เชื่อว่า Void จะ "รีเซ็ต" โลกที่เน่าเสีย และต้องการปลดผนึก Vorath โดยเสียสละผู้ปิดผนึกที่เหลือ' },
+                            { act:5, emoji:'⚡', title:'Act V — บทสรุป',            subtitle:'ทางแยกแห่งชะตากรรม',
+                              summary:'ปราการ Vorath — การเผชิญหน้าครั้งสุดท้าย คุณต้องเลือก: ส่ง Vorath กลับบ้าน (ปลด Sealers แต่โลกเปลี่ยนไปตลอดกาล) หรือผนึกเขาใหม่อีก 500 ปี' },
+                          ];
+                          return (
+                            <div className="space-y-2">
+                              {/* World synopsis */}
+                              <div className="border border-indigo-900/50 rounded-lg p-3 bg-indigo-950/20">
+                                <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-1">โลก Ashenveil</p>
+                                <p className="text-gray-300 text-xs leading-relaxed">
+                                  500 ปีที่แล้ว กลุ่มนักเวทย์เรียก Vorath — เทพแห่ง Void — มาสู่โลกมนุษย์ เมื่อควบคุมไม่ได้ พวกเขาผนึกเขาไว้โดยใช้วิญญาณของผู้ปิดผนึกทั้งห้าเป็น anchor
+                                </p>
+                                <p className="text-gray-400 text-xs leading-relaxed mt-1">
+                                  ตอนนี้ 500 ปีต่อมา ตราผนึกกำลังสั่นสะเทือน — และผู้เล่นคือคนที่ตื่นขึ้นในซากปรักพอดี
+                                </p>
+                              </div>
+                              {/* Act cards */}
+                              {ACT_OVERVIEW.map(act => {
+                                const questsInAct = mainQuestLog.quests?.filter(q => q.act === act.act) || [];
+                                const done = questsInAct.filter(q => q.status === 'completed').length;
+                                const isActive = questsInAct.some(q => q.status === 'active');
+                                const isLocked = act.act > 0 && questsInAct.every(q => q.status === 'locked');
+                                const isPrologue = act.act === 0;
+                                const prologueDone = mainQuestLog.currentAct > 0;
+                                return (
+                                  <div key={act.act} className={`border rounded-lg overflow-hidden transition-opacity ${
+                                    (isLocked && !isPrologue) ? 'border-gray-900 opacity-30' :
+                                    isActive || (isPrologue && !prologueDone) ? 'border-indigo-800' : 'border-gray-800'
+                                  }`}>
+                                    <div className={`flex items-center gap-2 px-3 py-2 ${isActive ? 'bg-indigo-950/30' : 'bg-gray-950/60'}`}>
+                                      <span>{act.emoji}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{act.title}</span>
+                                          {isActive && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">กำลังดำเนิน</span>}
+                                          {!isLocked && !isActive && !isPrologue && done === questsInAct.length && questsInAct.length > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-900 text-green-300">✅ เสร็จ</span>}
+                                        </div>
+                                        <p className="text-xs text-gray-400">{act.subtitle}</p>
+                                      </div>
+                                      {questsInAct.length > 0 && <span className="text-gray-700 text-xs shrink-0">{done}/{questsInAct.length}</span>}
+                                    </div>
+                                    {(!isLocked || isPrologue) && (
+                                      <div className="px-3 py-2 bg-black/20">
+                                        <p className="text-gray-500 text-xs leading-relaxed">{act.summary}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
 
                         {/* Quest list */}
                         {mainQuestTab === 'quests' && (() => {
