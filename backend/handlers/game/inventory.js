@@ -265,4 +265,10 @@ function isValidSlot(itemType, slot) {
 
 async function getCharDoc(uid, db) {
   const accountDoc = await db.collection('game_accounts').doc(uid).get();
-  if (!accountDoc.ex
+  if (!accountDoc.exists) return null;
+  const charId = accountDoc.data().characterId;
+  if (!charId) return null;
+  return db.collection('game_characters').doc(charId).get();
+}
+
+module.exports = { getInventory, equipItem, unequipItem, sellItem, getShopItems, buyItem };
