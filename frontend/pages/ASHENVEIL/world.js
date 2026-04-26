@@ -2886,30 +2886,46 @@ export default function GameWorld() {
                         {/* Overview tab */}
                         {mainQuestTab === 'overview' && (() => {
                           const ACT_OVERVIEW = [
-                            { act:0, emoji:'🌑', title:'โปรล็อก — The Resonance',    subtitle:'การตื่นขึ้นของผู้เล่น',
-                              summary:'บางอย่างสั่นสะเทือนใต้ Ashenveil — Elder Maren นักวิชาการแก่แห่ง Town Square เรียกคุณมา ไปสำรวจชานเมืองและป่าทางเหนือ แต่สิ่งที่คุณพบมันลึกกว่านั้นมาก' },
-                            { act:1, emoji:'🏚️', title:'Act I — เมืองที่ถูกลืม',     subtitle:'ร่องรอยใน City Ruins',
-                              summary:'Void Rift กำลังแพร่กระจาย ห้องสมุดโบราณใน City Ruins ซ่อนบันทึกที่เปิดเผยต้นตอของ The Sundering — กลุ่มนักเวทย์ที่เรียก Vorath มาโดยตั้งใจ' },
-                            { act:2, emoji:'💀', title:'Act II — คนตายพูดได้',       subtitle:'ขุนนางและวิญญาณที่ยังไม่จากไป',
-                              summary:'The Undying Lord ขุนนางที่ถูก Void ครอบงำ รู้ความจริงเกี่ยวกับผู้ปิดผนึก — พวกเขาไม่ได้ "ตาย" แต่ถูกกักขังอยู่ระหว่างสองโลกตลอด 500 ปี' },
-                            { act:3, emoji:'🔮', title:'Act III — ตราที่พัง',        subtitle:'เส้นทางสู่ Void',
-                              summary:'ตราผนึกแตกบางส่วนแล้ว — ผ่าน Void Rift สู่ช่องว่างระหว่างโลก ที่นั่นคุณจะพบเสียงสะท้อนของผู้ปิดผนึก และตัดสินใจว่าจะช่วยพวกเขาหรือเดินหน้าต่อ' },
-                            { act:4, emoji:'🌑', title:'Act IV — ด้านที่มองไม่เห็น', subtitle:'ความจริงของ The Shattered Prophet',
-                              summary:'The Shattered Prophet — ศัตรูตัวจริง — ปรากฏตัว เขาคือลูกหลานของผู้ปิดผนึก เชื่อว่า Void จะ "รีเซ็ต" โลกที่เน่าเสีย และต้องการปลดผนึก Vorath โดยเสียสละผู้ปิดผนึกที่เหลือ' },
-                            { act:5, emoji:'⚡', title:'Act V — บทสรุป',            subtitle:'ทางแยกแห่งชะตากรรม',
-                              summary:'ปราการ Vorath — การเผชิญหน้าครั้งสุดท้าย คุณต้องเลือก: ส่ง Vorath กลับบ้าน (ปลด Sealers แต่โลกเปลี่ยนไปตลอดกาล) หรือผนึกเขาใหม่อีก 500 ปี' },
+                            { act:0, emoji:'🌅', title:'โปรล็อก — The Resonance', subtitle:'การตื่นขึ้น',
+                              reveal: null,
+                              summary:'ผู้เล่นตื่นขึ้นในซากปรัก แผ่นดิน Ashenveil กำลังสั่นสะเทือน Elder Maren นักวิชาการแก่เรียกตัวให้ออกสำรวจ สัตว์ป่าแปรปรวน ต้นไม้แห้งตาย มีบางอย่างที่ซ่อนอยู่ใต้ดิน' },
+                            { act:1, emoji:'🌿', title:'Act I — ดงรากมืด', subtitle:'Guardian แห่งป่าเสียสติ',
+                              reveal:'🔍 ค้นพบ: Sylvara ผู้ปิดผนึกกำลังอ่อนแอ — ถ้าเธอแตกสลาย โลกทั้งใบจะถูก Void กลืน',
+                              summary:'Guardian แห่ง Darkroot Hollow เสียสติเพราะ Void รั่วซึม เข้าไปในดันเจี้ยนเพื่อปลดปล่อยเขา ได้ยินคำกระซิบสุดท้ายของ Guardian ถึงชื่อ "Sylvara" — ผู้ปิดผนึกที่กำลังจะสูญสลาย' },
+                            { act:2, emoji:'💀', title:'Act II — สุสานจม', subtitle:'คนตายรู้ความจริง',
+                              reveal:'🔍 ค้นพบ: Vorath ยังมีชีวิตอยู่ใน Void และแข็งแกร่งขึ้นทุกวัน เขากำลังใช้ Voidspire Ruins เป็นประตูกลับมา',
+                              summary:'Cryptlord Malachar ขุนนางที่ถูก Void ครอบงำฟื้นขึ้น เขาไม่ได้ชั่วร้าย — เขารู้ความจริงและพยายามบอก ก่อนสิ้นใจเขาเปิดเผยว่า Vorath ไม่ตายจริง แต่อยู่ใน Void มา 500 ปี และกำลังกลับมา' },
+                            { act:3, emoji:'🌀', title:'Act III — ซากปรักวอยด์', subtitle:'เผชิญหน้า Avatar ของ Vorath',
+                              reveal:'🔍 ค้นพบ: โลกแตกออกเป็น 7 Shard World Core แตกเป็น 7 ชิ้น กระจายอยู่ใน 7 Shard — ต้องรวบรวมให้ครบ',
+                              summary:'เข้าสู่ Voidspire Ruins แหล่งกำเนิดของ The Sundering ปะทะกับ Avatar ของ Vorath ชนะแล้ว Sylvara ฟื้นสติชั่วคราวและกระซิบความลับของ World Core ก่อนจะหมดแรงอีกครั้ง' },
+                            { act:4, emoji:'🏚️', title:'Act IV — เมืองแตกสลาย', subtitle:'ความลับของ Mira',
+                              reveal:'🔍 ค้นพบ: พ่อของ Mira คือหนึ่งในสภา Archon ที่สั่งเรียก Vorath มา Mira แบกความผิดของพ่อมาตลอดชีวิต',
+                              summary:'ไปยัง City Ruins กับ Mira ช่างตีเหล็ก เธอรู้เส้นทางเพราะพ่อของเธอเคยอยู่ในสภา Archon ที่เป็นต้นเหตุของ The Sundering เธอช่วยหา World Core ชิ้นที่ 2 เพื่อ "ล้างบาป" ของพ่อ' },
+                            { act:5, emoji:'🌫️', title:'Act V — ดินแดนสาปแช่ง', subtitle:'นิมิตของ Lyra',
+                              reveal:'🔍 ค้นพบ: Vorath ไม่ได้ชั่วตั้งแต่ต้น The Sundering เกิดจากความผิดพลาดและการทรยศของมนุษย์ ไม่ใช่ความตั้งใจของเขา',
+                              summary:'ผ่านหนองสาปแช่งและ Void Frontier เก็บ World Core ชิ้นที่ 3–6 Lyra เห็นนิมิตและเปิดเผยความจริงสุดท้าย — Vorath สร้าง The Sundering เพื่อปกป้องบางสิ่ง แต่มันผิดพลาดไป เขาไม่ใช่ผู้ร้ายอย่างที่คิด' },
+                            { act:6, emoji:'⚡', title:'Act VI — การเผชิญหน้าครั้งสุดท้าย', subtitle:'ตัดสินชะตา Vorath',
+                              reveal:'⚖️ เลือกตอนจบ: ส่ง Vorath กลับบ้าน หรือ ผนึกเขาใหม่อีก 500 ปี',
+                              summary:'รวบรวม World Core ครบ 7 ชิ้น → บุก Vorath Citadel เผชิญหน้า Vorath เมื่อเห็น World Core เขาพังทลายทางจิตใจ "500 ปี... ข้าทำเพื่อปกป้องมัน แต่กลับทำลายทุกอย่าง" ผู้เล่นเลือกชะตากรรมของเขา' },
                           ];
                           return (
                             <div className="space-y-2">
-                              {/* World synopsis */}
-                              <div className="border border-indigo-900/50 rounded-lg p-3 bg-indigo-950/20">
-                                <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-1">โลก Ashenveil</p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  500 ปีที่แล้ว กลุ่มนักเวทย์เรียก Vorath — เทพแห่ง Void — มาสู่โลกมนุษย์ เมื่อควบคุมไม่ได้ พวกเขาผนึกเขาไว้โดยใช้วิญญาณของผู้ปิดผนึกทั้งห้าเป็น anchor
+                              {/* Theme card */}
+                              <div className="border border-indigo-900/60 rounded-lg p-3 bg-indigo-950/20 space-y-2">
+                                <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider">🌍 Ashenveil: The Shattered Age</p>
+                                <p className="text-gray-200 text-xs leading-relaxed font-medium">
+                                  โลกถูกทำลายโดยความผิดพลาดของมนุษย์ — ตัวร้ายที่แท้จริงไม่ใช่ Vorath แต่คือความโลภของผู้เรียกเขามา
                                 </p>
-                                <p className="text-gray-400 text-xs leading-relaxed mt-1">
-                                  ตอนนี้ 500 ปีต่อมา ตราผนึกกำลังสั่นสะเทือน — และผู้เล่นคือคนที่ตื่นขึ้นในซากปรักพอดี
-                                </p>
+                                <div className="border-t border-indigo-900/40 pt-2 grid grid-cols-2 gap-2 text-[11px]">
+                                  <div>
+                                    <p className="text-gray-500 mb-0.5">500 ปีที่แล้ว</p>
+                                    <p className="text-gray-400 leading-relaxed">สภา Archon เรียก Vorath มา → ควบคุมไม่ได้ → สังเวยคน 5 คนเพื่อผนึกเขา → โลกแตกเป็น 7 Shard</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500 mb-0.5">ตอนนี้</p>
+                                    <p className="text-gray-400 leading-relaxed">ผู้ปิดผนึกยังมีชีวิต ติดอยู่ระหว่างสองโลก Vorath โดดเดี่ยว 500 ปี กำลังกลับมา World Core รอการรวบรวม</p>
+                                  </div>
+                                </div>
                               </div>
                               {/* Act cards */}
                               {ACT_OVERVIEW.map(act => {
@@ -2918,27 +2934,31 @@ export default function GameWorld() {
                                 const isActive = questsInAct.some(q => q.status === 'active');
                                 const isLocked = act.act > 0 && questsInAct.every(q => q.status === 'locked');
                                 const isPrologue = act.act === 0;
-                                const prologueDone = mainQuestLog.currentAct > 0;
                                 return (
                                   <div key={act.act} className={`border rounded-lg overflow-hidden transition-opacity ${
-                                    (isLocked && !isPrologue) ? 'border-gray-900 opacity-30' :
-                                    isActive || (isPrologue && !prologueDone) ? 'border-indigo-800' : 'border-gray-800'
+                                    (isLocked && !isPrologue) ? 'border-gray-900 opacity-25' :
+                                    isActive || (isPrologue && mainQuestLog.currentAct === 0) ? 'border-indigo-800' : 'border-gray-800'
                                   }`}>
                                     <div className={`flex items-center gap-2 px-3 py-2 ${isActive ? 'bg-indigo-950/30' : 'bg-gray-950/60'}`}>
-                                      <span>{act.emoji}</span>
+                                      <span className="text-base">{act.emoji}</span>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{act.title}</span>
-                                          {isActive && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">กำลังดำเนิน</span>}
-                                          {!isLocked && !isActive && !isPrologue && done === questsInAct.length && questsInAct.length > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-900 text-green-300">✅ เสร็จ</span>}
+                                          <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-indigo-300' : 'text-gray-500'}`}>{act.title}</span>
+                                          {isActive && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">▶ กำลังดำเนิน</span>}
+                                          {!isLocked && !isActive && done > 0 && done === questsInAct.length && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-900/60 text-green-400">✅ เสร็จแล้ว</span>}
                                         </div>
-                                        <p className="text-xs text-gray-400">{act.subtitle}</p>
+                                        <p className="text-[11px] text-gray-500">{act.subtitle}</p>
                                       </div>
-                                      {questsInAct.length > 0 && <span className="text-gray-700 text-xs shrink-0">{done}/{questsInAct.length}</span>}
+                                      {questsInAct.length > 0 && <span className="text-gray-700 text-[11px] shrink-0">{done}/{questsInAct.length}</span>}
                                     </div>
                                     {(!isLocked || isPrologue) && (
-                                      <div className="px-3 py-2 bg-black/20">
+                                      <div className="px-3 py-2 bg-black/20 space-y-1.5">
                                         <p className="text-gray-500 text-xs leading-relaxed">{act.summary}</p>
+                                        {act.reveal && (
+                                          <p className={`text-[11px] leading-relaxed border-l-2 pl-2 ${
+                                            act.reveal.startsWith('⚖️') ? 'border-yellow-700 text-yellow-400/80' : 'border-purple-800 text-purple-400/80'
+                                          }`}>{act.reveal}</p>
+                                        )}
                                       </div>
                                     )}
                                   </div>
