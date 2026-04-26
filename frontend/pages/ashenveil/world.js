@@ -2497,7 +2497,7 @@ export default function GameWorld() {
                           <span className="text-amber-400 text-xs">⭐</span>
                         )}
                         <span className={`text-xs ml-auto ${DIFFICULTY_COLOR[d.difficulty] || 'text-gray-400'}`}>
-                          ★{'★'.repeat(d.difficulty - 1)}{'☆'.repeat(3 - d.difficulty)} {d.difficultyLabel}
+                          {'★'.repeat(Math.min(d.difficulty, 5))}{'☆'.repeat(Math.max(0, 5 - d.difficulty))} {d.difficultyLabel}
                         </span>
                       </div>
                       <p className="text-gray-500 text-xs mb-1 leading-relaxed">{d.desc.substring(0, 80)}...</p>
