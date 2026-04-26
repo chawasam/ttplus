@@ -25,6 +25,7 @@ const leaderboard  = require('../handlers/game/leaderboard');
 const worldBoss    = require('../handlers/game/worldBoss');
 const crafting     = require('../handlers/game/crafting');
 const audit           = require('../handlers/game/audit');
+const roadmapConfig   = require('../handlers/game/roadmapConfig');
 const dailyShop       = require('../handlers/game/dailyShop');
 const featuredDungeon = require('../handlers/game/featuredDungeon');
 
@@ -181,6 +182,8 @@ router.post('/audit/players/:uid/flag',        audit.requireAdmin, audit.manualF
 router.get ('/audit/bugs',                     audit.requireAdmin, audit.getBugs);
 router.get ('/audit/skill-stats',              audit.requireAdmin, audit.getSkillStats);
 router.get ('/audit/item-stats',               audit.requireAdmin, audit.getItemStats);
+router.get ('/audit/roadmap',                  audit.requireAdmin, roadmapConfig.getRoadmap);
+router.post('/audit/roadmap',                  audit.requireAdmin, roadmapConfig.updateFeature);
 
 // ----- Dungeon -----
 router.get ('/dungeons',              dungeon.listDungeons);

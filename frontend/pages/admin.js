@@ -1684,13 +1684,79 @@ function RoadmapTab() {
   const [showCat, setShowCat] = React.useState(null);
   const [selectedFeature, setSelectedFeature] = React.useState(null);
 
+  // ── Live overrides จาก Firestore ─────────────────────────────────────────
+  const [overrides, setOverrides] = React.useState({});       // { 'Feature': { status, note, completedAt, updatedAt } }
+  const [loadingRM, setLoadingRM] = React.useState(true);
+  const [lastSync, setLastSync] = React.useState(null);
+
+  // edit state สำหรับ detail panel
+  const [editStatus, setEditStatus] = React.useState('');
+  const [editNote, setEditNote]     = React.useState('');
+  const [saving, setSaving]         = React.useState(false);
+  const [saveOk, setSaveOk]         = React.useState(false);
+
+  // โหลด overrides จาก API
+  const loadOverrides = React.useCallback(() => {
+    setLoadingRM(true);
+    api.get('/api/game/audit/roadmap')
+      .then(r => {
+        setOverrides(r.data?.features || {});
+        setLastSync(new Date());
+      })
+      .catch(() => {})
+      .finally(() => setLoadingRM(false));
+  }, []);
+
+  React.useEffect(() => { loadOverrides(); }, [loadOverrides]);
+
+  // เมื่อเลือก feature — seed edit state จาก override หรือ default
+  React.useEffect(() => {
+    if (!selectedFeature) return;
+    const ov = overrides[selectedFeature];
+    const def = FEATURE_DETAILS[selectedFeature];
+    setEditStatus(ov?.status || def?.status || 'planned');
+    setEditNote(ov?.note || '');
+    setSaveOk(false);
+  }, [selectedFeature, overrides]);
+
+  // บันทึก override ไป Firestore
+  async function saveOverride() {
+    if (!selectedFeature) return;
+    setSaving(true);
+    try {
+      await api.post('/api/game/audit/roadmap', {
+        feature: selectedFeature,
+        status: editStatus,
+        note: editNote,
+      });
+      setOverrides(prev => ({
+        ...prev,
+        [selectedFeature]: {
+          status: editStatus,
+          note: editNote,
+          updatedAt: new Date().toISOString(),
+          completedAt: editStatus === 'done' ? (prev[selectedFeature]?.completedAt || new Date().toISOString()) : null,
+        },
+      }));
+      setLastSync(new Date());
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 3000);
+    } catch { toast.error('บันทึกไม่ได้'); }
+    finally { setSaving(false); }
+  }
+
+  // helper: effective status ของ feature (override > default)
+  function effectiveStatus(featureName) {
+    return overrides[featureName]?.status || FEATURE_DETAILS[featureName]?.status || 'planned';
+  }
+
   const allFeatures = COMPETITOR_FEATURES.flatMap(c => c.features);
   const avgScore = Math.round(allFeatures.reduce((s,f)=>s+f.score,0)/allFeatures.length);
   const done = allFeatures.filter(f=>f.score>=70).length;
   const gaps = allFeatures.filter(f=>f.score<40).length;
 
-  const STATUS_COLOR = { done:'#34d399', current:'#f59e0b', planned:'#818cf8' };
-  const STATUS_LABEL = { done:'✅ Done', current:'🔨 In Progress', planned:'📋 Planned' };
+  const STATUS_COLOR = { done:'#34d399', in_progress:'#f59e0b', current:'#f59e0b', planned:'#818cf8' };
+  const STATUS_LABEL = { done:'✅ Done', in_progress:'🔨 In Progress', current:'🔨 In Progress', planned:'📋 Planned' };
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -1710,7 +1776,14 @@ function RoadmapTab() {
       <div style={{ ...card }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
           <div style={{ color:'#9ca3af', fontSize:12, fontWeight:700 }}>📍 Roadmap Progress</div>
-          <div style={{ color:'#4b5563', fontSize:11 }}>คลิก feature เพื่อดูรายละเอียด / แนะนำการพัฒนา</div>
+          <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+            {lastSync && <span style={{ color:'#374151', fontSize:10 }}>sync {timeAgo(lastSync.toISOString())}</span>}
+            <button onClick={loadOverrides} style={{ background:'transparent', border:'1px solid #374151',
+              color:'#6b7280', borderRadius:6, padding:'3px 10px', cursor:'pointer', fontSize:11 }}>
+              {loadingRM ? '…' : '↻ sync'}
+            </button>
+            <span style={{ color:'#4b5563', fontSize:11 }}>คลิก feature เพื่อแก้สถานะ / ดูรายละเอียด</span>
+          </div>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {ROADMAP.map(p => (
@@ -1726,21 +1799,23 @@ function RoadmapTab() {
                   {p.items.map(item => {
                     const isSelected = selectedFeature === item;
                     const hasDetail = !!FEATURE_DETAILS[item];
-                    const baseColor = p.status==='done'?'#34d399':p.status==='current'?'#f59e0b':'#6b7280';
+                    const eff = effectiveStatus(item);  // live status จาก Firestore
+                    const baseColor = eff==='done'?'#34d399':eff==='in_progress'?'#f59e0b':eff==='planned'?'#6b7280':'#6b7280';
+                    const ov = overrides[item];  // มี override จาก Firestore ไหม
                     return (
                       <span key={item}
                         onClick={() => hasDetail && setSelectedFeature(isSelected ? null : item)}
-                        title={hasDetail ? 'คลิกเพื่อดูรายละเอียด' : ''}
+                        title={hasDetail ? 'คลิกเพื่อดูรายละเอียด / แก้สถานะ' : ''}
                         style={{
                           background: isSelected ? baseColor + '33' : '#111827',
-                          color: isSelected ? baseColor : baseColor,
-                          border: isSelected ? `1px solid ${baseColor}` : '1px solid transparent',
+                          color: baseColor,
+                          border: isSelected ? `1px solid ${baseColor}` : ov ? `1px solid ${baseColor}44` : '1px solid transparent',
                           borderRadius:6, padding:'3px 10px', fontSize:11,
                           cursor: hasDetail ? 'pointer' : 'default',
                           transition:'all .15s',
                           userSelect:'none',
                         }}>
-                        {p.status==='done'?'✓ ':p.status==='current'?'⚙ ':''}{item}
+                        {eff==='done'?'✓ ':eff==='in_progress'?'⚙ ':''}{item}
                       </span>
                     );
                   })}
@@ -1754,7 +1829,16 @@ function RoadmapTab() {
       {/* Feature Detail Panel */}
       {selectedFeature && FEATURE_DETAILS[selectedFeature] && (() => {
         const d = FEATURE_DETAILS[selectedFeature];
-        const col = d.status==='done'?'#34d399':d.status==='current'?'#f59e0b':'#818cf8';
+        const ov = overrides[selectedFeature];
+        const liveStatus = editStatus || effectiveStatus(selectedFeature);
+        const col = liveStatus==='done'?'#34d399':liveStatus==='in_progress'?'#f59e0b':'#818cf8';
+        const isDone = liveStatus === 'done';
+        const isInProgress = liveStatus === 'in_progress';
+
+        // ถ้า override เป็น 'done' ให้แสดง improvements แม้ default จะเป็น planned
+        const showImprovements = d.improvements && isDone;
+        const showTodos = d.todos && !isDone;
+
         return (
           <div style={{ ...card, border:`1px solid ${col}44`, position:'relative' }}>
             {/* close button */}
@@ -1764,24 +1848,56 @@ function RoadmapTab() {
 
             {/* Header */}
             <div style={{ display:'flex', gap:10, alignItems:'flex-start', marginBottom:16, paddingRight:32 }}>
-              <div>
-                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4, flexWrap:'wrap' }}>
                   <span style={{ color:col, fontWeight:800, fontSize:16 }}>{selectedFeature}</span>
                   <span style={{ ...badge(col) }}>{d.phase}</span>
-                  {d.status==='done' && <span style={{ ...badge('#34d399') }}>✅ Implemented</span>}
-                  {d.status==='current' && <span style={{ ...badge('#f59e0b') }}>🔨 In Progress</span>}
-                  {d.status==='planned' && <span style={{ ...badge('#818cf8') }}>📋 Planned</span>}
+                  {ov?.updatedAt && (
+                    <span style={{ color:'#374151', fontSize:10 }}>
+                      อัปเดต {timeAgo(ov.updatedAt)}
+                    </span>
+                  )}
                 </div>
                 <div style={{ color:'#9ca3af', fontSize:12 }}>{d.summary}</div>
               </div>
             </div>
 
-            {/* DONE: improvement suggestions */}
-            {d.improvements && (
-              <div>
-                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:10, textTransform:'uppercase', letterSpacing:1 }}>
-                  💡 แนะนำการพัฒนาต่อ
+            {/* ── Status Editor ──────────────────────────────────────────────── */}
+            <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:18,
+              padding:'12px 14px', background:'#1f2937', borderRadius:10 }}>
+              <div style={{ flex:'0 0 auto' }}>
+                <div style={{ color:'#6b7280', fontSize:10, marginBottom:4, textTransform:'uppercase', letterSpacing:1 }}>สถานะ</div>
+                <select value={editStatus} onChange={e=>setEditStatus(e.target.value)}
+                  style={{ background:'#111827', border:`1px solid ${col}44`, borderRadius:8,
+                    color:'#e5e7eb', padding:'7px 12px', fontSize:13, cursor:'pointer' }}>
+                  <option value="planned">📋 Planned</option>
+                  <option value="in_progress">🔨 In Progress</option>
+                  <option value="done">✅ Done</option>
+                </select>
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ color:'#6b7280', fontSize:10, marginBottom:4, textTransform:'uppercase', letterSpacing:1 }}>
+                  บันทึก / progress note
                 </div>
+                <input type="text" value={editNote} onChange={e=>setEditNote(e.target.value)}
+                  placeholder="เช่น: deploy วันที่ 25 เม.ย. / กำลัง implement backend..."
+                  style={{ width:'100%', background:'#111827', border:'1px solid #374151', borderRadius:8,
+                    color:'#e5e7eb', padding:'7px 12px', fontSize:13, boxSizing:'border-box' }} />
+              </div>
+              <button onClick={saveOverride} disabled={saving}
+                style={{ padding:'8px 20px', borderRadius:8, border:'none',
+                  background: saveOk ? '#34d399' : col, color:'#000',
+                  fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0,
+                  opacity: saving ? 0.6 : 1, transition:'background .3s' }}>
+                {saving ? '…' : saveOk ? '✓ บันทึกแล้ว' : 'บันทึก'}
+              </button>
+            </div>
+
+            {/* ── ถ้า Done → แสดง improvement suggestions ──────────────────── */}
+            {showImprovements && (
+              <div>
+                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:10,
+                  textTransform:'uppercase', letterSpacing:1 }}>💡 แนะนำการพัฒนาต่อ</div>
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {d.improvements.map((imp,i) => (
                     <div key={i} style={{ display:'flex', gap:10, padding:'10px 14px',
@@ -1794,11 +1910,11 @@ function RoadmapTab() {
               </div>
             )}
 
-            {/* PLANNED/CURRENT: todo list */}
-            {d.todos && (
+            {/* ── ถ้า Planned / In Progress → แสดง todo checklist ─────────── */}
+            {showTodos && (
               <div>
                 {d.effort && (
-                  <div style={{ display:'flex', gap:16, marginBottom:12 }}>
+                  <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
                     <div style={{ padding:'6px 14px', background:'#1f2937', borderRadius:8, fontSize:12 }}>
                       <span style={{ color:'#6b7280' }}>⏱ ประมาณ: </span>
                       <span style={{ color:'#e5e7eb', fontWeight:700 }}>{d.effort}</span>
@@ -1811,8 +1927,9 @@ function RoadmapTab() {
                     )}
                   </div>
                 )}
-                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:10, textTransform:'uppercase', letterSpacing:1 }}>
-                  {d.status==='current' ? '✅ สิ่งที่ทำแล้ว / ยังค้าง' : '📋 สิ่งที่ต้องทำ'}
+                <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, marginBottom:10,
+                  textTransform:'uppercase', letterSpacing:1 }}>
+                  {isInProgress ? '⚙ กำลังทำ — สิ่งที่ต้องทำ' : '📋 สิ่งที่ต้องทำ'}
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {d.todos.map((t,i) => (
@@ -1826,10 +1943,25 @@ function RoadmapTab() {
                 </div>
                 {d.next && (
                   <div style={{ marginTop:10, padding:'8px 14px', background:'#34d39911', borderRadius:8,
-                    border:'1px solid #34d39944', color:'#34d399', fontSize:12 }}>
-                    ✔ {d.next}
-                  </div>
+                    border:'1px solid #34d39944', color:'#34d399', fontSize:12 }}>✔ {d.next}</div>
                 )}
+              </div>
+            )}
+
+            {/* ── ถ้า mark เป็น done แต่ default เป็น planned → แสดง todo ด้วย ── */}
+            {isDone && d.todos && (
+              <div style={{ marginTop:16 }}>
+                <div style={{ color:'#374151', fontSize:11, fontWeight:700, marginBottom:8,
+                  textTransform:'uppercase', letterSpacing:1 }}>✅ Checklist ที่ครอบคลุม</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  {d.todos.map((t,i) => (
+                    <div key={i} style={{ display:'flex', gap:8, padding:'6px 10px',
+                      borderRadius:6, alignItems:'flex-start' }}>
+                      <span style={{ fontSize:12, flexShrink:0, color:'#374151' }}>✓</span>
+                      <span style={{ color:'#4b5563', fontSize:11, lineHeight:1.5, textDecoration:'line-through' }}>{t.text}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
