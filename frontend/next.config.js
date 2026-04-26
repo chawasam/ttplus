@@ -87,20 +87,17 @@ const nextConfig = {
     ];
   },
 
-  // ===== URL Normalization: /ASHENVEIL → /ashenveil (canonical lowercase) =====
-  // pages/ directory is named ashenveil/ (lowercase) — no rewrites needed
+  // ===== Legacy /game routes → /ashenveil =====
+  // หมายเหตุ: ลบ /ASHENVEIL redirect ออกแล้ว!
+  // Next.js ใช้ path-to-regexp แบบ case-insensitive (sensitive: false)
+  // ทำให้ source: '/ASHENVEIL' match '/ashenveil' ด้วย → redirect loop 307
   async redirects() {
     return [
-      // Redirect uppercase → lowercase (302 — ไม่ cache ใน browser ป้องกัน loop)
-      { source: '/ASHENVEIL',         destination: '/ashenveil',         permanent: false },
-      { source: '/ASHENVEIL/:path*',  destination: '/ashenveil/:path*',  permanent: false },
-      // Legacy /game routes → lowercase
+      // Legacy /game routes → /ashenveil (ยังคงไว้เพราะ /game ≠ /ashenveil)
       { source: '/game',              destination: '/ashenveil',         permanent: false },
       { source: '/game/:path*',       destination: '/ashenveil/:path*',  permanent: false },
     ];
   },
-  // rewrites ถูกลบออกแล้ว — เคยทำให้ /ashenveil → /ASHENVEIL (internal)
-  // แล้ว /ASHENVEIL → /ashenveil (redirect) = infinite loop
 };
 
 module.exports = nextConfig;
