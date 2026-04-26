@@ -61,9 +61,17 @@ const CLASSES_BY_RACE = {
 };
 
 const CLASS_EMOJI = {};
-Object.values(CLASSES_BY_RACE).flat().forEach(c => { CLASS_EMOJI[c.id] = c.emoji; });
-const RACE_EMOJI  = {};
-RACES.forEach(r => { RACE_EMOJI[r.id] = r.emoji; });
+const CLASS_TH    = {};
+Object.values(CLASSES_BY_RACE).flat().forEach(c => {
+  CLASS_EMOJI[c.id] = c.emoji;
+  CLASS_TH[c.id]    = c.th;
+});
+const RACE_EMOJI = {};
+const RACE_TH    = {};
+RACES.forEach(r => {
+  RACE_EMOJI[r.id] = r.emoji;
+  RACE_TH[r.id]    = r.th;
+});
 
 const STEP = { LOADING: 0, LOGIN: 1, LOBBY: 2, VERIFY_WAIT: 3, CREATE_CHAR: 4 };
 
@@ -518,7 +526,7 @@ function CharacterCard({ account, onEnter, onDelete }) {
           </p>
           <p className="text-gray-400 text-sm mt-0.5">
             {account.charRace || account.charClass
-              ? `${account.charRace || '?'} ${account.charClass || '?'} · Lv.${account.charLevel || '?'}`
+              ? `${RACE_TH[account.charRace] || account.charRace || '?'} ${CLASS_TH[account.charClass] || account.charClass || '?'} · Lv.${account.charLevel || '?'}`
               : account.charName
                 ? `Lv.${account.charLevel || '?'}`
                 : '—'}
