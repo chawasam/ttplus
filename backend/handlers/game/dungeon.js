@@ -9,6 +9,7 @@ const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { broadcastAll } = require('../../lib/emitter');
+const { getFeaturedDungeon, getCurrentWeekStr } = require('../../data/featured_dungeon');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -425,6 +426,41 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       }
     }
 
+    // ─── Featured Dungeon weekly bonus ───────────────────────────
+    let featuredBonus = null;
+    try {
+      const featured = getFeaturedDungeon();
+      const weekStr  = getCurrentWeekStr();
+      if (run.dungeonId === featured.dungeonId) {
+        const featRef  = db.collection('game_featured_dungeon').doc(uid);
+        const featDoc  = await featRef.get();
+        const alreadyClaimed = featDoc.exists && featDoc.data().claimedWeek === weekStr;
+        if (!alreadyClaimed) {
+          const bonusXp   = Math.floor((cr.xp || 0) * (featured.xpMultiplier - 1));
+          const bonusGold = Math.floor(goldBonus * (featured.goldMultiplier - 1));
+          if (bonusGold > 0) await addGold(uid, bonusGold, 'featured_dungeon_bonus');
+          if (bonusXp  > 0) charUpdate.xp = (charUpdate.xp !== undefined ? charUpdate.xp : newXp) + bonusXp;
+          const bonusItemId  = featured.bonusItem;
+          const bonusItemDef = getItem(bonusItemId);
+          if (bonusItemDef) {
+            const instanceId = `inv_${uid}_fd_${Date.now()}`;
+            await db.collection('game_inventory').add({
+              uid, itemId: bonusItemId, instanceId, enhancement: 0,
+              equipped: false, obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            lootItems.push({ itemId: bonusItemId, name: bonusItemDef.name, emoji: bonusItemDef.emoji });
+            log.push(`⭐ Featured Bonus: ${bonusItemDef.emoji} ${bonusItemDef.name}`);
+          }
+          log.push(`⭐ Featured Dungeon! รับโบนัส XP +${bonusXp}, Gold +${bonusGold}`);
+          await featRef.set({ uid, claimedWeek: weekStr, claimedAt: admin.firestore.FieldValue.serverTimestamp() });
+          featuredBonus = { xp: bonusXp, gold: bonusGold, item: bonusItemDef ? { itemId: bonusItemId, name: bonusItemDef.name, emoji: bonusItemDef.emoji } : null };
+        }
+      }
+    } catch (fe) {
+      console.error('[Dungeon] featuredBonus error:', fe.message);
+    }
+    // ─────────────────────────────────────────────────────────────
+
     // Update dungeon run
     await db.collection('game_dungeons').doc(run.id).update({
       status:      'completed',
@@ -463,6 +499,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
       log,
       clearRewards: { gold: goldBonus, xp: cr.xp, items: lootItems },
       newLevel: charUpdate.level || null,
+      featuredBonus,
     });
 
   } catch (err) {

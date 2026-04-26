@@ -10,6 +10,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          requestVerify, getVerifyStatus,
          getQuests, claimQuestReward,
          getQuestLog, acceptSideQuest, getMainQuestLog, collectLore, makeQuestChoice,
+         getDailyShop, buyDailyShopItem, getFeaturedDungeonStatus,
          getRPShop, buyRPItem,
          getSkills, unlockSkill,
          getCharacterProfile, allocateStat, equipTitle,
@@ -22,6 +23,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getCraftingRecipes, craftItem } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
+import Link from 'next/link';
 import AshenveilSettings, { useAshenveilSettings, FONT_SIZES } from '../../components/AshenveilSettings';
 import { connectSocket, getSocket } from '../../lib/socket';
 
@@ -60,6 +62,7 @@ const SCREENS = {
   WORLD_BOSS:     'world_boss',
   LEADERBOARD:    'leaderboard',
   CRAFTING:       'crafting',
+  DAILY_SHOP:     'daily_shop',
 };
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
@@ -160,6 +163,15 @@ export default function GameWorld() {
   const [dungeonLog,    setDungeonLog]   = useState([]);    // room-specific log
   const [dungeonReward, setDungeonReward]= useState(null);  // clear rewards
   const [dungeonRunId,  setDungeonRunId] = useState(null);  // active dungeon run ID (for battle)
+
+  // ── Daily Shop ──
+  const [dailyShopData,  setDailyShopData]  = useState(null);   // { date, items, balance, refreshAt }
+  const [dsCountdown,    setDsCountdown]    = useState('');
+  const [featuredData,   setFeaturedData]   = useState(null);  // { featured, claimed }
+
+  // ── Prologue ──
+  const [showPrologue,   setShowPrologue]   = useState(false);
+  const [prologueStep,   setPrologueStep]   = useState(0);
 
   // ── Daily Quests ──
   const [questData,      setQuestData]      = useState(null);   // { quests, bonusClaimed, allCompleted, bonus }
@@ -277,6 +289,13 @@ export default function GameWorld() {
         loadQuests().catch(() => {});
         loadQuestLog().catch(() => {});
 
+        // Show prologue on very first login
+        const pKey = `ashenveil_prologue_${data.character.characterId || u.uid}`;
+        if (!localStorage.getItem(pKey)) {
+          setShowPrologue(true);
+          setPrologueStep(0);
+        }
+
         // Auto-check login bonus — backend returns canClaim not alreadyClaimed
         try {
           const { data: lb } = await getLoginBonusStatus();
@@ -333,6 +352,42 @@ export default function GameWorld() {
       toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
     }
   }, [loadQuests]);
+
+  // ===== Daily Shop =====
+  const loadDailyShop = useCallback(async () => {
+    try {
+      const { data } = await getDailyShop();
+      setDailyShopData(data);
+    } catch {}
+  }, []);
+
+  const openDailyShop = useCallback(async () => {
+    setScreen(SCREENS.DAILY_SHOP);
+    await loadDailyShop();
+  }, [loadDailyShop]);
+
+  const handleBuyDailyShopItem = useCallback(async (slotId, itemName, price) => {
+    try {
+      const { data } = await buyDailyShopItem(slotId);
+      toast.success(`✅ ซื้อ ${itemName} (${price}G)`);
+      setDailyShopData(prev => prev ? {
+        ...prev,
+        balance: data.balance,
+        items: prev.items.map(i => i.slotId === slotId ? { ...i, purchased: true } : i),
+      } : prev);
+      addLog(`🛒 ซื้อ ${itemName} จาก Daily Shop`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'ซื้อไม่ได้');
+    }
+  }, []);
+
+  // ===== Featured Dungeon =====
+  const loadFeaturedDungeon = useCallback(async () => {
+    try {
+      const { data } = await getFeaturedDungeonStatus();
+      setFeaturedData(data);
+    } catch {}
+  }, []);
 
   // ===== Quest Log (Story + Side) =====
   const loadQuestLog = useCallback(async () => {
@@ -1223,6 +1278,7 @@ export default function GameWorld() {
     try {
       const { data } = await getDungeons();
       setDungeonList(data.dungeons || []);
+      loadFeaturedDungeon().catch(() => {});  // async, non-blocking
       // If there's an active run, go directly to it
       if (data.activeRun) {
         const runRes = await getDungeonRun();
@@ -1275,12 +1331,13 @@ export default function GameWorld() {
       const newLog = [...dungeonLog, '─────────────────────────', ...(data.log || [])];
 
       if (data.cleared) {
-        setDungeonReward(data.clearRewards);
+        setDungeonReward({ ...data.clearRewards, featuredBonus: data.featuredBonus || null });
         setDungeonRun(null);
         setDungeonRunId(null);
         setDungeonLog([...newLog, '🏆 Dungeon Cleared!']);
         setScreen(SCREENS.DUNGEON_CLEAR);
         if (data.newLevel) setChar(c => c ? { ...c, level: data.newLevel } : c);
+        if (data.featuredBonus) loadFeaturedDungeon().catch(() => {});  // refresh claimed state
         return;
       }
 
@@ -1452,6 +1509,77 @@ export default function GameWorld() {
           )}
         </div>
       )}
+
+      {/* ── PROLOGUE OVERLAY ── */}
+      {showPrologue && (() => {
+        const PROLOGUE_PANELS = [
+          {
+            bg: 'from-gray-950 via-slate-900 to-gray-950',
+            icon: '🌑',
+            title: 'Ashenveil: The Shattered Age',
+            text: 'ยุคที่ท้องฟ้าแตกสลาย\n\nวันที่ Void Rift เปิดออกเป็นครั้งแรก ไม่มีใครรู้ว่ามันจะเปลี่ยนทุกอย่าง\nสามร้อยปีต่อมา — รอยแผลนั้นยังไม่หาย',
+          },
+          {
+            bg: 'from-gray-950 via-stone-900 to-gray-950',
+            icon: '🏚️',
+            title: 'City Ruins — ซากเมืองที่ถูกลืม',
+            text: 'เจ้าตื่นขึ้นท่ามกลางเถ้าถ่านและฝุ่นควัน\n\nVoidspire Tower — หอคอยโบราณที่เคยเป็นสัญลักษณ์ของ Ashenveil — กำลังพังทลายลงช้าๆ ราวกับมีมือล่องหนดึงมันลงมาจากข้างใน',
+          },
+          {
+            bg: 'from-gray-950 via-purple-950 to-gray-950',
+            icon: '🔮',
+            title: 'ตราผนึกที่แตก',
+            text: 'มีอะไรบางอย่างถูกปลุก\n\nห้าร้อยปีที่แล้ว ผู้ปิดผนึกทั้งห้าสละชีวิตเพื่อกักขัง Vorath — เทพแห่ง Void\nแต่ตอนนี้... ตราผนึกกำลังสั่นสะเทือน',
+          },
+          {
+            bg: 'from-gray-950 via-indigo-950 to-gray-950',
+            icon: '⚡',
+            title: 'เจ้าคือคำตอบ',
+            text: '"ทำไมเจ้าถึงอยู่ที่นี่?"\n\nไม่มีใครรู้คำตอบ — แม้แต่ตัวเจ้าเอง\nแต่ในโลกที่กำลังพังทลาย บางทีนั่นคือสิ่งเดียวที่ทำให้เจ้าอันตราย',
+          },
+          {
+            bg: 'from-gray-950 via-gray-900 to-gray-950',
+            icon: '🗡️',
+            title: 'จงเอาตัวรอด',
+            text: 'The Shattered Age รอคำตอบจากเจ้า\n\nสำรวจ Ashenveil — ค้นหาความจริงเกี่ยวกับ Vorath\nทางที่เจ้าเลือกจะกำหนดชะตากรรมของทุกคน',
+          },
+        ];
+        const panel = PROLOGUE_PANELS[prologueStep] || PROLOGUE_PANELS[0];
+        const isLast = prologueStep >= PROLOGUE_PANELS.length - 1;
+        const charKey = `ashenveil_prologue_${char?.characterId || 'u'}`;
+
+        const advance = () => {
+          if (isLast) {
+            localStorage.setItem(charKey, '1');
+            setShowPrologue(false);
+          } else {
+            setPrologueStep(s => s + 1);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.97)' }}
+            onClick={advance}>
+            <style>{`
+              @keyframes prologue-in { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+              .prologue-panel { animation: prologue-in 0.6s ease; }
+            `}</style>
+            <div className={`prologue-panel w-full max-w-sm mx-4 rounded-2xl border border-gray-800 bg-gradient-to-b ${panel.bg} p-8 text-center`}
+              key={prologueStep}>
+              <div className="text-5xl mb-4">{panel.icon}</div>
+              <h2 className="text-white font-bold text-lg mb-4 leading-snug">{panel.title}</h2>
+              <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line mb-6">{panel.text}</p>
+              <div className="flex items-center justify-center gap-1 mb-4">
+                {PROLOGUE_PANELS.map((_, i) => (
+                  <div key={i} className={`h-1 rounded-full transition-all ${i === prologueStep ? 'w-6 bg-white' : 'w-2 bg-gray-700'}`} />
+                ))}
+              </div>
+              <p className="text-gray-600 text-xs">{isLast ? 'แตะเพื่อเริ่มการผจญภัย →' : 'แตะเพื่อดำเนินต่อ →'}</p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── LOGIN BONUS POPUP ── */}
       {showLoginBonus && loginBonusData && (
@@ -1676,6 +1804,9 @@ export default function GameWorld() {
                       {questBadge && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
                     </button>
                     <Btn onClick={openMainQuestLog} disabled={busy}>🌑 Vorath</Btn>
+                    <Link href="/ASHENVEIL/story" style={{ textDecoration: 'none' }}>
+                      <span className="px-3 py-2 border border-gray-700 text-indigo-300 hover:border-indigo-600 hover:bg-indigo-900/10 transition text-xs disabled:opacity-40 rounded cursor-pointer inline-block">📖 Story</span>
+                    </Link>
                     <Btn onClick={openQuestLog}     disabled={busy}>📖 เนื้อเรื่อง</Btn>
                     <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
                     <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
@@ -1689,6 +1820,7 @@ export default function GameWorld() {
                     <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
                     <Btn onClick={openWorldBoss}    disabled={busy}>💀 World Boss</Btn>
                     <Btn onClick={openCrafting}     disabled={busy}>⚒️ Crafting</Btn>
+                    <Btn onClick={openDailyShop}    disabled={busy}>🛒 Daily Shop</Btn>
                     <button onClick={() => { setLoginBonusData(null); getLoginBonusStatus().then(r => { setLoginBonusData(r.data); setShowLoginBonus(true); }).catch(() => {}); }} disabled={busy}
                       className="px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
                       🎁 Login Bonus
@@ -2159,11 +2291,34 @@ export default function GameWorld() {
               {screen === SCREENS.DUNGEON_LIST && (
                 <div className="max-h-72 overflow-y-auto">
                   <p className="text-gray-400 text-xs mb-3">[ 🏰 เลือก Dungeon ]</p>
+
+                  {/* ── Featured Dungeon Banner ── */}
+                  {featuredData?.featured && (
+                    <div className={`border rounded p-2 mb-3 ${featuredData.claimed ? 'border-gray-700 opacity-60' : 'border-amber-500 bg-amber-950/30'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-amber-400 text-xs font-bold">⭐ Featured Dungeon สัปดาห์นี้</span>
+                        {featuredData.claimed && <span className="text-green-600 text-xs ml-auto">✓ รับโบนัสแล้ว</span>}
+                        {!featuredData.claimed && <span className="text-amber-300 text-xs ml-auto animate-pulse">🎁 โบนัสพิเศษ!</span>}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-300">
+                        <span>{featuredData.featured.dungeonEmoji}</span>
+                        <span className="text-amber-200">{featuredData.featured.dungeonName}</span>
+                        <span className="text-gray-500">·</span>
+                        <span className="text-green-400">XP ×{featuredData.featured.xpMultiplier}</span>
+                        <span className="text-yellow-400">Gold ×{featuredData.featured.goldMultiplier}</span>
+                        {!featuredData.claimed && <span className="text-purple-400">+ไอเทมพิเศษ</span>}
+                      </div>
+                    </div>
+                  )}
+
                   {dungeonList.map(d => (
-                    <div key={d.id} className="border border-gray-800 rounded p-2 mb-2">
+                    <div key={d.id} className={`border rounded p-2 mb-2 ${featuredData?.featured?.dungeonId === d.id && !featuredData.claimed ? 'border-amber-600' : 'border-gray-800'}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-lg">{d.emoji}</span>
                         <span className="text-amber-300 text-xs font-bold">{d.nameTH}</span>
+                        {featuredData?.featured?.dungeonId === d.id && !featuredData.claimed && (
+                          <span className="text-amber-400 text-xs">⭐</span>
+                        )}
                         <span className={`text-xs ml-auto ${DIFFICULTY_COLOR[d.difficulty] || 'text-gray-400'}`}>
                           ★{'★'.repeat(d.difficulty - 1)}{'☆'.repeat(3 - d.difficulty)} {d.difficultyLabel}
                         </span>
@@ -2339,6 +2494,14 @@ export default function GameWorld() {
                       {dungeonReward.items?.map((it, i) => (
                         <p key={i} className="text-blue-400">📦 {it.emoji || ''} {it.name || it}</p>
                       ))}
+                      {dungeonReward.featuredBonus && (
+                        <div className="mt-1 pt-1 border-t border-amber-900">
+                          <p className="text-amber-400 font-bold">⭐ Featured Dungeon Bonus!</p>
+                          {dungeonReward.featuredBonus.xp   > 0 && <p className="text-purple-300">+{dungeonReward.featuredBonus.xp} XP โบนัส</p>}
+                          {dungeonReward.featuredBonus.gold > 0 && <p className="text-yellow-300">+{dungeonReward.featuredBonus.gold} Gold โบนัส</p>}
+                          {dungeonReward.featuredBonus.item && <p className="text-green-300">🎁 {dungeonReward.featuredBonus.item.emoji} {dungeonReward.featuredBonus.item.name}</p>}
+                        </div>
+                      )}
                     </div>
                   )}
                   <Btn onClick={() => { setScreen(SCREENS.WORLD); setDungeonReward(null); }}>← กลับ Town</Btn>
@@ -3649,6 +3812,84 @@ export default function GameWorld() {
                           );
                         })}
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* DAILY SHOP */}
+              {screen === SCREENS.DAILY_SHOP && (
+                <div className="max-h-[500px] overflow-y-auto space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-amber-300 text-xs font-bold">🛒 Daily Shop</p>
+                      <p className="text-gray-600 text-xs">หมุนใหม่ทุกวัน 07:00 น.</p>
+                    </div>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
+                  </div>
+
+                  {!dailyShopData ? (
+                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-gray-400">💰 <span className="text-amber-400">{dailyShopData.balance?.toLocaleString() || 0}G</span></span>
+                        <span className="text-gray-600">ซื้อได้คนละ 1 ชิ้น/slot/วัน</span>
+                      </div>
+
+                      {/* Deal of the Day banner */}
+                      {dailyShopData.items?.find(i => i.isDeal) && (
+                        <div className="border border-yellow-700 bg-yellow-900/10 rounded-lg p-2 mb-2 flex items-center gap-2">
+                          <span className="text-yellow-400 text-base">⭐</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-yellow-400 text-xs font-bold">Deal of the Day — ลด 30%!</p>
+                            <p className="text-gray-400 text-xs">{dailyShopData.items.find(i => i.isDeal)?.emoji} {dailyShopData.items.find(i => i.isDeal)?.name}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        {dailyShopData.items?.map(item => {
+                          const canAfford = (dailyShopData.balance || 0) >= item.price;
+                          const RARITY_COLOR = { LEGENDARY: 'text-orange-400', EPIC: 'text-purple-400', RARE: 'text-blue-400', UNCOMMON: 'text-green-400', COMMON: 'text-gray-400' };
+                          return (
+                            <div key={item.slotId} className={`border rounded-lg p-2.5 flex items-center gap-3 transition ${
+                              item.purchased  ? 'border-gray-800 opacity-40' :
+                              item.isDeal     ? 'border-yellow-800 bg-yellow-900/10' :
+                                               'border-gray-800 hover:border-gray-700'
+                            }`}>
+                              <span className="text-2xl shrink-0">{item.emoji}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <p className={`text-xs font-bold ${RARITY_COLOR[item.rarity] || 'text-gray-300'}`}>{item.name}</p>
+                                  {item.isDeal && <span className="text-yellow-400 text-xs">⭐</span>}
+                                  {item.purchased && <span className="text-green-600 text-xs ml-1">✅ ซื้อแล้ว</span>}
+                                </div>
+                                <p className="text-gray-600 text-xs capitalize">{item.category}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                {item.isDeal && item.origPrice && (
+                                  <p className="text-gray-600 text-xs line-through">{item.origPrice}G</p>
+                                )}
+                                <p className={`text-xs font-bold ${item.isDeal ? 'text-yellow-400' : 'text-amber-400'}`}>{item.price}G</p>
+                                {!item.purchased && (
+                                  <button onClick={() => handleBuyDailyShopItem(item.slotId, item.name, item.price)}
+                                    disabled={!canAfford}
+                                    className={`mt-1 px-2 py-0.5 text-xs rounded border transition ${
+                                      canAfford
+                                        ? item.isDeal
+                                          ? 'border-yellow-700 text-yellow-300 hover:bg-yellow-900/30'
+                                          : 'border-amber-700 text-amber-300 hover:bg-amber-900/20'
+                                        : 'border-gray-800 text-gray-600 cursor-not-allowed'
+                                    }`}>
+                                    {canAfford ? 'ซื้อ' : 'Gold ไม่พอ'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
               )}

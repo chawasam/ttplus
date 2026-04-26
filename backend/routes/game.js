@@ -24,7 +24,9 @@ const loginBonus   = require('../handlers/game/loginBonus');
 const leaderboard  = require('../handlers/game/leaderboard');
 const worldBoss    = require('../handlers/game/worldBoss');
 const crafting     = require('../handlers/game/crafting');
-const audit        = require('../handlers/game/audit');
+const audit           = require('../handlers/game/audit');
+const dailyShop       = require('../handlers/game/dailyShop');
+const featuredDungeon = require('../handlers/game/featuredDungeon');
 
 // ===== Game-specific rate limiters (per UID, ไม่ใช่ per IP) =====
 // keyGenerator ใช้ uid หลัง verifyToken รันแล้ว
@@ -126,6 +128,11 @@ router.post('/rp-shop/buy',              shopLimiter, rpShop.buyRPItem);
 router.post('/rp-shop/class-change',     shopLimiter, rpShop.executeClassChange);
 router.post('/rp-shop/name-change',      shopLimiter, rpShop.executeNameChange);
 router.get ('/rp-shop/active-boosts',    rpShop.getActiveBoosts);
+
+// ----- Daily Shop -----
+router.get ('/daily-shop',         shopLimiter, dailyShop.getDailyShop);
+router.post('/daily-shop/buy',     shopLimiter, dailyShop.buyDailyShopItem);
+router.get ('/featured-dungeon',   gameLimiter, featuredDungeon.getFeaturedDungeonStatus);
 
 // ----- Crafting -----
 router.get ('/crafting',           crafting.getCraftingRecipes);

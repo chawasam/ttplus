@@ -100,3 +100,10 @@ export const dungeonFlee      = ()               => api.post('/api/game/dungeon/
 export const getMainQuestLog  = ()                        => api.get('/api/game/quest-main');
 export const collectLore      = (loreId)                  => api.post('/api/game/quest-main/lore', { loreId });
 export const makeQuestChoice  = (choiceKey, choice)       => api.post('/api/game/quest-main/choice', { choiceKey, choice });
+
+// ===== Daily Shop =====
+export const getDailyShop        = ()         => api.get('/api/game/daily-shop');
+export const buyDailyShopItem    = (slotId)   => api.post('/api/game/daily-shop/buy', { slotId });
+
+// ===== Featured Dungeon =====
+export const getFeaturedDungeonStatus = ()    => api.get('/api/game/featured-dungeon');
