@@ -1,6 +1,6 @@
 // handlers/game/combat.js — Server-side battle logic
 const admin  = require('firebase-admin');
-const { MONSTERS, getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
+const { MONSTERS, getMonster, getRandomMonster, calcDamage, calcSpellDamage, rollZoneTierDrop } = require('../../data/monsters');
 const { getDungeonMonster }  = require('../../data/dungeons');
 const { ITEMS, getItem, rollItem, ITEM_QUALITY } = require('../../data/items');
 const { addGold }            = require('./currency');
@@ -1098,7 +1098,8 @@ function applyLimitBreak(state, log) {
   for (let h = 0; h < hits; h++) {
     let dmg;
     if (lbDef.magicDamage) {
-      dmg = Math.floor(state.player.mag * lbDef.dmgMult);
+      // Limit break spells use same formula: mag - def*0.15
+      dmg = Math.floor(calcSpellDamage(state.player.mag, state.enemy.def) * lbDef.dmgMult);
     } else {
       if (lbDef.armorPierce) {
         dmg = Math.floor(state.player.atk * lbDef.dmgMult);
@@ -1221,7 +1222,8 @@ function applySkill(state, skillId, log) {
 
     let dmg;
     if (skillDef.magicDamage) {
-      dmg = Math.floor(state.player.mag * skillDef.damage);
+      // Spell damage: DEF reduces only 15% → magic penetrates armor, strong vs heavy-DEF enemies
+      dmg = Math.floor(calcSpellDamage(state.player.mag, state.enemy.def) * skillDef.damage);
     } else {
       dmg = Math.floor(calcDamage(state.player.atk, state.enemy.def) * skillDef.damage);
     }
@@ -1588,7 +1590,7 @@ async function grantRewards(uid, state) {
     } catch {}
   }
 
-  // Item drops
+  // Item drops (from monster's individual drop table)
   for (const drop of state.enemy.drops || []) {
     if (!drop.itemId) continue;
     if (Math.random() < drop.chance) {
@@ -1598,6 +1600,21 @@ async function grantRewards(uid, state) {
         rewards.items.push(drop.itemId);
         const def = getItem(drop.itemId);
         log.push(`📦 ได้รับ ${def?.name || drop.itemId}`);
+      }
+    }
+  }
+
+  // ── Zone Tier bonus drop (equipment appropriate to zone level) ────────────
+  // Bosses already have rich drops — skip tier bonus for them
+  if (state.enemy.special !== 'zone_boss' && state.enemy.special !== 'final_boss') {
+    const tierItemId = rollZoneTierDrop(state.enemy.zone);
+    if (tierItemId) {
+      const instance = rollItem(tierItemId);
+      if (instance) {
+        await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+        rewards.items.push(tierItemId);
+        const def = getItem(tierItemId);
+        log.push(`✨ Zone Drop! ได้รับ ${def?.name || tierItemId} (Tier ${instance.quality || 'Normal'})`);
       }
     }
   }

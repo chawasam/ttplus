@@ -1550,7 +1550,8 @@ function getRandomMonster(zone) {
   return MONSTERS[pick[Math.floor(Math.random() * pick.length)]];
 }
 
-// Calculate damage with variance ±15%
+// Calculate physical damage with variance ±15%
+// DEF mitigates 50% → breaks down when DEF > ATK×2
 function calcDamage(atk, def) {
   const base     = Math.max(1, atk - def * 0.5);
   const variance = base * 0.15;
@@ -1558,4 +1559,122 @@ function calcDamage(atk, def) {
   return Math.max(1, Math.round(raw));
 }
 
-module.exports = { MONSTERS, ZONE_MONSTERS, getMonster, getRandomMonster, calcDamage };
+// Calculate spell/magic damage with variance ±15%
+// DEF mitigates only 15% → magic ignores most armor, strong vs high-DEF enemies
+function calcSpellDamage(mag, def) {
+  const base     = Math.max(1, mag - def * 0.15);
+  const variance = base * 0.15;
+  const raw      = base + (Math.random() * variance * 2 - variance);
+  return Math.max(1, Math.round(raw));
+}
+
+// ── Tier-based bonus drop pools (by zone) ──────────────────────────────────
+// When a monster dies, combat.js rolls these for a small chance at equipment
+const ZONE_TIER_DROPS = {
+  town_outskirts: {
+    tier: 1,
+    materials: ['monster_fang', 'slime_gel', 'rotten_wood', 'wild_flower', 'iron_ore', 'bread'],
+    equipment: [
+      'leather_cap', 'leather_chest', 'leather_gloves', 'leather_legs', 'leather_boots',
+      'worn_dagger', 'short_bow', 'iron_sword', 'apprentice_staff', 'rusted_axe',
+      'tattered_iron_head', 'tattered_iron_chest', 'tattered_iron_gloves',
+      'tattered_iron_legs', 'tattered_iron_feet', 'wooden_shield', 'copper_ring',
+    ],
+    equipChance: 0.06,   // 6% per kill for a T1 equipment piece
+    materialChance: 0.0, // materials already in individual drop tables
+  },
+  forest_path: {
+    tier: 1,
+    materials: ['wolf_pelt', 'monster_fang', 'crystal_shard', 'honey_jar', 'iron_ore', 'wild_flower'],
+    equipment: [
+      'leather_chest', 'leather_legs', 'iron_sword', 'short_bow', 'rune_chisel',
+      'tattered_iron_chest', 'tattered_iron_legs', 'wooden_shield', 'copper_ring',
+    ],
+    equipChance: 0.06,
+    materialChance: 0.0,
+  },
+  dark_cave: {
+    tier: 2,
+    materials: ['iron_ore', 'steel_ingot', 'crystal_shard', 'blue_gem_fragment'],
+    equipment: [
+      'iron_helmet', 'iron_chest', 'iron_shield',
+      'chainmail_head', 'chainmail_chest', 'chainmail_gloves', 'chainmail_legs', 'chainmail_feet',
+      'cloth_head', 'cloth_chest', 'cloth_gloves', 'cloth_legs', 'cloth_feet',
+      'crude_mech_head', 'crude_mech_chest', 'crude_mech_gloves', 'crude_mech_legs', 'crude_mech_feet',
+    ],
+    equipChance: 0.055,
+    materialChance: 0.0,
+  },
+  city_ruins: {
+    tier: 2,
+    materials: ['steel_ingot', 'iron_ore', 'chainmail_fragment', 'void_crystal', 'ancient_scroll'],
+    equipment: [
+      'chainmail_head', 'chainmail_chest', 'chainmail_gloves', 'chainmail_legs', 'chainmail_feet',
+      'cloth_chest', 'cloth_legs', 'iron_shield', 'iron_helmet',
+      'crude_mech_chest', 'reinforced_mech_head', 'reinforced_mech_chest',
+    ],
+    equipChance: 0.055,
+    materialChance: 0.0,
+  },
+  cursed_marshlands: {
+    tier: 3,
+    materials: ['void_crystal', 'bog_scale', 'ancient_scroll', 'basilisk_scale', 'poison_vial', 'wraith_essence'],
+    equipment: [
+      'mystic_head', 'mystic_chest', 'mystic_gloves', 'mystic_legs', 'mystic_feet',
+      'runic_mech_head', 'runic_mech_chest', 'runic_mech_gloves', 'runic_mech_legs', 'runic_mech_feet',
+      'darksteel_shield', 'darksteel_head', 'darksteel_chest',
+    ],
+    equipChance: 0.05,
+    materialChance: 0.0,
+  },
+  void_frontier: {
+    tier: 3,
+    materials: ['void_crystal', 'void_essence', 'chaos_shard', 'soul_gem', 'ancient_scroll'],
+    equipment: [
+      'mystic_chest', 'mystic_legs', 'mystic_feet',
+      'darksteel_head', 'darksteel_chest', 'darksteel_gloves', 'darksteel_legs', 'darksteel_feet',
+      'void_circuit_mech_head', 'void_circuit_mech_chest',
+    ],
+    equipChance: 0.05,
+    materialChance: 0.0,
+  },
+  shadowfell_depths: {
+    tier: 4,
+    materials: ['dark_steel', 'shadow_cloth', 'void_essence', 'soul_gem', 'chaos_shard', 'wraith_essence'],
+    equipment: [
+      'voidplate_head', 'voidplate_chest', 'voidplate_gloves', 'voidplate_legs', 'voidplate_feet',
+      'void_silk_head', 'void_silk_chest', 'void_silk_gloves', 'void_silk_legs', 'void_silk_feet',
+      'aetheric_mech_head', 'aetheric_mech_chest', 'aetheric_mech_gloves',
+    ],
+    equipChance: 0.045,
+    materialChance: 0.0,
+  },
+  vorath_citadel: {
+    tier: 4,
+    materials: ['dark_steel', 'chaos_shard', 'titan_core', 'dragon_scale', 'void_essence', 'soul_gem'],
+    equipment: [
+      'voidplate_chest', 'voidplate_legs', 'voidplate_feet',
+      'arcane_robe_head', 'arcane_robe_chest', 'arcane_robe_gloves', 'arcane_robe_legs', 'arcane_robe_feet',
+      'aetheric_mech_chest', 'aetheric_mech_legs', 'aetheric_mech_feet',
+    ],
+    equipChance: 0.045,
+    materialChance: 0.0,
+  },
+};
+
+// Roll bonus drops from zone tier pool — called by combat.js after kill
+function rollZoneTierDrop(zone) {
+  const pool = ZONE_TIER_DROPS[zone];
+  if (!pool) return null;
+  if (Math.random() < pool.equipChance) {
+    const eq = pool.equipment;
+    return eq[Math.floor(Math.random() * eq.length)];
+  }
+  return null;
+}
+
+module.exports = {
+  MONSTERS, ZONE_MONSTERS, ZONE_TIER_DROPS,
+  getMonster, getRandomMonster,
+  calcDamage, calcSpellDamage, rollZoneTierDrop,
+};
