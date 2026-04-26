@@ -2,7 +2,7 @@
 const admin  = require('firebase-admin');
 const { MONSTERS, getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
 const { getDungeonMonster }  = require('../../data/dungeons');
-const { getItem, rollItem }  = require('../../data/items');
+const { ITEMS, getItem, rollItem, ITEM_QUALITY } = require('../../data/items');
 const { addGold }            = require('./currency');
 const { trackQuestProgress }    = require('./quests');
 const { trackStoryStep, trackMainQuestStep } = require('./quest_engine');
@@ -10,6 +10,56 @@ const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill }              = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { logReward } = require('../../utils/anticheat');
+
+// ── Calculate total equipment stat bonuses ────────────────────────────────────
+// Returns { atk, def, spd, hp_bonus, crit_rate, mp_bonus, mp_regen, ... }
+async function calcEquipBonus(uid) {
+  const db = admin.firestore();
+  const bonus = { atk:0, def:0, spd:0, hp_bonus:0, crit_rate:0, mp_bonus:0, mp_regen:0,
+                  atk_bonus:0, block_rate:0, void_dmg:0, lifesteal:0, gold_bonus:0 };
+  try {
+    const equipDoc = await db.collection('game_equipment').doc(uid).get();
+    if (!equipDoc.exists) return bonus;
+    const equipped = equipDoc.data(); // { HEAD: instanceId, CHEST: instanceId, ... }
+
+    for (const [slot, instanceId] of Object.entries(equipped)) {
+      if (!instanceId) continue;
+      const snap = await db.collection('game_inventory')
+        .where('uid', '==', uid).where('instanceId', '==', instanceId).limit(1).get();
+      if (snap.empty) continue;
+      const inst = snap.docs[0].data();
+      const def = ITEMS[inst.itemId];
+      if (!def) continue;
+
+      // Fixed base stats
+      for (const [stat, val] of Object.entries(def.base || {})) {
+        if (bonus[stat] !== undefined) bonus[stat] += val;
+        else if (stat === 'atk' || stat === 'def' || stat === 'spd') bonus[stat] += val;
+      }
+
+      // Rolled stats with quality multiplier
+      const qualityMult = ITEM_QUALITY[inst.quality]?.mult || 1.0;
+      const rolls = inst.rolls || {};
+      for (const [stat, val] of Object.entries(rolls)) {
+        const scaled = Math.round(val * qualityMult);
+        if (stat === 'atk' || stat === 'atk_bonus') bonus.atk += scaled;
+        else if (stat === 'def') bonus.def += scaled;
+        else if (stat === 'spd') bonus.spd += scaled;
+        else if (stat === 'hp_bonus') bonus.hp_bonus += scaled;
+        else if (stat === 'crit_rate') bonus.crit_rate += scaled;
+        else if (stat === 'mp_bonus') bonus.mp_bonus += scaled;
+        else if (stat === 'mp_regen') bonus.mp_regen += scaled;
+        else if (stat === 'block_rate') bonus.block_rate += scaled;
+        else if (stat === 'void_dmg') bonus.void_dmg += scaled;
+        else if (stat === 'lifesteal') bonus.lifesteal += scaled;
+        else if (stat === 'gold_bonus') bonus.gold_bonus += scaled;
+      }
+    }
+  } catch (err) {
+    console.error('[Combat] calcEquipBonus error:', err.message);
+  }
+  return bonus;
+}
 
 // Active battles — persisted in Firestore (game_battles collection)
 // Each document: { battleId, uid, state: <JSON>, createdAt, updatedAt }
@@ -153,25 +203,30 @@ async function startBattle(req, res) {
     const char = charDoc.data();
     if (char.hp <= 0) return res.status(400).json({ error: 'Character หมดพลัง ต้อง Rest ก่อน' });
 
+    // ── Equipment bonuses ──────────────────────────────────────────────────
+    const equipBonus = await calcEquipBonus(uid);
+    const baseAtk = char.atk + equipBonus.atk;
+    const baseDef = char.def + equipBonus.def;
+
     // Passive skill bonuses applied at battle start
     const className = (char.class || '').toLowerCase();
-    let passiveAtk = char.atk, passiveDef = char.def, passiveCrit = 0.1, passiveMpRegen = 0;
+    let passiveAtk = baseAtk, passiveDef = baseDef, passiveCrit = 0.1 + (equipBonus.crit_rate / 100), passiveMpRegen = equipBonus.mp_regen || 0;
     // Iron Will (warrior): DEF +10%
-    if (className === 'warrior')     passiveDef     = Math.floor(char.def * 1.1);
+    if (className === 'warrior')     passiveDef     = Math.floor(baseDef * 1.1);
     // Overclock (engineer): DEF +15%
-    if (className === 'engineer')    passiveDef     = Math.floor(char.def * 1.15);
+    if (className === 'engineer')    passiveDef     = Math.floor(baseDef * 1.15);
     // Rune Forge (runesmith): ATK +10%
-    if (className === 'runesmith')   passiveAtk     = Math.floor(char.atk * 1.1);
+    if (className === 'runesmith')   passiveAtk     = Math.floor(baseAtk * 1.1);
     // Mana Flow (mage): +5 MP/turn
-    if (className === 'mage')        passiveMpRegen = 5;
+    if (className === 'mage')        passiveMpRegen = Math.max(passiveMpRegen, 5);
     // Inspiring Melody (bard): +5 MP/turn + ATK +5%
-    if (className === 'bard')      { passiveMpRegen = 5; passiveAtk = Math.floor(char.atk * 1.05); }
+    if (className === 'bard')      { passiveMpRegen = Math.max(passiveMpRegen, 5); passiveAtk = Math.floor(baseAtk * 1.05); }
     // Forest Stride (ranger): Crit +5%
-    if (className === 'ranger')      passiveCrit    = 0.15;
+    if (className === 'ranger')      passiveCrit    = Math.max(passiveCrit, 0.1 + (equipBonus.crit_rate / 100) + 0.05);
     // True Sight (soulseer): Crit +8%
-    if (className === 'soulseer')    passiveCrit    = 0.18;
+    if (className === 'soulseer')    passiveCrit    = Math.max(passiveCrit, 0.1 + (equipBonus.crit_rate / 100) + 0.08);
     // Lethal Focus (assassin): Crit +10%
-    if (className === 'assassin')    passiveCrit    = 0.20;
+    if (className === 'assassin')    passiveCrit    = Math.max(passiveCrit, 0.1 + (equipBonus.crit_rate / 100) + 0.10);
     // Shadow Veil (rogue): flee 90% — handled at flee action
     // Bloodthirst (berserker): ATK +20% at <50% HP — handled per turn
     // Divine Grace (cleric): +8 HP/turn — handled per turn
@@ -192,18 +247,19 @@ async function startBattle(req, res) {
       result: null,
       player: {
         hp:         char.hp,
-        hpMax:      char.hpMax,
+        hpMax:      char.hpMax + (equipBonus.hp_bonus || 0),
         mp:         char.mp,
-        mpMax:      char.mpMax,
+        mpMax:      char.mpMax + (equipBonus.mp_bonus || 0),
         atk:        passiveAtk,
         atkBase:    passiveAtk,     // base before buffs
         def:        passiveDef,
         defBase:    passiveDef,
-        spd:        char.spd,
+        spd:        char.spd + (equipBonus.spd || 0),
         mag:        char.mag,
-        critChance: passiveCrit,    // base crit (with passive)
+        critChance: passiveCrit,    // base crit (with passive + gear)
         critMult:   className === 'assassin' ? 1.9 : 1.5, // crit damage multiplier (assassin gets 1.9)
-        mpRegen:    passiveMpRegen, // MP regen per turn (mage passive)
+        mpRegen:    passiveMpRegen, // MP regen per turn
+        lifesteal:  equipBonus.lifesteal || 0,  // % HP return on hit
         isGuarding: false,          // Guard action flag
         status: [],
         buffs:  [],                 // active self-buffs { type, atkMult, defMult, critBonus, duration }
