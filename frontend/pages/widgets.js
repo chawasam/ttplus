@@ -324,7 +324,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         ) : tokenReady ? (
           <div className={clsx('rounded-xl p-3 mb-4 text-sm flex items-center gap-2 border',
             isDark ? 'bg-green-500/10 border-green-500/25 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
-            ✅ Widget URL ของคุณพร้อมใช้งาน — URL นี้ผูกกับบัญชีของคุณ ไม่เปลี่ยนแปลง 🔗
+            ✅ Widget URL พร้อมให้ copy แล้ว 🔗
           </div>
         ) : (
           <div className={clsx('rounded-xl p-3 mb-4 text-sm flex items-center gap-2 border',
