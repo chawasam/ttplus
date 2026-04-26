@@ -31,5 +31,21 @@
         { "fieldPath": "resolved", "order": "ASCENDING" },
         { "fieldPath": "ts",       "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "game_accounts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tiktokUniqueId", "order": "ASCENDING" },
+        { "fieldPath": "tiktokVerified", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "game_verify_pending",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tiktokUniqueId", "order": "ASCENDING" },
+        { "fieldPath": "used",           "order": "ASCENDING" }
+      ]
     }
   ],

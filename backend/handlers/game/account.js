@@ -239,12 +239,12 @@ async function requestVerifyCode(req, res) {
     }
 
     // ── 4. ตรวจ username ถูกใช้โดย account อื่นแล้วหรือยัง ──
-    const existing = await db.collection('game_accounts')
+    // query single field เท่านั้น (ไม่ต้องการ composite index) แล้ว filter in memory
+    const existingSnap = await db.collection('game_accounts')
       .where('tiktokUniqueId', '==', clean)
-      .where('tiktokVerified', '==', true)
-      .limit(1).get();
-
-    if (!existing.empty && existing.docs[0].id !== uid) {
+      .limit(5).get();
+    const takenByOther = existingSnap.docs.some(d => d.id !== uid && d.data().tiktokVerified === true);
+    if (takenByOther) {
       return res.status(400).json({ error: `@${clean} ถูกใช้งานโดย account อื่นแล้ว` });
     }
 
@@ -293,12 +293,12 @@ async function checkChatVerify(uniqueId, comment) {
 
   // ── 1. หา pending doc ของ tiktokUniqueId นี้ ──
   // doc key = uid, query by tiktokUniqueId field
+  // query single field เท่านั้น (ไม่ต้องการ composite index) แล้ว filter used in memory
   let pendingSnap;
   try {
     pendingSnap = await db.collection('game_verify_pending')
       .where('tiktokUniqueId', '==', lowerUId)
-      .where('used', '==', false)
-      .limit(3) // กันกรณีผิดปกติ แต่ปกติ 1 คน 1 pending
+      .limit(5)
       .get();
   } catch (err) {
     console.error('[Game/Verify] query error:', err.message);
@@ -306,6 +306,11 @@ async function checkChatVerify(uniqueId, comment) {
   }
 
   if (pendingSnap.empty) return null;
+  // กรอง used ใน memory
+  const activeDocs = pendingSnap.docs.filter(d => !d.data().used);
+  if (activeDocs.length === 0) return null;
+  // inject back ให้ loop ด้านล่างใช้
+  pendingSnap = { docs: activeDocs };
 
   // ── 2. ลอง match code จาก comment ──
   for (const pendingDoc of pendingSnap.docs) {
