@@ -88,15 +88,19 @@ const nextConfig = {
   },
 
   // ===== URL Normalization: /ASHENVEIL → /ashenveil (canonical lowercase) =====
-  // pages/ directory renamed to ashenveil/ — no rewrites needed, only redirects
+  // pages/ directory is named ashenveil/ (lowercase) — no rewrites needed
   async redirects() {
     return [
-      { source: '/ASHENVEIL',         destination: '/ashenveil',         permanent: true },
-      { source: '/ASHENVEIL/:path*',  destination: '/ashenveil/:path*',  permanent: true },
-      { source: '/game',              destination: '/ashenveil',         permanent: true },
-      { source: '/game/:path*',       destination: '/ashenveil/:path*',  permanent: true },
+      // Redirect uppercase → lowercase (302 — ไม่ cache ใน browser ป้องกัน loop)
+      { source: '/ASHENVEIL',         destination: '/ashenveil',         permanent: false },
+      { source: '/ASHENVEIL/:path*',  destination: '/ashenveil/:path*',  permanent: false },
+      // Legacy /game routes → lowercase
+      { source: '/game',              destination: '/ashenveil',         permanent: false },
+      { source: '/game/:path*',       destination: '/ashenveil/:path*',  permanent: false },
     ];
   },
+  // rewrites ถูกลบออกแล้ว — เคยทำให้ /ashenveil → /ASHENVEIL (internal)
+  // แล้ว /ASHENVEIL → /ashenveil (redirect) = infinite loop
 };
 
 module.exports = nextConfig;
