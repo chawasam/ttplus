@@ -8,6 +8,7 @@ const { trackQuestProgress }  = require('./quests');
 const { trackStoryStep }      = require('./quest_engine');
 const { trackWeeklyProgress } = require('./weeklyQuests');
 const { checkAchievements, pushGameEvent } = require('./achievements');
+const { broadcastAll } = require('../../lib/emitter');
 
 // ===== Helper: get monster def (dungeon or regular) =====
 function resolveMonster(monsterId) {
@@ -199,6 +200,16 @@ async function enterDungeon(req, res) {
 
     // Track story/side quest step — dungeon_enter event
     trackStoryStep(uid, 'dungeon_enter', { dungeonId }).catch(() => {});
+
+    // Broadcast live dungeon event for OBS widget
+    broadcastAll('dungeon_event', {
+      type:      'enter',
+      charName:  char.name || '???',
+      charClass: char.class || '',
+      dungeonId,
+      dungeonName: dungeon.nameTH,
+      ts: Date.now(),
+    });
 
     return res.json({ run: runData, dungeon: summarizeDungeon(dungeon), room });
 
@@ -435,6 +446,18 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     }
     pushGameEvent(uid, { type: 'dungeon_clear', msg: `🏆 เคลียร์ ${dungeon.nameTH}!`, char: uid }).catch(() => {});
 
+    // Broadcast dungeon clear for OBS widget
+    broadcastAll('dungeon_event', {
+      type:       'clear',
+      charName:   char.name || '???',
+      charClass:  char.class || '',
+      dungeonId:  run.dungeonId,
+      dungeonName: dungeon.nameTH,
+      gold:       goldBonus,
+      xp:         cr.xp || 0,
+      ts: Date.now(),
+    });
+
     return res.json({
       cleared: true,
       log,
@@ -583,4 +606,46 @@ function summarizeDungeon(d) {
   };
 }
 
-module.exports = { listDungeons, getRunState, enterDungeon, roomAction, fleeDungeon, onDungeonBattleWin };
+// ===== Active Dungeon Runs (for OBS widget / admin) =====
+async function getActiveDungeonRuns(req, res) {
+  const db = admin.firestore();
+  try {
+    const snap = await db.collection('game_dungeon_runs')
+      .where('status', '==', 'active')
+      .limit(20)
+      .get();
+
+    const runs = [];
+    for (const doc of snap.docs) {
+      const run = doc.data();
+      const dungeon = getDungeon(run.dungeonId);
+      // get char name
+      let charName = '???'; let charClass = '';
+      try {
+        const cSnap = await db.collection('game_characters').doc(run.charId).get();
+        if (cSnap.exists) { charName = cSnap.data().name || '???'; charClass = cSnap.data().class || ''; }
+      } catch (_) {}
+      const roomDef = dungeon?.rooms?.[run.currentRoom];
+      runs.push({
+        runId:       doc.id,
+        charName,
+        charClass,
+        dungeonId:   run.dungeonId,
+        dungeonName: dungeon?.nameTH || run.dungeonId,
+        dungeonEmoji: dungeon?.emoji || '🏚️',
+        currentRoom: run.currentRoom,
+        totalRooms:  run.totalRooms,
+        roomType:    roomDef?.type || '?',
+        roomName:    roomDef?.name || '?',
+        startedAt:   run.startedAt?.toMillis?.() || null,
+      });
+    }
+
+    return res.json({ runs, count: runs.length, ts: Date.now() });
+  } catch (err) {
+    console.error('[Dungeon] getActiveDungeonRuns:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+module.exports = { listDungeons, getRunState, enterDungeon, roomAction, fleeDungeon, onDungeonBattleWin, getActiveDungeonRuns };

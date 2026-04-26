@@ -6,6 +6,7 @@
 const admin = require('firebase-admin');
 const { getRandomBoss, getBoss } = require('../../data/world_bosses');
 const { pushGameEvent } = require('./achievements');
+const { broadcastAll } = require('../../lib/emitter');
 
 const BOSS_DOC = 'current'; // game_world_boss/current
 
@@ -140,6 +141,16 @@ async function attackWorldBoss(req, res) {
         ts:         now,
       }).catch(() => {});
 
+      // Real-time socket broadcast → all connected clients update HP live
+      broadcastAll('world_boss_update', {
+        bossId:     boss.bossId,
+        bossHp:     newHp,
+        bossHpMax:  boss.maxHp,
+        attacker:   charName,
+        damage:     actualDmg,
+        topPlayers: liveTopPlayers,
+      });
+
       // Random boss counter-attack message
       const bossData = getBoss(boss.bossId);
       const counterMsg = bossData?.attackMsgs[Math.floor(Math.random() * bossData.attackMsgs.length)] || '';
@@ -184,6 +195,14 @@ async function attackWorldBoss(req, res) {
       topPlayers:  sorted.slice(0, 5),
       ts:          now,
     }).catch(() => {});
+
+    broadcastAll('world_boss_killed', {
+      bossId:   boss.bossId,
+      bossName: boss.nameTH,
+      emoji:    boss.emoji,
+      killedBy: charName,
+      topPlayers: sorted.slice(0, 5),
+    });
 
     // Grant rewards
     const bossData = getBoss(boss.bossId);

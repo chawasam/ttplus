@@ -168,10 +168,11 @@ router.get ('/audit/players',                  audit.requireAdmin, audit.getPlay
 router.post('/audit/players/:uid/flag',        audit.requireAdmin, audit.manualFlag);
 
 // ----- Dungeon -----
-router.get ('/dungeons',          dungeon.listDungeons);
-router.get ('/dungeon/run',       dungeon.getRunState);
-router.post('/dungeon/enter',     dungeon.enterDungeon);
-router.post('/dungeon/action',    dungeon.roomAction);
-router.post('/dungeon/flee',      dungeon.fleeDungeon);
+router.get ('/dungeons',              dungeon.listDungeons);
+router.get ('/dungeon/run',           dungeon.getRunState);
+router.post('/dungeon/enter',         dungeon.enterDungeon);
+router.post('/dungeon/action',        dungeon.roomAction);
+router.post('/dungeon/flee',          dungeon.fleeDungeon);
+router.get ('/dungeon/active-runs',   dungeon.getActiveDungeonRuns);
 
 module.exports = router;

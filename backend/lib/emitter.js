@@ -16,4 +16,10 @@ function emitToUser(uid, event, data) {
   if (socketId) _io.to(socketId).emit(event, data);
 }
 
-module.exports = { setIO, emitToUser };
+// Broadcast to ALL connected authenticated game clients
+function broadcastAll(event, data) {
+  if (!_io) return;
+  _io.emit(event, data);
+}
+
+module.exports = { setIO, emitToUser, broadcastAll };

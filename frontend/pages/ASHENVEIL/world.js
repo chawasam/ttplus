@@ -847,6 +847,41 @@ export default function GameWorld() {
     };
   }, [showQuestPopup, loadQuestLog]);
 
+  // ── World Boss real-time updates (socket broadcast from server) ──
+  useEffect(() => {
+    const sock = getSocket();
+    if (!sock) return;
+
+    const onBossUpdate = (d) => {
+      setWorldBossData(prev => {
+        if (!prev?.active || !prev.boss) return prev;
+        if (d.bossId !== prev.boss.bossId) return prev;
+        const hpPct = Math.max(0, Math.round((d.bossHp / d.bossHpMax) * 100));
+        return {
+          ...prev,
+          boss: { ...prev.boss, hp: d.bossHp, hpMax: d.bossHpMax, hpPct },
+          topPlayers: d.topPlayers || prev.topPlayers,
+        };
+      });
+    };
+
+    const onBossKilled = (d) => {
+      setWorldBossData(prev => {
+        if (!prev) return prev;
+        return { ...prev, active: false, boss: null };
+      });
+      addLog(`💀 ${d.emoji || '👹'} ${d.bossName} ถูกสังหารโดย ${d.killedBy}!`);
+    };
+
+    sock.on('world_boss_update', onBossUpdate);
+    sock.on('world_boss_killed', onBossKilled);
+
+    return () => {
+      sock.off('world_boss_update', onBossUpdate);
+      sock.off('world_boss_killed', onBossKilled);
+    };
+  }, [addLog]);
+
   const toggleBgm = useCallback(() => {
     setBgmEnabled(prev => {
       const next = !prev;
