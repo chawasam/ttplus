@@ -2853,10 +2853,191 @@ function DatabaseTab() {
     );
   };
 
+  // ── Item sub-tab ──
+  const GRADE_COLOR = {
+    COMMON:'#9ca3af', UNCOMMON:'#4ade80', RARE:'#60a5fa',
+    EPIC:'#a78bfa', LEGENDARY:'#f59e0b',
+  };
+  const SLOT_LABEL = {
+    MAIN_HAND:'⚔️ อาวุธ', OFF_HAND:'🛡️ โล่', HEAD:'⛑️ หมวก',
+    CHEST:'🧥 เสื้อ', GLOVES:'🧤 ถุงมือ', LEGS:'👖 กางเกง',
+    FEET:'👟 รองเท้า', RING_L:'💍 แหวน', CONSUMABLE:'🧪 สมุนไพร',
+    MATERIAL:'📦 วัตถุดิบ', ENHANCE_MATERIAL:'⚒️ Enhancement', JUNK:'🗑️ ขยะ',
+  };
+
+  const ItemView = () => {
+    const [gradeFilter, setGradeFilter] = useState('all');
+    const [typeFilter2, setTypeFilter2] = useState('all');
+    if (!data?.items) return null;
+    const grades = [...new Set(data.items.map(i => i.grade))].sort();
+    const types  = [...new Set(data.items.map(i => i.type))].sort();
+    const filtered = data.items.filter(it => {
+      const q = search.toLowerCase();
+      const matchQ = !q || it.name.toLowerCase().includes(q) || it.itemId.includes(q) || (it.desc||'').toLowerCase().includes(q);
+      const matchG = gradeFilter === 'all' || it.grade === gradeFilter;
+      const matchT = typeFilter2 === 'all' || it.type === typeFilter2;
+      return matchQ && matchG && matchT;
+    });
+
+    return (
+      <div>
+        {/* Filters */}
+        <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+          <input style={{ ...inputStyle, width:200 }} placeholder="🔍 ค้นหา item..." value={search}
+            onChange={e => { setSearch(e.target.value); setSelected(null); }} />
+          <select style={inputStyle} value={gradeFilter} onChange={e => { setGradeFilter(e.target.value); setSelected(null); }}>
+            <option value="all">ทุก Grade</option>
+            {grades.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <select style={inputStyle} value={typeFilter2} onChange={e => { setTypeFilter2(e.target.value); setSelected(null); }}>
+            <option value="all">ทุก Slot</option>
+            {types.map(t => <option key={t} value={t}>{SLOT_LABEL[t] || t}</option>)}
+          </select>
+          <span style={{ color:'#4b5563', fontSize:12 }}>{filtered.length} / {data.items.length} items</span>
+          <button onClick={() => exportJSON('items')}
+            style={{ marginLeft:'auto', ...inputStyle, color:'#34d399', cursor:'pointer', border:'1px solid #34d39944' }}>
+            ⬇ Export JSON
+          </button>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 320px' : '1fr', gap:16 }}>
+          {/* Table */}
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'#0d1117' }}>
+                  {['','ชื่อ','Grade','Slot','Lv.','Stat หลัก','ขาย','ซื้อ','คลาส'].map(h =>
+                    <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(it => {
+                  const statStr = Object.entries(it.base||{}).map(([k,v]) => `${k}+${v}`).join(' ');
+                  const isSelected = selected?.itemId === it.itemId;
+                  return (
+                    <tr key={it.itemId}
+                      onClick={() => setSelected(isSelected ? null : it)}
+                      style={{ cursor:'pointer', background: isSelected ? '#1a2235' : 'transparent', transition:'background .1s' }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#111827'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
+                      <td style={tdStyle}>{it.emoji}</td>
+                      <td style={{ ...tdStyle, color:'#e5e7eb', fontWeight:600 }}>{it.name}</td>
+                      <td style={tdStyle}>
+                        <span style={{ ...badge(GRADE_COLOR[it.grade]||'#6b7280'), fontSize:10 }}>{it.grade}</span>
+                      </td>
+                      <td style={{ ...tdStyle, color:'#9ca3af', fontSize:11 }}>{SLOT_LABEL[it.type] || it.type}</td>
+                      <td style={{ ...tdStyle, color:'#f59e0b' }}>{it.levelReq}</td>
+                      <td style={{ ...tdStyle, color:'#4ade80', fontSize:11 }}>{statStr || '—'}</td>
+                      <td style={{ ...tdStyle, color:'#fbbf24', fontSize:11 }}>{it.sellPrice > 0 ? `${it.sellPrice}G` : '—'}</td>
+                      <td style={{ ...tdStyle, color:'#f87171', fontSize:11 }}>{it.buyPrice > 0 ? `${it.buyPrice}G` : '—'}</td>
+                      <td style={{ ...tdStyle, fontSize:10, color:'#6b7280' }}>
+                        {it.classReq?.length > 0 ? it.classReq.slice(0,2).join(', ') + (it.classReq.length > 2 ? `+${it.classReq.length-2}` : '') : 'ทุกคลาส'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Detail panel */}
+          {selected && (
+            <div style={{ ...card, borderColor: GRADE_COLOR[selected.grade]+'44' || '#374151',
+              position:'sticky', top:80, height:'fit-content', maxHeight:'80vh', overflowY:'auto' }}>
+              <div style={{ fontSize:32, marginBottom:4 }}>{selected.emoji}</div>
+              <div style={{ color: GRADE_COLOR[selected.grade]||'#e5e7eb', fontWeight:800, fontSize:16 }}>{selected.name}</div>
+              <div style={{ color:'#6b7280', fontSize:11, marginBottom:4 }}>{selected.itemId}</div>
+              <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
+                <span style={{ ...badge(GRADE_COLOR[selected.grade]||'#9ca3af'), fontSize:10 }}>{selected.grade}</span>
+                <span style={{ ...badge('#374151'), fontSize:10 }}>{SLOT_LABEL[selected.type]||selected.type}</span>
+                {selected.sockets > 0 && <span style={{ ...badge('#c084fc'), fontSize:10 }}>◈ {selected.sockets} socket</span>}
+              </div>
+              {selected.desc && <p style={{ color:'#9ca3af', fontSize:12, marginBottom:12, lineHeight:1.6, fontStyle:'italic' }}>"{selected.desc}"</p>}
+
+              {/* Stats */}
+              {Object.keys(selected.base||{}).length > 0 && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>BASE STATS</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                    {Object.entries(selected.base).map(([k,v]) => (
+                      <div key={k} style={{ background:'#0d1117', borderRadius:6, padding:'5px 8px' }}>
+                        <div style={{ color:'#4b5563', fontSize:10 }}>{k.toUpperCase()}</div>
+                        <div style={{ color:'#4ade80', fontWeight:700, fontSize:14 }}>+{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Roll ranges */}
+              {Object.keys(selected.rolls||{}).length > 0 && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>ROLL BONUS</div>
+                  {Object.entries(selected.rolls).map(([k,v]) => (
+                    <div key={k} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid #111827' }}>
+                      <span style={{ color:'#9ca3af' }}>{k}</span>
+                      <span style={{ color:'#60a5fa' }}>{Array.isArray(v) ? `${v[0]}–${v[1]}` : v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Effect (consumables) */}
+              {selected.effect && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>EFFECT</div>
+                  {Object.entries(selected.effect).map(([k,v]) => (
+                    <div key={k} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid #111827' }}>
+                      <span style={{ color:'#9ca3af' }}>{k}</span>
+                      <span style={{ color:'#a78bfa' }}>{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Econ */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:12 }}>
+                {[['Req Level','#f59e0b', selected.levelReq],
+                  ['Sockets','#c084fc', selected.sockets],
+                  ['ขาย','#fbbf24', selected.sellPrice > 0 ? `${selected.sellPrice}G` : '—'],
+                  ['ซื้อ','#f87171', selected.buyPrice > 0 ? `${selected.buyPrice}G` : '—'],
+                ].map(([l,c,v]) => (
+                  <div key={l} style={{ background:'#0d1117', borderRadius:6, padding:'5px 8px' }}>
+                    <div style={{ color:'#4b5563', fontSize:10 }}>{l}</div>
+                    <div style={{ color:c, fontWeight:700, fontSize:13 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Class req */}
+              {selected.classReq?.length > 0 && (
+                <div>
+                  <div style={{ color:'#6b7280', fontSize:10, fontWeight:700, marginBottom:6, letterSpacing:'0.06em' }}>CLASS REQ</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                    {selected.classReq.map(c => (
+                      <span key={c} style={{ ...badge('#1f2937'), fontSize:10, color:'#9ca3af', border:'1px solid #374151' }}>{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={() => setSelected(null)}
+                style={{ marginTop:16, width:'100%', background:'#1f2937', border:'none',
+                  borderRadius:6, padding:'8px', color:'#6b7280', cursor:'pointer', fontSize:12 }}>
+                ✕ ปิด
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const SUBTABS = [
     { key:'monsters', label:`🐉 Monsters${data ? ` (${data.monsters.length})` : ''}` },
     { key:'npcs',     label:`👥 NPCs${data ? ` (${data.npcs.length})` : ''}` },
     { key:'maps',     label:`🗺️ Maps${data ? ` (${data.zones.length})` : ''}` },
+    { key:'items',    label:`🎒 Items${data ? ` (${data.items?.length || 0})` : ''}` },
   ];
 
   return (
@@ -2886,6 +3067,7 @@ function DatabaseTab() {
       {data && subTab === 'monsters' && <MonsterView />}
       {data && subTab === 'npcs'     && <NpcView />}
       {data && subTab === 'maps'     && <MapView />}
+      {data && subTab === 'items'    && <ItemView />}
     </div>
   );
 }

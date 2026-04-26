@@ -377,7 +377,25 @@ async function getGameData(req, res) {
       })),
     }));
 
-    return res.json({ monsters, npcs, zones });
+    const { ITEMS } = require('../../data/items');
+    const items = Object.values(ITEMS).map(it => ({
+      itemId:    it.itemId,
+      name:      it.name,
+      emoji:     it.emoji,
+      grade:     it.grade,
+      type:      it.type,
+      levelReq:  it.levelReq || 1,
+      classReq:  it.classReq || [],
+      base:      it.base || {},
+      rolls:     it.rolls || {},
+      sockets:   it.sockets || 0,
+      desc:      it.desc || '',
+      sellPrice: it.sellPrice || 0,
+      buyPrice:  it.buyPrice || 0,
+      effect:    it.effect || null,
+    }));
+
+    return res.json({ monsters, npcs, zones, items });
   } catch (err) {
     console.error('[Audit] getGameData:', err.message);
     return res.status(500).json({ error: 'Server error' });
