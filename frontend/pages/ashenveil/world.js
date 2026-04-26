@@ -137,7 +137,9 @@ export default function GameWorld() {
   const logEndRef  = useRef(null);
   const audioRef   = useRef(null);   // HTMLAudioElement
   const bgmKeyRef  = useRef('');     // track กำลังเล่นอยู่
-  const screenRef  = useRef(SCREENS.WORLD); // mirror of screen for popstate handler
+  const screenRef     = useRef(SCREENS.WORLD); // mirror of screen for popstate handler
+  const exitWarning   = useRef(false);         // true = back ครั้งแรกถูกกดแล้ว
+  const exitWarnTimer = useRef(null);           // timeout ล้าง warning
 
   const [loading,    setLoading]    = useState(true);
   const [char,       setChar]       = useState(null);
@@ -910,7 +912,26 @@ export default function GameWorld() {
     const handlePopState = () => {
       const s = screenRef.current;
       if (s === SCREENS.WORLD) {
-        // On main screen — let browser navigate back naturally (no re-push)
+        // ── Double-back-to-exit pattern ──
+        if (exitWarning.current) {
+          // ครั้งที่ 2 — ออกจากเกม (ไม่ replenish → browser navigate ออก)
+          clearTimeout(exitWarnTimer.current);
+          exitWarning.current = false;
+          return;
+        }
+        // ครั้งที่ 1 — แสดง toast เตือน แล้วดักครั้งหน้า
+        exitWarning.current = true;
+        toast('กด Back อีกครั้งเพื่อออกจากเกม', {
+          icon: '⚠️',
+          duration: 2500,
+          style: { background: '#1a1a1a', color: '#e5e7eb', border: '1px solid #374151' },
+        });
+        // ล้าง warning อัตโนมัติถ้า 2.5 วินาทีผ่านไปโดยไม่กด
+        exitWarnTimer.current = setTimeout(() => {
+          exitWarning.current = false;
+        }, 2500);
+        // Replenish เพื่อดัก back ครั้งต่อไป
+        window.history.pushState({ ashenveil: true }, '');
         return;
       }
       // Handle back in-game -----------------------------------------------
