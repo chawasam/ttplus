@@ -7,7 +7,7 @@ const { addGold }            = require('./currency');
 const { trackQuestProgress }    = require('./quests');
 const { trackStoryStep, trackMainQuestStep } = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
-const { getSkill }              = require('../../data/skills');
+const { getSkill, getClassSkills } = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { logReward } = require('../../utils/anticheat');
 
@@ -322,7 +322,6 @@ async function startBattle(req, res) {
     await saveBattle(db, battleId, state);
 
     // Build skill info for frontend
-    const { getClassSkills } = require('../../data/skills');
     const classSkills = getClassSkills(className).filter(s => (char.unlockedSkills || []).includes(s.id));
 
     return res.json({ battleId, state: sanitizeState(state), availableSkills: classSkills });
@@ -1576,6 +1575,25 @@ async function grantRewards(uid, state) {
       updates.skillPoints = (char.skillPoints || 0) + 1;
       log.push(`🎉 LEVEL UP! คุณขึ้นเป็น Level ${newLevel}!`);
       rewards.levelUp = newLevel;
+
+      // ── Auto-unlock skills at new level ───────────────────────────────────
+      const allClassSkills  = getClassSkills(className);
+      const currentUnlocked = Array.isArray(char.unlockedSkills) ? [...char.unlockedSkills] : [];
+      const newlyUnlocked   = [];
+      for (const sk of allClassSkills) {
+        if ((sk.minLevel || 1) <= newLevel && !currentUnlocked.includes(sk.id)) {
+          currentUnlocked.push(sk.id);
+          newlyUnlocked.push(sk.name || sk.id);
+        }
+      }
+      if (newlyUnlocked.length > 0) {
+        updates.unlockedSkills = currentUnlocked;
+        // Also update in-memory state so current battle reflects new skills
+        state.unlockedSkills = currentUnlocked;
+        log.push(`✨ สกิลใหม่ปลดล็อก: ${newlyUnlocked.join(', ')}`);
+        rewards.newSkills = newlyUnlocked;
+      }
+      // ──────────────────────────────────────────────────────────────────────
     }
     await charRef.update(updates);
   }
