@@ -89,7 +89,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
   const connection = new WebcastPushConnection(tiktokUsername, {
     processInitialData: false,  // false = ไม่ replay event เก่าก่อนเชื่อมต่อ (ป้องกัน TTS/actions ยิงทันที)
     enableExtendedGiftInfo: true,
-    enableWebsocketUpgrade: false, // false = ใช้ HTTP polling (ไม่ต้องการ sessionId)
+    enableWebsocketUpgrade: true,
     requestPollingIntervalMs: 2000,
   });
 
