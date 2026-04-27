@@ -12,7 +12,6 @@
 
 const admin = require('firebase-admin');
 const { v4: uuidv4 } = require('uuid');
-const { getUidForCid, registerCid } = require('../../utils/widgetToken');
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -112,7 +111,7 @@ async function updateAction(req, res) {
     const updates = {};
     const allowed = [
       'name','types','pictureUrl','videoUrl','audioUrl','alertText','ttsText',
-      'obsScene','obsSceneReturn','obsSource','obsSourceReturn',
+      'obsScene','obsSceneDuration','obsSource','obsSourceDuration',
       'displayDuration','overlayScreen','globalCooldown','userCooldown',
       'fadeInOut','repeatWithCombos','enabled',
     ];
@@ -285,33 +284,10 @@ async function getObsSettings(req, res) {
 // ─── OVERLAY QUEUE (for OBS Browser Source) ────────────────────────────────
 // Widget polls นี้เพื่อดึง action ที่ต้องแสดง
 
-// ── ดึง uid จาก cid (memory → Firestore fallback) ──────────────────────────
-async function resolveCidToUid(cid) {
-  const uid = getUidForCid(cid);
-  if (uid) return uid;
-  try {
-    const doc = await db().collection('widget_cids').doc(String(cid)).get();
-    if (doc.exists && doc.data()?.uid) {
-      registerCid(cid, doc.data().uid);
-      return doc.data().uid;
-    }
-  } catch {}
-  return null;
-}
-
 async function getOverlayQueue(req, res) {
-  // รองรับทั้ง format ใหม่ (?cid=) และเก่า (/:vjId param)
-  let vjId = req.params.vjId || '';
-  const cid = req.query.cid || '';
+  const { vjId } = req.params;
   const screen = parseInt(req.query.screen) || 1;
-
-  if (!vjId && cid) {
-    if (!/^\d{4,8}$/.test(cid)) return res.status(400).json({ error: 'invalid cid' });
-    vjId = await resolveCidToUid(cid);
-    if (!vjId) return res.json({ item: null }); // ยังไม่มีข้อมูล
-  }
-
-  if (!vjId) return res.status(400).json({ error: 'ต้องระบุ cid หรือ vjId' });
+  if (!vjId) return res.status(400).json({ error: 'ต้องระบุ vjId' });
 
   try {
     const snap = await db().collection('tt_action_queue')

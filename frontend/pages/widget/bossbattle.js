@@ -14,9 +14,7 @@ const PHYS_H        = 190;  // ความสูง physics canvas (gift pile a
 const MAX_GIFTS     = 30;   // จำนวนสูงสุดของขวัญในหน้าจอ
 
 // ───── Web Audio ─────────────────────────────────────────────
-let _ctx        = null;
-let _masterGain = null;
-
+let _ctx = null;
 function getAudioCtx() {
   if (typeof window === 'undefined') return null;
   if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -24,40 +22,16 @@ function getAudioCtx() {
   return _ctx;
 }
 
-// Master gain node — เชื่อมต่อ oscillator ผ่านนี้ก่อน destination
-// setMasterVolume(0-100) เรียกครั้งแรกตอน mount
-function getMasterGain() {
-  const ctx = getAudioCtx();
-  if (!ctx) return null;
-  if (!_masterGain) {
-    _masterGain = ctx.createGain();
-    _masterGain.connect(ctx.destination);
-  }
-  return _masterGain;
-}
-
-function setMasterVolume(vol100) {
-  const mg = getMasterGain();
-  if (mg) mg.gain.value = Math.max(0, Math.min(1, vol100 / 100));
-}
-
-// ── helper: return output node (master gain if available, else destination) ──
-function out() {
-  const ctx = getAudioCtx(); if (!ctx) return null;
-  return getMasterGain() ?? ctx.destination;
-}
-
 function playHit(dmg, elem = 'neutral') {
   try {
     const ctx = getAudioCtx(); if (!ctx) return;
-    const dst = out(); if (!dst) return;
     const t = ctx.currentTime;
     const baseFreqs = { fire: 140, water: 220, earth: 80, wind: 320, neutral: 160 };
     const waveTypes = { fire: 'sawtooth', water: 'sine', earth: 'sawtooth', wind: 'triangle', neutral: 'sawtooth' };
     const base = baseFreqs[elem] ?? 160;
     const scale = dmg >= 500 ? 0.5 : dmg >= 100 ? 0.7 : 1.0;
     const osc = ctx.createOscillator(); const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(dst);
+    osc.connect(gain); gain.connect(ctx.destination);
     osc.frequency.setValueAtTime(base * 2.2 * scale, t);
     osc.frequency.exponentialRampToValueAtTime(base * 0.5 * scale, t + 0.16);
     osc.type = waveTypes[elem] ?? 'sawtooth';
@@ -65,7 +39,7 @@ function playHit(dmg, elem = 'neutral') {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
     osc.start(t); osc.stop(t + 0.24);
     const click = ctx.createOscillator(); const cg = ctx.createGain();
-    click.connect(cg); cg.connect(dst);
+    click.connect(cg); cg.connect(ctx.destination);
     click.frequency.value = elem === 'wind' ? 5000 : 3000; click.type = 'square';
     cg.gain.setValueAtTime(0.07, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
     click.start(t); click.stop(t + 0.02);
@@ -75,11 +49,10 @@ function playHit(dmg, elem = 'neutral') {
 function playHeal() {
   try {
     const ctx = getAudioCtx(); if (!ctx) return;
-    const dst = out(); if (!dst) return;
     [523, 659, 784].forEach((freq, i) => {
       const t = ctx.currentTime + i * 0.1;
       const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(dst);
+      osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq; osc.type = 'sine';
       gain.gain.setValueAtTime(0, t);
       gain.gain.linearRampToValueAtTime(0.18, t + 0.04);
@@ -92,11 +65,10 @@ function playHeal() {
 function playEffective() {
   try {
     const ctx = getAudioCtx(); if (!ctx) return;
-    const dst = out(); if (!dst) return;
     const t = ctx.currentTime;
     [880, 1100].forEach((freq, i) => {
       const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(dst);
+      osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq; osc.type = 'square';
       gain.gain.setValueAtTime(0.12, t + i * 0.06);
       gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.2);
@@ -108,11 +80,10 @@ function playEffective() {
 function playWin() {
   try {
     const ctx = getAudioCtx(); if (!ctx) return;
-    const dst = out(); if (!dst) return;
     [523, 659, 784, 1047, 1319].forEach((freq, i) => {
       const t = ctx.currentTime + i * 0.13;
       const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(dst);
+      osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq; osc.type = 'sine';
       gain.gain.setValueAtTime(0, t);
       gain.gain.linearRampToValueAtTime(0.32, t + 0.03);
@@ -125,11 +96,10 @@ function playWin() {
 function playRespawn() {
   try {
     const ctx = getAudioCtx(); if (!ctx) return;
-    const dst = out(); if (!dst) return;
     [880, 740, 622, 740, 880, 1047].forEach((freq, i) => {
       const t = ctx.currentTime + i * 0.1;
       const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(dst);
+      osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq; osc.type = 'triangle';
       gain.gain.setValueAtTime(0.22, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
@@ -183,9 +153,6 @@ export default function BossBattleWidget() {
     const p = new URLSearchParams(window.location.search);
     return Math.max(0, Math.min(100, parseInt(p.get('carda') ?? '58')));
   });
-
-  // ── vol: master volume — อ่านจาก URL แล้วตั้ง master gain node ──
-  const volRef = useRef(80);
   // ref สำหรับ physics setup effect (ต้องการก่อน state sync)
   const widgetWidthRef = useRef(typeof window !== 'undefined'
     ? Math.max(280, Math.min(800, parseInt(new URLSearchParams(window.location.search).get('ww') ?? '380')))
@@ -446,14 +413,6 @@ export default function BossBattleWidget() {
     }
   }, [addDamageNum, triggerFlash, triggerRespawn, spawnFlyingGift]);
 
-  // ───── Master volume init (จาก URL param vol=0-100) ─────────
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const v = Math.max(0, Math.min(100, parseInt(p.get('vol') ?? '80')));
-    volRef.current = v;
-    setMasterVolume(v);
-  }, []);
-
   // ───── Physics setup (Matter.js) ────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -642,12 +601,6 @@ export default function BossBattleWidget() {
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'bossbattle') return;
         if (style?._reset) { clearInterval(countdownRef.current); triggerReset(); }
-        // Real-time volume update — slider ใน customize เปลี่ยนได้ทันที
-        if (style?.vol !== undefined) {
-          const v = Math.max(0, Math.min(100, Number(style.vol)));
-          volRef.current = v;
-          setMasterVolume(v);
-        }
       },
     });
 

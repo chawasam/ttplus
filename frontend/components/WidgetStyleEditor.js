@@ -6,26 +6,19 @@ import { addHash, stripHash, hexAlphaToRgba, WIDGET_DEFAULTS } from '../lib/widg
 import { SKIN_LIST } from '../lib/chatSkins';
 
 const WIDGET_LABELS = {
-  alert:              '🔔 Gift Alert',
-  chat:               '💬 Chat Overlay',
-  pinchat:            '📌 Pin Chat',
-  pinprofile:         '👤 Pin Profile Card',
-  leaderboard:        '🏆 Leaderboard',
-  goal:               '🎯 Goal Bar',
-  viewers:            '👥 Viewer Count',
-  coinjar:            '🫙 Coin Jar',
-  likesLeaderboard:    '👍 Likes Leaderboard',
-  'likes-leaderboard': '👍 Likes Leaderboard',
-  giftLeaderboard:     '🎁 Gift Leaderboard',
-  'gift-leaderboard':  '🎁 Gift Leaderboard',
-  fireworks:          '🎆 Gift Fireworks',
+  alert:       '🔔 Gift Alert',
+  chat:        '💬 Chat Overlay',
+  pinchat:     '📌 Pin Chat',
+  pinprofile:  '👤 Pin Profile Card',
+  leaderboard: '🏆 Leaderboard',
+  goal:        '🎯 Goal Bar',
+  viewers:     '👥 Viewer Count',
+  coinjar:     '🫙 Coin Jar',
 };
 
-export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange, theme }) {
-  // ป้องกัน crash ถ้า style ยังไม่มีค่า (ใช้ default แทน)
-  const d     = WIDGET_DEFAULTS[widgetId] || WIDGET_DEFAULTS.chat;
-  const style = styleProp || d;
-  const set   = (key, val) => onChange({ ...style, [key]: val });
+export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) {
+  const set = (key, val) => onChange({ ...style, [key]: val });
+  const d = WIDGET_DEFAULTS[widgetId];
 
   // skin tab: auto-select tab ตาม skin ปัจจุบัน
   const activeSkinCat = SKIN_LIST.find(s => s.id === (style.skin || ''))?.category || 'cool';
@@ -536,10 +529,8 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
-      {/* ── Skin Selector (chat + pinchat + leaderboards) ── */}
-      {(widgetId === 'chat' || widgetId === 'pinchat' ||
-        widgetId === 'gift-leaderboard' || widgetId === 'giftLeaderboard' ||
-        widgetId === 'likes-leaderboard' || widgetId === 'likesLeaderboard') && (
+      {/* ── Skin Selector (chat + pinchat เท่านั้น) ── */}
+      {(widgetId === 'chat' || widgetId === 'pinchat') && (
         <div className="space-y-2 pt-1">
           {/* Header + active skin badge */}
           <div className={row}>
@@ -756,120 +747,6 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
           <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
             💡 เปลี่ยนแปลง real-time ใน OBS ไม่ต้องใช้ plugin 3D Effect
           </p>
-        </div>
-      )}
-
-      {/* ── Fireworks: Pattern + Volume ── */}
-      {widgetId === 'fireworks' && (
-        <div className="space-y-3 pt-1">
-
-          {/* Pattern checkboxes */}
-          <div className="space-y-2">
-            <div className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
-              💥 รูปแบบระเบิด (สุ่มจากที่เลือก)
-            </div>
-            {[
-              { id: 'ring',    label: 'Ring',    desc: 'กระจายรอบวงสม่ำเสมอ' },
-              { id: 'willow',  label: 'Willow',  desc: 'พุ่งขึ้นแล้วโค้งตกลงมา' },
-              { id: 'scatter', label: 'Scatter', desc: 'สุ่มทิศทางอิสระ' },
-              { id: 'star',    label: 'Star',    desc: 'แฉกสลับเร็ว-ช้า' },
-              { id: 'fan',     label: 'Fan',     desc: 'พุ่งขึ้นครึ่งวงบน' },
-            ].map(p => {
-              const active = (style.patterns ?? 'ring,willow,scatter,star,fan').split(',').includes(p.id);
-              const toggle = () => {
-                const cur  = (style.patterns ?? 'ring,willow,scatter,star,fan').split(',');
-                const next = active ? cur.filter(x => x !== p.id) : [...cur, p.id];
-                if (next.length === 0) return; // ต้องเลือกอย่างน้อย 1
-                set('patterns', next.join(','));
-              };
-              return (
-                <button
-                  key={p.id}
-                  onClick={toggle}
-                  className={clsx(
-                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition border text-left',
-                    active
-                      ? 'bg-orange-500/20 border-orange-500/60 text-orange-300'
-                      : theme === 'dark'
-                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
-                        : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
-                  )}
-                >
-                  <span className={clsx(
-                    'flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center text-[10px]',
-                    active
-                      ? 'bg-orange-500 border-orange-500 text-white'
-                      : theme === 'dark' ? 'border-gray-600' : 'border-gray-400'
-                  )}>
-                    {active ? '✓' : ''}
-                  </span>
-                  <span className="font-semibold">{p.label}</span>
-                  <span className={clsx('ml-auto', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>{p.desc}</span>
-                </button>
-              );
-            })}
-            <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-              💡 ติ๊กหลายอัน = สุ่มสลับทุก explosion
-            </p>
-          </div>
-
-        </div>
-      )}
-
-      {/* ── Fireworks: Particle Count ── */}
-      {widgetId === 'fireworks' && (
-        <div className="space-y-2 pt-1">
-          <div className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
-            ✨ จำนวนสะเก็ดพลุ
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { val: 10, label: '10', desc: 'เบา' },
-              { val: 20, label: '20', desc: 'ปานกลาง' },
-              { val: 30, label: '30', desc: 'หนาแน่น' },
-            ].map(opt => (
-              <button
-                key={opt.val}
-                onClick={() => set('pcount', opt.val)}
-                className={clsx(
-                  'py-2 px-1 rounded-lg text-xs font-semibold transition border flex flex-col items-center gap-0.5',
-                  (style.pcount ?? 10) === opt.val
-                    ? 'bg-orange-500/20 border-orange-500/60 text-orange-300'
-                    : theme === 'dark'
-                      ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
-                      : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
-                )}
-              >
-                <span className="text-sm font-bold">{opt.label}</span>
-                <span className="text-[10px] opacity-70">{opt.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Fireworks: Volume (แยก block) ── */}
-      {widgetId === 'fireworks' && (
-        <div className="space-y-1 pt-1">
-          <div className={clsx('text-xs font-semibold mb-1', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
-            🔊 เสียงพลุ
-          </div>
-          <div className={row}>
-            <span className={label}>ระดับเสียง</span>
-            <span className={clsx('text-xs font-mono font-bold',
-              (style.vol ?? 80) === 0 ? (theme === 'dark' ? 'text-gray-500' : 'text-gray-400') : 'text-orange-400')}>
-              {(style.vol ?? 80) === 0 ? '🔇 เงียบ' : `${style.vol ?? 80}%`}
-            </span>
-          </div>
-          <input
-            type="range" min="0" max="100" step="5"
-            value={style.vol ?? 80}
-            onChange={e => set('vol', +e.target.value)}
-            className="w-full accent-orange-500"
-          />
-          <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-            <span>🔇 เงียบ (0)</span><span>🔊 ดังสุด (100)</span>
-          </div>
         </div>
       )}
 

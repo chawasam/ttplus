@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
-import { useChatSkin } from '../../lib/chatSkins';
+import SKINS, { SkinParticles } from '../../lib/chatSkins';
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 const POLL_MS = 5000;
@@ -13,7 +13,10 @@ export default function GiftLeaderboardWidget() {
   const [board, setBoard] = useState([]);
   const [styles, setStyles] = useState(null);
   const [vjId, setVjId] = useState('');
-  const skinRender = useChatSkin(styles?.raw?.skin || '');
+
+  // Resolve skin CSS from SKINS map
+  const skinId = styles?.raw?.skin || '';
+  const skinDef = skinId && SKINS[skinId] ? SKINS[skinId] : null;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -65,8 +68,8 @@ export default function GiftLeaderboardWidget() {
       </Head>
       <div
         style={{
-          background: skinRender?.canvasStyle?.background || styles.bgRgba,
-          backgroundImage: skinRender?.canvasStyle?.backgroundImage,
+          background: skinDef?.canvasStyle?.background || styles.bgRgba,
+          backgroundImage: skinDef?.canvasStyle?.backgroundImage,
           borderRadius: styles.br,
           padding: 14,
           minWidth: 280,
@@ -75,19 +78,7 @@ export default function GiftLeaderboardWidget() {
           overflow: 'hidden',
         }}
       >
-        {skinRender?.canvas && (
-          <canvas
-            ref={skinRender.canvasRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              borderRadius: styles.br,
-            }}
-          />
-        )}
+        {skinDef && <SkinParticles skinId={skinId} />}
 
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h3

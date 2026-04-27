@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { connectSocket, disconnectSocket, setTokenRefresher } from '../lib/socket';
+import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { showError } from '../lib/errorHandler';
 import { sanitizeEvent } from '../lib/sanitize';
@@ -202,9 +202,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     if (user) {
       // Connect socket + load settings เมื่อ login แล้ว
       user.getIdToken().then(token => {
-        // ลงทะเบียน token refresher — socket จะขอ fresh token ทุกครั้ง reconnect
-        // ป้องกัน "No active connection" เมื่อ Firebase ID token หมดอายุ (> 1 ชั่วโมง)
-        setTokenRefresher(() => user.getIdToken());
         const socket = connectSocket(token);
         socketRef.current = socket;
         setupSocketListeners(socket);

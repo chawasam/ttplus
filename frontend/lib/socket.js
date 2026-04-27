@@ -1,22 +1,10 @@
 // socket.js — Socket.io client singleton
 // - Singleton pattern ป้องกัน connection ซ้ำ
 // - ใช้ s.on('connect') แทน once() เพื่อ re-authenticate ทุกครั้งที่ reconnect
-// - setTokenRefresher(fn) — ให้ socket ขอ fresh token ก่อน re-authenticate
-//   ป้องกัน "No active connection" เมื่อ Firebase ID token หมดอายุ (> 1 ชั่วโมง)
 import { io } from 'socket.io-client';
 
 let socket = null;
-let _authToken = null;    // fallback token (อาจหมดอายุ)
-let _getTokenFn = null;   // async fn ที่คืน fresh token — set จาก dashboard
-
-/**
- * ลงทะเบียน fn สำหรับขอ Firebase ID token ล่าสุด
- * เรียกทุกครั้งที่ socket reconnect เพื่อไม่ให้ส่ง expired token
- * @param {() => Promise<string>} fn  — มักจะเป็น () => user.getIdToken()
- */
-export function setTokenRefresher(fn) {
-  _getTokenFn = fn;
-}
+let _authToken = null; // เก็บ token ล่าสุด — ใช้ตอน auto-reconnect
 
 export function getSocket() {
   if (!socket) {
@@ -29,21 +17,16 @@ export function getSocket() {
       reconnectionDelayMax: 8000,    // cap ที่ 8 วิ ไม่รอนานเกิน
       randomizationFactor:  0.3,     // jitter เล็กน้อย ป้องกัน thundering herd
     });
-
-    // ส่ง authenticate ทุกครั้ง connect/reconnect — ใช้ fresh token เสมอ
-    socket.on('connect', async () => {
-      let token = _authToken; // fallback
-      if (_getTokenFn) {
-        try { token = await _getTokenFn(); } catch {}
-      }
-      if (token) socket.emit('authenticate', { token });
+    // ส่ง authenticate ทุกครั้ง connect/reconnect — ป้องกัน userSockets หาย
+    socket.on('connect', () => {
+      if (_authToken) socket.emit('authenticate', { token: _authToken });
     });
   }
   return socket;
 }
 
 export function connectSocket(token) {
-  _authToken = token; // เก็บเป็น fallback ก่อน setTokenRefresher ถูกเรียก
+  _authToken = token; // อัปเดต token ล่าสุดเสมอ
   const s = getSocket();
 
   if (!s.connected) {
@@ -61,6 +44,5 @@ export function disconnectSocket() {
     socket.removeAllListeners(); // ล้าง listeners ก่อน disconnect
     socket.disconnect();
     socket = null; // reset singleton เพื่อ fresh connection ครั้งต่อไป
-    _getTokenFn = null;
   }
 }
