@@ -1,0 +1,686 @@
+// data/crafting.js — Crafting recipes for Ashenveil
+// วัสดุส่วนใหญ่ได้จาก Zone Boss drops + monster drops
+
+const RECIPES = [
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 1 — ทำได้จาก Zone 1-2 Boss drops
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_goblin_king_blade',
+    name:        '🗡️ Goblin King Blade',
+    desc:        'ดาบที่ทำจากตราของ Goblin King — ATK สูงกว่าอาวุธ Uncommon ทั่วไป',
+    resultItemId: 'iron_sword',  // reuse existing item, override grade in crafting grant
+    resultGrade:  'UNCOMMON',
+    category:    'weapon',
+    levelReq:    5,
+    ingredients: [
+      { itemId: 'goblin_king_seal', qty: 1 },
+      { itemId: 'iron_ore',         qty: 3 },
+      { itemId: 'monster_fang',     qty: 2 },
+    ],
+    goldCost: 100,
+    emoji: '🗡️',
+  },
+  {
+    recipeId:    'craft_treant_staff',
+    name:        '🌿 Treant Elder Staff',
+    desc:        'Staff ที่สกัดจาก Heartwood ของ Elder Treant — INT+8, MP+30 และ HP Regen เล็กน้อย',
+    resultItemId: 'ash_staff',
+    resultGrade:  'RARE',
+    category:    'weapon',
+    levelReq:    10,
+    ingredients: [
+      { itemId: 'treant_heartwood', qty: 1 },
+      { itemId: 'wild_flower',      qty: 5 },
+      { itemId: 'ancient_scroll',   qty: 1 },
+    ],
+    goldCost: 250,
+    emoji: '🌿',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 2 — Zone 3-4 Boss drops
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_crystal_troll_shield',
+    name:        '💎 Crystal Troll Bulwark',
+    desc:        'โล่ที่ทำจากหัวใจ Crystal Troll — DEF+20, HP+50 และ 10% chance block',
+    resultItemId: 'tower_shield',
+    resultGrade:  'RARE',
+    category:    'armor',
+    levelReq:    14,
+    ingredients: [
+      { itemId: 'troll_crystal_heart', qty: 1 },
+      { itemId: 'crystal_shard',       qty: 5 },
+      { itemId: 'steel_ingot',         qty: 3 },
+    ],
+    goldCost: 350,
+    emoji: '💎',
+  },
+  {
+    recipeId:    'craft_prime_golem_chestplate',
+    name:        '🤖 Prime Golem Chestplate',
+    desc:        'เกราะอกจาก Iron Golem Prime — DEF+35, STR+5 แต่ SPD-3',
+    resultItemId: 'chainmail_chest',
+    resultGrade:  'EPIC',
+    category:    'armor',
+    levelReq:    20,
+    ingredients: [
+      { itemId: 'prime_golem_core', qty: 1 },
+      { itemId: 'steel_ingot',      qty: 8 },
+      { itemId: 'iron_ore',         qty: 10 },
+      { itemId: 'ancient_scroll',   qty: 2 },
+    ],
+    goldCost: 600,
+    emoji: '🤖',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 3 — Zone 5 (Marsh) Boss drops
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_hydra_poison_bow',
+    name:        '🐍 Hydra Venom Bow',
+    desc:        'ธนูที่เคลือบพิษ Hydra — ATK+30, ทุกการโจมตีมี 25% ติด POISON (3t, 20dmg/t)',
+    resultItemId: 'hunters_bow',
+    resultGrade:  'EPIC',
+    category:    'weapon',
+    levelReq:    28,
+    ingredients: [
+      { itemId: 'hydra_venom_sac', qty: 1 },
+      { itemId: 'bog_scale',       qty: 4 },
+      { itemId: 'void_crystal',    qty: 2 },
+      { itemId: 'ancient_scroll',  qty: 2 },
+    ],
+    goldCost: 800,
+    emoji: '🐍',
+  },
+  {
+    recipeId:    'craft_hydra_antidote_vial',
+    name:        '🧪 Hydra Antidote Vial ×5',
+    desc:        'ยาแก้พิษพลังสูงที่ทำจากพิษ Hydra — ผลิต 5 ขวดต่อครั้ง',
+    resultItemId: 'antidote',
+    resultQty:    5,
+    resultGrade:  'UNCOMMON',
+    category:    'consumable',
+    levelReq:    20,
+    ingredients: [
+      { itemId: 'hydra_venom_sac', qty: 1 },
+      { itemId: 'wild_flower',     qty: 8 },
+      { itemId: 'honey_jar',       qty: 3 },
+    ],
+    goldCost: 200,
+    emoji: '🧪',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 4 — Zone 6 (Void) Boss drops
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_void_herald_robe',
+    name:        '🌀 Void Herald Robe',
+    desc:        'เสื้อคลุม Void — INT+25, MAG+20, HP-10% แต่ Magic Damage +40%',
+    resultItemId: 'shadow_robe',
+    resultGrade:  'LEGENDARY',
+    category:    'armor',
+    levelReq:    38,
+    ingredients: [
+      { itemId: 'void_herald_sigil', qty: 1 },
+      { itemId: 'void_essence',      qty: 3 },
+      { itemId: 'soul_gem',          qty: 2 },
+      { itemId: 'chaos_shard',       qty: 3 },
+      { itemId: 'ancient_scroll',    qty: 3 },
+    ],
+    goldCost: 2000,
+    emoji: '🌀',
+  },
+  {
+    recipeId:    'craft_void_annihilator',
+    name:        '⚡ Void Annihilator',
+    desc:        "Staff ที่สร้างจาก Sigil ของ Herald — MAG+40, ATK+15, ทุกสกิล Magic เพิ่ม Damage 30%",
+    resultItemId: 'ash_staff',
+    resultGrade:  'LEGENDARY',
+    category:    'weapon',
+    levelReq:    38,
+    ingredients: [
+      { itemId: 'void_herald_sigil', qty: 1 },
+      { itemId: 'void_crystal',      qty: 5 },
+      { itemId: 'soul_gem',          qty: 3 },
+      { itemId: 'titan_core',        qty: 1 },
+    ],
+    goldCost: 3000,
+    emoji: '⚡',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 5 — Zone 7-8 Boss drops (Shadow/Vorath)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_shadow_archon_blade',
+    name:        '🌑 Shadow Archon Blade',
+    desc:        'อาวุธสูงสุดของ Shadow Warriors — ATK+60, AGI+20, 15% Lifesteal',
+    resultItemId: 'iron_sword',
+    resultGrade:  'LEGENDARY',
+    category:    'weapon',
+    levelReq:    48,
+    ingredients: [
+      { itemId: 'shadow_archon_essence', qty: 1 },
+      { itemId: 'void_essence',          qty: 5 },
+      { itemId: 'chaos_shard',           qty: 5 },
+      { itemId: 'soul_gem',              qty: 4 },
+      { itemId: 'ancient_scroll',        qty: 5 },
+    ],
+    goldCost: 5000,
+    emoji: '🌑',
+  },
+  {
+    recipeId:    'craft_vorath_relic',
+    name:        '👁️ Eye of Vorath (Relic)',
+    desc:        'Relic สูงสุดในเกม — All Stats +30%, XP +20%, ทุก Kill มีโอกาส drop วัสดุ Rare เพิ่ม',
+    resultItemId: 'void_dagger',
+    resultGrade:  'MYTHIC',
+    category:    'relic',
+    levelReq:    55,
+    ingredients: [
+      { itemId: 'vorath_tear',           qty: 1 },
+      { itemId: 'shadow_archon_essence', qty: 1 },
+      { itemId: 'void_herald_sigil',     qty: 1 },
+      { itemId: 'titan_core',            qty: 2 },
+      { itemId: 'soul_gem',              qty: 5 },
+      { itemId: 'void_essence',          qty: 10 },
+    ],
+    goldCost: 10000,
+    emoji: '👁️',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // BASIC RECIPES — ไม่ต้องการ Boss drops
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_health_potion_large',
+    name:        '🧪 Large Health Potion ×3',
+    desc:        'ยาฟื้นฟู HP ขนาดใหญ่ — ฟื้นฟู 300 HP ต่อขวด ผลิต 3 ขวด',
+    resultItemId: 'health_potion_large',
+    resultQty:    3,
+    resultGrade:  'UNCOMMON',
+    category:    'consumable',
+    levelReq:    1,
+    ingredients: [
+      { itemId: 'wild_flower', qty: 5 },
+      { itemId: 'honey_jar',   qty: 2 },
+      { itemId: 'monster_fang', qty: 1 },
+    ],
+    goldCost: 30,
+    emoji: '🧪',
+  },
+  {
+    recipeId:    'craft_iron_sword',
+    name:        '⚔️ Iron Sword',
+    desc:        'ดาบเหล็กพื้นฐาน — ATK+10 เหมาะกับ Warrior มือใหม่',
+    resultItemId: 'iron_sword',
+    resultGrade:  'COMMON',
+    category:    'weapon',
+    levelReq:    1,
+    ingredients: [
+      { itemId: 'iron_ore',    qty: 5 },
+      { itemId: 'monster_fang', qty: 2 },
+    ],
+    goldCost: 50,
+    emoji: '⚔️',
+  },
+  {
+    recipeId:    'craft_enhancement_stone',
+    name:        '💠 Enhancement Stone',
+    desc:        'หินเสริมสำหรับ Enhance อุปกรณ์ — สร้างจากวัสดุทั่วไป',
+    resultItemId: 'enhance_stone',
+    resultQty:    1,
+    resultGrade:  'UNCOMMON',
+    category:    'material',
+    levelReq:    5,
+    ingredients: [
+      { itemId: 'crystal_shard', qty: 3 },
+      { itemId: 'iron_ore',      qty: 5 },
+    ],
+    goldCost: 80,
+    emoji: '💠',
+  },
+  {
+    recipeId:    'craft_mana_potion_bundle',
+    name:        '💧 Mana Potion ×5',
+    desc:        'ยาฟื้นฟู MP ×5 — ผลิตถูกกว่าซื้อร้านค้า',
+    resultItemId: 'mp_potion_medium',
+    resultQty:    5,
+    resultGrade:  'COMMON',
+    category:    'consumable',
+    levelReq:    1,
+    ingredients: [
+      { itemId: 'wild_flower', qty: 8 },
+      { itemId: 'honey_jar',   qty: 1 },
+    ],
+    goldCost: 20,
+    emoji: '💧',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // BASIC GEAR — ไม่ต้องการ Boss drops (Lv 1–10)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_wooden_shield',
+    name:        '🛡️ Wooden Shield',
+    desc:        'โล่ไม้พื้นฐาน — DEF+5 เหมาะสำหรับมือใหม่ทุกอาชีพ',
+    resultItemId: 'wooden_shield',
+    resultGrade:  'COMMON',
+    category:    'armor',
+    levelReq:    1,
+    ingredients: [
+      { itemId: 'rotten_wood',  qty: 6 },
+      { itemId: 'iron_ore',     qty: 2 },
+      { itemId: 'monster_fang', qty: 1 },
+    ],
+    goldCost: 30,
+    emoji: '🛡️',
+  },
+  {
+    recipeId:    'craft_wolf_leather_armor',
+    name:        '🐺 Wolf-Hide Leather Armor',
+    desc:        'เกราะหนังที่เย็บจากหนัง Wolf — DEF+8, AGI+3 เหมาะกับ Ranger/Rogue',
+    resultItemId: 'leather_chest',
+    resultGrade:  'UNCOMMON',
+    category:    'armor',
+    levelReq:    3,
+    ingredients: [
+      { itemId: 'wolf_pelt',    qty: 4 },
+      { itemId: 'monster_fang', qty: 3 },
+      { itemId: 'iron_ore',     qty: 2 },
+    ],
+    goldCost: 60,
+    emoji: '🐺',
+  },
+  {
+    recipeId:    'craft_iron_chestplate',
+    name:        '🛡️ Iron Chestplate',
+    desc:        'เกราะอกเหล็กที่ตีขึ้นเอง — DEF+18, HP+20 เหมาะกับ Warrior',
+    resultItemId: 'iron_chest',
+    resultGrade:  'UNCOMMON',
+    category:    'armor',
+    levelReq:    5,
+    ingredients: [
+      { itemId: 'iron_ore',          qty: 8 },
+      { itemId: 'chainmail_fragment', qty: 3 },
+      { itemId: 'monster_fang',       qty: 2 },
+    ],
+    goldCost: 120,
+    emoji: '🛡️',
+  },
+  {
+    recipeId:    'craft_iron_helmet',
+    name:        '⛑️ Iron Helmet',
+    desc:        'หมวกเหล็กที่ตีขึ้นเอง — DEF+10, HP+15',
+    resultItemId: 'iron_helmet',
+    resultGrade:  'COMMON',
+    category:    'armor',
+    levelReq:    5,
+    ingredients: [
+      { itemId: 'iron_ore',     qty: 6 },
+      { itemId: 'monster_fang', qty: 2 },
+    ],
+    goldCost: 80,
+    emoji: '⛑️',
+  },
+  {
+    recipeId:    'craft_black_stone_weapon',
+    name:        '🪨 Black Stone (Weapon)',
+    desc:        'หินดำสำหรับ Enhance อาวุธ — ผลิตเองจากวัสดุ',
+    resultItemId: 'black_stone_weapon',
+    resultQty:    2,
+    resultGrade:  'UNCOMMON',
+    category:    'material',
+    levelReq:    1,
+    ingredients: [
+      { itemId: 'golem_core',    qty: 1 },
+      { itemId: 'iron_ore',      qty: 5 },
+      { itemId: 'crystal_shard', qty: 2 },
+    ],
+    goldCost: 100,
+    emoji: '🪨',
+  },
+  {
+    recipeId:    'craft_black_stone_armor',
+    name:        '⬛ Black Stone (Armor)',
+    desc:        'หินดำสำหรับ Enhance เกราะ — ผลิตเองจากวัสดุ',
+    resultItemId: 'black_stone_armor',
+    resultQty:    2,
+    resultGrade:  'UNCOMMON',
+    category:    'material',
+    levelReq:    1,
+    ingredients: [
+      { itemId: 'golem_core',    qty: 1 },
+      { itemId: 'iron_ore',      qty: 5 },
+      { itemId: 'crystal_shard', qty: 2 },
+    ],
+    goldCost: 100,
+    emoji: '⬛',
+  },
+  {
+    recipeId:    'craft_slime_healing_salve',
+    name:        '🫧 Slime Healing Salve ×3',
+    desc:        'ยาสมานแผลทำจากเมือก Slime — ฟื้น HP 200 ต่อขวด ผลิต 3 ขวด',
+    resultItemId: 'health_potion_medium',
+    resultQty:    3,
+    resultGrade:  'COMMON',
+    category:    'consumable',
+    levelReq:    3,
+    ingredients: [
+      { itemId: 'slime_gel',  qty: 3 },
+      { itemId: 'wild_flower', qty: 4 },
+      { itemId: 'honey_jar',  qty: 1 },
+    ],
+    goldCost: 25,
+    emoji: '🫧',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 2 — Zone 2-4 Drops (Lv 10–25)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_gem_ring',
+    name:        '💎 Blue Gem Ring',
+    desc:        'แหวนฝังอัญมณีสีฟ้า — MAG+8, MP+25 เหมาะสำหรับ Mage/Bard',
+    resultItemId: 'copper_ring',
+    resultGrade:  'UNCOMMON',
+    category:    'accessory',
+    levelReq:    8,
+    ingredients: [
+      { itemId: 'blue_gem_fragment', qty: 3 },
+      { itemId: 'slime_gel',         qty: 2 },
+      { itemId: 'iron_ore',          qty: 3 },
+    ],
+    goldCost: 150,
+    emoji: '💎',
+  },
+  {
+    recipeId:    'craft_wraith_shadow_dagger',
+    name:        '🌙 Wraith Dagger',
+    desc:        'มีดที่ชุบด้วย Wraith Essence — ATK+22, AGI+10, ทุก hit 15% ลด DEF ศัตรู 1 turn',
+    resultItemId: 'shadow_dagger',
+    resultGrade:  'RARE',
+    category:    'weapon',
+    levelReq:    15,
+    ingredients: [
+      { itemId: 'wraith_essence', qty: 2 },
+      { itemId: 'shadow_cloth',   qty: 3 },
+      { itemId: 'iron_ore',       qty: 5 },
+      { itemId: 'ancient_scroll', qty: 1 },
+    ],
+    goldCost: 400,
+    emoji: '🌙',
+  },
+  {
+    recipeId:    'craft_heavy_chainmail',
+    name:        '⛓️ Heavy Chainmail',
+    desc:        'เกราะ Chainmail หนักที่ทำเอง — DEF+28, HP+40 แต่ AGI-5',
+    resultItemId: 'iron_chest',
+    resultGrade:  'RARE',
+    category:    'armor',
+    levelReq:    16,
+    ingredients: [
+      { itemId: 'chainmail_fragment', qty: 6 },
+      { itemId: 'steel_ingot',        qty: 4 },
+      { itemId: 'iron_ore',           qty: 8 },
+    ],
+    goldCost: 450,
+    emoji: '⛓️',
+  },
+  {
+    recipeId:    'craft_leather_hood',
+    name:        '🧢 Assassin Leather Hood',
+    desc:        'หมวกหนังของ Assassin — AGI+12, Crit Rate +8% เหมาะกับ Shade',
+    resultItemId: 'leather_cap',
+    resultGrade:  'RARE',
+    category:    'armor',
+    levelReq:    18,
+    ingredients: [
+      { itemId: 'shadow_cloth',  qty: 3 },
+      { itemId: 'wolf_pelt',     qty: 2 },
+      { itemId: 'goblin_ear',    qty: 5 },
+      { itemId: 'ancient_scroll', qty: 1 },
+    ],
+    goldCost: 380,
+    emoji: '🧢',
+  },
+  {
+    recipeId:    'craft_forget_me_not_ring',
+    name:        '💐 Forget-Me-Not Ring',
+    desc:        'แหวนที่ร้อยด้วยดอก Forget-Me-Not — HP+60, LUK+15 และเพิ่ม Affection gain +20%',
+    resultItemId: 'copper_ring',
+    resultGrade:  'RARE',
+    category:    'accessory',
+    levelReq:    12,
+    ingredients: [
+      { itemId: 'forget_me_not',  qty: 5 },
+      { itemId: 'blue_gem_fragment', qty: 2 },
+      { itemId: 'silver_ingot',   qty: 2 },
+    ],
+    goldCost: 300,
+    emoji: '💐',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 3 — Zone 5-6 Drops (Lv 25–40)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_basilisk_hide_armor',
+    name:        '🦎 Basilisk Scale Armor',
+    desc:        'เกราะที่ทำจากเกล็ด Basilisk — DEF+45, HP+80 และ 20% Poison Resistance',
+    resultItemId: 'leather_chest',
+    resultGrade:  'EPIC',
+    category:    'armor',
+    levelReq:    26,
+    ingredients: [
+      { itemId: 'basilisk_scale', qty: 4 },
+      { itemId: 'shadow_cloth',   qty: 3 },
+      { itemId: 'steel_ingot',    qty: 4 },
+      { itemId: 'ancient_scroll', qty: 2 },
+    ],
+    goldCost: 900,
+    emoji: '🦎',
+  },
+  {
+    recipeId:    'craft_basilisk_eye_pendant',
+    name:        '👁️ Basilisk Eye Pendant',
+    desc:        'จี้ที่ฝัง Basilisk Eye — MAG+20, INT+15 และ 30% ลดโอกาสถูก Stun',
+    resultItemId: 'copper_ring',
+    resultGrade:  'EPIC',
+    category:    'accessory',
+    levelReq:    30,
+    ingredients: [
+      { itemId: 'basilisk_eye',   qty: 1 },
+      { itemId: 'void_crystal',   qty: 3 },
+      { itemId: 'soul_gem',       qty: 1 },
+      { itemId: 'ancient_scroll', qty: 2 },
+    ],
+    goldCost: 1200,
+    emoji: '👁️',
+  },
+  {
+    recipeId:    'craft_star_navigator_boots',
+    name:        '🗺️ Star Navigator Boots',
+    desc:        'รองเท้าที่แกะลาย Star Map — AGI+20, LUK+12 และเพิ่มโอกาส Explore rare event +15%',
+    resultItemId: 'leather_boots',
+    resultGrade:  'EPIC',
+    category:    'armor',
+    levelReq:    32,
+    ingredients: [
+      { itemId: 'star_map_fragment', qty: 2 },
+      { itemId: 'void_crystal',      qty: 3 },
+      { itemId: 'wolf_pelt',         qty: 3 },
+      { itemId: 'ancient_scroll',    qty: 2 },
+    ],
+    goldCost: 1500,
+    emoji: '🗺️',
+  },
+  {
+    recipeId:    'craft_void_short_bow',
+    name:        '🌑 Void Infused Bow',
+    desc:        'ธนูที่อัดด้วยพลัง Void — ATK+40, MAG+15 และทุก skill attack แทงทะลุ DEF 20%',
+    resultItemId: 'short_bow',
+    resultGrade:  'EPIC',
+    category:    'weapon',
+    levelReq:    35,
+    ingredients: [
+      { itemId: 'void_crystal',   qty: 5 },
+      { itemId: 'chaos_shard',    qty: 2 },
+      { itemId: 'bog_scale',      qty: 4 },
+      { itemId: 'ancient_scroll', qty: 3 },
+    ],
+    goldCost: 2000,
+    emoji: '🌑',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // TIER 4 — Zone 7-8 Drops (Lv 40–60)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_chaos_void_helm',
+    name:        '🌪️ Chaos Void Helm',
+    desc:        'หมวกแห่ง Chaos — All Stats+15, MAG+25, ทุก kill 10% restore 5% Max HP',
+    resultItemId: 'iron_helmet',
+    resultGrade:  'LEGENDARY',
+    category:    'armor',
+    levelReq:    45,
+    ingredients: [
+      { itemId: 'chaos_shard',  qty: 4 },
+      { itemId: 'void_essence', qty: 3 },
+      { itemId: 'soul_gem',     qty: 2 },
+      { itemId: 'titan_core',   qty: 1 },
+    ],
+    goldCost: 4000,
+    emoji: '🌪️',
+  },
+  {
+    recipeId:    'craft_soul_amulet',
+    name:        '🔴 Soul Amulet',
+    desc:        'เครื่องรางแห่ง Soul — HP+120, MP+80, ทุก 5 turn restore 3% Max HP และ MP',
+    resultItemId: 'copper_ring',
+    resultGrade:  'LEGENDARY',
+    category:    'accessory',
+    levelReq:    48,
+    ingredients: [
+      { itemId: 'soul_gem',     qty: 4 },
+      { itemId: 'titan_core',   qty: 1 },
+      { itemId: 'void_essence', qty: 4 },
+      { itemId: 'chaos_shard',  qty: 3 },
+    ],
+    goldCost: 5000,
+    emoji: '🔴',
+  },
+  {
+    recipeId:    'craft_memory_weave_gloves',
+    name:        '✨ Memory-Weave Gloves',
+    desc:        'ถุงมือที่ทอด้วย Memory Fragment — Skill Cooldown -1 turn, MP Cost -15%',
+    resultItemId: 'leather_gloves',
+    resultGrade:  'LEGENDARY',
+    category:    'armor',
+    levelReq:    52,
+    ingredients: [
+      { itemId: 'memory_fragment', qty: 3 },
+      { itemId: 'shadow_cloth',    qty: 5 },
+      { itemId: 'void_essence',    qty: 3 },
+      { itemId: 'soul_gem',        qty: 2 },
+    ],
+    goldCost: 6000,
+    emoji: '✨',
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // ENDGAME — Lv 60-80 (Ultimate Crafts)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    recipeId:    'craft_titan_void_armor',
+    name:        '💠 Titan Void Chestplate',
+    desc:        'เกราะที่ทำจาก Void Titan Core — DEF+80, HP+200, รับ Damage จาก Magic -25%',
+    resultItemId: 'iron_chest',
+    resultGrade:  'MYTHIC',
+    category:    'armor',
+    levelReq:    62,
+    ingredients: [
+      { itemId: 'titan_core',   qty: 2 },
+      { itemId: 'void_essence', qty: 8 },
+      { itemId: 'chaos_shard',  qty: 6 },
+      { itemId: 'soul_gem',     qty: 5 },
+      { itemId: 'steel_ingot',  qty: 10 },
+    ],
+    goldCost: 12000,
+    emoji: '💠',
+  },
+  {
+    recipeId:    'craft_void_titan_gauntlets',
+    name:        '💠 Void Titan Gauntlets',
+    desc:        'ถุงมือ Mythic — ATK+40, STR+30, ทุก Attack มีโอกาส 20% Double Strike',
+    resultItemId: 'leather_gloves',
+    resultGrade:  'MYTHIC',
+    category:    'armor',
+    levelReq:    65,
+    ingredients: [
+      { itemId: 'titan_core',   qty: 2 },
+      { itemId: 'chaos_shard',  qty: 8 },
+      { itemId: 'void_essence', qty: 6 },
+      { itemId: 'soul_gem',     qty: 4 },
+    ],
+    goldCost: 15000,
+    emoji: '💠',
+  },
+  {
+    recipeId:    'craft_eternal_guardian_blade',
+    name:        '⚡ Eternal Guardian Blade',
+    desc:        'อาวุธ Mythic ระดับสูงสุดของ Warrior — ATK+80, HP+100, 25% Lifesteal, ignore 30% DEF',
+    resultItemId: 'iron_sword',
+    resultGrade:  'MYTHIC',
+    category:    'weapon',
+    levelReq:    75,
+    ingredients: [
+      { itemId: 'vorath_tear',            qty: 1 },
+      { itemId: 'titan_core',             qty: 3 },
+      { itemId: 'void_essence',           qty: 10 },
+      { itemId: 'chaos_shard',            qty: 8 },
+      { itemId: 'soul_gem',               qty: 6 },
+      { itemId: 'shadow_archon_essence',  qty: 1 },
+    ],
+    goldCost: 25000,
+    emoji: '⚡',
+  },
+  {
+    recipeId:    'craft_void_transcendence_robe',
+    name:        '🌌 Void Transcendence Robe',
+    desc:        'เสื้อคลุม Mythic ระดับ Transcendent — MAG+70, INT+50, HP-15% แต่ Magic Damage +80% และ MP Cost -30%',
+    resultItemId: 'leather_chest',
+    resultGrade:  'MYTHIC',
+    category:    'armor',
+    levelReq:    78,
+    ingredients: [
+      { itemId: 'vorath_tear',        qty: 1 },
+      { itemId: 'void_herald_sigil',  qty: 1 },
+      { itemId: 'void_essence',       qty: 12 },
+      { itemId: 'titan_core',         qty: 2 },
+      { itemId: 'soul_gem',           qty: 8 },
+      { itemId: 'memory_fragment',    qty: 5 },
+    ],
+    goldCost: 30000,
+    emoji: '🌌',
+  },
+];
+
+function getRecipe(recipeId) {
+  return RECIPES.find(r => r.recipeId === recipeId) || null;
+}
+
+function getRecipesByCategory(category) {
+  return RECIPES.filter(r => r.category === category);
+}
+
+function getAvailableRecipes(playerLevel) {
+  return RECIPES.filter(r => r.levelReq <= playerLevel);
+}
+
+module.exports = { RECIPES, getRecipe, getRecipesByCategory, getAvailableRecipes };

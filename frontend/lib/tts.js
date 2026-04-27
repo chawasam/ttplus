@@ -1,0 +1,547 @@
+// lib/tts.js — Text-to-Speech utility
+// Engines (auto cascade order):
+//   1. Gemini 3.1 TTS  (gemini API key — 30 voices × 10 personas = 300 combo)
+//   2. Gemini 2.5 TTS  (same key — fallback)
+//   3. Google Cloud TTS (cloud key — Neural Thai voices)
+//   4. Web Speech API   (ฟรี fallback ไม่ต้อง key)
+
+// ── Gemini TTS model names ──────────────────────────────────────────────────
+// อัปเดตตรงนี้ถ้า Google เปลี่ยนชื่อ model
+export const GEMINI_31_MODEL = 'gemini-3.1-flash-tts-preview';
+export const GEMINI_25_MODEL = 'gemini-2.5-flash-preview-tts';
+
+const MAX_QUEUE = 8;
+
+let _queue    = [];
+let _busy     = false;
+let _audioCtx = null;   // shared AudioContext สำหรับ Gemini TTS
+let _cfg = {
+  enabled:        false,
+  readChat:       true,
+  readGift:       true,
+  readFollow:     true,
+  rate:           1.0,
+  pitch:          1.0,
+  volume:         1.0,
+  voice:          '',               // Web Speech voice name
+  enabledEngines: ['web'],          // engine ที่เปิดใช้ — ลองตามลำดับ priority (3.1→2.5→google→web)
+  googleApiKey:   '',               // Google Cloud TTS key
+  googleVoice:    'th-TH-Neural2-C',
+  geminiApiKey:   '',               // Google AI Studio / Gemini key (ใช้ได้ทั้ง 3.1 + 2.5)
+  geminiVoice:    'Aoede',          // Gemini 3.1 voice
+  geminiPersona:  '',               // Gemini 3.1 persona
+  geminiShuffle:  false,            // Gemini 3.1 shuffle
+  gemini25Linked:  true,            // Gemini 2.5 follow voice+persona จาก 3.1 (รวม shuffle)
+  gemini25Voice:   'Aoede',         // Gemini 2.5 voice (ใช้เมื่อ linked=false)
+  gemini25Persona: '',              // Gemini 2.5 persona (ใช้เมื่อ linked=false)
+  gemini25Shuffle: false,           // Gemini 2.5 shuffle (ใช้เมื่อ linked=false)
+};
+
+// ===== Internal: strip emoji + brackets =====
+function _stripEmoji(str) {
+  return str
+    .replace(/\[.*?\]/g, '')
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// ===== Engine 1+2: Gemini TTS (3.1 หรือ 2.5 ตาม model param) =====
+async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI_31_MODEL) {
+  const key     = _cfg.geminiApiKey;
+  const voice   = voiceOverride   ?? _cfg.geminiVoice   ?? 'Aoede';
+  const persona = personaOverride ?? _cfg.geminiPersona ?? '';
+
+  // Gemini TTS ไม่รองรับ systemInstruction — model จะพยายาม generate text แทน audio
+  // วิธีใส่ persona: ฝัง style instruction ลงใน content text โดยตรง
+  const ttsText = persona
+    ? `[Speaking style: ${persona}]\n${text}`
+    : text;
+
+  const body = {
+    contents: [{ parts: [{ text: ttsText }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: voice },
+        },
+      },
+    },
+  };
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Gemini HTTP ${res.status}`);
+  }
+
+  const data      = await res.json();
+  const part      = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+  if (!part?.data) throw new Error('Gemini: ไม่มี audio ในผลลัพธ์');
+
+  const mime = (part.mimeType || '').toLowerCase();
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[TTsam Gemini] mimeType:', part.mimeType, 'bytes(b64):', part.data.length);
+  }
+
+  // decode base64 → Uint8Array
+  const binaryStr = atob(part.data);
+  const bytes     = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+  const rateMatch  = mime.match(/rate=(\d+)/);
+  const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+
+  // ── Strategy 1: Blob URL + Audio element ──────────────────────────────────
+  // ดีกว่า data URI เพราะ browser จัดการ format detection เองได้ดีกว่า
+  const blob      = new Blob([bytes], { type: part.mimeType || 'audio/wav' });
+  const objectUrl = URL.createObjectURL(blob);
+
+  const blobPlayOk = await new Promise((resolve) => {
+    const audio   = new Audio(objectUrl);
+    audio.volume  = Math.max(0, Math.min(1, _cfg.volume));
+    audio.oncanplaythrough = () => { /* ready */ };
+    audio.onended  = () => resolve(true);
+    audio.onerror  = () => resolve(false);
+    audio.play().catch(() => resolve(false));
+  });
+
+  URL.revokeObjectURL(objectUrl);
+  if (blobPlayOk) return;
+
+  // ── Strategy 2–4: AudioContext fallback ──────────────────────────────────
+  if (!_audioCtx || _audioCtx.state === 'closed') {
+    _audioCtx = new AudioContext();
+  }
+  if (_audioCtx.state === 'suspended') await _audioCtx.resume();
+
+  let audioBuffer = null;
+
+  // 2: decodeAudioData โดยตรง
+  try { audioBuffer = await _audioCtx.decodeAudioData(bytes.buffer.slice(0)); } catch { /* ต่อ */ }
+
+  // 3: ครอบ WAV header (สำหรับ raw L16 PCM)
+  if (!audioBuffer) {
+    try { audioBuffer = await _audioCtx.decodeAudioData(_pcmToWav(bytes.buffer, sampleRate)); } catch { /* ต่อ */ }
+  }
+
+  // 4: แปลง INT16 → Float32 มือ (ultimate fallback)
+  if (!audioBuffer) {
+    try {
+      const off   = (bytes[0] === 0x52 && bytes[1] === 0x49) ? 44 : 0;  // ข้าม RIFF header
+      const i16   = new Int16Array(bytes.buffer, off);
+      const f32   = new Float32Array(i16.length);
+      for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768.0;
+      audioBuffer = _audioCtx.createBuffer(1, f32.length, sampleRate);
+      audioBuffer.getChannelData(0).set(f32);
+    } catch (e) {
+      console.error('[TTsam Gemini] all strategies failed, mime:', part.mimeType, e);
+      throw new Error(`Gemini: เล่นเสียงไม่ได้ (${part.mimeType})`);
+    }
+  }
+
+  return new Promise((resolve) => {
+    const source = _audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    const gain    = _audioCtx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, _cfg.volume));
+    source.connect(gain).connect(_audioCtx.destination);
+    source.onended = resolve;
+    source.start(0);
+  });
+}
+
+// ===== Helper: เพิ่ม WAV header ให้ raw LINEAR16 PCM =====
+function _pcmToWav(pcmBuffer, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const dataLen  = pcmBuffer.byteLength;
+  const wav      = new ArrayBuffer(44 + dataLen);
+  const v        = new DataView(wav);
+  const w        = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  w(0,  'RIFF');
+  v.setUint32(4,  36 + dataLen, true);
+  w(8,  'WAVE');
+  w(12, 'fmt ');
+  v.setUint32(16, 16, true);                                              // fmt chunk size
+  v.setUint16(20, 1,  true);                                              // PCM = 1
+  v.setUint16(22, numChannels, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true);   // byte rate
+  v.setUint16(32, numChannels * bitsPerSample / 8, true);                // block align
+  v.setUint16(34, bitsPerSample, true);
+  w(36, 'data');
+  v.setUint32(40, dataLen, true);
+  new Uint8Array(wav, 44).set(new Uint8Array(pcmBuffer));
+  return wav;
+}
+
+// ===== Engine 2: Google Cloud TTS =====
+async function _speakGoogle(text) {
+  const key       = _cfg.googleApiKey;
+  const voiceName = _cfg.googleVoice || 'th-TH-Neural2-C';
+  const langCode  = voiceName.slice(0, 5);
+  const pitchSemi = Math.round((_cfg.pitch - 1.0) * 10);
+  const rate      = Math.max(0.25, Math.min(4.0, _cfg.rate));
+
+  const res = await fetch(
+    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input:       { text },
+        voice:       { languageCode: langCode, name: voiceName },
+        audioConfig: { audioEncoding: 'MP3', speakingRate: rate, pitch: pitchSemi },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Google HTTP ${res.status}`);
+  }
+
+  const { audioContent } = await res.json();
+
+  return new Promise((resolve, reject) => {
+    const audio   = new Audio(`data:audio/mp3;base64,${audioContent}`);
+    audio.volume  = Math.max(0, Math.min(1, _cfg.volume));
+    audio.onended = resolve;
+    audio.onerror = () => reject(new Error('audio play error'));
+    audio.play().catch(reject);
+  });
+}
+
+// ===== Engine 3: Web Speech API =====
+function _speakWeb(text) {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) return resolve();
+    const utt  = new SpeechSynthesisUtterance(text);
+    utt.rate   = Math.max(0.5, Math.min(2.0, _cfg.rate));
+    utt.pitch  = Math.max(0.0, Math.min(2.0, _cfg.pitch));
+    utt.volume = Math.max(0.0, Math.min(1.0, _cfg.volume));
+    if (_cfg.voice) {
+      const found = window.speechSynthesis.getVoices().find(v => v.name === _cfg.voice);
+      if (found) utt.voice = found;
+    }
+    utt.onend   = () => resolve();
+    utt.onerror = () => resolve();
+    window.speechSynthesis.speak(utt);
+  });
+}
+
+// ===== Status callback (สำหรับ widget ttsmonitor) =====
+let _statusCallback = null;
+/** ลงทะเบียน callback ที่จะถูกเรียกทุกครั้งที่ TTS เริ่มพูด (ใช้กับ widget overlay) */
+export function onTtsStatus(fn) { _statusCallback = typeof fn === 'function' ? fn : null; }
+
+// ===== Fallback/Error callback (สำหรับ toast แจ้งปัญหาบนหน้าเว็บ) =====
+let _fallbackCallback = null;
+/**
+ * ลงทะเบียน callback ที่จะถูกเรียกเมื่อ:
+ *   - engine หลักล้มเหลว แล้วตกไปใช้ engine สำรอง (fallback)
+ *   - ทุก engine ล้มเหลวหมด (all_failed)
+ * data: { type: 'fallback'|'all_failed', from?, to?, engine? }
+ */
+export function onTtsFallback(fn) { _fallbackCallback = typeof fn === 'function' ? fn : null; }
+
+function _emitStatus(engine, voice, personaInstruction) {
+  if (!_statusCallback) return;
+  const voiceObj   = GEMINI_VOICES.find(v => v.name === voice);
+  const personaObj = GEMINI_PERSONAS.find(p => p.instruction === personaInstruction);
+  try {
+    _statusCallback({
+      engine,
+      voice:        voice || '',
+      voiceDesc:    voiceObj?.desc   || '',
+      personaLabel: personaObj?.label || '',
+    });
+  } catch { /* ไม่ให้ error ใน callback ทำให้ TTS หยุด */ }
+}
+
+// ===== Engine order helpers =====
+const DEFAULT_ENGINE_ORDER = ['gemini31', 'gemini25', 'google', 'web'];
+
+export function loadEngineOrder() {
+  if (typeof window === 'undefined') return [...DEFAULT_ENGINE_ORDER];
+  try {
+    const saved = localStorage.getItem('ttplus_engine_order');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [...DEFAULT_ENGINE_ORDER];
+}
+export function saveEngineOrder(order) {
+  if (typeof window === 'undefined') return;
+  if (Array.isArray(order) && order.length > 0)
+    localStorage.setItem('ttplus_engine_order', JSON.stringify(order));
+}
+
+// ===== Internal: process queue =====
+const ENGINE_PRIORITY = DEFAULT_ENGINE_ORDER; // backward compat
+
+async function _next() {
+  if (_busy || _queue.length === 0) return;
+  if (typeof window === 'undefined') return;
+
+  _busy = true;
+  const text = _queue.shift();
+
+  // ใช้ custom order จาก user (drag-to-reorder) กรองเฉพาะที่ user เปิด
+  const enabled     = _cfg.enabledEngines?.length ? _cfg.enabledEngines : ['web'];
+  const customOrder = loadEngineOrder();
+  const ordered     = customOrder.filter(e => enabled.includes(e));
+  // เติม engine ที่ enabled แต่ไม่อยู่ใน customOrder (ป้องกัน missing)
+  enabled.forEach(e => { if (!ordered.includes(e)) ordered.push(e); });
+
+  // สุ่ม voice+persona สำหรับ Gemini 3.1 ถ้า shuffle เปิด
+  let gVoice   = _cfg.geminiVoice;
+  let gPersona = _cfg.geminiPersona;
+  if (_cfg.geminiShuffle && _cfg.geminiApiKey) {
+    gVoice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
+    gPersona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
+  }
+
+  // Gemini 2.5: linked → ใช้ผลเดียวกับ 3.1 (รวม shuffle), unlinked → config แยก
+  let g25Voice, g25Persona;
+  if (_cfg.gemini25Linked !== false) {
+    // แบบ 2: follow 3.1 เป๊ะ — ถ้า 3.1 สุ่มได้ Fenrir, 2.5 ก็ได้ Fenrir เช่นกัน
+    g25Voice   = gVoice;
+    g25Persona = gPersona;
+  } else {
+    g25Voice   = _cfg.gemini25Voice   || 'Aoede';
+    g25Persona = _cfg.gemini25Persona || '';
+    if (_cfg.gemini25Shuffle && _cfg.geminiApiKey) {
+      g25Voice   = GEMINI_VOICES  [Math.floor(Math.random() * GEMINI_VOICES.length)  ].name;
+      g25Persona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)].instruction;
+    }
+  }
+
+  // ลอง engine ตามลำดับ — emit status ก่อนพูด ถ้าล้มเหลวข้ามถัดไป
+  let spokenBy  = null;  // engine ที่พูดสำเร็จ
+  let firstTried = null; // engine แรกที่ลอง (เพื่อตรวจ fallback)
+
+  for (const eng of ordered) {
+    // skip ถ้าไม่มี key ที่ต้องใช้
+    if (eng === 'gemini31' && !_cfg.geminiApiKey) continue;
+    if (eng === 'gemini25' && !_cfg.geminiApiKey) continue;
+    if (eng === 'google'   && !_cfg.googleApiKey) continue;
+
+    if (!firstTried) firstTried = eng;
+
+    try {
+      if (eng === 'gemini31') {
+        _emitStatus('gemini31', gVoice, gPersona);
+        await _speakGemini(text, gVoice, gPersona, GEMINI_31_MODEL);
+      } else if (eng === 'gemini25') {
+        _emitStatus('gemini25', g25Voice, g25Persona);
+        await _speakGemini(text, g25Voice, g25Persona, GEMINI_25_MODEL);
+      } else if (eng === 'google') {
+        _emitStatus('google', _cfg.googleVoice, null);
+        await _speakGoogle(text);
+      } else if (eng === 'web') {
+        _emitStatus('web', _cfg.voice, null);
+        await _speakWeb(text);
+      }
+      spokenBy = eng;
+      break; // สำเร็จ
+    } catch { /* cascade → ถัดไป */ }
+  }
+
+  // แจ้ง fallback ถ้าไม่ได้ใช้ engine แรกที่ตั้งใจ
+  if (_fallbackCallback) {
+    try {
+      if (!spokenBy) {
+        _fallbackCallback({ type: 'all_failed' });
+      } else if (spokenBy !== firstTried) {
+        _fallbackCallback({ type: 'fallback', from: firstTried, to: spokenBy });
+      }
+    } catch { /* ไม่ให้ error ใน callback ทำให้ TTS หยุด */ }
+  }
+
+  _busy = false;
+  _next();
+}
+
+// ===== Public API =====
+
+export function configureTTS(cfg = {}) {
+  _cfg = { ..._cfg, ...cfg };
+}
+
+export function speak(text, type = null) {
+  if (!_cfg.enabled) return;
+  if (typeof window === 'undefined') return;
+  if (!text || typeof text !== 'string') return;
+
+  if (type === 'chat'   && !_cfg.readChat)   return;
+  if (type === 'gift'   && !_cfg.readGift)   return;
+  if (type === 'follow' && !_cfg.readFollow) return;
+
+  if (_queue.length >= MAX_QUEUE) return;
+
+  const clean = _stripEmoji(text).slice(0, 200);
+  if (!clean) return;
+
+  _queue.push(clean);
+  _next();
+}
+
+export function clearTTSQueue() {
+  _queue = [];
+  _busy  = false;
+  if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+}
+
+export function getVoices() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return [];
+  return window.speechSynthesis.getVoices();
+}
+
+export function onVoicesReady(callback) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return () => {};
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) { callback(voices); return () => {}; }
+  const handler = () => callback(window.speechSynthesis.getVoices());
+  window.speechSynthesis.addEventListener('voiceschanged', handler);
+  return () => window.speechSynthesis.removeEventListener('voiceschanged', handler);
+}
+
+// ===== Gemini voices (30 prebuilt) =====
+export const GEMINI_VOICES = [
+  { name: 'Aoede',          desc: 'หญิง · นุ่มนวล'        },
+  { name: 'Puck',           desc: 'ชาย · ร่าเริง'          },
+  { name: 'Charon',         desc: 'ชาย · ทรงพลัง'          },
+  { name: 'Kore',           desc: 'หญิง · จริงจัง'         },
+  { name: 'Fenrir',         desc: 'ชาย · หนักแน่น'         },
+  { name: 'Leda',           desc: 'หญิง · อ่อนโยน'         },
+  { name: 'Orus',           desc: 'ชาย · มั่นใจ'           },
+  { name: 'Zephyr',         desc: 'ชาย · เบาสบาย'          },
+  { name: 'Achird',         desc: 'ชาย · เป็นกันเอง'       },
+  { name: 'Algenib',        desc: 'ชาย · เป็นทางการ'       },
+  { name: 'Algieba',        desc: 'ชาย · อบอุ่น'           },
+  { name: 'Alnilam',        desc: 'ชาย · หนักแน่นมั่นคง'   },
+  { name: 'Achernar',       desc: 'หญิง · อ่อนโยนนุ่มนวล'  },
+  { name: 'Autonoe',        desc: 'หญิง · สดใสมีชีวิตชีวา' },
+  { name: 'Callirrhoe',     desc: 'หญิง · ผ่อนคลายเป็นกันเอง' },
+  { name: 'Despina',        desc: 'หญิง · เบาบาง'          },
+  { name: 'Enceladus',      desc: 'ชาย · เงียบสงบ'         },
+  { name: 'Erinome',        desc: 'หญิง · ละเอียดอ่อน'     },
+  { name: 'Gacrux',         desc: 'ชาย · กังวาน'           },
+  { name: 'Iapetus',        desc: 'ชาย · ชัดเจนกระชับ'     },
+  { name: 'Laomedeia',      desc: 'หญิง · สุภาพ'           },
+  { name: 'Pulcherrima',    desc: 'หญิง · แสดงออกสดใส'     },
+  { name: 'Rasalgethi',     desc: 'ชาย · เป็นทางการมืออาชีพ' },
+  { name: 'Sadachbia',      desc: 'ชาย · มีชีวิตชีวา'      },
+  { name: 'Sadaltager',     desc: 'ชาย · มีความรู้น้ำเสียงดี' },
+  { name: 'Schedar',        desc: 'ชาย · เข้มแข็ง'         },
+  { name: 'Sulafat',        desc: 'หญิง · นุ่มนวล'         },
+  { name: 'Umbriel',        desc: 'ชาย · ลึก'              },
+  { name: 'Vindemiatrix',   desc: 'หญิง · สดใส'            },
+  { name: 'Zubenelgenubi',  desc: 'ชาย · สบายๆ เป็นกันเอง' },
+];
+
+// ===== Gemini personas (speaking styles) =====
+export const GEMINI_PERSONAS = [
+  { id: 'mouth',      label: '🍬 อมของอยู่ในปาก',    instruction: '[muffled] Speak as if you have something large in your mouth — muffled, slurred, lips barely moving, words come out unclear and garbled.' },
+  { id: 'sleepy',     label: '😴 เพิ่งตื่นนอน',      instruction: 'Speak as if you just woke up and are very groggy and half-asleep. Slur your words slightly, speak slowly, sound exhausted.' },
+  { id: 'lazy',       label: '🛋️ ขี้เกียจ',          instruction: 'Speak in the most lazy, unenthusiastic, monotone way possible, as if you cannot be bothered to care about anything.' },
+  { id: 'annoyed',    label: '😒 กวนตีน',             instruction: 'Speak in a slightly snarky, mischievous, and teasing tone, like you are casually trolling someone.' },
+  { id: 'giggle',     label: '😂 คนเส้นตื้นหัวเราะง่าย', instruction: 'Speak with a very low threshold for laughter — giggle and chuckle frequently even at completely normal things, as if everything is somehow hilarious. Occasional snorts welcome.' },
+  { id: 'cheerful',   label: '✨ สดใสน่ารัก',          instruction: 'Speak in an upbeat, warm, and genuinely cheerful tone — bright energy, friendly smile in your voice, like a sunshine person who makes everyone around them feel good.' },
+  { id: 'excited',    label: '🎉 ตื่นเต้น',           instruction: 'Speak with very high energy and excitement, like you just won the lottery.' },
+  { id: 'cute',       label: '🐱 น่ารักมาก',          instruction: 'Speak in an extremely cute, bubbly, and sweet tone, like an anime character.' },
+  { id: 'nuer',       label: '🗣️ สำเนียงเหน่อ',       instruction: 'Speak Thai with a distinct "เหน่อ" (central Thai regional) accent — slightly nasal, drawn-out vowels that rise and fall softly, gentle lilt, unhurried pace, warm and approachable tone typical of central plains Thai speakers.' },
+  { id: 'north',      label: '🏔️ สำเนียงภาคเหนือ',    instruction: 'Speak Thai with a Northern Thai (คำเมือง) influenced accent — melodic and musical tone, softer consonants, rising intonation at sentence endings, gentle and polite delivery. Sound like a friendly person from Chiang Mai or Chiang Rai.' },
+  { id: 'south',      label: '🌊 สำเนียงภาคใต้',      instruction: 'Speak Thai with a Southern Thai accent — clipped and fast-paced, punchy short vowels, strong falling tones, assertive and direct energy. Sound like a confident person from Surat Thani or Hat Yai.' },
+  { id: 'isaan',      label: '🌾 สำเนียงอีสาน',       instruction: 'Speak Thai with a Northeastern Thai (อีสาน) accent — warm and relaxed drawl, slightly flattened tones, friendly and easygoing delivery, occasional Lao-influenced vowel colouring. Sound like a cheerful person from Khon Kaen or Udon Thani.' },
+];
+
+/**
+ * สุ่ม voice + persona combination (30 × 10 = 300 แบบ)
+ */
+export function randomGeminiCombo() {
+  const voice   = GEMINI_VOICES[Math.floor(Math.random() * GEMINI_VOICES.length)];
+  const persona = GEMINI_PERSONAS[Math.floor(Math.random() * GEMINI_PERSONAS.length)];
+  return { voice: voice.name, persona: persona.instruction, voiceObj: voice, personaObj: persona };
+}
+
+// ===== Google Cloud TTS voices =====
+export const GOOGLE_THAI_VOICES = [
+  { name: 'th-TH-Neural2-C', label: 'Neural2 C (หญิง) — ดีที่สุด', tier: 'Neural2'  },
+  { name: 'th-TH-Wavenet-A', label: 'WaveNet A (หญิง)',             tier: 'WaveNet'  },
+  { name: 'th-TH-Wavenet-B', label: 'WaveNet B (ชาย)',              tier: 'WaveNet'  },
+  { name: 'th-TH-Wavenet-C', label: 'WaveNet C (หญิง)',             tier: 'WaveNet'  },
+  { name: 'th-TH-Wavenet-D', label: 'WaveNet D (ชาย)',              tier: 'WaveNet'  },
+  { name: 'th-TH-Standard-A',label: 'Standard A (หญิง)',            tier: 'Standard' },
+];
+
+// ===== localStorage helpers (key ไม่ผ่าน server) =====
+export function loadGoogleApiKey()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_google_tts_key')  || '' : ''; }
+export function saveGoogleApiKey(k)  { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_google_tts_key', k)  : localStorage.removeItem('ttplus_google_tts_key'); }
+// โหลด engine list — backward compat กับ format เก่า (single string)
+export function loadEnabledEngines() {
+  if (typeof window === 'undefined') return ['web'];
+  try {
+    const saved = localStorage.getItem('ttplus_enabled_engines');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  // แปลง format เก่า (single engine string) → array
+  const old = localStorage.getItem('ttplus_tts_engine') || 'web';
+  if (old === 'auto') return ['gemini31', 'gemini25', 'google', 'web'];
+  if (old !== 'web') return [old, 'web'];
+  return ['web'];
+}
+export function saveEnabledEngines(engines) {
+  if (typeof window === 'undefined') return;
+  if (Array.isArray(engines) && engines.length > 0) {
+    localStorage.setItem('ttplus_enabled_engines', JSON.stringify(engines));
+  }
+}
+
+/**
+ * ทดสอบ engine โดยตรง — ไม่ผ่าน queue ได้ error จริง
+ * engine: 'gemini31' | 'gemini25' | 'google' | 'web'
+ */
+export async function speakDirect(engine, text) {
+  if (typeof window === 'undefined') return;
+  const clean = _stripEmoji(text).slice(0, 200);
+  if (!clean) throw new Error('ข้อความว่างเปล่า');
+  switch (engine) {
+    case 'gemini31': return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL);
+    case 'gemini25': {
+      // linked → ใช้ voice/persona ของ 3.1 (รวม shuffle ถ้าเปิด)
+      const _g25v = _cfg.gemini25Linked !== false ? (_cfg.geminiVoice || 'Aoede') : (_cfg.gemini25Voice || 'Aoede');
+      const _g25p = _cfg.gemini25Linked !== false ? (_cfg.geminiPersona || '')    : (_cfg.gemini25Persona || '');
+      return _speakGemini(clean, _g25v, _g25p, GEMINI_25_MODEL);
+    }
+    case 'gemini':   return _speakGemini(clean, _cfg.geminiVoice, _cfg.geminiPersona, GEMINI_31_MODEL); // backward compat
+    case 'google':   return _speakGoogle(clean);
+    case 'web':      return _speakWeb(clean);
+    default: throw new Error(`unknown engine: ${engine}`);
+  }
+}
+
+export function loadGeminiApiKey()      { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_tts_key')    || '' : ''; }
+export function saveGeminiApiKey(k)     { if (typeof window === 'undefined') return; k ? localStorage.setItem('ttplus_gemini_tts_key', k)    : localStorage.removeItem('ttplus_gemini_tts_key'); }
+export function loadGeminiShuffle()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini_shuffle') === '1' : false; }
+export function saveGeminiShuffle(on)   { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini_shuffle', '1') : localStorage.removeItem('ttplus_gemini_shuffle'); }
+
+// Gemini 2.5 — แยก storage จาก 3.1
+export function loadGemini25Linked()    { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_linked') !== '0' : true; } // default true
+export function saveGemini25Linked(on)  { if (typeof window === 'undefined') return; on ? localStorage.removeItem('ttplus_gemini25_linked') : localStorage.setItem('ttplus_gemini25_linked', '0'); }
+export function loadGemini25Voice()     { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_voice')   || 'Aoede' : 'Aoede'; }
+export function saveGemini25Voice(v)    { if (typeof window === 'undefined') return; v ? localStorage.setItem('ttplus_gemini25_voice', v) : localStorage.removeItem('ttplus_gemini25_voice'); }
+export function loadGemini25Persona()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_persona') || ''      : ''; }
+export function saveGemini25Persona(p)  { if (typeof window === 'undefined') return; p ? localStorage.setItem('ttplus_gemini25_persona', p) : localStorage.removeItem('ttplus_gemini25_persona'); }
+export function loadGemini25Shuffle()   { return typeof window !== 'undefined' ? localStorage.getItem('ttplus_gemini25_shuffle') === '1' : false; }
+export function saveGemini25Shuffle(on) { if (typeof window === 'undefined') return; on ? localStorage.setItem('ttplus_gemini25_shuffle', '1') : localStorage.removeItem('ttplus_gemini25_shuffle'); }
