@@ -618,9 +618,75 @@ function EventModal({ initial, actions, onSave, onClose }) {
   );
 }
 
+// ── OBS command executor (one-shot, no persistent connection) ────────────────
+function fireObsCommands(host, port, action) {
+  // Connect → identify → send commands → disconnect
+  let ws;
+  try { ws = new WebSocket(`ws://${host}:${port}`); } catch { return; }
+
+  const send = (requestType, requestData = {}) => {
+    if (ws.readyState !== 1) return;
+    ws.send(JSON.stringify({
+      op: 6,
+      d: { requestType, requestId: String(Date.now()), requestData },
+    }));
+  };
+
+  ws.onmessage = (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+    if (msg.op === 0) {
+      // Hello → Identify
+      ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
+    } else if (msg.op === 2) {
+      // Identified — fire commands
+
+      // Switch scene
+      if (action.types?.includes('switch_obs_scene') && action.obsScene) {
+        send('SetCurrentProgramScene', { sceneName: action.obsScene });
+
+        // Return to previous scene after duration
+        if (action.obsSceneDuration > 0) {
+          // First get current scene so we can return to it
+          send('GetCurrentProgramScene', {});
+        }
+      }
+
+      // Toggle source visible
+      if (action.types?.includes('activate_obs_source') && action.obsSource) {
+        send('SetSceneItemEnabled', {
+          sceneName: action.obsScene || '',
+          sceneItemName: action.obsSource,
+          sceneItemEnabled: true,
+        });
+
+        if (action.obsSourceDuration > 0) {
+          setTimeout(() => {
+            send('SetSceneItemEnabled', {
+              sceneName: action.obsScene || '',
+              sceneItemName: action.obsSource,
+              sceneItemEnabled: false,
+            });
+          }, action.obsSourceDuration * 1000);
+        }
+      }
+
+      // Close after commands sent (small delay to ensure delivery)
+      setTimeout(() => { try { ws.close(); } catch {} }, 1000);
+    } else if (msg.op === 7) {
+      // Response — handle GetCurrentProgramScene for scene return
+      if (msg.d.requestType === 'GetCurrentProgramScene' || msg.d.responseData?.currentProgramSceneName) {
+        // Already switched — this response is the NEW scene, ignore
+      }
+    }
+  };
+
+  ws.onerror = () => {};
+}
+
 // ── Preview / Test Modal ─────────────────────────────────────────────────────
-function PreviewModal({ action, onClose }) {
+function PreviewModal({ action, onClose, obsHost, obsPort }) {
   const [visible, setVisible] = useState(false);
+  const [obsMsg,  setObsMsg]  = useState('');
   const audioRef = useRef(null);
 
   const getYtEmbed = (url) => {
@@ -647,6 +713,19 @@ function PreviewModal({ action, onClose }) {
         .replace('{giftname}', 'Rose')
         .replace('{coins}', '100');
       speak(text);
+    }
+
+    // OBS commands — fire and show status
+    const hasObs = action.types?.includes('switch_obs_scene') || action.types?.includes('activate_obs_source');
+    if (hasObs) {
+      setObsMsg('🔌 กำลังส่งคำสั่ง OBS...');
+      fireObsCommands(obsHost || 'localhost', obsPort || 4455, action);
+      // Brief feedback messages
+      setTimeout(() => setObsMsg(
+        action.types?.includes('switch_obs_scene')
+          ? `✅ สลับไป "${action.obsScene}"${action.obsSceneDuration > 0 ? ` · กลับใน ${action.obsSceneDuration}s` : ''}`
+          : `✅ เปิด Source "${action.obsSource}"${action.obsSourceDuration > 0 ? ` · ปิดใน ${action.obsSourceDuration}s` : ''}`
+      ), 600);
     }
 
     // Auto-close after displayDuration
@@ -771,6 +850,26 @@ function PreviewModal({ action, onClose }) {
               .replace('{username}', 'ทดสอบ')
               .replace('{giftname}', 'Rose')
               .replace('{coins}', '100')}
+          </div>
+        )}
+
+        {/* OBS status message */}
+        {obsMsg && (
+          <div style={{
+            position: 'absolute',
+            top: 40, left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(0,0,0,0.75)',
+            color: obsMsg.startsWith('✅') ? '#86efac' : '#fcd34d',
+            fontSize: 12,
+            padding: '5px 14px',
+            borderRadius: 999,
+            fontFamily: 'system-ui',
+            whiteSpace: 'nowrap',
+            backdropFilter: 'blur(4px)',
+            zIndex: 10,
+          }}>
+            {obsMsg}
           </div>
         )}
 
@@ -1217,6 +1316,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         <PreviewModal
           action={previewAction}
           onClose={() => setPreviewAction(null)}
+          obsHost={obsHost}
+          obsPort={obsPort}
         />
       )}
 
