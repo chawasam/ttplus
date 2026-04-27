@@ -6,19 +6,26 @@ import { addHash, stripHash, hexAlphaToRgba, WIDGET_DEFAULTS } from '../lib/widg
 import { SKIN_LIST } from '../lib/chatSkins';
 
 const WIDGET_LABELS = {
-  alert:       '🔔 Gift Alert',
-  chat:        '💬 Chat Overlay',
-  pinchat:     '📌 Pin Chat',
-  pinprofile:  '👤 Pin Profile Card',
-  leaderboard: '🏆 Leaderboard',
-  goal:        '🎯 Goal Bar',
-  viewers:     '👥 Viewer Count',
-  coinjar:     '🫙 Coin Jar',
+  alert:              '🔔 Gift Alert',
+  chat:               '💬 Chat Overlay',
+  pinchat:            '📌 Pin Chat',
+  pinprofile:         '👤 Pin Profile Card',
+  leaderboard:        '🏆 Leaderboard',
+  goal:               '🎯 Goal Bar',
+  viewers:            '👥 Viewer Count',
+  coinjar:            '🫙 Coin Jar',
+  likesLeaderboard:   '👍 Likes Leaderboard',
+  'likes-leaderboard':'👍 Likes Leaderboard',
+  giftLeaderboard:    '🎁 Gift Leaderboard',
+  'gift-leaderboard': '🎁 Gift Leaderboard',
+  fireworks:          '🎆 Gift Fireworks',
 };
 
-export default function WidgetStyleEditor({ widgetId, style, onChange, theme }) {
-  const set = (key, val) => onChange({ ...style, [key]: val });
-  const d = WIDGET_DEFAULTS[widgetId];
+export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange, theme }) {
+  // ป้องกัน crash ถ้า style ยังไม่มีค่า (ใช้ default แทน)
+  const d     = WIDGET_DEFAULTS[widgetId] || WIDGET_DEFAULTS.chat;
+  const style = styleProp || d;
+  const set   = (key, val) => onChange({ ...style, [key]: val });
 
   // skin tab: auto-select tab ตาม skin ปัจจุบัน
   const activeSkinCat = SKIN_LIST.find(s => s.id === (style.skin || ''))?.category || 'cool';
