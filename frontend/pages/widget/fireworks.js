@@ -422,29 +422,37 @@ export default function FireworksWidget() {
     const explodePcount = [10, 20, 30].includes(pcountParam) ? pcountParam : 10;
 
     // ── Spawn rocket + play sound ──
+    // repeatCount > 1 → spawn หลาย rocket ทยอย delay ทีละลูก
     async function spawnFromGift(data) {
       const safe = sanitizeEvent(data);
       if (safe.diamondCount <= 0) return;
 
-      // Play firework sound via Web Audio API (OBS autoplay-safe)
-      playFirework(volume);
-
-      // Load avatar + gift image concurrently
+      // Load avatar + gift image ครั้งเดียว แชร์ทุก rocket
       const [avatarImg, giftImg] = await Promise.all([
         loadImage(safeTikTokImageUrl(safe.profilePictureUrl)),
         loadImage(safe.giftPictureUrl),
       ]);
 
-      rocketsRef.current.push(makeRocket({
-        avatarImg,
-        giftImg,
-        giftEmoji:  '🎁',
-        senderName: safe.nickname,
-        giftName:   safe.giftName,
-        coins:      safe.diamondCount * safe.repeatCount,
-        patterns:   explodePatterns,
-        pcount:     explodePcount,
-      }));
+      const count = Math.max(1, Math.min(safe.repeatCount || 1, 50)); // cap 50 ลูก
+      const GAP_MS = count <= 3 ? 400 : count <= 10 ? 300 : 200;     // ห่างน้อยลงถ้าเยอะ
+
+      for (let i = 0; i < count; i++) {
+        const delay = i * GAP_MS;
+        setTimeout(() => {
+          if (!runningRef.current) return;
+          playFirework(volume);
+          rocketsRef.current.push(makeRocket({
+            avatarImg,
+            giftImg,
+            giftEmoji:  '🎁',
+            senderName: safe.nickname,
+            giftName:   safe.giftName,
+            coins:      safe.diamondCount,   // แต่ละลูก = 1 ชิ้น
+            patterns:   explodePatterns,
+            pcount:     explodePcount,
+          }));
+        }, delay);
+      }
     }
 
     // ── Preview mode ──
@@ -452,9 +460,9 @@ export default function FireworksWidget() {
 
     if (isPreview) {
       const demoGifts = [
-        { nickname: 'ทดสอบพลุ',  giftName: 'Rose',   diamondCount: 1,    repeatCount: 1 },
-        { nickname: 'แฟนคลับ',   giftName: 'Galaxy', diamondCount: 500,  repeatCount: 1 },
-        { nickname: 'Supporter',  giftName: 'Lion',   diamondCount: 29999, repeatCount: 1 },
+        { nickname: 'ทดสอบพลุ',  giftName: 'Rose',   diamondCount: 1,     repeatCount: 3  },
+        { nickname: 'แฟนคลับ',   giftName: 'Galaxy', diamondCount: 500,   repeatCount: 5  },
+        { nickname: 'Supporter',  giftName: 'Lion',   diamondCount: 29999, repeatCount: 10 },
       ];
       let idx = 0;
       const fireDemo = () => {
@@ -463,7 +471,7 @@ export default function FireworksWidget() {
         idx++;
       };
       fireDemo();
-      const demoTimer = setInterval(fireDemo, 4000);
+      const demoTimer = setInterval(fireDemo, 5000);
       return () => {
         runningRef.current = false;
         cancelAnimationFrame(raf);
