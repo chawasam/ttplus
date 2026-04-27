@@ -192,4 +192,72 @@ async function travel(req, res) {
   }
 }
 
-module.exports = { explore, travel };
+// ===== Zone Info (monsters + boss details for map popup) =====
+async function getZoneInfo(req, res) {
+  try {
+    const { zoneId } = req.params;
+    const zoneDef = getZone(zoneId);
+    if (!zoneDef) return res.status(404).json({ error: 'Zone ไม่พบ' });
+
+    const { MONSTERS, ZONE_TIER_DROPS } = require('../../data/monsters');
+    const { getItem } = require('../../data/items');
+
+    // Build monster info list
+    const monsterList = (zoneDef.monsters || []).map(id => {
+      const m = MONSTERS[id];
+      if (!m) return { id, name: id, error: true };
+      return {
+        id,
+        name:     m.name,
+        level:    m.level,
+        hp:       m.hp,
+        type:     m.type,
+        special:  m.special || null,
+        xpReward: m.xpReward,
+        goldReward: m.goldReward,
+        drops: (m.drops || []).map(d => {
+          const itemDef = getItem(d.itemId);
+          return { itemId: d.itemId, name: itemDef?.name || d.itemId, chance: d.chance };
+        }),
+      };
+    });
+
+    // Boss info
+    const bossId  = zoneDef.zoneBossId;
+    const bossDef = bossId ? MONSTERS[bossId] : null;
+    const bossInfo = bossDef ? {
+      id:       bossId,
+      name:     bossDef.name,
+      level:    bossDef.level,
+      hp:       bossDef.hp,
+      type:     bossDef.type,
+      xpReward: bossDef.xpReward,
+      goldReward: bossDef.goldReward,
+    } : null;
+
+    // Tier drop info
+    const tierDrop = ZONE_TIER_DROPS[zoneId] || null;
+    const tierDropInfo = tierDrop ? {
+      tier:        tierDrop.tier,
+      equipChance: Math.round(tierDrop.equipChance * 100),
+      count:       tierDrop.equipment?.length || 0,
+    } : null;
+
+    return res.json({
+      zoneId,
+      name:     zoneDef.nameTH,
+      nameEN:   zoneDef.name,
+      icon:     zoneDef.icon,
+      level:    zoneDef.level,
+      minLevel: zoneDef.minLevel,
+      monsters: monsterList,
+      boss:     bossInfo,
+      tierDrop: tierDropInfo,
+    });
+  } catch (err) {
+    console.error('[Explore] getZoneInfo:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+}
+
+module.exports = { explore, travel, getZoneInfo };

@@ -89,6 +89,7 @@ router.post('/currency/redeem-rp',   currency.redeemRealmPoints);
 // ----- Explore -----
 router.post('/explore',  exploreLimiter, explore.explore);
 router.post('/travel',   explore.travel);
+router.get ('/zone-info/:zoneId', explore.getZoneInfo);
 
 // ----- Combat -----
 router.post('/battle/start',  battleLimiter, combat.startBattle);

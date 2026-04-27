@@ -20,7 +20,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getLoginBonusStatus, claimLoginBonus,
          getLeaderboard,
          getWorldBoss, attackWorldBoss,
-         getCraftingRecipes, craftItem } from '../../lib/gameApi';
+         getCraftingRecipes, craftItem,
+         getZoneInfo } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -244,6 +245,13 @@ export default function GameWorld() {
   // ── Quest Popup (real-time progress via socket) ──
   const [questPopup,      setQuestPopup]       = useState(null);  // { type, questName, hint, progress, total, rewards, ... }
   const questPopupTimer   = useRef(null);
+
+  // ── Zone Detail Modal ──
+  const [zoneDetailModal, setZoneDetailModal] = useState(null);  // null | { zoneId, loading, data }
+
+  // ── Level-up Celebration ──
+  const [levelUpFlash,   setLevelUpFlash]   = useState(null);   // null | newLevel number
+  const levelUpFlashTimer = useRef(null);
 
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
@@ -1086,6 +1094,16 @@ export default function GameWorld() {
   }, [busy, zone]);
 
   // ===== Travel =====
+  const handleOpenZoneDetail = useCallback(async (zoneId) => {
+    setZoneDetailModal({ zoneId, loading: true, data: null });
+    try {
+      const { data } = await getZoneInfo(zoneId);
+      setZoneDetailModal({ zoneId, loading: false, data });
+    } catch {
+      setZoneDetailModal(prev => prev ? { ...prev, loading: false, error: true } : null);
+    }
+  }, []);
+
   const handleTravel = useCallback(async (targetZone) => {
     if (busy) return;
     setBusy(true);
@@ -1133,7 +1151,29 @@ export default function GameWorld() {
       if (data.state?.result === 'victory') {
         const rewards = data.state?.rewards || {};
         if (rewards.gold) setGold(g => g + rewards.gold);
-        if (rewards.levelUp) setChar(c => c ? { ...c, level: rewards.levelUp } : c);
+        if (rewards.levelUp) {
+          const newLv = rewards.levelUp;
+          const newXpToNext = Math.floor(200 * Math.pow(newLv, 1.9));
+          setChar(c => c ? {
+            ...c,
+            level:      newLv,
+            xp:         0,
+            xpToNext:   newXpToNext,
+            hpMax:      (c.hpMax || 100) + 10,
+            mpMax:      (c.mpMax || 50)  + 5,
+            hp:         (c.hpMax || 100) + 10,
+            mp:         (c.mpMax || 50)  + 5,
+            statPoints:  (c.statPoints  || 0) + 3,
+            skillPoints: (c.skillPoints || 0) + 1,
+          } : c);
+          // Celebration flash
+          clearTimeout(levelUpFlashTimer.current);
+          setLevelUpFlash(newLv);
+          levelUpFlashTimer.current = setTimeout(() => setLevelUpFlash(null), 4000);
+        } else {
+          // Normal XP gain (not level-up)
+          if (rewards.xp) setChar(c => c ? { ...c, xp: Math.min((c.xp || 0) + rewards.xp, (c.xpToNext || 9999) - 1) } : c);
+        }
 
         // Was this a dungeon battle?
         if (data.dungeonRunId) {
@@ -1664,6 +1704,128 @@ export default function GameWorld() {
         );
       })()}
 
+      {/* ── LEVEL UP CELEBRATION ── */}
+      {levelUpFlash && (
+        <div className="fixed inset-0 z-[80] pointer-events-none flex items-center justify-center"
+          style={{ animation: 'lvup-fade 4s ease forwards' }}>
+          <style>{`
+            @keyframes lvup-fade {
+              0%   { opacity: 0; }
+              10%  { opacity: 1; }
+              70%  { opacity: 1; }
+              100% { opacity: 0; }
+            }
+            @keyframes lvup-burst {
+              0%   { transform: scale(0.5) rotate(-8deg); opacity: 0; }
+              30%  { transform: scale(1.15) rotate(3deg); opacity: 1; }
+              60%  { transform: scale(1.0) rotate(0deg);  opacity: 1; }
+              100% { transform: scale(1.1) rotate(2deg);  opacity: 0.8; }
+            }
+            @keyframes lvup-stars {
+              0%,100% { transform: translateY(0) scale(1); opacity: 0.8; }
+              50%      { transform: translateY(-8px) scale(1.2); opacity: 1; }
+            }
+          `}</style>
+          <div className="absolute inset-0 bg-amber-900/20" />
+          <div className="relative text-center px-8 py-6 rounded-3xl border-2 border-amber-500/60 bg-gray-950/90"
+            style={{
+              animation: 'lvup-burst 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards',
+              boxShadow: '0 0 80px #f59e0b60, 0 0 160px #f59e0b30',
+            }}>
+            <div className="text-5xl mb-2" style={{ animation: 'lvup-stars 1.5s ease-in-out infinite' }}>✨</div>
+            <div className="text-amber-300 text-lg font-bold tracking-widest uppercase mb-1">LEVEL UP!</div>
+            <div className="text-6xl font-black text-amber-400" style={{ textShadow: '0 0 30px #f59e0b' }}>
+              Lv.{levelUpFlash}
+            </div>
+            <div className="text-gray-400 text-xs mt-3">+3 Stat Points · +1 Skill Point · สกิลใหม่ปลดล็อก</div>
+            <div className="flex justify-center gap-3 mt-3 text-xl" style={{ animation: 'lvup-stars 2s ease-in-out infinite 0.3s' }}>
+              ⭐ 🎉 ⭐
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ZONE DETAIL MODAL ── */}
+      {zoneDetailModal && (
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-end justify-center p-4"
+          onClick={() => setZoneDetailModal(null)}>
+          <div className="bg-gray-950 border border-gray-700 rounded-t-2xl w-full max-w-sm max-h-[80vh] overflow-y-auto"
+            style={{ fontFamily: "'Courier New', Courier, monospace", animation: 'ash-slide-up 0.25s ease' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-gray-950 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+              <div>
+                {zoneDetailModal.loading ? (
+                  <span className="text-gray-400 text-sm">⏳ กำลังโหลด...</span>
+                ) : zoneDetailModal.data ? (
+                  <div>
+                    <span className="text-amber-300 font-bold">{zoneDetailModal.data.icon} {zoneDetailModal.data.name}</span>
+                    <span className="text-gray-500 text-xs ml-2">Lv.{zoneDetailModal.data.level?.[0]}-{zoneDetailModal.data.level?.[1]}</span>
+                  </div>
+                ) : (
+                  <span className="text-red-400 text-sm">⛔ โหลดข้อมูลไม่ได้</span>
+                )}
+              </div>
+              <button onClick={() => setZoneDetailModal(null)} className="text-gray-500 hover:text-white text-lg leading-none">✕</button>
+            </div>
+
+            {zoneDetailModal.data && (() => {
+              const d = zoneDetailModal.data;
+              const typeColor = { beast:'text-green-400', undead:'text-purple-400', demon:'text-red-400', construct:'text-blue-400', human:'text-yellow-400', void:'text-violet-400', spirit:'text-cyan-400' };
+              return (
+                <div className="p-4 space-y-4">
+                  {/* Tier Drop Info */}
+                  {d.tierDrop && (
+                    <div className="bg-amber-900/10 border border-amber-800/30 rounded-lg p-3 text-xs">
+                      <div className="text-amber-400 font-bold mb-1">✨ Zone Tier Drop (Tier {d.tierDrop.tier})</div>
+                      <div className="text-gray-400">{d.tierDrop.equipChance}% โอกาสดรอปอุปกรณ์ Tier {d.tierDrop.tier} ต่อการสังหาร ({d.tierDrop.count} ชิ้นในพูล)</div>
+                    </div>
+                  )}
+
+                  {/* Boss */}
+                  {d.boss && (
+                    <div className="bg-yellow-900/10 border border-yellow-800/30 rounded-lg p-3 text-xs">
+                      <div className="text-yellow-400 font-bold mb-1">👑 Zone Boss: {d.boss.name}</div>
+                      <div className="text-gray-400 flex gap-3 flex-wrap">
+                        <span>Lv.{d.boss.level}</span>
+                        <span>HP {d.boss.hp?.toLocaleString()}</span>
+                        <span>⭐ {d.boss.xpReward} XP</span>
+                        <span>💰 {d.boss.goldReward?.[0]}-{d.boss.goldReward?.[1]} G</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Monster List */}
+                  <div>
+                    <div className="text-gray-500 text-[10px] uppercase tracking-widest font-semibold mb-2">⚔️ มอนเตอร์ที่พบได้ ({d.monsters?.length || 0} ชนิด)</div>
+                    <div className="space-y-1.5">
+                      {(d.monsters || []).map(m => (
+                        <div key={m.id} className="border border-gray-800 rounded-lg p-2.5 text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-amber-300 font-medium">{m.name}</span>
+                            <span className={`text-[10px] ${typeColor[m.type] || 'text-gray-400'}`}>{m.type}</span>
+                          </div>
+                          <div className="text-gray-500 flex gap-2.5 flex-wrap">
+                            <span>Lv.{m.level}</span>
+                            <span>HP {m.hp}</span>
+                            <span>⭐ {m.xpReward}</span>
+                            <span>💰 {m.goldReward?.[0]}-{m.goldReward?.[1]}</span>
+                          </div>
+                          {m.drops?.length > 0 && (
+                            <div className="mt-1.5 text-[10px] text-gray-600">
+                              ดรอป: {m.drops.map(dd => `${dd.name} (${Math.round(dd.chance*100)}%)`).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* ── LOGIN BONUS POPUP ── */}
       {showLoginBonus && loginBonusData && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4"
@@ -1920,34 +2082,45 @@ export default function GameWorld() {
                   const locked    = charLv < z.minLevel;
                   const isCurrent = z.id === zone;
                   return (
-                    <button key={z.id}
-                      onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
-                      disabled={busy || isCurrent || locked}
-                      className={`px-3 py-2 border text-xs rounded transition text-left relative ${
-                        isCurrent ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
-                        locked    ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
-                                    'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10'
-                      }`}>
-                      {/* Boss badge */}
-                      {z.hasBoss && !locked && (
-                        <span className="absolute top-1 right-1 text-[9px] px-1 py-0.5 rounded bg-yellow-900/60 text-yellow-400 border border-yellow-800/60 leading-none">
-                          👑
-                        </span>
-                      )}
-                      <div className="font-medium">{z.name}</div>
-                      <div className={`mt-0.5 flex items-center gap-1.5 ${locked ? 'text-red-700' : 'text-gray-500'}`}>
-                        {locked ? (
-                          <span>🔒 ต้อง Lv.{z.minLevel}</span>
-                        ) : isCurrent ? (
-                          <span className="text-amber-500">📍 อยู่ที่นี่</span>
-                        ) : (
-                          <>
-                            <span>{z.lv}</span>
-                            {z.monsters > 0 && <span>· ⚔️ {z.monsters}</span>}
-                          </>
+                    <div key={z.id} className="relative">
+                      <button
+                        onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
+                        disabled={busy || isCurrent || locked}
+                        className={`w-full px-3 py-2 border text-xs rounded transition text-left pr-10 ${
+                          isCurrent ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
+                          locked    ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
+                                      'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10'
+                        }`}>
+                        {/* Boss badge */}
+                        {z.hasBoss && !locked && (
+                          <span className="absolute top-1 right-7 text-[9px] px-1 py-0.5 rounded bg-yellow-900/60 text-yellow-400 border border-yellow-800/60 leading-none">
+                            👑
+                          </span>
                         )}
-                      </div>
-                    </button>
+                        <div className="font-medium">{z.name}</div>
+                        <div className={`mt-0.5 flex items-center gap-1.5 ${locked ? 'text-red-700' : 'text-gray-500'}`}>
+                          {locked ? (
+                            <span>🔒 ต้อง Lv.{z.minLevel}</span>
+                          ) : isCurrent ? (
+                            <span className="text-amber-500">📍 อยู่ที่นี่</span>
+                          ) : (
+                            <>
+                              <span>{z.lv}</span>
+                              {!z.safe && <span>· ⚔️ 10 มอนเตอร์</span>}
+                            </>
+                          )}
+                        </div>
+                      </button>
+                      {/* Zone detail info button */}
+                      {!z.safe && (
+                        <button
+                          onClick={() => handleOpenZoneDetail(z.id)}
+                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center text-[10px] text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 rounded border border-gray-800 hover:border-amber-700 transition"
+                          title="ดูรายละเอียดมอนเตอร์">
+                          ℹ
+                        </button>
+                      )}
+                    </div>
                   );
                 };
                 return (
