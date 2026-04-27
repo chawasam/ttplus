@@ -127,10 +127,69 @@ async function addRealmPoints(uid, points = 1) {
   }
 }
 
-// ===== Redeem Realm Points → Gold (DISABLED) =====
-// RP ไม่อนุญาตให้แปลงเป็น Gold — RP ใช้ซื้อสินค้าใน RP Shop เท่านั้น
+// ===== Redeem Realm Points → Gold =====
+// Rate: 5 RP = 1 Gold  (1,000 RP = 200 Gold)
+// min: 100 RP ต่อครั้ง | daily cap: 5,000 RP / วัน
+const RP_TO_GOLD_RATE = 5;         // 5 RP = 1 Gold
+const RP_REDEEM_MIN   = 100;       // ขั้นต่ำ 100 RP
+const RP_REDEEM_MAX   = 5000;      // daily cap 5,000 RP
+
 async function redeemRealmPoints(req, res) {
-  return res.status(403).json({ error: 'RP ไม่สามารถแปลงเป็น Gold ได้ — ใช้ RP ซื้อสินค้าใน RP Shop แทน' });
+  const { amount } = req.body;
+  if (!amount || !Number.isInteger(amount) || amount < RP_REDEEM_MIN || amount > RP_REDEEM_MAX) {
+    return res.status(400).json({
+      error: `RP ที่แลกได้ต้องอยู่ระหว่าง ${RP_REDEEM_MIN}–${RP_REDEEM_MAX} RP ต่อครั้ง`,
+    });
+  }
+
+  const uid = req.user.uid;
+  const db  = admin.firestore();
+  const ref = db.collection('game_accounts').doc(uid);
+
+  try {
+    const goldToAdd = Math.floor(amount / RP_TO_GOLD_RATE);
+
+    // ตรวจ daily cap (เก็บ redeemRpToday + redeemRpDate ใน account)
+    const doc     = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const data    = doc.data();
+    const todayKey = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const usedToday = data.redeemRpDate === todayKey ? (data.redeemRpToday || 0) : 0;
+
+    if (usedToday + amount > RP_REDEEM_MAX) {
+      const remaining = Math.max(0, RP_REDEEM_MAX - usedToday);
+      return res.status(400).json({ error: `เกิน daily cap — แลกได้อีก ${remaining} RP วันนี้` });
+    }
+
+    const result = await db.runTransaction(async (tx) => {
+      const d = await tx.get(ref);
+      if (!d.exists) throw new Error('Account not found');
+      const current = d.data().realmPoints || 0;
+      if (current < amount) throw new Error('RP ไม่เพียงพอ');
+      const currentGold  = d.data().gold || 0;
+      const usedTd = d.data().redeemRpDate === todayKey ? (d.data().redeemRpToday || 0) : 0;
+      if (usedTd + amount > RP_REDEEM_MAX) throw new Error(`เกิน daily cap`);
+      tx.update(ref, {
+        realmPoints:   current - amount,
+        gold:          currentGold + goldToAdd,
+        redeemRpToday: usedTd + amount,
+        redeemRpDate:  todayKey,
+      });
+      return { newRP: current - amount, newGold: currentGold + goldToAdd };
+    });
+
+    return res.json({
+      success:  true,
+      rpUsed:   amount,
+      goldAdded: goldToAdd,
+      ...result,
+      msg: `💰 แลก ${amount} RP → ${goldToAdd} Gold สำเร็จ`,
+    });
+  } catch (err) {
+    const safe = ['RP ไม่เพียงพอ', 'เกิน daily cap'].some(s => err.message.includes(s));
+    if (!safe) console.error('[Currency] redeemRP:', err.message);
+    return res.status(400).json({ error: err.message });
+  }
 }
 
 // ===== Get gold balance for a UID (internal helper — used by dailyShop, etc.) =====

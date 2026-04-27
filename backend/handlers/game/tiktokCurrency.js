@@ -7,8 +7,8 @@ const { triggerBossFromGift }     = require('./worldBoss');
 // World Boss spawn threshold: ทุก 500 diamonds สะสม (ต่อ VJ session) จะ spawn boss
 const BOSS_SPAWN_THRESHOLD = 500;
 
-// RP conversion rate: 10 diamonds = 1 RP (premium currency, harder to get)
-const DIAMONDS_PER_RP = 10;
+// RP conversion rate: 5 diamonds = 1 RP → 10,000 coins ≈ 5,000 diamonds = 1,000 RP
+const DIAMONDS_PER_RP = 5;
 
 // Idempotency cache (in-memory, ครอบ reconnect window)
 // txId → true (เก็บ 1 ชั่วโมง)

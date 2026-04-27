@@ -11,7 +11,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getQuests, claimQuestReward,
          getQuestLog, acceptSideQuest, getMainQuestLog, collectLore, makeQuestChoice,
          getDailyShop, buyDailyShopItem, getFeaturedDungeonStatus,
-         getRPShop, buyRPItem,
+         getRPShop, buyRPItem, redeemRP,
          getSkills, unlockSkill,
          getCharacterProfile, allocateStat, equipTitle,
          getEnhanceInfo, enhanceItem,
@@ -198,6 +198,8 @@ export default function GameWorld() {
   // ── RP Shop ──
   const [rpShopItems,    setRPShopItems]    = useState([]);
   const [rpShopLoading,  setRPShopLoading]  = useState(false);
+  const [redeemRpAmt,    setRedeemRpAmt]    = useState(100);   // RP→Gold input
+  const [redeemBusy,     setRedeemBusy]     = useState(false);
 
   // ── Skills ──
   const [skillsData,     setSkillsData]     = useState(null);   // { charClass, classSkills, passiveSkill, unlockedSkills, skillPoints }
@@ -495,6 +497,24 @@ export default function GameWorld() {
     setScreen(SCREENS.RP_SHOP);
     await loadRPShop();
   }, [loadRPShop]);
+
+  const handleRedeemRP = useCallback(async () => {
+    const amt = Number(redeemRpAmt);
+    if (!amt || amt < 100) return toast.error('ขั้นต่ำ 100 RP');
+    if (!confirm(`แลก ${amt} RP → ${Math.floor(amt / 5)} Gold?`)) return;
+    setRedeemBusy(true);
+    try {
+      const { data } = await redeemRP(amt);
+      setRP(data.newRP || 0);
+      setGold(data.newGold || 0);
+      toast.success(data.msg || `แลก ${amt} RP → ${Math.floor(amt / 5)} Gold สำเร็จ!`);
+      addLog(`🪙 แลก ${amt} RP → ${Math.floor(amt / 5)} Gold`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'แลกไม่ได้');
+    } finally {
+      setRedeemBusy(false);
+    }
+  }, [redeemRpAmt, addLog]);
 
   const handleBuyRPItem = useCallback(async (itemId, itemName, rpPrice) => {
     if (!confirm(`ซื้อ ${itemName} ราคา ${rpPrice} RP?`)) return;
@@ -3181,29 +3201,45 @@ export default function GameWorld() {
                       })}
 
                       {/* RP Rate Info */}
-                      <div className="border border-purple-900/40 rounded p-2.5 text-xs bg-purple-950/20 space-y-2">
+                      <div className="border border-purple-900/40 rounded p-2.5 text-xs bg-purple-950/20 space-y-1.5">
                         <p className="text-purple-400 font-bold text-center">💎 วิธีรับ Realm Points (RP)</p>
-                        <div className="space-y-1.5 text-gray-400">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg shrink-0">🎁</span>
-                            <div>
-                              <p className="text-amber-300 font-semibold">Gift ใน TikTok LIVE</p>
-                              <p className="text-gray-500 text-[10px]">ทุก 10 TikTok Diamond = <span className="text-purple-400 font-bold">1 RP</span></p>
-                              <p className="text-gray-600 text-[10px]">ตัวอย่าง: Rose (1💎) ≈ 0.1 RP | Firework (288💎) ≈ 28 RP</p>
-                            </div>
-                          </div>
-                          <div className="border-t border-gray-800 pt-1.5 flex items-center gap-2">
-                            <span className="text-lg shrink-0">📺</span>
-                            <div>
-                              <p className="text-amber-300 font-semibold">ดูสตรีม (Passive)</p>
-                              <p className="text-gray-500 text-[10px]">Online ทุก 5 นาที = <span className="text-purple-400 font-bold">1 RP</span> อัตโนมัติ</p>
-                              <p className="text-gray-600 text-[10px]">~12 RP/ชั่วโมง | 288 RP/วัน (ดูตลอด)</p>
-                            </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base shrink-0">🎁</span>
+                          <div>
+                            <p className="text-amber-300 font-semibold">Gift ใน TikTok LIVE</p>
+                            <p className="text-gray-500 text-[10px]">10,000 Coins ≈ <span className="text-purple-400 font-bold">1,000 RP</span> · ทุก 5 Diamond = 1 RP</p>
                           </div>
                         </div>
-                        <p className="text-gray-700 text-[10px] text-center pt-1 border-t border-gray-800">
-                          RP ใช้ซื้อ Boost, กล่อง Premium, Upgrade ถาวร และอื่น ๆ เท่านั้น
-                        </p>
+                        <div className="flex items-center gap-2 border-t border-gray-800 pt-1.5">
+                          <span className="text-base shrink-0">📺</span>
+                          <div>
+                            <p className="text-amber-300 font-semibold">ดูสตรีม (Passive)</p>
+                            <p className="text-gray-500 text-[10px]">Online ทุก 5 นาที = <span className="text-purple-400 font-bold">1 RP</span> · ~12 RP/ชั่วโมง</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* RP → Gold Redeem */}
+                      <div className="border border-yellow-900/50 rounded p-2.5 text-xs bg-yellow-950/20">
+                        <p className="text-yellow-400 font-bold mb-1.5">🪙 แลก RP → Gold</p>
+                        <p className="text-gray-500 text-[10px] mb-2">Rate: <span className="text-yellow-400">5 RP = 1 Gold</span> (1,000 RP = 200 Gold) · daily cap 5,000 RP</p>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="number" min="100" max="5000" step="100"
+                            value={redeemRpAmt}
+                            onChange={e => setRedeemRpAmt(Math.min(5000, Math.max(100, Number(e.target.value) || 100)))}
+                            className="flex-1 bg-black/40 border border-gray-700 rounded px-2 py-1 text-xs text-amber-200 w-0"
+                          />
+                          <span className="text-gray-600 shrink-0">RP →</span>
+                          <span className="text-yellow-500 font-bold shrink-0">{Math.floor((redeemRpAmt || 0) / 5)} G</span>
+                          <button
+                            onClick={handleRedeemRP}
+                            disabled={redeemBusy || rp < (redeemRpAmt || 0) || (redeemRpAmt || 0) < 100}
+                            className="shrink-0 px-2 py-1 border border-yellow-700 text-yellow-400 hover:bg-yellow-900/20 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                            {redeemBusy ? '...' : 'แลก'}
+                          </button>
+                        </div>
+                        {rp < redeemRpAmt && <p className="text-red-500 text-[10px] mt-1">RP ไม่พอ (มี {rp} RP)</p>}
                       </div>
                     </>
                   )}
