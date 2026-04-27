@@ -14,10 +14,10 @@ const WIDGET_LABELS = {
   goal:               '🎯 Goal Bar',
   viewers:            '👥 Viewer Count',
   coinjar:            '🫙 Coin Jar',
-  likesLeaderboard:   '👍 Likes Leaderboard',
-  'likes-leaderboard':'👍 Likes Leaderboard',
-  giftLeaderboard:    '🎁 Gift Leaderboard',
-  'gift-leaderboard': '🎁 Gift Leaderboard',
+  likesLeaderboard:    '👍 Likes Leaderboard',
+  'likes-leaderboard': '👍 Likes Leaderboard',
+  giftLeaderboard:     '🎁 Gift Leaderboard',
+  'gift-leaderboard':  '🎁 Gift Leaderboard',
   fireworks:          '🎆 Gift Fireworks',
 };
 
@@ -536,8 +536,10 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
-      {/* ── Skin Selector (chat + pinchat เท่านั้น) ── */}
-      {(widgetId === 'chat' || widgetId === 'pinchat') && (
+      {/* ── Skin Selector (chat + pinchat + leaderboards) ── */}
+      {(widgetId === 'chat' || widgetId === 'pinchat' ||
+        widgetId === 'gift-leaderboard' || widgetId === 'giftLeaderboard' ||
+        widgetId === 'likes-leaderboard' || widgetId === 'likesLeaderboard') && (
         <div className="space-y-2 pt-1">
           {/* Header + active skin badge */}
           <div className={row}>

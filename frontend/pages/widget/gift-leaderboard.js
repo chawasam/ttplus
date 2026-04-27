@@ -1,7 +1,6 @@
 // widget/gift-leaderboard.js — Gift/Coin Leaderboard (top 10, per session, resets on new Live)
 // OBS Size: 300 x 520
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
 import { useChatSkin } from '../../lib/chatSkins';
@@ -11,7 +10,6 @@ const POLL_MS = 5000;
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function GiftLeaderboardWidget() {
-  const router = useRouter();
   const [board, setBoard] = useState([]);
   const [styles, setStyles] = useState(null);
   const [vjId, setVjId] = useState('');
