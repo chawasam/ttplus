@@ -31,14 +31,14 @@ const TRIGGER_LIST = [
   { id: 'chat',             label: '💬 พิมพ์ในแชท (ทุก comment)' },
   { id: 'command',          label: '⌨️ พิมพ์ keyword ในแชท' },
   { id: 'gift_min_coins',   label: '🎁 ส่ง Gift ≥ X coins' },
-  { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ' },
+  { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ', popular: true },
   { id: 'subscriber_emote', label: '😄 ส่ง Subscriber Emote' },
   { id: 'fan_club_sticker', label: '🏅 ส่ง Fan Club Sticker' },
   { id: 'tiktok_shop',      label: '🛒 ซื้อของจาก TikTok Shop' },
 ];
 
 const WHO_LIST = [
-  { id: 'everyone',       label: 'ทุกคน' },
+  { id: 'everyone',       label: 'ทุกคน',        popular: true  },
   { id: 'follower',       label: 'Follower' },
   { id: 'subscriber',     label: 'Subscriber' },
   { id: 'moderator',      label: 'Moderator' },
@@ -68,7 +68,7 @@ const DEFAULT_ACTION = {
 };
 
 const DEFAULT_EVENT = {
-  trigger: 'gift_min_coins',
+  trigger: 'specific_gift',
   whoCanTrigger: 'everyone',
   specificUser: '',
   teamMemberLevel: 0,
@@ -80,6 +80,50 @@ const DEFAULT_EVENT = {
   randomActionIds: [],
   enabled: true,
 };
+
+// ── TikTok Gift list (ชื่อจริงตาม TikTok + coins) ────────────────────────────
+const TIKTOK_GIFTS = [
+  // ── 1–5 coins ──
+  { name: 'Rose',            coins: 1   },
+  { name: 'TikTok',          coins: 1   },
+  { name: 'Ice Cream Cone',  coins: 1   },
+  { name: 'Finger Heart',    coins: 5   },
+  { name: 'Panda',           coins: 5   },
+  { name: 'Italian Hand',    coins: 5   },
+  { name: 'Sunglasses',      coins: 5   },
+  { name: 'GG',              coins: 5   },
+  // ── 10–99 coins ──
+  { name: 'Love Bang',       coins: 25  },
+  { name: 'Mini Speaker',    coins: 25  },
+  { name: 'Hand Heart',      coins: 10  },
+  { name: 'Sun Cream',       coins: 50  },
+  { name: 'Mic',             coins: 50  },
+  { name: 'Cap',             coins: 99  },
+  // ── 100–499 coins ──
+  { name: 'Football',        coins: 100 },
+  { name: 'Rainbow Puke',    coins: 100 },
+  { name: 'Corgi',           coins: 200 },
+  { name: 'Mirror',          coins: 299 },
+  { name: 'Rose Bouquet',    coins: 299 },
+  // ── 500–999 coins ──
+  { name: 'Galaxy',          coins: 500 },
+  { name: 'Concert',         coins: 500 },
+  { name: 'Perfume',         coins: 500 },
+  // ── 1,000–4,999 coins ──
+  { name: "I'm Very Rich",   coins: 1000 },
+  { name: 'Garland',         coins: 1000 },
+  { name: 'Rocket',          coins: 1000 },
+  { name: 'Train',           coins: 1000 },
+  { name: 'Paper Crane',     coins: 1000 },
+  { name: 'Lollipop',        coins: 1999 },
+  { name: 'Crown',           coins: 2999 },
+  // ── 5,000+ coins ──
+  { name: 'Drama Queen',     coins: 5000  },
+  { name: 'Interstellar',    coins: 6999  },
+  { name: 'TikTok Universe', coins: 10000 },
+  { name: 'Lion',            coins: 29999 },
+  { name: 'Universe',        coins: 34999 },
+];
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 function Input({ label, value, onChange, placeholder, type = 'text', min, step, className = '' }) {
@@ -421,11 +465,18 @@ function EventModal({ initial, actions, onSave, onClose }) {
             {WHO_LIST.map(w => (
               <label key={w.id} className={clsx(
                 'flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-sm transition-colors',
-                form.whoCanTrigger === w.id ? 'border-brand-500 bg-brand-900/30 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'
+                form.whoCanTrigger === w.id
+                  ? 'border-brand-500 bg-brand-900/30 text-white'
+                  : w.popular
+                    ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
               )}>
                 <input type="radio" name="who" value={w.id} checked={form.whoCanTrigger === w.id}
                   onChange={() => set('whoCanTrigger', w.id)} className="accent-brand-500" />
-                {w.label}
+                <span className="flex-1">{w.label}</span>
+                {w.popular && form.whoCanTrigger !== w.id && (
+                  <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+                )}
               </label>
             ))}
           </div>
@@ -442,11 +493,18 @@ function EventModal({ initial, actions, onSave, onClose }) {
             {TRIGGER_LIST.map(t => (
               <label key={t.id} className={clsx(
                 'flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-sm transition-colors',
-                form.trigger === t.id ? 'border-brand-500 bg-brand-900/30 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'
+                form.trigger === t.id
+                  ? 'border-brand-500 bg-brand-900/30 text-white'
+                  : t.popular
+                    ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
               )}>
                 <input type="radio" name="trigger" value={t.id} checked={form.trigger === t.id}
                   onChange={() => set('trigger', t.id)} className="accent-brand-500" />
-                {t.label}
+                <span className="flex-1">{t.label}</span>
+                {t.popular && form.trigger !== t.id && (
+                  <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+                )}
               </label>
             ))}
           </div>
@@ -461,8 +519,51 @@ function EventModal({ initial, actions, onSave, onClose }) {
               onChange={v => set('minCoins', v)} type="number" min={1} />
           )}
           {form.trigger === 'specific_gift' && (
-            <Input className="mt-2" label="ชื่อ Gift (เช่น Rose, Galaxy)" value={form.specificGiftName}
-              onChange={v => set('specificGiftName', v)} placeholder="Rose" />
+            <div className="mt-2 flex flex-col gap-1">
+              <label className="text-xs text-gray-400">เลือก Gift</label>
+              <select
+                value={form.specificGiftName}
+                onChange={e => set('specificGiftName', e.target.value)}
+                className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+              >
+                <option value="">— เลือก Gift —</option>
+                {TIKTOK_GIFTS.map(g => (
+                  <option key={g.name} value={g.name}>
+                    {g.name}  ({g.coins.toLocaleString()} coins)
+                  </option>
+                ))}
+              </select>
+              {form.specificGiftName && (
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  หรือพิมพ์ชื่อเองถ้าไม่มีในลิสต์ →{' '}
+                  <button
+                    type="button"
+                    className="text-brand-400 underline hover:text-brand-300"
+                    onClick={() => {
+                      const custom = prompt('ชื่อ Gift (พิมพ์ตรงๆ จาก TikTok):');
+                      if (custom?.trim()) set('specificGiftName', custom.trim());
+                    }}
+                  >
+                    พิมพ์เอง
+                  </button>
+                </p>
+              )}
+              {!form.specificGiftName && (
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  ไม่มีในลิสต์?{' '}
+                  <button
+                    type="button"
+                    className="text-brand-400 underline hover:text-brand-300"
+                    onClick={() => {
+                      const custom = prompt('ชื่อ Gift (พิมพ์ตรงๆ จาก TikTok):');
+                      if (custom?.trim()) set('specificGiftName', custom.trim());
+                    }}
+                  >
+                    พิมพ์เอง
+                  </button>
+                </p>
+              )}
+            </div>
           )}
           {form.trigger === 'likes' && (
             <Input className="mt-2" label="Like ครบกี่ครั้ง" value={form.likesCount}
