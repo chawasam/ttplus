@@ -19,11 +19,12 @@ export default function GiftLeaderboardWidget() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const vid = params.get('vjId');
+    // รองรับทั้ง ?cid= (format ใหม่) และ ?vjId= (backward compat)
+    const vid = params.get('cid') || params.get('vjId') || '';
     const isPreview = params.get('preview') === '1';
     const s = parseWidgetStyles(params, 'giftLeaderboard');
     setStyles(s);
-    setVjId(vid || '');
+    setVjId(vid);
 
     if (isPreview) {
       setBoard([
@@ -42,7 +43,11 @@ export default function GiftLeaderboardWidget() {
 
     const poll = async () => {
       try {
-        const res = await fetch(`${BACKEND}/api/leaderboard/${vid}?type=gifts`);
+        const isCid = /^\d{4,8}$/.test(vid);
+        const url = isCid
+          ? `${BACKEND}/api/leaderboard?cid=${vid}&type=gifts`
+          : `${BACKEND}/api/leaderboard/${vid}?type=gifts`;
+        const res = await fetch(url);
         const data = await res.json();
         if (Array.isArray(data.data)) setBoard(data.data);
       } catch {}

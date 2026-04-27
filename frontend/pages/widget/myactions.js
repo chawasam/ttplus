@@ -1,5 +1,6 @@
 // pages/widget/myactions.js — Overlay widget สำหรับ OBS Browser Source
-// URL: /widget/myactions?vjId=UID&screen=1
+// URL: /widget/myactions?cid=12345&screen=1  (format ใหม่)
+//      /widget/myactions?vjId=UID&screen=1   (backward compat)
 // Poll action queue ทุก 1.5 วิ → แสดง GIF/รูป/วิดีโอ/alert บน stream
 // OBS WebSocket: รับ obsScene/obsSource commands แล้ว execute ผ่าน ws://localhost:4455
 
@@ -38,8 +39,11 @@ class ObsWs {
 
 export default function MyActionsOverlay() {
   const router   = useRouter();
-  const { vjId, screen: screenParam } = router.query;
-  const screen   = parseInt(screenParam) || 1;
+  // รองรับทั้ง ?cid= (format ใหม่) และ ?vjId= (backward compat)
+  const cid      = router.query.cid    || '';
+  const vjIdLeg  = router.query.vjId   || '';
+  const vid      = cid || vjIdLeg;       // ใช้ cid ก่อน ถ้าไม่มีใช้ vjId เก่า
+  const screen   = parseInt(router.query.screen) || 1;
 
   const [item,     setItem]     = useState(null); // current action to display
   const [visible,  setVisible]  = useState(false); // fade in/out
@@ -146,10 +150,15 @@ export default function MyActionsOverlay() {
 
   // ── Poll queue ──
   useEffect(() => {
-    if (!vjId) return;
+    if (!vid) return;
     const poll = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/actions/overlay/${vjId}?screen=${screen}`);
+        // format ใหม่: ?cid=  / format เก่า: /:vjId
+        const isCid = /^\d{4,8}$/.test(vid);
+        const overlayUrl = isCid
+          ? `${BACKEND_URL}/api/actions/overlay?cid=${vid}&screen=${screen}`
+          : `${BACKEND_URL}/api/actions/overlay/${vid}?screen=${screen}`;
+        const res = await fetch(overlayUrl);
         const data = await res.json();
         if (data.item) showItem(data.item);
       } catch {}
@@ -157,7 +166,7 @@ export default function MyActionsOverlay() {
     poll();
     pollRef.current = setInterval(poll, POLL_MS);
     return () => clearInterval(pollRef.current);
-  }, [vjId, screen, showItem]);
+  }, [vid, screen, showItem]);
 
   // ── YouTube embed URL ──
   const getYtEmbed = (url) => {

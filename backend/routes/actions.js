@@ -21,6 +21,9 @@ router.get ('/obs-settings', verifyToken, h.getObsSettings);
 router.post('/obs-settings', verifyToken, h.saveObsSettings);
 
 // Overlay queue — ไม่ต้อง auth (OBS Browser Source เรียกเอง)
-router.get('/overlay/:vjId', h.getOverlayQueue);
+// format ใหม่: /overlay?cid=12345&screen=1
+// format เก่า: /overlay/:vjId?screen=1   (backward compat)
+router.get('/overlay',      h.getOverlayQueue);   // ?cid=
+router.get('/overlay/:vjId', h.getOverlayQueue);  // legacy
 
 module.exports = router;
