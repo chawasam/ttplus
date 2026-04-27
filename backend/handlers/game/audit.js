@@ -397,6 +397,7 @@ async function getGameData(req, res) {
     }));
 
     const { ITEMS } = require('../../data/items');
+    const { PLANNED_SOURCES } = require('../../data/planned_content');
     const items = Object.values(ITEMS).map(it => ({
       itemId:    it.itemId,
       name:      it.name,
@@ -614,7 +615,7 @@ async function getGameData(req, res) {
       };
     });
 
-    return res.json({ monsters, npcs, zones, items, skills, crafting, dungeons, worldBosses, achievements, quests, combatConstants, classData });
+    return res.json({ monsters, npcs, zones, items, skills, crafting, dungeons, worldBosses, achievements, quests, combatConstants, classData, plannedSources: PLANNED_SOURCES });
   } catch (err) {
     console.error('[Audit] getGameData:', err.message);
     return res.status(500).json({ error: 'Server error' });

@@ -4205,6 +4205,11 @@ function DatabaseTab() {
       }
     });
 
+    // From planned_content.js (coming soon — admin visibility only)
+    (data.plannedSources || []).forEach(p => {
+      addEntry(p.itemId, { source: p.source, sourceEmoji: p.sourceEmoji, zone: '—', chance: null, type: 'planned', level: 0, note: p.note });
+    });
+
     const q = search.toLowerCase();
     const itemNames = Object.keys(index).filter(itemId => {
       if (!q) return true;
@@ -4218,6 +4223,7 @@ function DatabaseTab() {
       dungeon_boss:['#a78bfa', '🏰 Dungeon'],
       craft:       ['#34d399', '⚒️ Craft'],
       shop:        ['#fbbf24', '🛒 Shop'],
+      planned:     ['#6b7280', '🔒 Coming Soon'],
     };
 
     return (
@@ -4227,7 +4233,7 @@ function DatabaseTab() {
             onChange={e => setSearch(e.target.value)} />
           <span style={{ color:'#4b5563', fontSize:12 }}>{itemNames.length} items</span>
         </div>
-        <div style={{ color:'#374151', fontSize:11, marginBottom:16 }}>ข้อมูลจาก: monster drops + zone pool + dungeon boss + crafting + NPC shop</div>
+        <div style={{ color:'#374151', fontSize:11, marginBottom:16 }}>ข้อมูลจาก: monster drops + zone pool + dungeon boss + crafting + NPC shop + 🔒 planned (coming soon)</div>
 
         {itemNames.length === 0 && search && <div style={{ color:'#4b5563', padding:20, textAlign:'center' }}>ไม่พบ item ที่ค้นหา</div>}
         {!search && <div style={{ color:'#4b5563', padding:20, textAlign:'center' }}>พิมพ์ชื่อ item เพื่อค้นหาว่าได้มาจากไหน</div>}
@@ -4258,10 +4264,13 @@ function DatabaseTab() {
                         <span style={{ color:'#e5e7eb', fontSize:12, flex:1 }}>{src.source}</span>
                         <span style={{ color:'#6b7280', fontSize:11 }}>{src.zone}</span>
                         {src.level > 0 && <span style={{ color:'#f59e0b', fontSize:11 }}>Lv.{src.level}</span>}
-                        <span style={{ color: src.type === 'shop' ? '#fbbf24' : src.chance >= 0.5 ? '#34d399' : src.chance >= 0.2 ? '#fbbf24' : '#f87171',
-                          fontWeight:700, fontSize:12 }}>
-                          {src.type === 'craft' ? '100%' : src.type === 'shop' ? `${src.buyPrice}G` : `${Math.round(src.chance*100)}%`}
-                        </span>
+                        {src.type === 'planned'
+                          ? <span style={{ color:'#6b7280', fontSize:11, fontStyle:'italic' }}>{src.note || 'ยังไม่เปิด'}</span>
+                          : <span style={{ color: src.type === 'shop' ? '#fbbf24' : src.chance >= 0.5 ? '#34d399' : src.chance >= 0.2 ? '#fbbf24' : '#f87171',
+                              fontWeight:700, fontSize:12 }}>
+                              {src.type === 'craft' ? '100%' : src.type === 'shop' ? `${src.buyPrice}G` : `${Math.round(src.chance*100)}%`}
+                            </span>
+                        }
                       </div>
                     );
                   })}
