@@ -81,21 +81,6 @@ export default function GiftLeaderboardWidget() {
         {skinDef && <SkinParticles skinId={skinId} />}
 
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <h3
-            style={{
-              color: styles.ac,
-              fontWeight: 700,
-              fontSize: styles.fs + 2,
-              margin: '0 0 12px',
-              textAlign: 'center',
-              letterSpacing: 1,
-              textTransform: 'uppercase',
-              textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-            }}
-          >
-            🎁 Top Gifters
-          </h3>
-
           {board.length === 0 ? (
             <p
               style={{
