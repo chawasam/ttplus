@@ -267,7 +267,12 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
 
 // ── Action Form Modal ────────────────────────────────────────────────────────
 function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
-  const [form, setForm] = useState(initial || DEFAULT_ACTION);
+  // merge กับ DEFAULT_ACTION เพื่อให้ทุก field มีค่า default เสมอ (ป้องกัน undefined.includes)
+  const [form, setForm] = useState({
+    ...DEFAULT_ACTION,
+    ...(initial || {}),
+    types: Array.isArray(initial?.types) ? initial.types : [],
+  });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   // OBS dropdown state
@@ -938,6 +943,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [actions,  setActions]  = useState([]);
   const [events,   setEvents]   = useState([]);
   const [loading,  setLoading]  = useState(false);
+  // Delete confirmation: { id, type:'action'|'event' } — กดครั้งแรก set, กดครั้งสองลบจริง
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const confirmTimerRef = useRef(null);
   const [tab,      setTab]      = useState('actions'); // actions | events | overlay | obs
 
   // Modals
@@ -1009,14 +1017,35 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     }
   }, [loadData]);
 
-  const deleteAction = useCallback(async (id) => {
-    if (!confirm('ลบ Action นี้?')) return;
-    try {
-      await api.delete(`/api/actions/${id}`);
-      toast.success('ลบแล้ว');
-      loadData();
-    } catch { toast.error('ลบไม่ได้'); }
-  }, [loadData]);
+  // ── Double-confirm delete (กดครั้งแรก = รอยืนยัน, กดครั้งสอง = ลบจริง) ──
+  const requestDelete = useCallback((id, type = 'action') => {
+    if (confirmDelete?.id === id && confirmDelete?.type === type) {
+      // กดครั้งที่สอง — ลบจริง
+      clearTimeout(confirmTimerRef.current);
+      setConfirmDelete(null);
+      const del = async () => {
+        try {
+          if (type === 'action') {
+            await api.delete(`/api/actions/${id}`);
+          } else {
+            await api.delete(`/api/actions/events/${id}`);
+          }
+          toast.success('ลบแล้ว');
+          loadData();
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'ลบไม่สำเร็จ');
+        }
+      };
+      del();
+    } else {
+      // กดครั้งแรก — รอ 3 วิ
+      clearTimeout(confirmTimerRef.current);
+      setConfirmDelete({ id, type });
+      confirmTimerRef.current = setTimeout(() => setConfirmDelete(null), 3000);
+    }
+  }, [confirmDelete, loadData]);
+
+  const deleteAction = useCallback((id) => requestDelete(id, 'action'), [requestDelete]);
 
   const toggleAction = useCallback(async (a) => {
     try {
@@ -1043,14 +1072,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     }
   }, [loadData]);
 
-  const deleteEvent = useCallback(async (id) => {
-    if (!confirm('ลบ Event นี้?')) return;
-    try {
-      await api.delete(`/api/actions/events/${id}`);
-      toast.success('ลบแล้ว');
-      loadData();
-    } catch { toast.error('ลบไม่ได้'); }
-  }, [loadData]);
+  const deleteEvent = useCallback((id) => requestDelete(id, 'event'), [requestDelete]);
 
   const toggleEvent = useCallback(async (e) => {
     try {
@@ -1155,7 +1177,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <p className="text-sm font-medium text-gray-200 truncate leading-none">{a.name}</p>
                     <span className="text-[10px] text-gray-600 shrink-0 leading-none">
-                      {a.types.map(t => ACTION_TYPES.find(x => x.id === t)?.icon).filter(Boolean).join('')}
+                      {(a.types || []).map(t => ACTION_TYPES.find(x => x.id === t)?.icon).filter(Boolean).join('')}
                     </span>
                     <span className="text-[10px] text-gray-700 shrink-0 leading-none hidden md:inline">
                       S{a.overlayScreen} · {a.displayDuration}s
@@ -1179,8 +1201,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                       แก้ไข
                     </button>
                     <button onClick={() => deleteAction(a.id)}
-                      className="text-[11px] text-red-600 hover:text-red-400 px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 leading-none">
-                      ลบ
+                      className={clsx(
+                        'text-[11px] px-1.5 py-0.5 rounded leading-none transition-colors',
+                        confirmDelete?.id === a.id && confirmDelete?.type === 'action'
+                          ? 'bg-red-600 text-white animate-pulse'
+                          : 'text-red-600 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
+                      )}>
+                      {confirmDelete?.id === a.id && confirmDelete?.type === 'action' ? 'ยืนยัน?' : 'ลบ'}
                     </button>
                   </div>
                 </div>
@@ -1240,8 +1267,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                       แก้ไข
                     </button>
                     <button onClick={() => deleteEvent(ev.id)}
-                      className="text-xs text-red-500 hover:text-red-400 px-2 py-0.5 rounded bg-gray-800">
-                      ลบ
+                      className={clsx(
+                        'text-xs px-2 py-0.5 rounded transition-colors',
+                        confirmDelete?.id === ev.id && confirmDelete?.type === 'event'
+                          ? 'bg-red-600 text-white animate-pulse'
+                          : 'text-red-500 hover:text-red-400 bg-gray-800'
+                      )}>
+                      {confirmDelete?.id === ev.id && confirmDelete?.type === 'event' ? 'ยืนยัน?' : 'ลบ'}
                     </button>
                   </div>
                 </div>
