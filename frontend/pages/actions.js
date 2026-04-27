@@ -618,6 +618,202 @@ function EventModal({ initial, actions, onSave, onClose }) {
   );
 }
 
+// ── Preview / Test Modal ─────────────────────────────────────────────────────
+function PreviewModal({ action, onClose }) {
+  const [visible, setVisible] = useState(false);
+  const audioRef = useRef(null);
+
+  const getYtEmbed = (url) => {
+    const m = url?.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{11})/);
+    return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&controls=0&mute=0` : url;
+  };
+
+  useEffect(() => {
+    // Fade in
+    requestAnimationFrame(() => setVisible(true));
+
+    // Play audio
+    if (action.types?.includes('play_audio') && action.audioUrl) {
+      const audio = new Audio(action.audioUrl);
+      audio.volume = 0.9;
+      audio.play().catch(() => {});
+      audioRef.current = audio;
+    }
+
+    // TTS
+    if (action.types?.includes('read_tts') && action.ttsText) {
+      const text = action.ttsText
+        .replace('{username}', 'ทดสอบ')
+        .replace('{giftname}', 'Rose')
+        .replace('{coins}', '100');
+      speak(text);
+    }
+
+    // Auto-close after displayDuration
+    const dur = (action.displayDuration || 5) * 1000;
+    const timer = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onClose, 500);
+    }, dur);
+
+    return () => {
+      clearTimeout(timer);
+      window.speechSynthesis?.cancel();
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isYt = action.videoUrl?.includes('youtube') || action.videoUrl?.includes('youtu.be');
+  const hasVisual = action.types?.some(t => ['show_picture','play_video','show_alert'].includes(t));
+  const dur = action.displayDuration || 5;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-2xl"
+        style={{ aspectRatio: '16/9' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center text-base hover:bg-black/80 transition-colors"
+        >
+          ×
+        </button>
+
+        {/* Label */}
+        <div className="absolute top-3 left-3 z-20 bg-black/60 text-white text-xs px-2 py-1 rounded-full font-medium">
+          ▶ ทดสอบ: {action.name}
+        </div>
+
+        {/* Picture / GIF */}
+        {action.types?.includes('show_picture') && action.pictureUrl && (
+          <img
+            src={action.pictureUrl}
+            alt=""
+            style={{
+              transition: 'opacity 0.5s, transform 0.5s',
+              opacity: visible ? 1 : 0,
+              transform: visible ? 'scale(1)' : 'scale(0.95)',
+              position: 'absolute',
+              maxWidth: '90%', maxHeight: '80%',
+              objectFit: 'contain',
+              top: '50%', left: '50%',
+              transform: visible
+                ? 'translate(-50%,-50%) scale(1)'
+                : 'translate(-50%,-50%) scale(0.95)',
+              borderRadius: 12,
+            }}
+          />
+        )}
+
+        {/* Video */}
+        {action.types?.includes('play_video') && action.videoUrl && (
+          isYt ? (
+            <iframe
+              src={getYtEmbed(action.videoUrl)}
+              style={{
+                transition: 'opacity 0.5s',
+                opacity: visible ? 1 : 0,
+                position: 'absolute',
+                width: '80%', left: '10%',
+                aspectRatio: '16/9',
+                top: '50%', transform: 'translateY(-50%)',
+                border: 'none', borderRadius: 12,
+              }}
+              allow="autoplay"
+            />
+          ) : (
+            <video
+              src={action.videoUrl}
+              autoPlay
+              controls={false}
+              style={{
+                transition: 'opacity 0.5s',
+                opacity: visible ? 1 : 0,
+                position: 'absolute',
+                maxWidth: '80%', maxHeight: '80%',
+                top: '50%', left: '50%',
+                transform: 'translate(-50%,-50%)',
+                borderRadius: 12,
+              }}
+            />
+          )
+        )}
+
+        {/* Alert */}
+        {action.types?.includes('show_alert') && action.alertText && (
+          <div style={{
+            transition: 'opacity 0.5s, transform 0.5s',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateX(-50%) scale(1)' : 'translateX(-50%) scale(0.9)',
+            position: 'absolute',
+            bottom: 48, left: '50%',
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.95), rgba(79,70,229,0.95))',
+            color: '#fff',
+            padding: '14px 28px',
+            borderRadius: 999,
+            fontSize: 20,
+            fontWeight: 700,
+            textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(124,58,237,0.6)',
+            maxWidth: '85%',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'system-ui, sans-serif',
+            textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+            whiteSpace: 'pre-wrap',
+          }}>
+            {action.alertText
+              .replace('{username}', 'ทดสอบ')
+              .replace('{giftname}', 'Rose')
+              .replace('{coins}', '100')}
+          </div>
+        )}
+
+        {/* Audio-only / TTS-only indicator */}
+        {!hasVisual && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <div style={{
+              fontSize: 56,
+              transition: 'opacity 0.5s',
+              opacity: visible ? 1 : 0,
+              filter: 'drop-shadow(0 0 20px rgba(167,139,250,0.6))',
+            }}>
+              {action.types?.includes('play_audio') ? '🔊' :
+               action.types?.includes('read_tts')   ? '🗣️' : '⚡'}
+            </div>
+            <p style={{
+              transition: 'opacity 0.5s',
+              opacity: visible ? 1 : 0,
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 14,
+              fontFamily: 'system-ui',
+            }}>
+              {action.types?.includes('play_audio') ? 'กำลังเล่นเสียง...' :
+               action.types?.includes('read_tts')   ? 'กำลังอ่านออกเสียง...' : 'Action กำลังทำงาน'}
+            </p>
+          </div>
+        )}
+
+        {/* Progress bar countdown */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800 overflow-hidden rounded-b-xl">
+          <div
+            className="h-full bg-brand-500"
+            style={{
+              width: visible ? '0%' : '100%',
+              transition: `width ${dur}s linear`,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function ActionsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
   const [actions,  setActions]  = useState([]);
@@ -626,8 +822,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [tab,      setTab]      = useState('actions'); // actions | events | overlay | obs
 
   // Modals
-  const [actionModal,  setActionModal]  = useState(null); // null | { data }
-  const [eventModal,   setEventModal]   = useState(null);
+  const [actionModal,   setActionModal]  = useState(null); // null | { data }
+  const [eventModal,    setEventModal]   = useState(null);
+  const [previewAction, setPreviewAction] = useState(null); // action being previewed
 
   // OBS settings
   const [obsHost,     setObsHost]     = useState('localhost');
@@ -837,6 +1034,12 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setPreviewAction(a)}
+                    className="text-xs text-brand-400 hover:text-brand-300 px-2 py-0.5 rounded bg-brand-900/30 hover:bg-brand-900/50 border border-brand-800 transition-colors"
+                  >
+                    ▶ ทดสอบ
+                  </button>
                   <button onClick={() => toggleAction(a)}
                     className={clsx('text-xs px-2 py-0.5 rounded', a.enabled ? 'bg-green-900 text-green-400' : 'bg-gray-800 text-gray-500')}>
                     {a.enabled ? 'เปิด' : 'ปิด'}
@@ -1006,6 +1209,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           actions={actions}
           onSave={saveEvent}
           onClose={() => setEventModal(null)}
+        />
+      )}
+
+      {/* Preview / Test Modal */}
+      {previewAction && (
+        <PreviewModal
+          action={previewAction}
+          onClose={() => setPreviewAction(null)}
         />
       )}
 
