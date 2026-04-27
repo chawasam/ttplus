@@ -575,7 +575,7 @@ async function getGameData(req, res) {
       cleric:      { weaponTier:1, basicMult:0.70, sigMP:40, sigMult:2.5 }, // holy_nova 2.5 (magic)
       ranger:      { weaponTier:3, basicMult:1.00, sigMP:30, sigMult:2.5 }, // multishot+arrow rain ~2.5
       mage:        { weaponTier:1, basicMult:1.00, sigMP:45, sigMult:3.5 }, // arcane_explosion 3.5 (magic)
-      bard:        { weaponTier:1, basicMult:0.80, sigMP:38, sigMult:2.0 }, // support / songburst ~2.0
+      bard:        { weaponTier:1, basicMult:0.85, sigMP:38, sigMult:2.5 }, // support / songburst ~2.5 (buffed)
       berserker:   { weaponTier:3, basicMult:1.10, sigMP:30, sigMult:3.0 }, // devastate/reckless 3.0 (NOT LB 7.0)
       engineer:    { weaponTier:3, basicMult:1.00, sigMP:30, sigMult:2.5 }, // grenade/bomb ~2.5
       runesmith:   { weaponTier:3, basicMult:0.90, sigMP:35, sigMult:2.5 }, // rune strike ~2.5
@@ -584,7 +584,7 @@ async function getGameData(req, res) {
       phantom:     { weaponTier:1, basicMult:0.90, sigMP:45, sigMult:2.5 }, // phase skills ~2.5 (magic)
       deathknight: { weaponTier:3, basicMult:0.90, sigMP:30, sigMult:2.5 }, // death strike ~2.5
       necromancer: { weaponTier:1, basicMult:0.80, sigMP:50, sigMult:3.0 }, // death_bolt 3.0 (magic)
-      gravecaller: { weaponTier:1, basicMult:0.80, sigMP:45, sigMult:2.5 }, // bone skills ~2.5 (magic)
+      gravecaller: { weaponTier:1, basicMult:0.90, sigMP:45, sigMult:2.5 }, // bone skills ~2.5 (magic, buffed)
       voidwalker:  { weaponTier:3, basicMult:1.00, sigMP:35, sigMult:2.5 }, // void tear ~2.5
       rifter:      { weaponTier:4, basicMult:1.10, sigMP:28, sigMult:2.5 }, // rift slash ~2.5
       soulseer:    { weaponTier:1, basicMult:0.90, sigMP:45, sigMult:2.5 }, // fate seal ~2.5 (magic)
