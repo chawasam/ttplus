@@ -11,6 +11,8 @@ const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 const activeConnections = new Map(); // userId -> { connection, tiktokUsername, connectedAt, manualDisconnect }
 const reconnectTimers   = new Map(); // userId -> timerId
 const reconnectAttempts = new Map(); // userId -> attempt count
+const likesLeaderboard  = new Map(); // vjId -> Map<uniqueId, {nickname, profilePictureUrl, likeCount}>
+const giftsLeaderboard  = new Map(); // vjId -> Map<uniqueId, {nickname, profilePictureUrl, totalCoins}>
 
 // จำกัด connections สูงสุดต่อ server (ป้องกัน resource exhaustion)
 const MAX_CONNECTIONS        = 100;
@@ -112,6 +114,10 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       manualDisconnect: false,
     });
 
+    // Reset leaderboards on new connection
+    likesLeaderboard.set(userId, new Map());
+    giftsLeaderboard.set(userId, new Map());
+
     await logSession({ userId, tiktokUsername, action: 'connect', roomId: state.roomId });
 
     const widgetRoom = `widget_${userId}`;
@@ -153,6 +159,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       const safe         = sanitizeTikTokEvent(data);
       const diamondCount = Math.max(0, Number(data.diamondCount) || 0);
       const repeatCount  = Math.min(Number(data.repeatCount) || 1, 9999);
+      const coinsThisEvent = diamondCount * repeatCount;
       const giftPayload  = {
         type: 'gift',
         uniqueId:          safe.uniqueId,
@@ -165,6 +172,11 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         timestamp:         Date.now(),
       };
       emitAll('gift', giftPayload);
+      // Update gifts leaderboard
+      const glb = giftsLeaderboard.get(userId) || new Map();
+      const gprev = glb.get(safe.uniqueId) || { nickname: safe.nickname, profilePictureUrl: safe.profilePictureUrl, totalCoins: 0 };
+      glb.set(safe.uniqueId, { ...gprev, nickname: safe.nickname, profilePictureUrl: safe.profilePictureUrl, totalCoins: gprev.totalCoins + coinsThisEvent });
+      giftsLeaderboard.set(userId, glb);
       // Game currency pipeline
       if (diamondCount > 0) {
         const socketIp = io?.sockets?.sockets?.get?.(socketId)?.handshake?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || '';
@@ -185,15 +197,21 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
 
     connection.on('like', (data) => {
       const safe = sanitizeTikTokEvent(data);
+      const likeCount = Math.max(0, Number(data.likeCount) || 0);
       const likePayload = {
         type: 'like',
         uniqueId:       safe.uniqueId,
         nickname:       safe.nickname,
-        likeCount:      Math.max(0, Number(data.likeCount) || 0),
+        likeCount:      likeCount,
         totalLikeCount: Math.max(0, Number(data.totalLikeCount) || 0),
         timestamp:      Date.now(),
       };
       emitAll('like', likePayload);
+      // Update likes leaderboard
+      const lb = likesLeaderboard.get(userId) || new Map();
+      const prev = lb.get(safe.uniqueId) || { nickname: safe.nickname, profilePictureUrl: safe.profilePictureUrl, likeCount: 0 };
+      lb.set(safe.uniqueId, { ...prev, nickname: safe.nickname, profilePictureUrl: safe.profilePictureUrl, likeCount: prev.likeCount + likeCount });
+      likesLeaderboard.set(userId, lb);
       // ลูกเล่น TT — fire like events
       processEvent(userId, 'like', likePayload).catch(() => {});
     });
@@ -302,4 +320,12 @@ function getActiveConnectionCount() {
   return activeConnections.size;
 }
 
-module.exports = { startConnection, stopConnection, hasConnection, getActiveConnectionCount };
+function getLeaderboard(vjId, type) {
+  const lb = type === 'likes' ? likesLeaderboard.get(vjId) : giftsLeaderboard.get(vjId);
+  if (!lb) return [];
+  return Array.from(lb.values())
+    .sort((a, b) => (type === 'likes' ? b.likeCount - a.likeCount : b.totalCoins - a.totalCoins))
+    .slice(0, 10);
+}
+
+module.exports = { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard };

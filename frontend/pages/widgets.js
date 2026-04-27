@@ -72,6 +72,8 @@ const WIDGETS = [
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
   { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
+  { id: 'likes-leaderboard', icon: '👍', name: 'Likes Leaderboard', desc: 'Top 10 ผู้ที่ Like มากที่สุด ตอนไลฟ์', size: '300 × 520', useVjId: true },
+  { id: 'gift-leaderboard',  icon: '🎁', name: 'Gift Leaderboard',  desc: 'Top 10 ผู้ส่งของขวัญมากที่สุด ตอนไลฟ์', size: '300 × 520', useVjId: true },
   // ── ซ่อนชั่วคราว — ยังไม่พร้อมใช้งาน ──
   // { id: 'dungeon', icon: '🏚️', name: 'Dungeon Activity', desc: 'แสดงผู้เล่นที่กำลัง run dungeon อยู่ + feed เหตุการณ์ live', size: '360 × 480', noStyle: true },
   // { id: 'leaderboard', ... }
@@ -206,15 +208,27 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   }, [customConfigs]);
 
   const getWidgetUrl = useCallback((widgetId) => {
-    if (!widgetCid || !baseUrl) return '';
+    if (!baseUrl) return '';
+    const w = WIDGETS.find(ww => ww.id === widgetId);
+
+    // For vjId-based widgets (likes-leaderboard, gift-leaderboard), use user.uid instead of cid
+    if (w?.useVjId) {
+      if (!user || !user.uid) return '';
+      const base = `${baseUrl}/widget/${widgetId}?vjId=${user.uid}`;
+      const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
+      if (!style) return base;
+      const styleQ = styleToParams(style, widgetId);
+      return styleQ ? `${base}&${styleQ}` : base;
+    }
+
+    if (!widgetCid) return '';
     const base = `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
-    const w    = WIDGETS.find(ww => ww.id === widgetId);
     if (w?.configFields) return `${base}&${buildCustomParams(w)}`;
     const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [widgetCid, baseUrl, styles, buildCustomParams]);
+  }, [widgetCid, baseUrl, styles, user, buildCustomParams]);
 
   const copyUrl = useCallback((widgetId) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -240,14 +254,20 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
-    const base = `${baseUrl}/widget/${widgetId}?preview=1`;
-    const w    = WIDGETS.find(ww => ww.id === widgetId);
+    const w = WIDGETS.find(ww => ww.id === widgetId);
+
+    // For vjId-based widgets, add vjId to preview URL
+    let base = `${baseUrl}/widget/${widgetId}?preview=1`;
+    if (w?.useVjId && user?.uid) {
+      base += `&vjId=${user.uid}`;
+    }
+
     if (w?.configFields) return `${base}&${buildCustomParams(w)}`;
     const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [baseUrl, styles, buildCustomParams]);
+  }, [baseUrl, styles, user, buildCustomParams]);
 
   const saveStyleForWidget = useCallback(async (widgetId, style) => {
     if (!user) { setShowLoginModal(true); return; }

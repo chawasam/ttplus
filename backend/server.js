@@ -272,6 +272,10 @@ app.use('/api/game', gameRouter);
 const actionsRouter = require('./routes/actions');
 app.use('/api/actions', actionsRouter);
 
+// ===== Leaderboard Route (public, no auth) =====
+const leaderboardRouter = require('./routes/leaderboard');
+app.use('/api/leaderboard', leaderboardRouter);
+
 // ===== Overlay Route (public, no auth) =====
 const { getOverlayState } = require('./handlers/game/overlay');
 app.get('/api/overlay/:tiktokId', getOverlayState);
