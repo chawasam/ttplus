@@ -12,7 +12,8 @@ import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 const W = 800;
 const H = 800;
 const AVATAR_R       = 22;   // rocket avatar radius (px)
-const PARTICLE_COUNT = 32;   // particles per explosion
+const PARTICLE_COUNT = 10;   // particles per explosion
+const PARTICLE_TRAIL = 16;  // trail points ต่อ particle (เหมือนเส้นหางพลุจริง)
 const TRAIL_LEN      = 12;   // trail dot count
 const LAUNCH_MS      = 3000; // ms to reach explosion point (aligned to audio)
 const EXPLODE_MS     = 3200; // ms explosion animation stays alive
@@ -82,19 +83,20 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
 // ── Create explosion particles ───────────────────────────────────────────────
 function explode(r) {
   for (let i = 0; i < PARTICLE_COUNT; i++) {
-    const angle = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.5;
-    const speed = 2.2 + Math.random() * 4.5;
+    const angle = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.3;
+    const speed = 4.5 + Math.random() * 5.5; // เร็วขึ้น → กระจายกว้างเหมือนพลุจริง
     r.particles.push({
       x:        r.targetX,
       y:        r.targetY,
       vx:       Math.cos(angle) * speed,
-      vy:       Math.sin(angle) * speed - 0.9, // slight upward bias at burst
-      gravity:  0.045 + Math.random() * 0.045,  // slower gravity → lasts ~3 s
-      alpha:    0.90 + Math.random() * 0.10,
-      decay:    0.004 + Math.random() * 0.003,   // ~0.005 avg → ~180 frames ≈ 3 s
-      size:     22 + Math.random() * 18,
+      vy:       Math.sin(angle) * speed - 1.2,  // upward bias ให้ดูเหมือนพุ่งออก
+      gravity:  0.06 + Math.random() * 0.04,
+      alpha:    0.95 + Math.random() * 0.05,
+      decay:    0.0035 + Math.random() * 0.003, // lasts ~2.5–3 s
+      size:     26 + Math.random() * 16,
       rotation: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.15,
+      rotSpeed: (Math.random() - 0.5) * 0.18,
+      trail:    [],  // เก็บตำแหน่งย้อนหลัง → วาดเส้นหาง
     });
   }
 }
@@ -167,7 +169,11 @@ function tickRocket(ctx, r, now) {
       if (p.alpha <= 0) continue;
       alive = true;
 
-      p.vx  *= 0.985;
+      // บันทึกตำแหน่งก่อนขยับ → ใช้วาดหาง
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > PARTICLE_TRAIL) p.trail.shift();
+
+      p.vx  *= 0.982;
       p.vy  += p.gravity;
       p.x   += p.vx;
       p.y   += p.vy;
@@ -176,6 +182,25 @@ function tickRocket(ctx, r, now) {
 
       if (p.alpha <= 0) continue;
 
+      // ── วาดเส้นหาง (trail) ──────────────────────────────────────────────
+      if (p.trail.length > 1) {
+        ctx.save();
+        for (let t = 1; t < p.trail.length; t++) {
+          const f    = t / p.trail.length;          // 0 = เก่า, 1 = ใหม่
+          const prev = p.trail[t - 1];
+          const curr = p.trail[t];
+          ctx.beginPath();
+          ctx.moveTo(prev.x, prev.y);
+          ctx.lineTo(curr.x, curr.y);
+          ctx.strokeStyle = `rgba(255,220,120,${f * f * p.alpha * 0.85})`;
+          ctx.lineWidth   = f * 3.5;
+          ctx.lineCap     = 'round';
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // ── วาด gift image / emoji ที่หัว particle ──────────────────────────
       ctx.save();
       ctx.globalAlpha = p.alpha;
       ctx.translate(p.x, p.y);
