@@ -74,6 +74,7 @@ const WIDGETS = [
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
   { id: 'likes-leaderboard', icon: '👍', name: 'Likes Leaderboard', desc: 'Top 10 ผู้ที่ Like มากที่สุด ตอนไลฟ์', size: '300 × 520', useVjId: true },
   { id: 'gift-leaderboard',  icon: '🎁', name: 'Gift Leaderboard',  desc: 'Top 10 ผู้ส่งของขวัญมากที่สุด ตอนไลฟ์', size: '300 × 520', useVjId: true },
+  { id: 'fireworks',         icon: '🎆', name: 'Gift Fireworks',    desc: 'พลุของขวัญ — Rocket = avatar ผู้ส่ง, ระเบิด = รูปของขวัญ', size: '800 × 800' },
   // ── ซ่อนชั่วคราว — ยังไม่พร้อมใช้งาน ──
   // { id: 'dungeon', icon: '🏚️', name: 'Dungeon Activity', desc: 'แสดงผู้เล่นที่กำลัง run dungeon อยู่ + feed เหตุการณ์ live', size: '360 × 480', noStyle: true },
   // { id: 'leaderboard', ... }
