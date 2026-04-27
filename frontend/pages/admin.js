@@ -2533,7 +2533,7 @@ function BalanceSimTab() {
   const [scm,     setScm]     = useState(2.50);
   const [mpR,     setMpR]     = useState(8);
   const [wt,      setWt]      = useState([0,8,16,28,45,68]);
-  const [zScale,  setZScale]  = useState([0,1.0,1.3,1.7,2.2,3.0,4.2]);
+  const [zScale,  setZScale]  = useState([1.0,1.3,1.7,2.2,3.0,4.2]);
   const [sigMults,setSigMults]= useState(SIM_CLASSES.map(c => c.sigMult));
   const [view,    setView]    = useState('ratio');
   const [selZone, setSelZone] = useState(0);
@@ -2593,7 +2593,7 @@ function BalanceSimTab() {
     setCr(SIM_BASELINE.cr); setCm(SIM_BASELINE.cm); setScr(SIM_BASELINE.scr); setScm(SIM_BASELINE.scm);
     setMpR(SIM_BASELINE.mpR);
     setWt([...SIM_BASELINE.wt]);
-    setZScale([...SIM_BASELINE.zScale]);
+    setZScale([1.0,1.3,1.7,2.2,3.0,4.2]);
     setSigMults(SIM_CLASSES.map(c => c.sigMult));
   }
 
@@ -2621,8 +2621,8 @@ function BalanceSimTab() {
     .sort((a,b) => b.dps - a.dps);
   const maxDPS = dpsData[0]?.dps || 1;
 
-  const slRow = (label, val, min, max, step, setter, fmt) => (
-    <div style={{ marginBottom:8 }}>
+  const slRow = (label, val, min, max, step, setter, fmt, key) => (
+    <div key={key || label} style={{ marginBottom:8 }}>
       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
         <span style={{ fontSize:11, color:'#9ca3af' }}>{label}</span>
         <span style={{ fontSize:11, fontWeight:700, color:'#f59e0b' }}>{fmt ? fmt(val) : val}</span>
@@ -2670,17 +2670,17 @@ function BalanceSimTab() {
           <div style={sectionCard}>
             <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Weapon ATK (Tier 1–5)</div>
             {[1,2,3,4,5].map(i => slRow(`T${i}`, wt[i], i===1?4:i===2?10:i===3?18:i===4?30:50, i===1?20:i===2?30:i===3?50:i===4?70:100, 1,
-              v => { const nw=[...wt]; nw[i]=Math.round(v); setWt(nw); }, v => Math.round(v)))}
+              v => { const nw=[...wt]; nw[i]=Math.round(v); setWt(nw); }, v => Math.round(v), 'wt'+i))}
           </div>
           <div style={sectionCard}>
             <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Monster ATK scale (zone 1–6)</div>
-            {SIM_ZONES.map((z,i) => slRow(z.name, zScale[i+1], 0.5, 8, 0.05,
-              v => { const nz=[...zScale]; nz[i+1]=v; setZScale(nz); }, v => v.toFixed(2)+'×'))}
+            {SIM_ZONES.map((z,i) => slRow(z.name, zScale[i], 0.5, 8, 0.05,
+              v => { const nz=[...zScale]; nz[i]=v; setZScale(nz); }, v => v.toFixed(2)+'×', 'zs'+i))}
           </div>
           <div style={sectionCard}>
             <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Class signature mult</div>
             {SIM_CLASSES.map((c,i) => slRow(c.name, sigMults[i], 0.5, 6, 0.05,
-              v => { const nm=[...sigMults]; nm[i]=v; setSigMults(nm); }, v => v.toFixed(2)+'×'))}
+              v => { const nm=[...sigMults]; nm[i]=v; setSigMults(nm); }, v => v.toFixed(2)+'×', 'csm'+i))}
           </div>
         </div>
 
