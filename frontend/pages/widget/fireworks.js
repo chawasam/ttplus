@@ -453,17 +453,10 @@ export default function FireworksWidget() {
         }));
       };
 
-      if (data.isRepeatEnd === false) {
-        // Intermediate tap → จุด 1 ลูกทันที
-        spawnOne();
-      } else {
-        // Non-combo gift (repeatCount อาจ > 1) → ทยอย delay
-        const count = Math.max(1, Math.min(safe.repeatCount || 1, 50));
-        const GAP_MS = count <= 3 ? 400 : count <= 10 ? 300 : 200;
-        for (let i = 0; i < count; i++) {
-          setTimeout(spawnOne, i * GAP_MS);
-        }
-      }
+      // ทุก event ที่ผ่านมาถึงจุดนี้ → จุด 1 rocket เสมอ
+      // - Combo intermediate (isRepeatEnd=false) → 1 rocket ต่อ tap
+      // - Non-combo (isRepeatEnd=true, isStreakable=false) → 1 rocket ต่อ gift event
+      spawnOne();
     }
 
     // ── Preview mode ──
