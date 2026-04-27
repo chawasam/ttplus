@@ -45,7 +45,7 @@ function drawCircleImg(ctx, img, cx, cy, r) {
 }
 
 // ── Build a rocket object ──────────────────────────────────────────────────
-function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins, patterns }) {
+function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins, patterns, pcount }) {
   // Launch: random X at bottom edge, Y fixed at bottom
   const startX = W * 0.08 + Math.random() * W * 0.84;
   const startY = H + AVATAR_R + 4;
@@ -74,6 +74,7 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
     giftName:   giftName   || '',
     coins:      coins      || 0,
     patterns:   patterns   || ALL_PATTERNS,
+    pcount:     [10, 20, 30].includes(pcount) ? pcount : 10,
 
     phase:      'launch',   // 'launch' | 'explode'
     labelAlpha: 0,
@@ -88,7 +89,7 @@ function explode(r) {
   // สุ่ม pattern จากที่ผู้ใช้เลือก และจำนวน particle ทุกครั้ง
   const pool  = (r.patterns && r.patterns.length > 0) ? r.patterns : ALL_PATTERNS;
   r.pattern   = pool[Math.floor(Math.random() * pool.length)];
-  const count = 6 + Math.floor(Math.random() * 9); // 6–14 ชิ้น
+  const count = r.pcount || 10; // จำนวนสะเก็ด: 10 | 20 | 30 จาก customize
 
   // Flash วงกลมสว่างวูบที่จุดระเบิด
   r.flash = { alpha: 1.0, radius: 10 };
@@ -416,6 +417,10 @@ export default function FireworksWidget() {
     const activePatterns = patternsParam.split(',').filter(p => ALL_PATTERNS.includes(p));
     const explodePatterns = activePatterns.length > 0 ? activePatterns : ALL_PATTERNS;
 
+    // ── Particle count (from URL param ?pcount=10|20|30, default 10) ──
+    const pcountParam = parseInt(params.get('pcount') ?? '10');
+    const explodePcount = [10, 20, 30].includes(pcountParam) ? pcountParam : 10;
+
     // ── Spawn rocket + play sound ──
     async function spawnFromGift(data) {
       const safe = sanitizeEvent(data);
@@ -438,6 +443,7 @@ export default function FireworksWidget() {
         giftName:   safe.giftName,
         coins:      safe.diamondCount * safe.repeatCount,
         patterns:   explodePatterns,
+        pcount:     explodePcount,
       }));
     }
 

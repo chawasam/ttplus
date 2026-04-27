@@ -814,6 +814,38 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
+      {/* ── Fireworks: Particle Count ── */}
+      {widgetId === 'fireworks' && (
+        <div className="space-y-2 pt-1">
+          <div className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
+            ✨ จำนวนสะเก็ดพลุ
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { val: 10, label: '10', desc: 'เบา' },
+              { val: 20, label: '20', desc: 'ปานกลาง' },
+              { val: 30, label: '30', desc: 'หนาแน่น' },
+            ].map(opt => (
+              <button
+                key={opt.val}
+                onClick={() => set('pcount', opt.val)}
+                className={clsx(
+                  'py-2 px-1 rounded-lg text-xs font-semibold transition border flex flex-col items-center gap-0.5',
+                  (style.pcount ?? 10) === opt.val
+                    ? 'bg-orange-500/20 border-orange-500/60 text-orange-300'
+                    : theme === 'dark'
+                      ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                      : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
+                )}
+              >
+                <span className="text-sm font-bold">{opt.label}</span>
+                <span className="text-[10px] opacity-70">{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Fireworks: Volume (แยก block) ── */}
       {widgetId === 'fireworks' && (
         <div className="space-y-1 pt-1">

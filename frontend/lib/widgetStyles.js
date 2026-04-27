@@ -44,7 +44,7 @@ export const WIDGET_DEFAULTS = {
   'likes-leaderboard':  { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16 },
   giftLeaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
   'gift-leaderboard':   { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
-  fireworks:            { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8800', fs: 14, br: 12, vol: 80, patterns: 'ring,willow,scatter,star,fan' },
+  fireworks:            { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8800', fs: 14, br: 12, vol: 80, patterns: 'ring,willow,scatter,star,fan', pcount: 10 },
   goal:             { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:          { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
   coinjar:          { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8fa3', fs: 13, br: 20, jx: 0, mi: 150, gs: 100, showSender: 1, showGiftName: 1, showGiftImage: 1 },
@@ -172,6 +172,12 @@ export function parseWidgetStyles(params, widgetId) {
     ? clamp(parseInt(params.get('vol') ?? d.vol), 0, 100)
     : 80;
 
+  // pcount — จำนวนสะเก็ด 10 | 20 | 30 (fireworks เท่านั้น)
+  const pcountRaw = parseInt(params.get('pcount') ?? (d.pcount ?? 10));
+  const pcount = d.pcount !== undefined
+    ? ([10, 20, 30].includes(pcountRaw) ? pcountRaw : 10)
+    : 10;
+
   // patterns — รูปแบบระเบิดที่เปิดใช้ comma-separated (fireworks เท่านั้น)
   const VALID_FW_PATTERNS = ['ring', 'willow', 'scatter', 'star', 'fan'];
   const patternsRaw = params.get('patterns') ?? (d.patterns || 'ring,willow,scatter,star,fan');
@@ -189,9 +195,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns,
+    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount },
   };
 }
 
@@ -232,6 +238,7 @@ export function styleToParams(style, widgetId) {
   if (d.pagebg       !== undefined && style.pagebg       !== d.pagebg && style.pagebg) p.set('pagebg', style.pagebg);
   if (d.vol          !== undefined && style.vol          !== d.vol)          p.set('vol',      style.vol);
   if (d.patterns     !== undefined && style.patterns     !== d.patterns)     p.set('patterns', style.patterns);
+  if (d.pcount       !== undefined && style.pcount       !== d.pcount)       p.set('pcount',   style.pcount);
   return p.toString();
 }
 
@@ -306,6 +313,10 @@ export function rawToStyle(raw = {}, widgetId) {
   const patterns = d.patterns !== undefined
     ? (rawPatterns.split(',').filter(p => VALID_FW_PATTERNS2.includes(p)).join(',') || 'ring,willow,scatter,star,fan')
     : 'ring,willow,scatter,star,fan';
+  const pcountRaw2 = parseInt(raw.pcount ?? (d.pcount ?? 10));
+  const pcount = d.pcount !== undefined
+    ? ([10, 20, 30].includes(pcountRaw2) ? pcountRaw2 : 10)
+    : 10;
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     tc:          '#' + tc,
@@ -313,8 +324,8 @@ export function rawToStyle(raw = {}, widgetId) {
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns,
+    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount },
   };
 }
