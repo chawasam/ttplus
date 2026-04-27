@@ -1140,40 +1140,52 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
               </div>
             )}
 
-            {actions.map(a => (
-              <div key={a.id} className={clsx(
-                'border rounded-lg p-3 flex items-center gap-3 transition-colors',
-                a.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-60'
-              )}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{a.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {a.types.map(t => ACTION_TYPES.find(x => x.id === t)?.icon).join(' ')} ·
-                    Screen {a.overlayScreen} · {a.displayDuration}s
-                  </p>
+            <div className="rounded-lg overflow-hidden border border-gray-800">
+              {actions.map((a, idx) => (
+                <div key={a.id} className={clsx(
+                  'flex items-center gap-2 px-3 py-1.5 transition-colors',
+                  !a.enabled && 'opacity-50',
+                  idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-900/50',
+                  idx !== actions.length - 1 && 'border-b border-gray-800'
+                )}>
+                  {/* Index */}
+                  <span className="text-[10px] text-gray-600 w-4 shrink-0 text-right select-none">{idx + 1}</span>
+
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-200 truncate leading-none">{a.name}</p>
+                    <span className="text-[10px] text-gray-600 shrink-0 leading-none">
+                      {a.types.map(t => ACTION_TYPES.find(x => x.id === t)?.icon).filter(Boolean).join('')}
+                    </span>
+                    <span className="text-[10px] text-gray-700 shrink-0 leading-none hidden md:inline">
+                      S{a.overlayScreen} · {a.displayDuration}s
+                    </span>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setPreviewAction(a)}
+                      className="text-[11px] text-brand-400 hover:text-brand-300 px-1.5 py-0.5 rounded bg-brand-900/30 hover:bg-brand-900/60 border border-brand-900 transition-colors leading-none"
+                    >
+                      ▶
+                    </button>
+                    <button onClick={() => toggleAction(a)}
+                      className={clsx('text-[11px] px-1.5 py-0.5 rounded leading-none', a.enabled ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-600')}>
+                      {a.enabled ? 'เปิด' : 'ปิด'}
+                    </button>
+                    <button onClick={() => setActionModal({ data: { ...a } })}
+                      className="text-[11px] text-gray-500 hover:text-white px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 leading-none">
+                      แก้ไข
+                    </button>
+                    <button onClick={() => deleteAction(a.id)}
+                      className="text-[11px] text-red-600 hover:text-red-400 px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 leading-none">
+                      ลบ
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setPreviewAction(a)}
-                    className="text-xs text-brand-400 hover:text-brand-300 px-2 py-0.5 rounded bg-brand-900/30 hover:bg-brand-900/50 border border-brand-800 transition-colors"
-                  >
-                    ▶ ทดสอบ
-                  </button>
-                  <button onClick={() => toggleAction(a)}
-                    className={clsx('text-xs px-2 py-0.5 rounded', a.enabled ? 'bg-green-900 text-green-400' : 'bg-gray-800 text-gray-500')}>
-                    {a.enabled ? 'เปิด' : 'ปิด'}
-                  </button>
-                  <button onClick={() => setActionModal({ data: { ...a } })}
-                    className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-gray-800">
-                    แก้ไข
-                  </button>
-                  <button onClick={() => deleteAction(a.id)}
-                    className="text-xs text-red-500 hover:text-red-400 px-2 py-0.5 rounded bg-gray-800">
-                    ลบ
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
