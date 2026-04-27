@@ -239,6 +239,43 @@ function tickRocket(ctx, r, now) {
   }
 }
 
+// ── Web Audio helpers (OBS-safe — ไม่ถูก autoplay block) ───────────────────
+let _audioCtx    = null;
+let _fireworkBuf = null;
+
+function getAudioCtx() {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // OBS CEF: resume ทุกครั้งเพื่อหลีกเลี่ยง suspended state
+  if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+  return _audioCtx;
+}
+
+async function preloadFirework() {
+  try {
+    const ctx = getAudioCtx();
+    const res  = await fetch('/sfx/firework.mp3');
+    const buf  = await res.arrayBuffer();
+    _fireworkBuf = await ctx.decodeAudioData(buf);
+  } catch (_) {}
+}
+
+function playFirework(vol) {
+  if (!_fireworkBuf || vol <= 0) return;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
+    const src  = ctx.createBufferSource();
+    src.buffer = _fireworkBuf;
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, vol));
+    src.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(0);
+  } catch (_) {}
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 export default function FireworksWidget() {
   const canvasRef  = useRef(null);
@@ -253,6 +290,9 @@ export default function FireworksWidget() {
     const ctx = canvas.getContext('2d');
 
     const params = new URLSearchParams(window.location.search);
+
+    // ── Preload audio ──
+    preloadFirework();
 
     // ── Animation loop ──
     let raf;
@@ -293,14 +333,9 @@ export default function FireworksWidget() {
       const safe = sanitizeEvent(data);
       if (safe.diamondCount <= 0) return;
 
-      // Play firework sound from start (boom aligns at 3s, sparkle ends at 6s)
-      if (volume > 0) {
-        try {
-          const sfx = new Audio('/sfx/firework.mp3');
-          sfx.volume = volume;
-          sfx.play().catch(() => {});
-        } catch (_) {}
-      }
+      // Play firework sound via Web Audio API (OBS autoplay-safe)
+      // boom aligns at 3s, sparkle ends at 6s — play from start
+      playFirework(volume);
 
       // Load avatar + gift image concurrently
       const [avatarImg, giftImg] = await Promise.all([
