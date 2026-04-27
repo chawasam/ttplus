@@ -11,7 +11,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getQuests, claimQuestReward,
          getQuestLog, acceptSideQuest, getMainQuestLog, collectLore, makeQuestChoice,
          getDailyShop, buyDailyShopItem, getFeaturedDungeonStatus,
-         getRPShop, buyRPItem,
+         getRPShop, buyRPItem, redeemRP, executeSkillReset, executeStatReset,
          getSkills, unlockSkill,
          getCharacterProfile, allocateStat, equipTitle,
          getEnhanceInfo, enhanceItem,
@@ -20,7 +20,8 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getLoginBonusStatus, claimLoginBonus,
          getLeaderboard,
          getWorldBoss, attackWorldBoss,
-         getCraftingRecipes, craftItem } from '../../lib/gameApi';
+         getCraftingRecipes, craftItem,
+         getZoneInfo } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -150,13 +151,16 @@ export default function GameWorld() {
   const [zone,       setZone]       = useState('town_square');
   const [gameLog,    setGameLog]    = useState(['⚔️ ยินดีต้อนรับสู่ Ashenveil: The Shattered Age', '500 ปีหลัง The Sundering โลกแตกออกเป็น Shard...', '─────────────────────────']);
   const [battle,        setBattle]       = useState(null);
-  const [battleLog,     setBattleLog]    = useState([]);
+  const [battleLog,          setBattleLog]         = useState([]);
+  const [battleLogAnimFrom,  setBattleLogAnimFrom]  = useState(0);   // index จากจุดนี้ขึ้นไปให้ animate
+  const logStaggerRef = useRef([]);  // เก็บ timeout IDs สำหรับ cancel
   const [battleSkills,  setBattleSkills] = useState([]);  // available skills in current battle
   const [battleRewards, setBattleRewards] = useState(null); // rewards to show on victory screen
   const [itemModal,    setItemModal]    = useState(null);  // item being previewed { item, context:'inv'|'shop' }
   const [skillModal,   setSkillModal]   = useState(null);  // skill being previewed (skill object)
   const [inventory,  setInventory]  = useState([]);
   const [equipment,  setEquipment]  = useState({});
+  const [invTab,     setInvTab]     = useState('all');   // 'all' | 'equipped'
   const [shopItems,  setShopItems]  = useState([]);
   const [npcs,       setNPCs]       = useState([]);
   const [activeNPC,  setActiveNPC]  = useState(null);
@@ -195,8 +199,13 @@ export default function GameWorld() {
   const [mainQuestTab,   setMainQuestTab]   = useState('quests'); // 'quests' | 'lore'
 
   // ── RP Shop ──
-  const [rpShopItems,    setRPShopItems]    = useState([]);
-  const [rpShopLoading,  setRPShopLoading]  = useState(false);
+  const [rpShopItems,         setRPShopItems]         = useState([]);
+  const [rpShopLoading,       setRPShopLoading]       = useState(false);
+  const [rpPendingSkillReset, setRpPendingSkillReset] = useState(false);
+  const [rpPendingStatReset,  setRpPendingStatReset]  = useState(false);
+  const [rpStones,            setRpStones]            = useState(0);  // Resurrection Stone count
+  const [redeemRpAmt,         setRedeemRpAmt]         = useState(100);   // RP→Gold input
+  const [redeemBusy,     setRedeemBusy]     = useState(false);
 
   // ── Skills ──
   const [skillsData,     setSkillsData]     = useState(null);   // { charClass, classSkills, passiveSkill, unlockedSkills, skillPoints }
@@ -215,6 +224,7 @@ export default function GameWorld() {
   const [questTab,       setQuestTab]       = useState('daily'); // 'daily' | 'weekly'
   const [weeklyData,     setWeeklyData]     = useState(null);   // { weekKey, quests, allCompleted, bonusClaimed, bonus }
   const [weeklyBadge,    setWeeklyBadge]    = useState(false);
+  const [expandedAct,    setExpandedAct]    = useState(null);   // journal accordion
 
   // ── Achievements + Titles ──
   const [achData,        setAchData]        = useState(null);   // { achievements, unlockedTitles, equippedTitle, ... }
@@ -243,6 +253,24 @@ export default function GameWorld() {
   // ── Quest Popup (real-time progress via socket) ──
   const [questPopup,      setQuestPopup]       = useState(null);  // { type, questName, hint, progress, total, rewards, ... }
   const questPopupTimer   = useRef(null);
+
+  // ── Zone Detail Modal ──
+  const [zoneDetailModal, setZoneDetailModal] = useState(null);  // null | { zoneId, loading, data }
+
+  // ── Level-up Celebration ──
+  const [levelUpFlash,   setLevelUpFlash]   = useState(null);   // null | newLevel number
+  const levelUpFlashTimer = useRef(null);
+
+  // ── Rest Confirm Dialog ──
+  const [restConfirmOpen, setRestConfirmOpen] = useState(false);
+
+  // ── Death Penalty Toast ──
+  const [deathPenalty,   setDeathPenalty]   = useState(null);   // null | { goldLost, xpLost, stoneUsed }
+
+  // ── RP Shop: Skill Reset / Stat Reset confirm dialogs ──
+  const [skillResetConfirmOpen, setSkillResetConfirmOpen] = useState(false);
+  const [statResetConfirmOpen,  setStatResetConfirmOpen]  = useState(false);
+  const [resetBusy,             setResetBusy]             = useState(false);
 
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
@@ -331,6 +359,28 @@ export default function GameWorld() {
 
   const addLog = useCallback((...msgs) => {
     setGameLog(prev => [...prev.slice(-100), ...msgs]);
+  }, []);
+
+  // ── Stagger battle log lines ทีละบรรทัด (160ms interval) ────────────────
+  const staggerLog = useCallback((separator, newLines) => {
+    // ยกเลิก stagger ของ turn ก่อนที่ยังค้างอยู่
+    logStaggerRef.current.forEach(clearTimeout);
+    logStaggerRef.current = [];
+
+    const lines = separator ? [separator, ...newLines] : newLines;
+
+    setBattleLog(prev => {
+      // บันทึกจุดเริ่มต้น animate
+      setBattleLogAnimFrom(prev.length);
+      return prev; // ยังไม่เพิ่มอะไร — ปล่อยให้ setTimeout ทำ
+    });
+
+    lines.forEach((line, i) => {
+      const tid = setTimeout(() => {
+        setBattleLog(prev => [...prev, line]);
+      }, i * 160);
+      logStaggerRef.current.push(tid);
+    });
   }, []);
 
   // ===== Daily Quests =====
@@ -469,6 +519,9 @@ export default function GameWorld() {
       const { data } = await getRPShop();
       setRPShopItems(data.items || []);
       setRP(data.rp || 0);
+      setRpPendingSkillReset(data.pendingSkillReset || false);
+      setRpPendingStatReset(data.pendingStatReset   || false);
+      setRpStones(data.resurrectionStones || 0);
     } catch (err) {
       toast.error(err.response?.data?.error || 'โหลด RP Shop ไม่ได้');
     } finally {
@@ -481,6 +534,24 @@ export default function GameWorld() {
     await loadRPShop();
   }, [loadRPShop]);
 
+  const handleRedeemRP = useCallback(async () => {
+    const amt = Number(redeemRpAmt);
+    if (!amt || amt < 100) return toast.error('ขั้นต่ำ 100 RP');
+    if (!confirm(`แลก ${amt} RP → ${Math.floor(amt / 5)} Gold?`)) return;
+    setRedeemBusy(true);
+    try {
+      const { data } = await redeemRP(amt);
+      setRP(data.newRP || 0);
+      setGold(data.newGold || 0);
+      toast.success(data.msg || `แลก ${amt} RP → ${Math.floor(amt / 5)} Gold สำเร็จ!`);
+      addLog(`🪙 แลก ${amt} RP → ${Math.floor(amt / 5)} Gold`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'แลกไม่ได้');
+    } finally {
+      setRedeemBusy(false);
+    }
+  }, [redeemRpAmt, addLog]);
+
   const handleBuyRPItem = useCallback(async (itemId, itemName, rpPrice) => {
     if (!confirm(`ซื้อ ${itemName} ราคา ${rpPrice} RP?`)) return;
     try {
@@ -489,16 +560,70 @@ export default function GameWorld() {
       setRP(data.newRP || 0);
       // Log granted items
       (data.granted || []).forEach(g => {
-        if (g.type === 'item') addLog(`📦 ได้รับ ${g.emoji || ''} ${g.name}`);
-        if (g.type === 'race') addLog(`🧬 ปลดล็อค Race: ${g.name}`);
-        if (g.type === 'title') addLog(`🎖️ ปลดล็อค Title: ${g.name}`);
+        if (g.type === 'item')       addLog(`📦 ได้รับ ${g.emoji || ''} ${g.name}`);
+        if (g.type === 'race')       addLog(`🧬 ปลดล็อค Race: ${g.name}`);
+        if (g.type === 'title')      addLog(`🎖️ ปลดล็อค Title: ${g.name}`);
+        if (g.type === 'consumable' && g.consumableType === 'resurrection_stone')
+          addLog(`💎 มี Resurrection Stone ${g.newCount}/3 ก้อน`);
+        if (g.type === 'consumable' && g.consumableType === 'stamina_refill')
+          addLog(`⚡ เติม Stamina เต็มแล้ว`);
+        if (g.type === 'consumable' && g.consumableType === 'dungeon_key')
+          addLog(`🗝️ ได้รับ Dungeon Key เพิ่ม 1 ครั้ง`);
+        if (g.type === 'boost' && g.boostType === 'vip')
+          addLog(`👑 VIP 7 วัน เปิดใช้งานแล้ว`);
+        if (g.type === 'service' && g.serviceType === 'skill_reset')
+          addLog(`🔄 Skill Reset Token พร้อมใช้`);
+        if (g.type === 'service' && g.serviceType === 'stat_reset')
+          addLog(`↩️ Stat Reset Token พร้อมใช้`);
       });
-      // Refresh list
+      // Refresh list + char profile (สำหรับ stamina/stone count)
       await loadRPShop();
+      if ((data.granted || []).some(g => g.consumableType === 'stamina_refill')) {
+        try { const { data: cd } = await loadCharacter(); setChar(cd); } catch {}
+      }
     } catch (err) {
       toast.error(err.response?.data?.error || 'ซื้อไม่ได้');
     }
   }, [loadRPShop, addLog]);
+
+  // ── Skill Reset (ใช้ token ที่ซื้อจาก RP Shop) ──────────────────────────
+  const handleSkillReset = useCallback(async () => {
+    setResetBusy(true);
+    setSkillResetConfirmOpen(false);
+    try {
+      const { data } = await executeSkillReset();
+      toast.success(data.msg || `Skill Reset สำเร็จ! ได้ ${data.spRefunded} SP คืน`);
+      addLog(`🔄 Skill Reset — ได้รับ ${data.spRefunded} SP คืน`);
+      setChar(c => c ? { ...c, skillPoints: data.newSP, unlockedSkills: [] } : c);
+      await loadRPShop(); // refresh (เพื่ออัพ pendingSkillReset flag)
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Skill Reset ไม่ได้');
+    } finally {
+      setResetBusy(false);
+    }
+  }, [addLog]);
+
+  // ── Stat Reset (ใช้ token ที่ซื้อจาก RP Shop) ───────────────────────────
+  const handleStatReset = useCallback(async () => {
+    setResetBusy(true);
+    setStatResetConfirmOpen(false);
+    try {
+      const { data } = await executeStatReset();
+      toast.success(data.msg || `Stat Reset สำเร็จ! ได้ ${data.pointsRefunded} point คืน`);
+      addLog(`↩️ Stat Reset — ได้รับ ${data.pointsRefunded} Stat Point คืน`);
+      setChar(c => c ? {
+        ...c,
+        statPoints:    data.newStatPoints,
+        allocatedStats: { str: 0, int: 0, agi: 0, vit: 0 },
+        ...data.stats,
+      } : c);
+      await loadRPShop();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Stat Reset ไม่ได้');
+    } finally {
+      setResetBusy(false);
+    }
+  }, [addLog]);
 
   // ===== Skills =====
   const loadSkills = useCallback(async () => {
@@ -665,8 +790,8 @@ export default function GameWorld() {
       const { data } = await claimLoginBonus();
       setGold(g => g + (data.reward?.gold || 0));
       setChar(c => c ? { ...c, xp: (c.xp || 0) + (data.reward?.xp || 0) } : c);
-      addLog(`🎁 Login Bonus Day ${data.streak}! +${data.reward?.gold || 0} Gold, +${data.reward?.xp || 0} XP${data.reward?.items?.length ? ', +ของพิเศษ' : ''}`);
-      toast.success(`🎁 รับ Login Bonus Day ${data.streak}!`, { duration: 4000 });
+      addLog(`🎁 Login Bonus Day ${data.newStreak}! +${data.reward?.gold || 0} Gold, +${data.reward?.xp || 0} XP${data.reward?.items?.length ? ', +ของพิเศษ' : ''}`);
+      toast.success(`🎁 รับ Login Bonus Day ${data.newStreak}!`, { duration: 4000 });
       setShowLoginBonus(false);
       setLoginBonusData(null);
     } catch (err) {
@@ -1085,6 +1210,16 @@ export default function GameWorld() {
   }, [busy, zone]);
 
   // ===== Travel =====
+  const handleOpenZoneDetail = useCallback(async (zoneId) => {
+    setZoneDetailModal({ zoneId, loading: true, data: null });
+    try {
+      const { data } = await getZoneInfo(zoneId);
+      setZoneDetailModal({ zoneId, loading: false, data });
+    } catch {
+      setZoneDetailModal(prev => prev ? { ...prev, loading: false, error: true } : null);
+    }
+  }, []);
+
   const handleTravel = useCallback(async (targetZone) => {
     if (busy) return;
     setBusy(true);
@@ -1127,12 +1262,34 @@ export default function GameWorld() {
     try {
       const { data } = await battleAction(battle.battleId, action, opts);
       setBattle(data.state);
-      setBattleLog(prev => [...prev, '─────', ...(data.state?.log || [])]);
+      staggerLog('─────', data.state?.log || []);
 
       if (data.state?.result === 'victory') {
         const rewards = data.state?.rewards || {};
         if (rewards.gold) setGold(g => g + rewards.gold);
-        if (rewards.levelUp) setChar(c => c ? { ...c, level: rewards.levelUp } : c);
+        if (rewards.levelUp) {
+          const newLv = rewards.levelUp;
+          const newXpToNext = Math.floor(200 * Math.pow(newLv, 1.9));
+          setChar(c => c ? {
+            ...c,
+            level:      newLv,
+            xp:         0,
+            xpToNext:   newXpToNext,
+            hpMax:      (c.hpMax || 100) + 10,
+            mpMax:      (c.mpMax || 50)  + 5,
+            hp:         (c.hpMax || 100) + 10,
+            mp:         (c.mpMax || 50)  + 5,
+            statPoints:  (c.statPoints  || 0) + 3,
+            skillPoints: (c.skillPoints || 0) + 1,
+          } : c);
+          // Celebration flash
+          clearTimeout(levelUpFlashTimer.current);
+          setLevelUpFlash(newLv);
+          levelUpFlashTimer.current = setTimeout(() => setLevelUpFlash(null), 4000);
+        } else {
+          // Normal XP gain (not level-up)
+          if (rewards.xp) setChar(c => c ? { ...c, xp: Math.min((c.xp || 0) + rewards.xp, (c.xpToNext || 9999) - 1) } : c);
+        }
 
         // Was this a dungeon battle?
         if (data.dungeonRunId) {
@@ -1191,7 +1348,22 @@ export default function GameWorld() {
           setDungeonRunId(null);
           setDungeonRoom(null);
         }
-        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1500);
+        // Apply death penalty on frontend
+        if (data.penalty) {
+          const p = data.penalty;
+          if (p.stoneUsed) {
+            // หินปกป้อง — อัพเดท stone count
+            setRpStones(s => Math.max(0, s - 1));
+          } else {
+            if (p.goldLost > 0) setGold(g => Math.max(0, g - p.goldLost));
+            if (p.xpLost   > 0) setChar(c => c ? { ...c, xp: Math.max(0, (c.xp || 0) - p.xpLost) } : c);
+          }
+          setDeathPenalty(p);
+        }
+        // Respawn at town
+        setChar(c => c ? { ...c, location: 'town_square' } : c);
+        setZone('town_square');
+        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); setDeathPenalty(null); }, 3500);
       } else if (data.state?.result === 'fled') {
         setTimeout(() => { setBattle(null); setScreen(dungeonRunId ? SCREENS.DUNGEON_ROOM : SCREENS.WORLD); }, 1000);
       } else {
@@ -1212,12 +1384,21 @@ export default function GameWorld() {
     setScreen(SCREENS.WORLD);
   }, []);
 
+  // Step 1: open confirm dialog
+  const handleRestPrompt = useCallback(() => {
+    if (busy) return;
+    setRestConfirmOpen(true);
+  }, [busy]);
+
+  // Step 2: confirmed → call API
   const handleRest = useCallback(async () => {
+    setRestConfirmOpen(false);
     if (busy) return;
     setBusy(true);
     try {
       const { data } = await rest();
       setChar(c => c ? { ...c, hp: data.hp, mp: data.mp } : c);
+      if (data.newGold !== undefined) setGold(data.newGold);
       addLog(data.msg);
       toast.success(data.msg);
     } catch (err) {
@@ -1663,6 +1844,215 @@ export default function GameWorld() {
         );
       })()}
 
+      {/* ── LEVEL UP CELEBRATION ── */}
+      {levelUpFlash && (
+        <div className="fixed inset-0 z-[80] pointer-events-none flex items-center justify-center"
+          style={{ animation: 'lvup-fade 4s ease forwards' }}>
+          <style>{`
+            @keyframes lvup-fade {
+              0%   { opacity: 0; }
+              10%  { opacity: 1; }
+              70%  { opacity: 1; }
+              100% { opacity: 0; }
+            }
+            @keyframes lvup-burst {
+              0%   { transform: scale(0.5) rotate(-8deg); opacity: 0; }
+              30%  { transform: scale(1.15) rotate(3deg); opacity: 1; }
+              60%  { transform: scale(1.0) rotate(0deg);  opacity: 1; }
+              100% { transform: scale(1.1) rotate(2deg);  opacity: 0.8; }
+            }
+            @keyframes lvup-stars {
+              0%,100% { transform: translateY(0) scale(1); opacity: 0.8; }
+              50%      { transform: translateY(-8px) scale(1.2); opacity: 1; }
+            }
+          `}</style>
+          <div className="absolute inset-0 bg-amber-900/20" />
+          <div className="relative text-center px-8 py-6 rounded-3xl border-2 border-amber-500/60 bg-gray-950/90"
+            style={{
+              animation: 'lvup-burst 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards',
+              boxShadow: '0 0 80px #f59e0b60, 0 0 160px #f59e0b30',
+            }}>
+            <div className="text-5xl mb-2" style={{ animation: 'lvup-stars 1.5s ease-in-out infinite' }}>✨</div>
+            <div className="text-amber-300 text-lg font-bold tracking-widest uppercase mb-1">LEVEL UP!</div>
+            <div className="text-6xl font-black text-amber-400" style={{ textShadow: '0 0 30px #f59e0b' }}>
+              Lv.{levelUpFlash}
+            </div>
+            <div className="text-gray-400 text-xs mt-3">+3 Stat Points · +1 Skill Point · สกิลใหม่ปลดล็อก</div>
+            <div className="flex justify-center gap-3 mt-3 text-xl" style={{ animation: 'lvup-stars 2s ease-in-out infinite 0.3s' }}>
+              ⭐ 🎉 ⭐
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── REST CONFIRM DIALOG ── */}
+      {restConfirmOpen && (() => {
+        const lv = char?.level || 1;
+        const restCost = lv <= 10 ? 20 : lv <= 20 ? 50 : lv <= 40 ? 100 : 200;
+        const canAfford = gold >= restCost;
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4"
+            onClick={() => setRestConfirmOpen(false)}>
+            <div className="bg-gray-950 border border-amber-900 rounded-xl p-5 w-full max-w-xs text-center shadow-2xl"
+              style={{ fontFamily: "'Courier New', Courier, monospace" }}
+              onClick={e => e.stopPropagation()}>
+              <div className="text-4xl mb-3">💤</div>
+              <p className="text-amber-300 font-bold text-sm mb-1">พักผ่อน — ฟื้นฟู HP/MP เต็ม</p>
+              <p className="text-gray-400 text-xs mb-0.5">
+                ค่าใช้จ่าย: <span className="text-yellow-400 font-bold">{restCost} Gold</span>
+                <span className="text-gray-600 text-[10px] ml-1">(Lv.{lv})</span>
+              </p>
+              <div className="text-[10px] text-gray-700 mb-3 space-y-0.5">
+                <p>Lv.1-10: 20G · Lv.11-20: 50G · Lv.21-40: 100G · Lv.41+: 200G</p>
+                <p>Gold ปัจจุบัน: <span className={canAfford ? 'text-yellow-600' : 'text-red-500'}>{gold.toLocaleString()}</span></p>
+              </div>
+              {!canAfford && <p className="text-red-400 text-xs mb-3">⚠️ Gold ไม่พอ!</p>}
+              <div className="flex gap-2">
+                <button onClick={() => setRestConfirmOpen(false)}
+                  className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:bg-gray-800/40">
+                  ยกเลิก
+                </button>
+                <button onClick={handleRest} disabled={!canAfford}
+                  className="flex-1 py-2 rounded border border-amber-700 text-amber-300 text-xs hover:bg-amber-900/30 disabled:opacity-40 disabled:cursor-not-allowed">
+                  ยืนยัน (−{restCost}G)
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── SKILL RESET CONFIRM DIALOG ── */}
+      {skillResetConfirmOpen && (
+        <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4"
+          onClick={() => setSkillResetConfirmOpen(false)}>
+          <div className="bg-gray-950 border border-green-900 rounded-xl p-5 w-full max-w-xs text-center shadow-2xl"
+            style={{ fontFamily: "'Courier New', Courier, monospace" }}
+            onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-3">🔄</div>
+            <p className="text-green-300 font-bold text-sm mb-2">Skill Reset</p>
+            <p className="text-gray-300 text-xs mb-1">คืน Skill Points ทั้งหมดที่ใช้ไป</p>
+            <p className="text-gray-500 text-[10px] mb-4">Skills ทั้งหมดจะถูก lock — unlock ใหม่ได้ตามต้องการ</p>
+            <div className="flex gap-2">
+              <button onClick={() => setSkillResetConfirmOpen(false)}
+                className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:bg-gray-800/40">
+                ยกเลิก
+              </button>
+              <button onClick={handleSkillReset} disabled={resetBusy}
+                className="flex-1 py-2 rounded border border-green-700 text-green-400 text-xs hover:bg-green-900/30 disabled:opacity-40">
+                {resetBusy ? '...' : 'ยืนยัน Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STAT RESET CONFIRM DIALOG ── */}
+      {statResetConfirmOpen && (
+        <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4"
+          onClick={() => setStatResetConfirmOpen(false)}>
+          <div className="bg-gray-950 border border-blue-900 rounded-xl p-5 w-full max-w-xs text-center shadow-2xl"
+            style={{ fontFamily: "'Courier New', Courier, monospace" }}
+            onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-3">↩️</div>
+            <p className="text-blue-300 font-bold text-sm mb-2">Stat Reset</p>
+            <p className="text-gray-300 text-xs mb-1">คืน Stat Points ทั้งหมดที่ใช้ไป</p>
+            <p className="text-gray-500 text-[10px] mb-4">ค่า ATK / DEF / HP / MP จะปรับใหม่ตาม base stats</p>
+            <div className="flex gap-2">
+              <button onClick={() => setStatResetConfirmOpen(false)}
+                className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:bg-gray-800/40">
+                ยกเลิก
+              </button>
+              <button onClick={handleStatReset} disabled={resetBusy}
+                className="flex-1 py-2 rounded border border-blue-700 text-blue-400 text-xs hover:bg-blue-900/30 disabled:opacity-40">
+                {resetBusy ? '...' : 'ยืนยัน Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ZONE DETAIL MODAL ── */}
+      {zoneDetailModal && (
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-end justify-center p-4"
+          onClick={() => setZoneDetailModal(null)}>
+          <div className="bg-gray-950 border border-gray-700 rounded-t-2xl w-full max-w-sm max-h-[80vh] overflow-y-auto"
+            style={{ fontFamily: "'Courier New', Courier, monospace", animation: 'ash-slide-up 0.25s ease' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-gray-950 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+              <div>
+                {zoneDetailModal.loading ? (
+                  <span className="text-gray-400 text-sm">⏳ กำลังโหลด...</span>
+                ) : zoneDetailModal.data ? (
+                  <div>
+                    <span className="text-amber-300 font-bold">{zoneDetailModal.data.icon} {zoneDetailModal.data.name}</span>
+                    <span className="text-gray-500 text-xs ml-2">Lv.{zoneDetailModal.data.level?.[0]}-{zoneDetailModal.data.level?.[1]}</span>
+                  </div>
+                ) : (
+                  <span className="text-red-400 text-sm">⛔ โหลดข้อมูลไม่ได้</span>
+                )}
+              </div>
+              <button onClick={() => setZoneDetailModal(null)} className="text-gray-500 hover:text-white text-lg leading-none">✕</button>
+            </div>
+
+            {zoneDetailModal.data && (() => {
+              const d = zoneDetailModal.data;
+              const typeColor = { beast:'text-green-400', undead:'text-purple-400', demon:'text-red-400', construct:'text-blue-400', human:'text-yellow-400', void:'text-violet-400', spirit:'text-cyan-400' };
+              return (
+                <div className="p-4 space-y-4">
+                  {/* Tier Drop Info */}
+                  {d.tierDrop && (
+                    <div className="bg-amber-900/10 border border-amber-800/30 rounded-lg p-3 text-xs">
+                      <div className="text-amber-400 font-bold mb-1">✨ Zone Tier Drop (Tier {d.tierDrop.tier})</div>
+                      <div className="text-gray-400">{d.tierDrop.equipChance}% โอกาสดรอปอุปกรณ์ Tier {d.tierDrop.tier} ต่อการสังหาร ({d.tierDrop.count} ชิ้นในพูล)</div>
+                    </div>
+                  )}
+
+                  {/* Boss */}
+                  {d.boss && (
+                    <div className="bg-yellow-900/10 border border-yellow-800/30 rounded-lg p-3 text-xs">
+                      <div className="text-yellow-400 font-bold mb-1">👑 Zone Boss: {d.boss.name}</div>
+                      <div className="text-gray-400 flex gap-3 flex-wrap">
+                        <span>Lv.{d.boss.level}</span>
+                        <span>HP {d.boss.hp?.toLocaleString()}</span>
+                        <span>⭐ {d.boss.xpReward} XP</span>
+                        <span>💰 {d.boss.goldReward?.[0]}-{d.boss.goldReward?.[1]} G</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Monster List */}
+                  <div>
+                    <div className="text-gray-500 text-[10px] uppercase tracking-widest font-semibold mb-2">⚔️ มอนเตอร์ที่พบได้ ({d.monsters?.length || 0} ชนิด)</div>
+                    <div className="space-y-1.5">
+                      {(d.monsters || []).map(m => (
+                        <div key={m.id} className="border border-gray-800 rounded-lg p-2.5 text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-amber-300 font-medium">{m.name}</span>
+                            <span className={`text-[10px] ${typeColor[m.type] || 'text-gray-400'}`}>{m.type}</span>
+                          </div>
+                          <div className="text-gray-500 flex gap-2.5 flex-wrap">
+                            <span>Lv.{m.level}</span>
+                            <span>HP {m.hp}</span>
+                            <span>⭐ {m.xpReward}</span>
+                            <span>💰 {m.goldReward?.[0]}-{m.goldReward?.[1]}</span>
+                          </div>
+                          {m.drops?.length > 0 && (
+                            <div className="mt-1.5 text-[10px] text-gray-600">
+                              ดรอป: {m.drops.map(dd => `${dd.name} (${Math.round(dd.chance*100)}%)`).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* ── LOGIN BONUS POPUP ── */}
       {showLoginBonus && loginBonusData && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4"
@@ -1779,6 +2169,7 @@ export default function GameWorld() {
                 <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
                 <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
                 <span className="text-purple-400">🌀 {rp} RP</span>
+                {rpStones > 0 && <span className="text-emerald-400" title="Resurrection Stones">💎×{rpStones}</span>}
                 <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
                 {/* Font size quick controls */}
                 <div className="flex items-center gap-0.5 ml-2 select-none">
@@ -1849,17 +2240,28 @@ export default function GameWorld() {
           {/* ── MAIN LOG ── */}
           <div className="flex-1 flex flex-col">
             <div className="flex-1 overflow-y-auto p-4 space-y-1">
-              {(screen === SCREENS.BATTLE ? battleLog : gameLog).map((line, i) => (
-                <p key={i} className={`text-${fontSize} leading-relaxed ${
-                  line.startsWith('─') ? 'text-gray-700' :
-                  line.startsWith('💀') ? 'text-red-400' :
-                  line.startsWith('🎉') || line.startsWith('✅') ? 'text-green-400' :
-                  line.startsWith('⚠️') || line.startsWith('⛔') ? 'text-red-400' :
-                  line.startsWith('💰') || line.startsWith('⭐') ? 'text-yellow-400' :
-                  line.startsWith('"') ? 'text-gray-400 italic' :
-                  'text-amber-100'
-                }`}>{line}</p>
-              ))}
+              <style>{`
+                @keyframes log-pop {
+                  from { opacity: 0; transform: translateX(-5px); }
+                  to   { opacity: 1; transform: none; }
+                }
+              `}</style>
+              {(screen === SCREENS.BATTLE ? battleLog : gameLog).map((line, i) => {
+                const isNew = screen === SCREENS.BATTLE && i >= battleLogAnimFrom;
+                return (
+                <p key={`${i}-${line.slice(0,8)}`}
+                  style={isNew ? { animation: 'log-pop 0.22s ease forwards' } : undefined}
+                  className={`text-${fontSize} leading-relaxed ${
+                    line.startsWith('─') ? 'text-gray-700' :
+                    line.startsWith('💀') ? 'text-red-400' :
+                    line.startsWith('🎉') || line.startsWith('✅') ? 'text-green-400' :
+                    line.startsWith('⚠️') || line.startsWith('⛔') ? 'text-red-400' :
+                    line.startsWith('💰') || line.startsWith('⭐') ? 'text-yellow-400' :
+                    line.startsWith('"') ? 'text-gray-400 italic' :
+                    'text-amber-100'
+                  }`}>{line}</p>
+                );
+              })}
               <div ref={logEndRef} />
             </div>
 
@@ -1881,7 +2283,7 @@ export default function GameWorld() {
                         title="สู้ Zone Boss (24h cooldown)"
                       >💀 Zone Boss</Btn>
                     )}
-                    <Btn onClick={handleRest}     disabled={busy}>💤 พักผ่อน</Btn>
+                    <Btn onClick={handleRestPrompt} disabled={busy}>💤 พักผ่อน</Btn>
                     <Btn onClick={loadInventory}  disabled={busy}>🎒 Inventory</Btn>
                     <Btn onClick={loadShop}       disabled={busy}>🏪 ร้านค้า</Btn>
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
@@ -1919,34 +2321,45 @@ export default function GameWorld() {
                   const locked    = charLv < z.minLevel;
                   const isCurrent = z.id === zone;
                   return (
-                    <button key={z.id}
-                      onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
-                      disabled={busy || isCurrent || locked}
-                      className={`px-3 py-2 border text-xs rounded transition text-left relative ${
-                        isCurrent ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
-                        locked    ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
-                                    'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10'
-                      }`}>
-                      {/* Boss badge */}
-                      {z.hasBoss && !locked && (
-                        <span className="absolute top-1 right-1 text-[9px] px-1 py-0.5 rounded bg-yellow-900/60 text-yellow-400 border border-yellow-800/60 leading-none">
-                          👑
-                        </span>
-                      )}
-                      <div className="font-medium">{z.name}</div>
-                      <div className={`mt-0.5 flex items-center gap-1.5 ${locked ? 'text-red-700' : 'text-gray-500'}`}>
-                        {locked ? (
-                          <span>🔒 ต้อง Lv.{z.minLevel}</span>
-                        ) : isCurrent ? (
-                          <span className="text-amber-500">📍 อยู่ที่นี่</span>
-                        ) : (
-                          <>
-                            <span>{z.lv}</span>
-                            {z.monsters > 0 && <span>· ⚔️ {z.monsters}</span>}
-                          </>
+                    <div key={z.id} className="relative">
+                      <button
+                        onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
+                        disabled={busy || isCurrent || locked}
+                        className={`w-full px-3 py-2 border text-xs rounded transition text-left pr-10 ${
+                          isCurrent ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
+                          locked    ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
+                                      'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10'
+                        }`}>
+                        {/* Boss badge */}
+                        {z.hasBoss && !locked && (
+                          <span className="absolute top-1 right-7 text-[9px] px-1 py-0.5 rounded bg-yellow-900/60 text-yellow-400 border border-yellow-800/60 leading-none">
+                            👑
+                          </span>
                         )}
-                      </div>
-                    </button>
+                        <div className="font-medium">{z.name}</div>
+                        <div className={`mt-0.5 flex items-center gap-1.5 ${locked ? 'text-red-700' : 'text-gray-500'}`}>
+                          {locked ? (
+                            <span>🔒 ต้อง Lv.{z.minLevel}</span>
+                          ) : isCurrent ? (
+                            <span className="text-amber-500">📍 อยู่ที่นี่</span>
+                          ) : (
+                            <>
+                              <span>{z.lv}</span>
+                              {!z.safe && <span>· ⚔️ 10 มอนเตอร์</span>}
+                            </>
+                          )}
+                        </div>
+                      </button>
+                      {/* Zone detail info button */}
+                      {!z.safe && (
+                        <button
+                          onClick={() => handleOpenZoneDetail(z.id)}
+                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center text-[10px] text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 rounded border border-gray-800 hover:border-amber-700 transition"
+                          title="ดูรายละเอียดมอนเตอร์">
+                          ℹ
+                        </button>
+                      )}
+                    </div>
                   );
                 };
                 return (
@@ -2331,29 +2744,108 @@ export default function GameWorld() {
                     </div>
                   ) : (
                     /* ── Defeat / Fled: auto-dismiss, button as fallback ── */
-                    <button
-                      onClick={() => { setBattle(null); setBattleRewards(null); setScreen(SCREENS.WORLD); }}
-                      className={`w-full text-center text-sm py-2 rounded border ${
-                        battle.result === 'defeat'
-                          ? 'text-red-400 border-red-900 hover:bg-red-900/30'
-                          : 'text-gray-400 border-gray-800 hover:bg-gray-900/30'
-                      }`}
-                    >
-                      {battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
-                    </button>
+                    <div>
+                      {battle.result === 'defeat' && deathPenalty && (
+                        <div className="mb-2 p-2 rounded border text-xs text-center space-y-0.5"
+                          style={{ borderColor: deathPenalty.stoneUsed ? '#22c55e40' : '#7f1d1d', background: deathPenalty.stoneUsed ? '#052e1630' : '#450a0a30' }}>
+                          {deathPenalty.stoneUsed ? (
+                            <>
+                              <p className="text-green-400 font-bold">💎 Resurrection Stone ปกป้องคุณ!</p>
+                              <p className="text-green-300 text-[10px]">ไม่เสีย Gold และ XP</p>
+                              <p className="text-gray-500 text-[10px]">Respawn ที่ Town Square... ({deathPenalty.stonesLeft ?? '?'} ก้อนเหลือ)</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-red-400 font-bold">💀 ถูกลงโทษ</p>
+                              {deathPenalty.goldLost > 0 && <p className="text-yellow-500">💰 เสีย {deathPenalty.goldLost.toLocaleString()} Gold</p>}
+                              {deathPenalty.xpLost   > 0 && <p className="text-blue-400">⬇️ เสีย {deathPenalty.xpLost.toLocaleString()} XP</p>}
+                              <p className="text-gray-600 text-[10px]">Respawn ที่ Town Square...</p>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => { setBattle(null); setBattleRewards(null); setDeathPenalty(null); setScreen(SCREENS.WORLD); }}
+                        className={`w-full text-center text-sm py-2 rounded border ${
+                          battle.result === 'defeat'
+                            ? 'text-red-400 border-red-900 hover:bg-red-900/30'
+                            : 'text-gray-400 border-gray-800 hover:bg-gray-900/30'
+                        }`}
+                      >
+                        {battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
 
               {/* INVENTORY */}
               {screen === SCREENS.INVENTORY && (
-                <div className="max-h-60 overflow-y-auto">
+                <div className="max-h-screen overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-gray-400 text-xs">[ 🎒 Inventory — คลิกเพื่อจัดการ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
-                  {inventory.length === 0 && <p className="text-gray-500 text-xs">ว่างเปล่า...</p>}
-                  {inventory.map(item => (
+
+                  {/* ── Sub-tab selector ── */}
+                  <div className="flex gap-1 mb-3">
+                    {[['all','📦 ทั้งหมด'],['equipped','⚔️ สวมใส่']].map(([id, label]) => (
+                      <button key={id} onClick={() => setInvTab(id)}
+                        className={`flex-1 py-1 text-xs rounded border transition-colors ${invTab === id ? 'border-amber-600 text-amber-300 bg-amber-900/20' : 'border-gray-800 text-gray-500 hover:border-gray-600'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ── Equipped Items Bar ── */}
+                  {(() => {
+                    const SLOT_ICON = {
+                      HEAD:'🪖', FACE:'😷', CHEST:'🛡️', GLOVES:'🧤', LEGS:'👖', FEET:'👢', CAPE:'🧣',
+                      MAIN_HAND:'⚔️', OFF_HAND:'🗡️', RING_L:'💍', RING_R:'💍', AMULET:'📿', BELT:'🪢', RELIC:'🔮',
+                    };
+                    const SLOT_LABEL = {
+                      HEAD:'หมวก', FACE:'หน้า', CHEST:'เกราะ', GLOVES:'ถุงมือ', LEGS:'กางเกง',
+                      FEET:'รองเท้า', CAPE:'เสื้อคลุม', MAIN_HAND:'อาวุธ', OFF_HAND:'มือซ้าย',
+                      RING_L:'แหวนL', RING_R:'แหวนR', AMULET:'สร้อย', BELT:'เข็มขัด', RELIC:'โบราณ',
+                    };
+                    const PRIO_SLOTS = ['MAIN_HAND','OFF_HAND','CHEST','HEAD','LEGS','FEET','GLOVES','CAPE','RING_L','RING_R','AMULET','BELT','RELIC','FACE'];
+                    const equipped = PRIO_SLOTS.map(slot => {
+                      const instanceId = equipment[slot];
+                      const item = instanceId ? inventory.find(i => i.instanceId === instanceId) : null;
+                      return { slot, item };
+                    });
+                    const hasAny = equipped.some(e => e.item);
+                    return (
+                      <div className="mb-3 border border-gray-800 rounded p-2 bg-gray-900/30">
+                        <p className="text-gray-500 text-[10px] mb-2">⚔️ สวมใส่อยู่ในขณะนี้</p>
+                        {!hasAny && <p className="text-gray-700 text-xs text-center py-1">ยังไม่ได้สวมใส่อุปกรณ์ใด</p>}
+                        <div className="grid grid-cols-2 gap-1">
+                          {equipped.filter(e => e.item).map(({ slot, item }) => (
+                            <button key={slot} onClick={() => setItemModal({ item, context: 'inv' })}
+                              className={`flex items-center gap-1 px-1.5 py-1 rounded border border-gray-700 bg-black/20 text-left text-[10px] hover:bg-gray-800/40 truncate`}>
+                              <span className="shrink-0">{SLOT_ICON[slot] || '📦'}</span>
+                              <span className={`truncate ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
+                                {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
+                              </span>
+                              <span className="text-gray-700 text-[9px] shrink-0 ml-auto">{SLOT_LABEL[slot]}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── Item List ── */}
+                  {(() => {
+                    const shown = invTab === 'equipped'
+                      ? inventory.filter(i => i.equipped)
+                      : inventory;
+                    if (shown.length === 0) return (
+                      <p className="text-gray-500 text-xs text-center py-4">
+                        {invTab === 'equipped' ? '⚔️ ยังไม่ได้สวมใส่อุปกรณ์ใด' : 'ว่างเปล่า...'}
+                      </p>
+                    );
+                    return shown.map(item => (
                     <div key={item.instanceId}
                       onClick={() => setItemModal({ item, context: 'inv' })}
                       className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-xs cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
@@ -2375,7 +2867,8 @@ export default function GameWorld() {
                       {item.equipped && <span className="text-amber-600 text-[10px] shrink-0">[ใส่อยู่]</span>}
                       <span className="text-gray-700 text-[10px] shrink-0">ℹ️</span>
                     </div>
-                  ))}
+                  ));
+                  })()}
                 </div>
               )}
 
@@ -2497,7 +2990,7 @@ export default function GameWorld() {
                           <span className="text-amber-400 text-xs">⭐</span>
                         )}
                         <span className={`text-xs ml-auto ${DIFFICULTY_COLOR[d.difficulty] || 'text-gray-400'}`}>
-                          ★{'★'.repeat(d.difficulty - 1)}{'☆'.repeat(3 - d.difficulty)} {d.difficultyLabel}
+                          {'★'.repeat(Math.min(d.difficulty, 5))}{'☆'.repeat(Math.max(0, 5 - d.difficulty))} {d.difficultyLabel}
                         </span>
                       </div>
                       <p className="text-gray-500 text-xs mb-1 leading-relaxed">{d.desc.substring(0, 80)}...</p>
@@ -2863,39 +3356,107 @@ export default function GameWorld() {
                         return (
                           <div key={cat.key}>
                             <p className="text-gray-500 text-xs mb-1">{cat.label}</p>
-                            {catItems.map(item => (
+                            {catItems.map(item => {
+                              const isCapped = item.capped;
+                              const bought   = item.alreadyBought;
+                              const afford   = item.canAfford;
+                              // Pending tokens ที่ซื้อแล้วแต่ยังไม่ได้ใช้
+                              const pendingSkill = item.id === 'rp_skill_reset' && rpPendingSkillReset;
+                              const pendingStat  = item.id === 'rp_stat_reset'  && rpPendingStatReset;
+                              return (
                               <div key={item.id} className={`border rounded p-2 mb-1 text-xs ${
-                                item.alreadyBought ? 'border-gray-900 opacity-40' :
-                                !item.canAfford   ? 'border-gray-800 opacity-60' :
-                                                    'border-purple-900 bg-purple-900/10'
+                                bought || isCapped ? 'border-gray-900 opacity-40' :
+                                !afford            ? 'border-gray-800 opacity-60' :
+                                                     'border-purple-900 bg-purple-900/10'
                               }`}>
                                 <div className="flex items-start gap-2">
                                   <div className="flex-1 min-w-0">
                                     <p className="text-amber-200 font-bold">{item.name}</p>
                                     <p className="text-gray-300 leading-relaxed mt-0.5">{item.desc}</p>
+                                    {item.currentOwned !== undefined && item.maxOwn && (
+                                      <p className="text-purple-500 text-[10px] mt-0.5">{item.currentOwned}/{item.maxOwn} ก้อน</p>
+                                    )}
                                   </div>
-                                  <div className="shrink-0 text-right">
+                                  <div className="shrink-0 text-right space-y-1">
                                     <p className="text-purple-400 font-bold">{item.rpPrice} RP</p>
-                                    {item.alreadyBought ? (
+                                    {bought ? (
                                       <span className="text-gray-400 text-xs">✓ ซื้อแล้ว</span>
+                                    ) : isCapped ? (
+                                      <span className="text-gray-500 text-xs">สูงสุดแล้ว</span>
                                     ) : (
                                       <button
                                         onClick={() => handleBuyRPItem(item.id, item.name, item.rpPrice)}
-                                        disabled={!item.canAfford}
+                                        disabled={!afford}
                                         className="mt-1 px-2 py-0.5 border border-purple-700 text-purple-400 hover:bg-purple-900/20 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed">
                                         ซื้อ
+                                      </button>
+                                    )}
+                                    {/* Execute buttons สำหรับ pending tokens */}
+                                    {pendingSkill && (
+                                      <button
+                                        onClick={() => setSkillResetConfirmOpen(true)}
+                                        disabled={resetBusy}
+                                        className="mt-1 px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs disabled:opacity-40">
+                                        ใช้ Reset
+                                      </button>
+                                    )}
+                                    {pendingStat && (
+                                      <button
+                                        onClick={() => setStatResetConfirmOpen(true)}
+                                        disabled={resetBusy}
+                                        className="mt-1 px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs disabled:opacity-40">
+                                        ใช้ Reset
                                       </button>
                                     )}
                                   </div>
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         );
                       })}
 
-                      <div className="border border-gray-800 rounded p-2 text-xs text-gray-600 text-center">
-                        💎 RP ได้จาก: Gift ใน TikTok Live (10 💎 = 1 RP) · ดูสตรีม (1 RP/5 นาที)
+                      {/* RP Rate Info */}
+                      <div className="border border-purple-900/40 rounded p-2.5 text-xs bg-purple-950/20 space-y-1.5">
+                        <p className="text-purple-400 font-bold text-center">💎 วิธีรับ Realm Points (RP)</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base shrink-0">🎁</span>
+                          <div>
+                            <p className="text-amber-300 font-semibold">Gift ใน TikTok LIVE</p>
+                            <p className="text-gray-500 text-[10px]">10,000 Coins ≈ <span className="text-purple-400 font-bold">1,000 RP</span> · ทุก 5 Diamond = 1 RP</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 border-t border-gray-800 pt-1.5">
+                          <span className="text-base shrink-0">📺</span>
+                          <div>
+                            <p className="text-amber-300 font-semibold">ดูสตรีม (Passive)</p>
+                            <p className="text-gray-500 text-[10px]">Online ทุก 5 นาที = <span className="text-purple-400 font-bold">1 RP</span> · ~12 RP/ชั่วโมง</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* RP → Gold Redeem */}
+                      <div className="border border-yellow-900/50 rounded p-2.5 text-xs bg-yellow-950/20">
+                        <p className="text-yellow-400 font-bold mb-1.5">🪙 แลก RP → Gold</p>
+                        <p className="text-gray-500 text-[10px] mb-2">Rate: <span className="text-yellow-400">5 RP = 1 Gold</span> (1,000 RP = 200 Gold) · daily cap 5,000 RP</p>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="number" min="100" max="5000" step="100"
+                            value={redeemRpAmt}
+                            onChange={e => setRedeemRpAmt(Math.min(5000, Math.max(100, Number(e.target.value) || 100)))}
+                            className="flex-1 bg-black/40 border border-gray-700 rounded px-2 py-1 text-xs text-amber-200 w-0"
+                          />
+                          <span className="text-gray-600 shrink-0">RP →</span>
+                          <span className="text-yellow-500 font-bold shrink-0">{Math.floor((redeemRpAmt || 0) / 5)} G</span>
+                          <button
+                            onClick={handleRedeemRP}
+                            disabled={redeemBusy || rp < (redeemRpAmt || 0) || (redeemRpAmt || 0) < 100}
+                            className="shrink-0 px-2 py-1 border border-yellow-700 text-yellow-400 hover:bg-yellow-900/20 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                            {redeemBusy ? '...' : 'แลก'}
+                          </button>
+                        </div>
+                        {rp < redeemRpAmt && <p className="text-red-500 text-[10px] mt-1">RP ไม่พอ (มี {rp} RP)</p>}
                       </div>
                     </>
                   )}
@@ -2908,8 +3469,8 @@ export default function GameWorld() {
                   {/* Tab switcher */}
                   <div className="flex gap-1 mb-3 sticky top-0 bg-black/80 backdrop-blur py-1 z-10">
                     {[
-                      { key: 'main',  label: '🌑 เนื้อเรื่องหลัก' },
-                      { key: 'story', label: '📖 เนื้อเรื่อง' },
+                      { key: 'main',  label: '🌑 บันทึกการผจญภัย' },
+                      { key: 'story', label: '📋 ภารกิจ Story' },
                       { key: 'side',  label: '⚔️ ภารกิจพิเศษ' },
                     ].map(({ key, label }) => (
                       <button key={key} onClick={() => {
@@ -3062,155 +3623,199 @@ export default function GameWorld() {
                               emoji: '🌅',
                               title: 'โปรล็อก — The Resonance',
                               subtitle: 'จุดเริ่มต้นของทุกสิ่ง',
-                              prose: `ห้าร้อยปีก่อน โลก Ashenveil เป็นหนึ่งเดียว ผืนแผ่นดินกว้างใหญ่ถูกปกครองโดยสภา Archon — นักเวทย์ผู้ยิ่งใหญ่สิบสองคนที่สาบานว่าจะปกป้องสมดุลของโลก พวกเขาควบคุม World Core แหล่งพลังงานศักดิ์สิทธิ์ที่หล่อเลี้ยงชีวิตทุกชีวิตบนแผ่นดิน
+                              prose: `ห้าร้อยปีก่อน โลก Ashenveil เป็นหนึ่งเดียว ผืนแผ่นดินกว้างใหญ่ถูกปกครองโดยสภา Archon — สภาของนักเวทย์ผู้ยิ่งใหญ่สิบสองคนที่สาบานว่าจะปกป้องสมดุลของโลก พวกเขาอาศัยอยู่ในหอคอย Aethercrown สูงตระหง่านกลางผืนแผ่นดิน ควบคุม World Core — แหล่งพลังงานศักดิ์สิทธิ์ที่หล่อเลี้ยงชีวิตทุกชีวิต ทุกฤดูกาล ทุกสายน้ำ และทุกลมหายใจบนโลกใบนี้
 
-แต่ความกลัวทำให้คนทำสิ่งที่ผิด
+สภา Archon มีอำนาจ มีความรู้ แต่มีสิ่งหนึ่งที่พวกเขาไม่มี — ความกล้าที่จะยอมรับความจริง
 
-Vorath เคยเป็นสภา Archon คนหนึ่ง เขาค้นพบว่า World Core กำลังเสื่อมสลายตามธรรมชาติ และจะพาโลกทั้งใบสู่ความดับสูญภายในไม่กี่ศตวรรษ เขาเสนอทางออก แต่สภา Archon กลัวพลังที่เขาถือครอง กลัวว่าเขาจะเป็น "ภัยคุกคามใหม่" มากกว่าที่จะไว้วางใจเขา
+Vorath เคยเป็นสมาชิกสภา Archon คนที่สิบสาม ชายที่ฉลาดที่สุดในยุคนั้น เขาใช้เวลาสามสิบปีศึกษา World Core อย่างใกล้ชิด จนค้นพบสิ่งที่ไม่มีใครอยากรู้ — World Core กำลังเสื่อมสลาย ไม่ใช่เพราะธรรมชาติ แต่เพราะสภา Archon ใช้มันเกินขีดจำกัดมาหลายร้อยปี ดูดพลังงานจากมันเพื่อสร้างความมั่งคั่ง สร้างอาวุธ รักษาความมีชีวิตอมตะของตัวเอง หากยังดำเนินต่อไปเช่นนี้ ภายในไม่ถึงร้อยปี World Core จะดับสนิท และโลกทั้งใบจะตายตามไปด้วย
 
-ด้วยความหวาดกลัว พวกเขาตัดสินใจปิดปาก Vorath โดยใช้วิธีที่โหดเหี้ยมที่สุดเท่าที่มนุษย์จะทำได้ — พวกเขาบูชายัญวิญญาณ Sealer ห้าคน ผูกวิญญาณที่ยังมีชีวิตเหล่านั้นไว้กับตราปิดผนึก แล้วโยน Vorath เข้าสู่ The Void มิติแห่งความว่างเปล่าที่ไม่มีแสง ไม่มีเวลา ไม่มีแม้แต่ความตาย
+Vorath เสนอทางออก แต่ทางออกนั้นต้องการให้สภา Archon ยอมสูญเสียอำนาจ ต้องหยุดดูดพลังจาก World Core ต้องยอมรับว่าตัวเองเป็นสาเหตุของปัญหา
 
-ผลลัพธ์ก็คือ The Sundering — แผ่นดินแตกออกเป็น 7 Shard และ World Core แตกเป็น 7 ชิ้น กระจายไปใน 7 Shard นั้น
+สภา Archon ปฏิเสธ
 
-ตอนนี้คือห้าร้อยปีให้หลัง คุณตื่นขึ้นในซากปรัก ได้ยินเสียงสั่นสะเทือนใต้ผิวดิน สัตว์ป่าแปรปรวน ต้นไม้แห้งตาย Elder Maren นักวิชาการแก่แห่ง Town Square เรียกคุณเข้าหา เขาดูตกใจ
+พวกเขาไม่โต้เถียง ไม่พูดคุย พวกเขาเรียกประชุมลับในคืนเดียว และตัดสินใจว่า Vorath คือ "ภัยคุกคาม" ที่ต้องจัดการ พวกเขาออกแบบพิธีกรรมปิดผนึก — วิธีที่โหดร้ายที่สุดเท่าที่มนุษย์จะคิดได้ พวกเขาเลือก Sealer ห้าคน วิญญาณที่มีพลังสูงสุดนอกสภา แล้วบูชายัญพวกเขาทั้งเป็น ผูกวิญญาณที่ยังมีสติสัมปชัญญะครบถ้วนเหล่านั้นไว้กับตราปิดผนึก ให้เป็น anchor ที่กักขัง Vorath ไว้ใน The Void ตลอดกาล
 
-"The Resonance... มันกลับมาแล้ว"`,
+The Void คือมิติแห่งความว่างเปล่าที่ไม่มีแสง ไม่มีเวลา และไม่มีแม้แต่ความตาย ผู้ที่ถูกโยนเข้าไปจะมีชีวิตอยู่ต่อไปชั่วนิรันดร์ แต่เผชิญกับความโดดเดี่ยวสมบูรณ์แบบ
+
+ผลลัพธ์ก็คือ The Sundering — แรงกระทบจากพิธีกรรมที่ผิดพลาดถล่มใส่โลกทั้งใบ แผ่นดินแตกออกเป็น 7 Shard ที่ลอยอยู่ในอากาศ ห่างกันด้วยแนวหมอก Void World Core แตกออกเป็น 7 ชิ้น กระจายไปใน 7 Shard และ Sealer ห้าคนก็ถูกดึงเข้าไปอยู่ระหว่างโลก — ไม่ตาย ไม่มีชีวิต แต่ยังมีสติ ยังรู้สึก ยังเจ็บปวด
+
+ตอนนี้คือห้าร้อยปีให้หลัง คุณตื่นขึ้นในซากปรักชานเมืองของ Ashenveil Shard เสียงสั่นสะเทือนสะเทือนใต้พื้นดิน ต้นไม้แห้งตายราวกับถูกดูดชีพ สัตว์ป่าบุกรุกหมู่บ้าน ชาวบ้านแตกตื่น Elder Maren นักวิชาการสูงอายุที่ยังจดจำประวัติศาสตร์อันเจ็บปวดนี้ได้ ค้นพบสัญญาณที่เขาไม่อยากเห็น
+
+"The Resonance... มันกลับมาแล้ว ตราปิดผนึกกำลังจะแตก Vorath กำลังตื่น และถ้าเขาออกมาได้ก่อนที่เราจะเตรียมพร้อม..." เขาหยุดพูด แล้วมองตรงมาที่คุณ "...โลกนี้จะไม่เหลืออะไรอีกเลย"`,
                             },
                             {
                               act: 1,
                               emoji: '🌿',
                               title: 'Act I — ดงรากมืด',
                               subtitle: 'Guardian แห่งป่าเสียสติ',
-                              prose: `Darkroot Hollow ไม่เคยเป็นที่น่ากลัวมาก่อน ป่าแห่งนี้เคยเป็นสถานที่ศักดิ์สิทธิ์ที่ชาวบ้านมาทำพิธีขอพร Guardian แห่งป่า — วิญญาณโบราณที่สถิตในร่างยักษ์ไม้ — คือผู้คุ้มครองสมดุลของธรรมชาติ
+                              prose: `Darkroot Hollow เคยเป็นสถานที่ศักดิ์สิทธิ์ที่ชาวบ้านมาสวดมนต์ขอฝน ขอให้พืชผลงาม ขอให้เด็กๆ แข็งแรง ป่าแห่งนี้ปกคลุมด้วยต้นไม้ใหญ่อายุพันปีที่รากหยั่งลึกจนสัมผัสกับ World Core Fragment ชิ้นแรก Guardian แห่งป่า — วิญญาณโบราณที่ถ่ายทอดตัวเองผ่านรุ่นแล้วรุ่นเล่ามาห้าร้อยปี — คือผู้ดูแลสมดุลธรรมชาติ เขารู้จักชื่อต้นไม้ทุกต้น รู้เส้นทางลม รู้วัฏจักรของสัตว์ทุกชนิด
 
-แต่ The Resonance เปลี่ยนทุกอย่าง
+แต่วันหนึ่ง รากที่หยั่งลึกนั้นสัมผัสกับสิ่งที่ไม่ควรสัมผัส
 
-Void ที่รั่วซึมจาก Voidspire Ruins ไหลมาตามรากไม้ ค่อยๆ กัดกินจิตใจของ Guardian ทีละน้อย ชาวบ้าน 3 คนที่เข้าไปในป่าหายสาบสูญ สิ่งมีชีวิตทุกชนิดในป่าเริ่มโจมตีทุกคนที่พบ
+Void ที่รั่วซึมจาก Voidspire Ruins ไหลมาใต้ดิน เคลื่อนตัวช้าๆ ตามสายน้ำใต้ดิน ตามเส้นรากไม้ ค่อยๆ ซึมเข้าสู่จิตใจของ Guardian ทีละน้อย ราวกับหมึกดำที่หยดลงในน้ำใส Void ไม่ได้ทำให้เขาโกรธ แต่มันดูดซับความทรงจำ ทีละชิ้น ชื่อต้นไม้ที่เขาเคยรู้จักหายไป เส้นทางลมที่เขาเคยเป็นส่วนหนึ่งของมันสูญหาย และสุดท้าย สิ่งที่เคยรักษา กลายเป็นสิ่งที่น่ากลัว
 
-คุณรับภารกิจเข้าไปในดันเจี้ยนและปลดปล่อย Guardian จากอิทธิพลของ Void ภายใน Darkroot Hollow คุณพบว่า Void ไม่ได้แค่ "ทำให้เสียสติ" — มันดูดซับความทรงจำ ดูดซับตัวตน ทำให้ Guardian ไม่รู้จักตัวเองอีกต่อไป
+ชาวบ้าน 3 คนที่เข้าไปหาของป่าหายสาบสูญในวันเดียวกัน ปศุสัตว์ตายนับสิบ ประตูป่าที่เคยเปิดกว้างกลายเป็นกำแพงแห่งเงาและเถาวัลย์มืด
 
-เมื่อคุณเอาชนะมันได้ ก่อนร่างยักษ์จะย่อสลายกลับเป็นต้นไม้เล็กๆ Guardian กระซิบสิ่งที่เขาจำได้เป็นอย่างสุดท้าย
+Elder Maren ส่งคุณเข้าไปด้วยคำเตือนเดียว — "อย่าต่อสู้กับป่า จงหาหัวใจของมัน"
+
+ภายใน Darkroot Hollow คุณเห็นความเสียหาย ต้นไม้บิดเบี้ยว สัตว์ป่าที่ดวงตาเป็นสีม่วงมืด ร่างชาวบ้านสามคนที่ถูกรากไม้ห่อหุ้ม ยังหายใจอยู่ แต่นิ่งราวกับตุ๊กตา ถูกดูดความทรงจำจนเหลือแต่ร่าง
+
+การต่อสู้กับ Guardian แห่งป่าที่ถูก Void ครอบงำไม่ใช่การต่อสู้ธรรมดา มันคือการต่อสู้กับสิ่งมีชีวิตที่ไม่รู้ว่าตัวเองกำลังทำผิด — มันกำลังปกป้องสิ่งที่คิดว่าใช่ ด้วยสัญชาตญาณที่ถูกบิดเบือน
+
+เมื่อคุณชนะ ร่างยักษ์ค่อยๆ หดตัวลง เถาวัลย์มืดหลุดออก ต้นไม้รอบข้างส่งเสียงดังราวกับโล่งอก ก่อนร่างของ Guardian จะย่อสลายกลับเป็นเมล็ดพันธุ์เล็กๆ ที่ตกลงสู่พื้นดิน เขากระซิบสิ่งที่จำได้เป็นอย่างสุดท้าย ราวกับว่าชิ้นส่วนสุดท้ายของตัวตนที่เหลืออยู่กำลังส่งมอบสิ่งสำคัญ
 
 "...Sylvara... ไปหาเพื่อนของ Sylvara... อีกสองแห่ง..."
 
-ชื่อนั้น — Sylvara — ทำให้ Elder Maren ซีดขาว เขาค้นบันทึกโบราณอย่างรีบเร่ง แล้วอธิบายว่า Sylvara คือ Shard-Anchor ของ Ashenveil วิญญาณหนึ่งในห้าที่ถูกบูชายัญโดยสภา Archon เธอถูกผูกไว้กับตราปิดผนึก Vorath ตลอดห้าร้อยปี ยังมีสติ ยังรู้สึก แต่ไม่อาจหนีได้
+ชื่อนั้น — Sylvara — ทำให้ Elder Maren ซีดขาวเมื่อคุณกลับไปรายงาน เขาค้นบันทึกโบราณอย่างมือสั่น แล้วอธิบายด้วยน้ำเสียงที่บ่งบอกว่าเขาเคยรู้ความจริงนี้มาตลอด แต่เลือกที่จะลืม
 
-และถ้าเธอแตกสลาย ตราปิดผนึกจะหลุด Vorath จะออกมา`,
+Sylvara คือหนึ่งใน Sealer ห้าคน วิญญาณที่ถูกสภา Archon บูชายัญเพื่อผนึก Vorath ตลอดห้าร้อยปีที่ผ่านมา เธอยังมีสติ ยังรู้สึกได้ถึงทุกวินาที แต่ถูกผูกไว้กับตราปิดผนึกโดยไม่มีทางออก เธอคือ anchor ที่กักขัง Vorath ไว้ใน The Void และถ้าเธอแตกสลาย — ถ้าตราปิดผนึกหลุด — Vorath จะออกมาก่อนที่ใครจะพร้อม
+
+World Core Fragment แรกสว่างขึ้นในกระเป๋าของคุณ เส้นทางเพิ่งเริ่ม`,
                             },
                             {
                               act: 2,
                               emoji: '💀',
                               title: 'Act II — สุสานจม',
                               subtitle: 'คนตายรู้ความจริง',
-                              prose: `Sunken Crypts คือสุสานของราชวงศ์โบราณที่จมอยู่ใต้หนองน้ำทางตะวันออก ปกติมันเงียบสงบ แต่ตอนนี้ประตูเหล็กเก่าแก่เปิดอยู่ และเสียงร้องของผีดิบดังขึ้นทุกคืน
+                              prose: `Sunken Crypts ไม่ได้จมลงเพราะน้ำท่วม มันจมลงเพราะ The Sundering ห้าร้อยปีก่อน ทำให้แผ่นดินทางตะวันออกทรุดตัว สุสานของราชวงศ์โบราณ — ราชวงศ์ที่ปกครองก่อนที่สภา Archon จะยึดอำนาจ — จมลงใต้หนองน้ำดำทึบ กลายเป็นสถานที่ต้องห้ามที่ชาวบ้านไม่กล้าเข้าใกล้
 
-Cryptlord Malachar คือขุนนางที่ถูก Void ครอบงำ เขาฟื้นขึ้นมาจากสุสานและเริ่มเรียกกองทัพผีดิบ ชาวบ้านกลัว Elder Maren เชื่อว่าต้องหยุดเขา
+Cryptlord Malachar เป็นขุนนางระดับสูงของราชวงศ์เก่า เขาตายในคืน The Sundering ถูกฝังไว้ในห้องหลุมฝังศพชั้นลึกที่สุด พร้อมทรัพย์สมบัติและเกราะทองคำ แต่วิญญาณของเขาไม่ได้ไปไหน เขาตื่นอยู่ในความมืด ในความชื้น ในความเงียบของสุสานจมน้ำตลอด 500 ปี ได้ยินทุกอย่างที่เกิดขึ้นในโลกข้างบนผ่านรากไม้และสายน้ำ เขาฟังเรื่องราวของสภา Archon ของ Vorath ของ The Sundering และค่อยๆ รวบรวมความจริงที่คนข้างบนไม่รู้
 
-แต่ความจริงซับซ้อนกว่านั้น
+เมื่อ The Resonance ทำให้ Void รั่วซึมลงมาถึงสุสาน มันส่งพลังงานที่ทำให้วิญญาณของเขาแข็งแกร่งขึ้นจนสามารถควบคุมร่างเนื้อได้ชั่วคราว เขาฟื้นขึ้นมา ไม่ใช่เพราะต้องการทำลายล้าง แต่เพราะเขามีสิ่งที่ต้องบอก
 
-เมื่อคุณเข้าไปในสุสานและเอาชนะ Malachar ได้ เขาไม่ร้องโวย ไม่สาปแช่ง เขากลับพูดด้วยน้ำเสียงสงบ ราวกับรอวันนี้มานาน
+แต่ Void ไม่เคยให้อะไรฟรี มันเริ่มกัดกินจิตใจของเขา เปลี่ยนกองทัพผีดิบที่เขาควบคุมให้กลายเป็นอันตราย ทำให้ชาวบ้านรอบๆ หมู่บ้านต้องหนีตาย Elder Maren ส่งคุณไปหยุดเขาก่อนที่สิ่งเลวร้ายจะเกิดขึ้น
 
-"...ขอบคุณ ข้าสู้มานาน จนแทบแพ้ให้กับ Void ข้ามีสิ่งที่อยากบอก — Vorath ยังมีชีวิตอยู่ เขาอยู่ใน The Void มาห้าร้อยปี ความโดดเดี่ยวเปลี่ยนเขา แต่เขาไม่ใช่ผู้ร้ายที่สภา Archon บอก..."
+ภายใน Sunken Crypts แต่ละห้องเต็มไปด้วยร่องรอยของอารยธรรมที่สาบสูญ — ภาพสลักบนผนังที่บอกเล่าประวัติศาสตร์ก่อน The Sundering ท่อน้ำที่ยังไหล บันทึกที่หมึกยังไม่จางแม้จะอยู่ใต้น้ำมาห้าร้อยปี หลายห้องมีกับดักที่ยังทำงาน หลายทางแยกที่นำไปสู่ความตาย
 
-"...Voidspire Ruins ทางเหนือ นั่นคือจุดที่เขากำลังเปิดประตูกลับมา รีบไปที่นั่น..."
+Cryptlord Malachar อยู่ที่ห้องลึกที่สุด เขาใหญ่โตกว่าคนธรรมดา มงกุฎทองบิดเบี้ยว ดวงตาเปล่งแสงม่วง แต่เมื่อคุณเอาชนะเขาได้ แสงม่วงในดวงตาดับลง ความโกรธเดือดดาลหายไป สิ่งที่เหลือคือความเหนื่อยล้าของสิ่งมีชีวิตที่รอมาครึ่งพันปี
 
-Fragment ที่สองปรากฏขึ้นจากร่างของ Malachar ชิ้นหนึ่งของ World Core ที่เขาพกมาตลอดห้าร้อยปี รอให้มีคนมารับ
+เขาไม่โวย ไม่สาปแช่ง เขาถามด้วยน้ำเสียงที่แปลกประหลาดสำหรับผู้แพ้
 
-Elder Maren ฟังรายงานของคุณด้วยน้ำเสียงสั่น ความจริงที่เขาไม่เคยอยากยอมรับค่อยๆ ชัดขึ้น — สภา Archon อาจโกหกมาตลอด`,
+"ข้ารอคนอย่างเจ้ามานานมากแล้ว รู้ไหมว่าฟังข่าวโลกจากใต้ดินห้าร้อยปีมันเป็นอย่างไร? ข้ารู้ทุกอย่างที่เกิดขึ้น รู้สิ่งที่สภา Archon ปกปิด รู้ว่า Vorath คือใคร"
+
+"เขายังมีชีวิต อยู่ใน The Void มาห้าร้อยปีและยังไม่ตาย ห้าร้อยปีของความโดดเดี่ยวเปลี่ยนคนได้มาก แต่เปลี่ยนความจริงไม่ได้ เขาไม่ใช่ผู้ร้ายที่สภา Archon บอก เขาคือคนที่รู้ความจริงแล้วถูกปิดปาก"
+
+"ไปที่ Voidspire Ruins เขากำลังพยายามเปิดประตูกลับมา ไปก่อนที่มันจะสายเกินไป..."
+
+แล้วร่างของ Malachar ก็แตกสลาย World Core Fragment ที่เขาพกมาตลอดห้าร้อยปีหลุดออกมาสว่างไสว รอให้คุณรับ Elder Maren ฟังรายงานด้วยมือที่สั่นอย่างไม่อาจบังคับได้ ความจริงที่เขาเลือกจะไม่เชื่อตลอดชีวิต กำลังเดินมาหาเขาเอง`,
                             },
                             {
                               act: 3,
                               emoji: '🌀',
                               title: 'Act III — ซากปรักวอยด์',
                               subtitle: 'เผชิญหน้ากับ Avatar ของ Vorath',
-                              prose: `Voidspire Ruins ตั้งอยู่บนหน้าผาทางเหนือ ซากหอคอยโบราณที่เคยเป็นห้องทดลองของสภา Archon ตอนนี้มันเต็มไปด้วยพลังงาน Void ที่หนาแน่นจนอากาศรอบๆ บิดเบี้ยว
+                              prose: `Voidspire Ruins ตั้งอยู่บนหน้าผาทางเหนือสุดของ Shard ซากหอคอยสูงห้าชั้นที่ครั้งหนึ่งเคยเป็นห้องทดลองลับของสภา Archon ที่นั่นคือจุดที่พวกเขาทำการทดลองกับ World Core ที่นั่นคือจุดที่พิธีกรรมผนึก Vorath ถูกสร้างขึ้น และที่นั่นคือจุดที่พลังงาน Void เข้มข้นที่สุดในทั้ง Shard จนอากาศรอบๆ บิดเบี้ยวราวกับแสงผ่านน้ำ ก้อนหินลอยอยู่กลางอากาศ นาฬิกาและเข็มทิศหยุดทำงาน
 
-Sylvara ส่งสัญญาณผ่าน Elder Maren ชั่วขณะสั้นๆ — พอให้รู้ว่าเธอยังมีสติ ยังสู้อยู่ แต่เวลาไม่มากแล้ว
+Sylvara ส่งสัญญาณผ่านความฝันของ Elder Maren ในคืนก่อนที่คุณจะออกเดินทาง ภาพเบลอๆ ของหญิงสาวในแสงม่วง กระซิบว่า "รีบ... ข้าไม่มีเวลาอีกมากแล้ว..."
 
-ภายใน Voidspire Ruins คุณเผชิญกับ Voidspire Colossus — ร่างที่ Vorath สร้างจากพลังงาน Void เพื่อเป็นตัวแทนของตัวเอง มันไม่ใช่ Vorath จริงๆ แต่มันทรงพลังพอที่จะทำลายทุกอย่างที่ขวางหน้า
+ภายใน Voidspire Ruins แต่ละชั้นคือชั้นหนึ่งของประวัติศาสตร์ที่ถูกปกปิด ชั้นแรกเป็นห้องรักษาความปลอดภัย ยังมียาม Void Sentinel ที่ถูกสร้างจากพลังงานล้วนๆ ลาดตระเวนอยู่ ชั้นสองเป็นห้องสมุดที่หนังสือทุกเล่มถูก Void กัดกิน เหลือแต่ซากที่อ่านได้บางส่วน — บันทึกการทดลองที่แสดงให้เห็นว่าสภา Archon รู้ล่วงหน้าว่าพิธีกรรมปิดผนึกจะทำให้เกิด The Sundering แต่ยังเดินหน้าต่อ ชั้นสามเป็นห้องพิธีกรรม ยังมีรอยเลือดของ Sealer ห้าคนที่แห้งแต่ไม่จาง
 
-การต่อสู้ครั้งนี้ยากที่สุดที่คุณเคยเจอ
+ชั้นสี่คือที่ที่คุณพบเขา
 
-เมื่อ Colossus ล้มลง เสียงของ Vorath ก้องขึ้นจากความว่างเปล่า ไม่ใช่เสียงโกรธ ไม่ใช่เสียงขู่ — มันเป็นเสียงที่น่าแปลกใจ ราวกับว่าเขาสนใจ
+Voidspire Colossus — ร่างยักษ์ที่ Vorath สร้างจากพลังงาน Void ล้วนๆ เป็นตัวแทนของตัวเองในโลกภายนอก มันสูงกว่าคนธรรมดาสี่เท่า ทำจากหินมืดและเส้นพลังงานม่วง ดวงตาสว่างราวกับดาวในความมืด มันไม่พูด ไม่เตือน มันโจมตีทันที
 
-"...น่าสนใจ คุณแข็งแกร่งกว่าที่คิด เราจะพบกันอีกครั้ง"
+การต่อสู้กับ Voidspire Colossus ยาวนานและหนักหน่วง ห้องสั่นสะเทือน หินแตกร่วง Void ซึมออกจากร่างมันแต่ละครั้งที่ถูกโจมตี พยายามซึมเข้าสู่ร่างของคุณ พยายามดูดความทรงจำเหมือนที่มันทำกับ Guardian แต่คุณสู้ต่อ
 
-แล้ว Sylvara ก็ฟื้นคืนสติชั่วคราว เธอปิดผนึก Voidspire ได้ก่อนที่ Void จะรั่วออกมาอีก แล้วกระซิบข้อมูลที่เปลี่ยนทุกอย่าง
+เมื่อมันล้ม เสียงก้องขึ้นจากทุกทิศทาง ไม่ใช่เสียงโกรธ ไม่ใช่เสียงสาปแช่ง — มันเป็นเสียงที่น่าสนใจ ราวกับว่าเขาไม่ได้เคยคาดว่าจะมีใครทำได้
 
-"World Core ยังอยู่ มี 7 ชิ้น กระจายอยู่ใน 7 Shard ถ้ารวบรวมได้ครบ Vorath จะต้องเผชิญกับสิ่งที่เขาสร้างขึ้น ไปเถอะ... เวลาไม่มากแล้ว..."
+"...ห้าร้อยปีใน Void ข้าไม่เคยได้ยินเสียงของมนุษย์ที่ไม่กลัว ข้าจะจำคุณไว้ เราจะพบกันอีกครั้ง ในฐานะที่เท่าเทียมกัน"
 
-Fragment ที่สามสว่างขึ้น การเดินทางครั้งใหม่เพิ่งจะเริ่ม`,
+แล้ว Sylvara ก็ฟื้นคืนสติชั่วคราว ราวกับว่าพลังของ Colossus ที่หายไปทำให้ตราปิดผนึกหลวมลงชั่วขณะ เธอปิดผนึก Voidspire ได้ก่อนที่ Void จะรั่วออกมาอีก แล้วกระซิบด้วยเสียงที่ดังขึ้นกว่าเดิม ชัดเจนกว่าเดิม
+
+"ฟังนะ World Core ยังอยู่ ไม่ใช่แค่สองชิ้นที่คุณมี — มีทั้งหมดเจ็ดชิ้น กระจายอยู่ใน Shard ต่างๆ ถ้ารวบรวมได้ครบ มันจะเป็นสิ่งเดียวที่สามารถสื่อสารกับตัวตนที่แท้จริงของ Vorath ได้ ก่อนที่ความโกรธจะกลืนเขาไปจนหมด รีบเถอะ... ข้าไม่รู้ว่าจะสู้ได้อีกนานแค่ไหน..."
+
+เสียงเธอดับลง World Core Fragment ที่สามสว่างขึ้น`,
                             },
                             {
                               act: 4,
                               emoji: '🌑',
                               title: 'Act IV — เงาแห่งสภา',
                               subtitle: 'ความจริงที่ซ่อนอยู่ใต้บัลลังก์',
-                              prose: `ข้อมูลจาก Sylvara พาคุณสู่ดินแดน Shard ถัดไป ที่นั่นคุณได้พบกับ Mira — นักสืบค้นอิสระที่ใช้ชีวิตส่วนใหญ่ไปกับการขุดค้นซากปรักของสภา Archon เธอรู้สิ่งที่คนอื่นไม่รู้
+                              prose: `ข้อมูลจาก Sylvara พาคุณข้ามหมอก Void สู่ Shard ที่สี่ — ดินแดนที่ซากปรักของสภา Archon ยังตั้งตระหง่านอยู่อย่างน่าอัศจรรย์ ราวกับว่าสถาปัตยกรรมของอาคารเหล่านั้นถูกออกแบบมาให้ทนทานกว่าโลกรอบๆ
 
-สภา Archon ไม่ได้ทำผิดพลาด พวกเขาทำโดยตั้งใจ
+Mira พบคุณก่อนที่คุณจะพบเธอ เธอเฝ้าดูตั้งแต่คุณข้ามพรมแดน Shard เธออายุประมาณสามสิบ ดวงตาคมกริบ เสื้อผ้าปนฝุ่นจากการขุดค้น เธอเป็นนักโบราณคดีอิสระที่ใช้ชีวิตสิบปีหลังขุดค้นซากปรักของสภา Archon ไม่ใช่เพราะเงิน ไม่ใช่เพราะชื่อเสียง แต่เพราะเธอต้องการความจริงเกี่ยวกับพ่อของเธอ
 
-บันทึกที่ Mira ขุดพบเผยว่า ก่อน The Sundering สภา Archon จัดการประชุมลับ พวกเขารู้ว่า Vorath พูดถูก — World Core กำลังเสื่อมสลาย แต่แทนที่จะยอมรับ พวกเขาเลือกที่จะ "จัดการ" กับผู้ที่รู้ความจริง
+พ่อของ Mira — Aldric — เป็นสมาชิกสภา Archon คนหนึ่ง เขาเสียชีวิตเมื่อ Mira อายุห้าขวบ แต่ทิ้งสิ่งหนึ่งไว้ให้เธอ กล่องล็อคที่เขียนว่า "เปิดเมื่อโลกเริ่มสั่น"
 
-ยิ่งกว่านั้น — Mira ค้นพบว่าพ่อของเธอเองเคยเป็น Archon คนหนึ่ง เขาเป็นคนที่ออกแบบตราปิดผนึก เป็นคนที่เซ็นอนุมัติการบูชายัญ Sealer ห้าคน เป็นคนที่ทิ้งบันทึกลับเอาไว้ให้ลูกสาวค้นพบ ราวกับว่าเขาต้องการให้ความจริงออกมาในวันหนึ่ง
+The Resonance ทำให้กล่องนั้นเปิดออกเอง
 
-Mira ไม่รู้จะรู้สึกอย่างไร — ความโกรธ ความเจ็บปวด ความภูมิใจที่พ่อเธอยังมีสำนึก — ทุกอย่างปะปนกัน
+ภายในกล่องคือบันทึกส่วนตัวของ Aldric สามสิบเล่ม บันทึกทุกการประชุมลับ ทุกการตัดสินใจ ทุกการโต้เถียงในสภา Archon Mira ใช้เวลาหกเดือนอ่านทุกเล่ม และค้นพบสิ่งที่พลิกทุกอย่างที่เธอเคยเชื่อ
 
-เธอมอบ Fragment ที่สี่ให้คุณ พร้อมกับคำเตือน
+สภา Archon รู้ว่า Vorath พูดถูก — รู้ตั้งแต่วันแรกที่เขาเสนอรายงาน พวกเขาจ้างนักวิชาการสิบคนตรวจสอบ ทุกคนยืนยันว่า World Core กำลังเสื่อมสลาย แต่สิ่งที่สภา Archon กลัวไม่ใช่ความดับสูญของโลก — สิ่งที่พวกเขากลัวคือการสูญเสียอำนาจ
 
-"ระวัง ยังมีคนที่ยังเชื่อในสภา Archon คนที่ปกป้องมรดกของพวกเขา พวกเขาจะไม่ยอมให้ความจริงออกมา"`,
+การรักษา World Core ที่ Vorath เสนอต้องการให้หยุดดูดพลังจาก World Core โดยสมบูรณ์ ซึ่งหมายความว่าสภา Archon จะสูญเสียแหล่งพลังงานที่ทำให้พวกเขา "เหนือกว่า" มนุษย์ธรรมดา สูญเสียอายุขัยที่ยืนยาว สูญเสียพลังเวทย์ที่เหนือชั้น และสุดท้าย สูญเสียสิทธิ์ที่จะปกครอง
+
+Aldric ลงคะแนนเสียงคัดค้านการปิดผนึก Vorath เขาเป็นคนเดียวในสภา Archon สิบสองคนที่คัดค้าน เขาถูกลงคะแนนเสียงพ่ายแพ้ แล้วถูกบังคับให้เซ็นชื่อในคำสั่งปิดผนึกเพราะกฎบัตรสภา Archon กำหนดว่าทุกคำสั่งต้องได้รับลายเซ็นครบทุกสมาชิก เขาเซ็น แต่ทิ้งหลักฐานไว้ให้ลูกสาว
+
+Mira ไม่รู้จะรู้สึกอย่างไร ความโกรธที่พ่อมีส่วนร่วมในเรื่องนี้ ความเจ็บปวดที่ทั้งชีวิตของเธอสร้างขึ้นบนรากฐานของการโกหก ความภูมิใจเล็กๆ ที่พ่อพยายามทิ้งหลักฐานไว้ ทุกอย่างปะปนกันจนแยกไม่ออก
+
+เธอมอบ World Core Fragment ที่สี่ให้คุณ พร้อมกับคำเตือนที่เธอรู้จากบันทึกของพ่อ
+
+"ยังมีคนที่เชื่อว่าสภา Archonทำสิ่งที่ถูกต้อง ลูกหลานของ Archon ที่เหลือยังรักษา 'มรดก' เอาไว้ พวกเขาจะทำทุกอย่างเพื่อให้ความจริงไม่ออกมา ระวังตัวด้วย"`,
                             },
                             {
                               act: 5,
                               emoji: '⚡',
                               title: 'Act V — เทพผู้ถูกลืม',
-                              subtitle: 'Vorath ไม่ใช่ผู้ร้าย',
-                              prose: `Lyra คือ Sealer คนที่ห้า — คนสุดท้ายที่ยังมีสติสัมปชัญญะพอที่จะพูดได้ วิญญาณของเธอติดอยู่ในมิติระหว่าง Void กับโลกจริง ไม่เป็นทั้งคนเป็นและคนตาย
+                              subtitle: 'ห้าร้อยปีแห่งความเจ็บปวด',
+                              prose: `Lyra ไม่ได้อยู่ที่ไหนสักที่แน่นอน เธออยู่ในระหว่าง — ระหว่างโลกจริงกับ The Void ระหว่างคนเป็นกับคนตาย ระหว่างความทรงจำกับความลืม ถ้าคุณยืนในจุดที่แสงจากโลกจริงพบกับเงาของ Void — ที่ขอบหน้าผา ที่ปากถ้ำที่มืดสนิท ที่แนวน้ำที่สะท้อนท้องฟ้าสีม่วง — คุณจะเห็นเธอ
 
-เธอรอคุณอยู่ที่ขอบ Void
+เธอดูเหมือนหญิงสาวอายุยี่สิบ แต่ดวงตาของเธอบอกว่าเธอเห็นทุกอย่างตลอดห้าร้อยปี
 
-Lyra บอกความจริงทั้งหมดที่เธอเห็นมาตลอดห้าร้อยปี
+"ข้าคือ Lyra Sealer คนที่ห้า และคนสุดท้ายที่ยังพอพูดได้ คนอื่นๆ สี่คน..." เธอหยุดนิดหนึ่ง "Void กินความทรงจำของพวกเขาไปทีละน้อย ตอนนี้พวกเขายังอยู่ แต่ไม่รู้แล้วว่าตัวเองเป็นใคร ข้าสู้ได้นานกว่าเพราะข้ารู้ว่าถ้าข้าลืม ไม่มีใครเหลืออยู่ที่จะบอกความจริง"
 
-Vorath ไม่ได้เป็นผู้ร้าย เขาเป็นนักวิทยาศาสตร์ที่พยายามช่วยโลก เขาค้นพบว่า World Core เสื่อมสลายเพราะมันถูกใช้งานผิดวิธีมาหลายร้อยปีโดยสภา Archon เอง เขาเสนอวิธีรักษา แต่วิธีนั้นต้องการให้สภา Archon ยอมสูญเสียอำนาจ นั่นคือสิ่งที่พวกเขายอมไม่ได้
+Lyra บอกเรื่องราวของ Vorath อย่างละเอียด ในแบบที่ไม่มีใครรู้ เพราะเธอเห็นมันตลอดห้าร้อยปีจากตำแหน่งที่ไม่เป็นทั้งใน Void หรือนอก Void
 
-ห้าร้อยปีใน The Void ทำให้ Vorath เปลี่ยนไป ไม่ใช่กลายเป็นชั่วร้าย แต่กลายเป็น... หมดหวัง เขาไม่ได้อยากทำลายโลก เขาแค่อยากกลับมา อยากพิสูจน์ว่าเขาพูดถูก
+Vorath ก่อน The Sundering เป็นนักวิทยาศาสตร์ที่ศรัทธาในโลก เขาไม่ได้ศึกษา World Core เพราะต้องการอำนาจ แต่เพราะเขารักโลก รักต้นไม้ที่งอกงามจากพลังงานของมัน รักสัตว์ที่วิ่งเล่นในทุ่งที่ World Core หล่อเลี้ยง เขาค้นพบความเสื่อมสลายและรู้สึกแตกสลาย ราวกับค้นพบว่าบ้านที่รักกำลังถล่ม แล้วรีบวิ่งออกไปบอกทุกคนให้หนี
 
-"แต่ปัญหาคือ" Lyra กล่าวด้วยน้ำเสียงเศร้า "ห้าร้อยปีใน Void เปลี่ยนวิธีที่เขาคิด ตอนนี้เขาเชื่อว่าการพิสูจน์นั้นต้องทำลายทุกอย่างที่สภา Archon สร้างขึ้นก่อน ทั้งโลก ทั้ง 7 Shard แม้แต่วิญญาณพวกเราที่ยังถูกผูกอยู่..."
+แต่ The Void เปลี่ยนเขา ไม่ใช่เร็ว ไม่ใช่ทันที แต่ช้า ทีละน้อย ทีละปี ทีละสิบปี ทีละร้อยปี ความโดดเดี่ยวสมบูรณ์แบบในมิติที่ไม่มีแสง ไม่มีเวลา ไม่มีเสียง ไม่มีแม้กระทั่งลมหายใจที่ตัวเองต้องการ เปลี่ยนวิธีที่เขาคิด เขายังจำเหตุผลที่ถูกผนึก ยังจำว่าเขาพูดถูก แต่ค่อยๆ ลืมว่าทำไมเรื่องนั้นถึงสำคัญ สิ่งที่เหลือคือความโกรธ — ความโกรธที่บริสุทธิ์ ไม่มีเหตุผล ไม่มีทิศทาง แต่เข้มข้นมากขึ้นทุกวัน
 
-"มีทางเดียวที่จะช่วยเขาได้ รวบรวม World Core ครบ 7 ชิ้น แล้วใช้มันสื่อสารกับตัวตนที่แท้จริงของเขาก่อนที่ความโกรธจะกลืนเขาไปจนหมด"
+"ตอนนี้เขาอยากกลับมา" Lyra กล่าว "แต่ไม่ใช่เพื่อช่วยโลก อีกต่อไปแล้ว เขาอยากกลับมาเพื่อพิสูจน์ว่าเขาพูดถูก และการพิสูจน์ในความคิดของเขาตอนนี้หมายความว่า ต้องทำลายทุกสิ่งที่สภา Archon สร้างขึ้น โลก Shard ทั้งเจ็ด บันทึกประวัติศาสตร์ทั้งหมด แม้แต่วิญญาณของพวกเราที่ยังถูกผูกอยู่..."
 
-Fragment ที่ห้า หก เจ็ดรอคุณอยู่ใน Shard ที่เหลือ`,
+"แต่ยังมีหนทาง" เธอกล่าวต่อ "ความจริงที่ Vorath รู้จักก่อน Void คือ World Core เป็นสิ่งที่เชื่อมทุกชีวิตเข้าด้วยกัน ถ้ารวบรวมครบเจ็ดชิ้น มันจะส่งเสียงถึงตัวตนที่แท้จริงของเขา ตัวตนที่ยังจำว่าทำไมเขาถึงรักโลกใบนี้ ก่อนที่ Void จะกลืนทุกอย่างไปจนหมด"
+
+"รีบเถอะ ข้าไม่รู้ว่าจะอยู่ได้อีกนานแค่ไหน และถ้าข้าหมดสติ... ตราปิดผนึกจะพัง"
+
+Fragment ที่ห้า หก เจ็ด รอคุณอยู่ใน Shard ที่เหลือ`,
                             },
                             {
                               act: 6,
                               emoji: '✨',
                               title: 'Act VI — จุดจบและจุดเริ่มต้น',
                               subtitle: 'การเลือกที่จะกำหนดชะตากรรมของโลก',
-                              prose: `คุณรวบรวม World Core ครบ 7 ชิ้น ตอนนี้มันเต้นในมือคุณ สว่างไสวด้วยพลังงานที่หล่อเลี้ยงมาห้าร้อยปี
+                              prose: `เจ็ด Shard เจ็ด Fragment เจ็ดการต่อสู้ เจ็ดความจริงที่ค่อยๆ ชัดขึ้น ตอนนี้ World Core ทั้งเจ็ดชิ้นอยู่ในมือคุณ มันเต้นเป็นจังหวะเดียวกัน สว่างไสวด้วยพลังงานที่สะสมมาห้าร้อยปี อุ่นเหมือนมีชีวิต
 
-Vorath มาถึง ไม่ใช่ผ่าน Avatar ไม่ใช่ผ่านตัวแทน แต่ตัวเขาเอง เขาดูเก่าแก่กว่าที่ควร ราวกับว่าการอยู่ใน Void ทิ้งรอยไว้บนร่างกายที่ไม่ควรจะแก่ชราได้
+Vorath Citadel ลอยอยู่กลางหมอก Void ระหว่าง Shard ปราสาทหินสีดำที่ไม่ควรมีอยู่จริงในโลกกายภาพ แต่มันอยู่ที่นั่น สร้างขึ้นจากพลังงาน Void ล้วนๆ ทีละชิ้นตลอดห้าร้อยปี ทุกส่วนของมันคือผลผลิตของความโดดเดี่ยวและความโกรธ
 
-เขาไม่ได้โจมตีทันที เขามองดู World Core แล้วมองดูคุณ
+คุณเดินเข้าไปโดยไม่ต้องเปิดประตู — ประตูเปิดเองเมื่อ World Core เรืองแสงสัมผัสกับกำแพง Vorath รู้ว่าคุณมา
 
-"คุณรวบรวมมันได้ทั้งหมด" เสียงเขาเหนื่อย "คุณรู้ความจริงแล้ว คุณรู้ว่าฉันทำอะไร รู้ว่าพวกเขาทำอะไรกับฉัน แล้วตอนนี้คุณจะทำอะไร?"
+เขาอยู่ในห้องโถงกลาง ไม่นั่งบนบัลลังก์ ไม่ยืนอย่างผู้ชนะ แต่ยืนหันหลังให้ มองออกไปที่หมอก Void ราวกับว่าเขามองหาอะไรบางอย่างในความว่างเปล่ามาตลอดห้าร้อยปี
 
-ตอนนี้คุณต้องเลือก
+เมื่อเขาหันมา คุณเห็นว่า Void ทิ้งรอยไว้บนร่างกายที่ไม่ควรจะชราได้ เส้นพลังงานม่วงวิ่งอยู่ใต้ผิวหนัง ดวงตาที่เคยสว่างด้วยความอยากรู้อยากเห็นตอนนี้หม่นมัวด้วยห้าร้อยปีของความโดดเดี่ยว แต่เขายังไม่โจมตี
 
-การต่อสู้ครั้งสุดท้ายไม่ใช่แค่การต่อสู้ด้วยดาบ มันคือการต่อสู้ด้วยคำพูด ด้วยความจริง ด้วยการให้อภัย — หรือด้วยความยุติธรรม
+"คุณรวบรวมมันได้ทั้งหมด" เสียงเขาเหนื่อย ลึก ราวกับมาจากก้นบึ้งของบางอย่างที่ยาวนานมาก "ข้าตามดูการเดินทางของคุณ คุณรู้ความจริงแล้ว รู้ว่าข้าทำอะไร รู้ว่าพวกเขาทำอะไรกับข้า รู้เรื่อง Sylvara รู้เรื่อง Sealer ห้าคน รู้เรื่องบันทึกของ Aldric แล้วตอนนี้... คุณจะทำอะไร?"
 
-ถ้าคุณเลือกสู้ Vorath จะสู้กลับ ทรงพลังกว่าศัตรูทุกตัวที่คุณเคยเจอ แต่เมื่อเขาล้ม เขาจะกระซิบว่า "...ขอบคุณ สิ่งที่ฉันสร้างขึ้น ควรจะจบที่นี่..."
+ตรงนี้คุณต้องเลือก
 
-ถ้าคุณเลือกใช้ World Core เพื่อสื่อสารกับตัวตนที่แท้จริงของเขา คุณจะเห็นภาพแห่งอดีต เห็น Vorath ก่อน The Void เห็นนักวิทยาศาสตร์ที่ต้องการช่วยโลก และเขาจะร้องไห้เป็นครั้งแรกในห้าร้อยปี
+ถ้าคุณหยิบอาวุธขึ้น Vorath จะพยักหน้าราวกับเข้าใจ แล้วต่อสู้กลับ ทุกทักษะที่เขาสะสมมาห้าร้อยปี ทุกพลังงาน Void ที่เขาดูดซับ ทุกความโกรธที่สะสม จะถาโถมใส่คุณในครั้งเดียว แต่เมื่อเขาล้ม เขาจะนอนลงบนพื้น และกระซิบสิ่งสุดท้ายด้วยเสียงที่เบาและสงบกว่าที่คุณคาดไว้
 
-ไม่ว่าจะเลือกทางไหน World Core จะถูกส่งคืน Void จะถดถอย และ 7 Shard จะเริ่มกระบวนการรวมตัวช้าๆ
+"...ขอบคุณ สิ่งที่ข้าสร้างขึ้นในความโกรธ ควรจะจบที่นี่ ไปช่วย Sylvara และคนอื่นๆ เถิด พวกเขารอนานพอแล้ว..."
 
-Ashenveil จะได้รับรุ่งอรุณใหม่
+ถ้าคุณยกมือ World Core สว่างขึ้นแทน Vorath หยุดนิ่ง แสงสีขาวจาก Fragment ทั้งเจ็ดรวมกันพุ่งตรงมาที่เขา ทะลุผ่าน Void ที่ห่อหุ้มเขาไว้ สัมผัสกับตัวตนที่แท้จริงที่ยังอยู่ข้างใน ตัวตนของนักวิทยาศาสตร์ที่รักโลก
 
-แต่ Sylvara และ Sealer อีกสี่คน ที่ถูกผูกไว้ตลอดห้าร้อยปี... พวกเขาจะได้พักผ่อนในที่สุด`,
+เขาล้มคุกเข่า มือข้างหนึ่งกดที่หน้าอก เขาเห็นภาพ — ทุ่งหญ้าสีเขียวก่อน The Sundering ต้นไม้ที่งอกงาม สัตว์ที่วิ่งเล่น โลกที่เขารักและพยายามช่วย — และเขาร้องไห้เป็นครั้งแรกในห้าร้อยปี ไม่ใช่น้ำ แต่เป็นแสงม่วงที่ไหลออกจากดวงตา
+
+"...ข้าลืมไปว่าทำไมถึงสำคัญ ลืมไปว่าโลกนี้มีคนอยู่ในมัน ขอโทษที..."
+
+ไม่ว่าจะเลือกทางไหน ตอนจบเหมือนกัน World Core รวมกันเป็นหนึ่งแล้วส่งพลังงานสู่โลก Void ค่อยๆ ถดถอย 7 Shard เริ่มกระบวนการดึงดูดกัน ช้า ไม่ใช่เรื่องของปีหรือสิบปี แต่เป็นกระบวนการที่เริ่มต้นแล้ว
+
+และ Sylvara กับ Sealer ทั้งห้า วิญญาณที่ถูกผูกไว้ตลอดห้าร้อยปี ค่อยๆ สว่างขึ้นแล้วจางหายไปอย่างสงบ
+
+"...ขอบคุณ..." เสียงของ Sylvara ก้องขึ้นเป็นครั้งสุดท้าย ก่อนที่ทุกอย่างจะเงียบ
+
+Ashenveil ได้รับรุ่งอรุณใหม่`,
                             },
                           ];
-
-                          const [expandedAct, setExpandedAct] = useState(null);
 
                           return (
                             <div className="space-y-2">

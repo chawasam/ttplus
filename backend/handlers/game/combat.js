@@ -523,6 +523,14 @@ async function processAction(req, res) {
       log.push('💀 คุณพ่ายแพ้โดยการโต้กลับของ ' + state.enemy.name);
       const penalty = await handlePlayerDeath(uid, state);
       if (penalty.goldLost > 0) log.push(`💸 เสีย ${penalty.goldLost} Gold และ ${penalty.xpLost} XP`);
+      // Fail dungeon run (same as main death path)
+      if (state.dungeonRunId) {
+        await db.collection('game_dungeons').doc(state.dungeonRunId).update({
+          status:   'failed',
+          failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+        log.push('🏚️ Dungeon run ล้มเหลว...');
+      }
       state.result = 'defeat';
       await deleteBattle(db, battleId);
       return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId, penalty });
