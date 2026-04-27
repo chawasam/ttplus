@@ -1,4 +1,4 @@
-// routes/game.js — Express router for Ashenveil game endpoints
+// routes/game.js — Express router for Ashenveil game endpoints (v2)
 const express = require('express');
 const router  = express.Router();
 const rateLimit = require('express-rate-limit');
@@ -24,7 +24,10 @@ const loginBonus   = require('../handlers/game/loginBonus');
 const leaderboard  = require('../handlers/game/leaderboard');
 const worldBoss    = require('../handlers/game/worldBoss');
 const crafting     = require('../handlers/game/crafting');
-const audit        = require('../handlers/game/audit');
+const audit           = require('../handlers/game/audit');
+const roadmapConfig   = require('../handlers/game/roadmapConfig');
+const dailyShop       = require('../handlers/game/dailyShop');
+const featuredDungeon = require('../handlers/game/featuredDungeon');
 
 // ===== Game-specific rate limiters (per UID, ไม่ใช่ per IP) =====
 // keyGenerator ใช้ uid หลัง verifyToken รันแล้ว
@@ -86,6 +89,7 @@ router.post('/currency/redeem-rp',   currency.redeemRealmPoints);
 // ----- Explore -----
 router.post('/explore',  exploreLimiter, explore.explore);
 router.post('/travel',   explore.travel);
+router.get ('/zone-info/:zoneId', explore.getZoneInfo);
 
 // ----- Combat -----
 router.post('/battle/start',  battleLimiter, combat.startBattle);
@@ -125,7 +129,14 @@ router.get ('/rp-shop',                  shopLimiter, rpShop.getRPShop);
 router.post('/rp-shop/buy',              shopLimiter, rpShop.buyRPItem);
 router.post('/rp-shop/class-change',     shopLimiter, rpShop.executeClassChange);
 router.post('/rp-shop/name-change',      shopLimiter, rpShop.executeNameChange);
+router.post('/rp-shop/skill-reset',      shopLimiter, rpShop.executeSkillReset);
+router.post('/rp-shop/stat-reset',       shopLimiter, rpShop.executeStatReset);
 router.get ('/rp-shop/active-boosts',    rpShop.getActiveBoosts);
+
+// ----- Daily Shop -----
+router.get ('/daily-shop',         shopLimiter, dailyShop.getDailyShop);
+router.post('/daily-shop/buy',     shopLimiter, dailyShop.buyDailyShopItem);
+router.get ('/featured-dungeon',   gameLimiter, featuredDungeon.getFeaturedDungeonStatus);
 
 // ----- Crafting -----
 router.get ('/crafting',           crafting.getCraftingRecipes);
@@ -174,6 +185,9 @@ router.post('/audit/players/:uid/flag',        audit.requireAdmin, audit.manualF
 router.get ('/audit/bugs',                     audit.requireAdmin, audit.getBugs);
 router.get ('/audit/skill-stats',              audit.requireAdmin, audit.getSkillStats);
 router.get ('/audit/item-stats',               audit.requireAdmin, audit.getItemStats);
+router.get ('/audit/roadmap',                  audit.requireAdmin, roadmapConfig.getRoadmap);
+router.post('/audit/roadmap',                  audit.requireAdmin, roadmapConfig.updateFeature);
+router.get ('/audit/gamedata',                 audit.requireAdmin, audit.getGameData);
 
 // ----- Dungeon -----
 router.get ('/dungeons',              dungeon.listDungeons);
