@@ -21,10 +21,17 @@ const WORLD_BOSSES = [
       'เสียงหัวเราะดังก้องสรวงสวรรค์!',
       'Malachar เรียก Soul Rift — พลังงานมืดพุ่งขึ้นจากพื้น!',
     ],
+    // legendaryPool: random 1 จาก pool นี้ให้กับ MVP (top damage dealer)
+    legendaryPool: [
+      'ashenfury', 'blade_of_ashenveil', 'eclipse_blade', 'reality_render',
+      'world_core_staff', 'death_scythe', 'harbinger', 'whisperwind_bow',
+      'shard_bow', 'harmony_of_ash', 'worldcore_orb', 'aetheric_engine',
+    ],
     rewards: {
       participation: { gold: 500,  xp: 300,  items: ['ancient_scroll'] },
-      top3:          { gold: 3000, xp: 1500, items: ['void_crystal', 'ancient_scroll'] },
-      first:         { gold: 8000, xp: 5000, items: ['void_crystal', 'void_crystal', 'soul_gem'], title: 'ผู้พิชิต Malachar' },
+      top3:          { gold: 3000, xp: 1500, items: ['void_crystal', 'ancient_scroll', 'soul_gem'] },
+      // first = MVP (top damage): ได้ legendary weapon แบบ random จาก legendaryPool
+      first:         { gold: 8000, xp: 5000, items: ['void_crystal', 'soul_gem'], legendaryDrop: true, title: 'ผู้พิชิต Malachar' },
     },
     spawnMsg: '⚡ WORLD BOSS ปรากฏตัว! Malachar the Reborn โผล่ขึ้นมาจาก Void! ช่วยกันกด!',
     killMsg:  '🏆 World Boss ถูกสังหาร! เหล่าวีรบุรุษแห่ง Ashenveil ได้ชัยชนะ!',
@@ -48,10 +55,16 @@ const WORLD_BOSSES = [
       'มันดูดพลังงานจากทุกสิ่งรอบข้าง...',
       'รอยแยก Void เปิดใต้เท้าผู้กล้า!',
     ],
+    // voidPool: random 1 จาก pool นี้ให้กับ MVP
+    voidPool: [
+      'void_greatsword', 'voidforged_blade', 'void_fang_blade', 'void_rift_blade',
+      'void_staff', 'void_touched_orb', 'void_circuit_arm', 'void_chord',
+    ],
     rewards: {
       participation: { gold: 800,   xp: 500,  items: ['void_crystal'] },
       top3:          { gold: 5000,  xp: 2500, items: ['void_crystal', 'void_crystal', 'soul_gem'] },
-      first:         { gold: 12000, xp: 8000, items: ['void_crystal', 'void_crystal', 'void_crystal', 'titan_core'], title: 'นักล่า Leviathan' },
+      // first = MVP: ได้ void weapon แบบ random จาก voidPool
+      first:         { gold: 12000, xp: 8000, items: ['void_crystal', 'titan_core'], voidDrop: true, title: 'นักล่า Leviathan' },
     },
     spawnMsg: '🌊 ระวัง! Void Leviathan โผล่ขึ้นจากรอยแยกมิติ! ทุกคนช่วยกันโจมตี!',
     killMsg:  '🏆 Void Leviathan ถูกสังหาร! มิติอีกด้านหนึ่งสั่นสะเทือน!',

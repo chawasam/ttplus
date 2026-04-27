@@ -611,16 +611,16 @@ async function processAction(req, res) {
     await deleteBattle(db, battleId);
 
     // Track daily + weekly + story/side quest step
-    trackQuestProgress(uid, 'kill', 1).catch(() => {});
-    trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
+    trackQuestProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] daily kill:', e.message));
+    trackWeeklyProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] weekly kill:', e.message));
     trackStoryStep(uid, 'kill', {
       monsterId: state.enemy.monsterId,
-      zone:      state.zone, // null inside dungeons, zone string in world
-    }).catch(() => {});
+      zone:      state.zone,
+    }).catch(e => console.error('[QuestTrack] story kill:', e.message));
     trackMainQuestStep(uid, 'kill', {
       monsterId: state.enemy.monsterId,
       zone:      state.zone,
-    }).catch(() => {});
+    }).catch(e => console.error('[QuestTrack] main kill:', e.message));
     // Achievements + overlay event
     checkAchievements(uid, 'kill', 1).catch(() => {});
     if (rewards.levelUp) {
@@ -856,9 +856,9 @@ async function processAction(req, res) {
       log.push(...rewards.log);
       state.result = 'victory';
       await deleteBattle(db, battleId);
-      trackQuestProgress(uid, 'kill', 1).catch(() => {});
-      trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
-      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(() => {});
+      trackQuestProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] kill:', e.message));
+      trackWeeklyProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] weekly kill:', e.message));
+      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(e => console.error('[QuestTrack] story kill:', e.message));
       checkAchievements(uid, 'kill', 1).catch(() => {});
       pushGameEvent(uid, { type: 'kill', msg: `⚔️ สังหาร ${state.enemy.emoji} ${state.enemy.name}! (FRENZY!)`, char: uid }).catch(() => {});
       return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory' }, rewards });
@@ -881,9 +881,9 @@ async function processAction(req, res) {
       log.push(...rewards.log);
       state.result = 'victory';
       await deleteBattle(db, battleId);
-      trackQuestProgress(uid, 'kill', 1).catch(() => {});
-      trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
-      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(() => {});
+      trackQuestProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] kill:', e.message));
+      trackWeeklyProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] weekly kill:', e.message));
+      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(e => console.error('[QuestTrack] story kill:', e.message));
       checkAchievements(uid, 'kill', 1).catch(() => {});
       return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory' } });
     }
@@ -906,9 +906,9 @@ async function processAction(req, res) {
       log.push(...rewards.log);
       state.result = 'victory';
       await deleteBattle(db, battleId);
-      trackQuestProgress(uid, 'kill', 1).catch(() => {});
-      trackWeeklyProgress(uid, 'kill', 1).catch(() => {});
-      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(() => {});
+      trackQuestProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] kill:', e.message));
+      trackWeeklyProgress(uid, 'kill', 1).catch(e => console.error('[QuestTrack] weekly kill:', e.message));
+      trackStoryStep(uid, 'kill', { monsterId: state.enemy.monsterId, zone: state.zone }).catch(e => console.error('[QuestTrack] story kill:', e.message));
       checkAchievements(uid, 'kill', 1).catch(() => {});
       return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'victory' } });
     }

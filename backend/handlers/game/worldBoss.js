@@ -26,7 +26,7 @@ async function getWorldBossStatus(req, res) {
 
     // เช็ค timeout
     if (now > boss.expiresAt) {
-      await db.collection('game_world_boss').doc(BOSS_DOC).update({ status: 'expired' });
+      await db.collection('game_world_boss').doc(BOSS_DOC).update({ status: 'expired', attackLog: {} });
       return res.json({ active: false, boss: null, expired: true });
     }
 
@@ -83,7 +83,7 @@ async function attackWorldBoss(req, res) {
 
     const boss = bossDoc.data();
     if (now > boss.expiresAt) {
-      await bossRef.update({ status: 'expired' });
+      await bossRef.update({ status: 'expired', attackLog: {} });
       return res.status(400).json({ error: 'World Boss หมดเวลาแล้ว' });
     }
 
@@ -182,6 +182,8 @@ async function attackWorldBoss(req, res) {
       .map(([id, v]) => ({ uid: id, name: v.name, damage: v.totalDamage || 0 }))
       .sort((a, b) => b.damage - a.damage);
 
+    let myBonusItem = null; // legendary/void drop for MVP (declared before loop)
+
     await bossRef.update({ currentHp: 0, status: 'dead', killedAt: now, attackLog });
 
     // Real-time broadcast: boss death event
@@ -225,15 +227,38 @@ async function attackWorldBoss(req, res) {
         ts: now,
       }).catch(() => {});
 
-      // Grant items (just for top 3 + first)
+      // Grant regular items (top 3 + first)
       for (const itemId of (reward.items || [])) {
         const invRef = db.collection('game_inventory').doc();
         batch.set(invRef, {
           uid: p.uid, itemId,
-          instanceId: `boss_${now}_${p.uid}_${Math.random().toString(36).slice(2)}`,
+          instanceId: `boss_${now}_${p.uid}_${Math.random().toString(36).slice(2, 7)}`,
           enhancement: 0, equipped: false,
           obtainedAt: now, source: 'world_boss',
         });
+      }
+
+      // Grant legendary/void weapon to MVP (first place only)
+      if (i === 0) {
+        const bossTemplate = getBoss(boss.bossId);
+        let bonusItemId = null;
+        if (reward.legendaryDrop && bossTemplate?.legendaryPool?.length) {
+          const pool = bossTemplate.legendaryPool;
+          bonusItemId = pool[Math.floor(Math.random() * pool.length)];
+        } else if (reward.voidDrop && bossTemplate?.voidPool?.length) {
+          const pool = bossTemplate.voidPool;
+          bonusItemId = pool[Math.floor(Math.random() * pool.length)];
+        }
+        if (bonusItemId) {
+          const invRef = db.collection('game_inventory').doc();
+          batch.set(invRef, {
+            uid: p.uid, itemId: bonusItemId,
+            instanceId: `boss_legendary_${now}_${Math.random().toString(36).slice(2, 7)}`,
+            enhancement: 0, equipped: false,
+            obtainedAt: now, source: 'world_boss_mvp',
+          });
+          myBonusItem = bonusItemId;
+        }
       }
 
       // Grant title if first place and there's a title reward
@@ -255,13 +280,14 @@ async function attackWorldBoss(req, res) {
     else if (myRank < 3) myReward = rewards.top3 || myReward;
 
     return res.json({
-      success:     true,
-      killed:      true,
-      damage:      actualDmg,
+      success:      true,
+      killed:       true,
+      damage:       actualDmg,
       totalPlayers: sorted.length,
-      myRank:      myRank + 1,
+      myRank:       myRank + 1,
       myReward,
-      topPlayers:  sorted.slice(0, 3),
+      myBonusItem,  // legendary/void weapon itemId if this player was MVP, else null
+      topPlayers:   sorted.slice(0, 3),
       msg: `💀 ${boss.nameTH} ถูกสังหารแล้ว! คุณได้รับ ${myReward.gold}G! (อันดับ ${myRank + 1}/${sorted.length})`,
     });
   } catch (err) {

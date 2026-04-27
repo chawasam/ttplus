@@ -293,7 +293,7 @@ async function roomAction(req, res) {
         const itemId = room.itemPool[Math.floor(Math.random() * room.itemPool.length)];
         const itemDef = getItem(itemId);
         if (itemDef) {
-          const instanceId = `inv_${uid}_${Date.now()}`;
+          const instanceId = `inv_${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
           await db.collection('game_inventory').add({
             uid,
             itemId,
@@ -441,7 +441,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
           const bonusItemId  = featured.bonusItem;
           const bonusItemDef = getItem(bonusItemId);
           if (bonusItemDef) {
-            const instanceId = `inv_${uid}_fd_${Date.now()}`;
+            const instanceId = `inv_${uid}_fd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             await db.collection('game_inventory').add({
               uid, itemId: bonusItemId, instanceId, enhancement: 0,
               equipped: false, obtainedAt: admin.firestore.FieldValue.serverTimestamp(),

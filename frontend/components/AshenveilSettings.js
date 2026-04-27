@@ -95,14 +95,23 @@ export function useAshenveilSettings() {
 // ─── Panel Component ──────────────────────────────────────────────────────────
 // Props:
 //   hook result (theme, setTheme, fontSize, setFontSize, brightness, setBrightness)
-//   bgm?: { enabled, volume, onToggle, onVolume }  — ถ้าไม่ส่ง จะไม่แสดง BGM section
+//   bgm?:          { enabled, volume, onToggle, onVolume }  — ถ้าไม่ส่ง จะไม่แสดง BGM section
+//   externalOpen?: boolean  — ถ้าส่ง จะซ่อน floating button และใช้ค่านี้แทน internal state
+//   onExternalClose?: fn    — callback เมื่อปิด panel (ใช้คู่กับ externalOpen)
 export default function AshenveilSettings({
   theme, setTheme,
   fontSize, setFontSize,
   brightness, setBrightness,
-  bgm,          // optional BGM controls
+  bgm,
+  externalOpen,
+  onExternalClose,
 }) {
-  const [open, setOpen] = useState(false);
+  const controlled  = externalOpen !== undefined; // ถ้าส่ง externalOpen = controlled mode
+  const [openInternal, setOpenInternal] = useState(false);
+  const open    = controlled ? externalOpen : openInternal;
+  const setOpen = controlled
+    ? (v) => { if (!v && onExternalClose) onExternalClose(); }
+    : setOpenInternal;
 
   // ปิด panel เมื่อกด Escape
   useEffect(() => {
@@ -116,16 +125,26 @@ export default function AshenveilSettings({
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-[70]"
+      className={controlled ? 'fixed inset-0 z-[70] pointer-events-none' : 'fixed bottom-4 right-4 z-[70]'}
       style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
     >
+      {/* ── Backdrop (controlled mode only) ── */}
+      {open && controlled && (
+        <div
+          className="fixed inset-0 pointer-events-auto"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       {/* ── Panel ── */}
       {open && (
         <div
-          className="mb-2 w-64 bg-gray-950 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden"
-          style={{
-            animation: 'ash-slide-up 0.2s ease',
-          }}
+          className={`w-72 bg-gray-950 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto ${
+            controlled
+              ? 'fixed bottom-16 left-1/2 -translate-x-1/2'   // centered above action bar
+              : 'mb-2'                                          // above floating button
+          }`}
+          style={{ animation: 'ash-slide-up 0.2s ease', zIndex: 80 }}
         >
           <style>{`
             @keyframes ash-slide-up {
@@ -262,20 +281,23 @@ export default function AshenveilSettings({
       )}
 
       {/* ── Toggle Button ── */}
-      <button
-        onClick={() => setOpen(p => !p)}
-        title="ตั้งค่าการแสดงผล"
-        className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg border transition-all duration-200"
-        style={{
-          background:   '#0a0a0a',
-          borderColor:  open ? themeColor : '#374151',
-          color:        open ? themeColor : '#6b7280',
-          fontSize:     '16px',
-          boxShadow:    open ? `0 0 12px ${themeColor}40` : undefined,
-        }}
-      >
-        ⚙
-      </button>
+      {/* Floating button — hidden in controlled mode (external button triggers instead) */}
+      {!controlled && (
+        <button
+          onClick={() => setOpen(p => !p)}
+          title="ตั้งค่าการแสดงผล"
+          className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg border transition-all duration-200"
+          style={{
+            background:   '#0a0a0a',
+            borderColor:  open ? themeColor : '#374151',
+            color:        open ? themeColor : '#6b7280',
+            fontSize:     '16px',
+            boxShadow:    open ? `0 0 12px ${themeColor}40` : undefined,
+          }}
+        >
+          ⚙
+        </button>
+      )}
     </div>
   );
 }

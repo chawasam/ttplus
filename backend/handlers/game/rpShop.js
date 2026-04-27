@@ -379,6 +379,15 @@ async function executeSkillReset(req, res) {
       return res.status(400).json({ error: 'ไม่มี Skill Reset token — ซื้อจาก RP Shop ก่อน' });
     }
 
+    // Cooldown: 1 ชั่วโมงระหว่าง reset แต่ละครั้ง (ป้องกัน spam)
+    const RESET_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+    const lastSkillReset = data.lastSkillReset || 0;
+    const cooldownLeft = RESET_COOLDOWN_MS - (Date.now() - lastSkillReset);
+    if (cooldownLeft > 0) {
+      const minsLeft = Math.ceil(cooldownLeft / 60000);
+      return res.status(429).json({ error: `รอ ${minsLeft} นาทีก่อน reset ครั้งต่อไป` });
+    }
+
     const charId = data.characterId;
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
@@ -402,7 +411,10 @@ async function executeSkillReset(req, res) {
       skillPoints:    currentSP + spRefund,
       unlockedSkills: [],
     });
-    await accountRef.update({ pendingSkillReset: admin.firestore.FieldValue.delete() });
+    await accountRef.update({
+      pendingSkillReset: admin.firestore.FieldValue.delete(),
+      lastSkillReset:    Date.now(),
+    });
 
     console.log(`[RPShop] 🔄 uid=${uid} skill reset — refunded ${spRefund} SP, cleared ${unlockedIds.length} skills`);
     return res.json({
@@ -437,6 +449,15 @@ async function executeStatReset(req, res) {
 
     if (!data.pendingStatReset) {
       return res.status(400).json({ error: 'ไม่มี Stat Reset token — ซื้อจาก RP Shop ก่อน' });
+    }
+
+    // Cooldown: 1 ชั่วโมง
+    const RESET_COOLDOWN_MS = 60 * 60 * 1000;
+    const lastStatReset = data.lastStatReset || 0;
+    const cooldownLeft = RESET_COOLDOWN_MS - (Date.now() - lastStatReset);
+    if (cooldownLeft > 0) {
+      const minsLeft = Math.ceil(cooldownLeft / 60000);
+      return res.status(429).json({ error: `รอ ${minsLeft} นาทีก่อน reset ครั้งต่อไป` });
     }
 
     const charId = data.characterId;
@@ -478,7 +499,10 @@ async function executeStatReset(req, res) {
     if ((updated.mp || 0) < 1)  clampUpdates.mp = 1;
     if (Object.keys(clampUpdates).length > 0) await charRef.update(clampUpdates);
 
-    await accountRef.update({ pendingStatReset: admin.firestore.FieldValue.delete() });
+    await accountRef.update({
+      pendingStatReset: admin.firestore.FieldValue.delete(),
+      lastStatReset:    Date.now(),
+    });
 
     const final = (await charRef.get()).data();
     console.log(`[RPShop] ↩️ uid=${uid} stat reset — refunded ${totalPointsSpent} stat points`);

@@ -69,16 +69,20 @@ const SCREENS = {
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
 
 // ─────────────────────────────────────────────────────────
-//  BGM Config — วาง Suno URL หลังจาก generate แล้ว
+//  BGM Config — วาง file ไว้ใน /public/bgm/ แล้วอัปเดต path ด้านล่าง
+//  ถ้าไฟล์ไม่มี → fallback ไปใช้ ashenveil-1.mp3 อัตโนมัติ
 //  แนะนำ: 16-bit SNES style (ดู prompt ในไฟล์ BGM_PROMPTS.md)
 // ─────────────────────────────────────────────────────────
+const BGM_FALLBACK = '/bgm/ashenveil-1.mp3';
 const BGM = {
-  town:    '/bgm/ashenveil-1.mp3',  // Ashenveil BGM 1 (ทุก zone ใช้ track เดียวก่อน)
-  field:   '/bgm/ashenveil-1.mp3',
-  cave:    '/bgm/ashenveil-1.mp3',
-  dungeon: '/bgm/ashenveil-1.mp3',
-  battle:  '/bgm/ashenveil-1.mp3',
-  boss:    '/bgm/ashenveil-1.mp3',
+  town:    '/bgm/ashenveil-town.mp3',    // Town Square — peaceful / merchant vibes
+  field:   '/bgm/ashenveil-field.mp3',   // Outskirts / Forest / Marsh — adventurous
+  cave:    '/bgm/ashenveil-cave.mp3',    // Dark Cave / City Ruins — tense, echoing
+  dungeon: '/bgm/ashenveil-dungeon.mp3', // Dungeon runs — dark + rhythmic
+  battle:  '/bgm/ashenveil-battle.mp3',  // Regular combat — fast-paced
+  boss:    '/bgm/ashenveil-boss.mp3',    // Boss / Void Frontier — epic + intense
+  shadow:  '/bgm/ashenveil-shadow.mp3',  // Shadowfell Depths — eerie / dark ambient
+  citadel: '/bgm/ashenveil-citadel.mp3', // Vorath Citadel — grand / orchestral
 };
 
 // zone → bgm key
@@ -90,6 +94,8 @@ const ZONE_BGM = {
   city_ruins:        'cave',
   cursed_marshlands: 'field',
   void_frontier:     'boss',
+  shadowfell_depths: 'shadow',
+  vorath_citadel:    'citadel',
 };
 
 // Full zone list for travel screen (minLevel gating)
@@ -234,6 +240,9 @@ export default function GameWorld() {
   // ── Login Bonus ──
   const [loginBonusData,   setLoginBonusData]   = useState(null);  // { streak, reward, alreadyClaimed }
   const [showLoginBonus,   setShowLoginBonus]   = useState(false); // popup visible
+
+  // ── Display Settings (theme/font/brightness/BGM) ──
+  const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
 
   // ── Pending Loot (inventory overflow) ──
   const [pendingLoot,      setPendingLoot]      = useState([]);    // drops รอตัดสินใจ
@@ -934,9 +943,28 @@ export default function GameWorld() {
 
   // ── BGM: เล่น track ตาม key พร้อม crossfade ──
   const fadeIntervalRef = useRef(null);
+
+  // Helper: สร้าง Audio element พร้อม fallback ถ้าไฟล์ไม่มี
+  const loadAudioWithFallback = useCallback((url, onReady) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.src = url;
+    audio.currentTime = 0;
+    // ถ้าโหลดไม่ได้ (ไฟล์ไม่มี) → fallback ไป ashenveil-1.mp3
+    const onError = () => {
+      if (audio.src !== BGM_FALLBACK && url !== BGM_FALLBACK) {
+        console.warn(`[BGM] ${url} not found — falling back to ${BGM_FALLBACK}`);
+        audio.src = BGM_FALLBACK;
+        audio.currentTime = 0;
+      }
+      if (onReady) onReady();
+    };
+    audio.addEventListener('error', onError, { once: true });
+    if (onReady) onReady();
+  }, []);
+
   const playBgm = useCallback((key) => {
-    const url = BGM[key] || '';
-    if (!url) return;
+    const url = BGM[key] || BGM_FALLBACK;
 
     // สร้าง audio element ครั้งแรก
     if (!audioRef.current) {
@@ -960,9 +988,9 @@ export default function GameWorld() {
     if (!bgmEnabled || !prevUrl || prevUrl === url) {
       // ไม่มีเสียงเดิม หรือเป็น url เดียวกัน — switch ตรงๆ
       audioRef.current.pause();
-      audioRef.current.src = url;
-      audioRef.current.currentTime = 0;
-      if (bgmEnabled) audioRef.current.play().catch(() => {});
+      loadAudioWithFallback(url, () => {
+        if (bgmEnabled) audioRef.current.play().catch(() => {});
+      });
       return;
     }
 
@@ -979,17 +1007,18 @@ export default function GameWorld() {
         clearInterval(fadeIntervalRef.current);
         if (audioRef.current) {
           audioRef.current.pause();
-          audioRef.current.src = url;
-          audioRef.current.currentTime = 0;
-          audioRef.current.volume = 0;
-          audioRef.current.play().catch(() => {});
-          // Fade in
-          let inVol = 0;
-          const inInterval = setInterval(() => {
-            inVol = Math.min(targetVol, inVol + step);
-            if (audioRef.current) audioRef.current.volume = inVol;
-            if (inVol >= targetVol) clearInterval(inInterval);
-          }, 20);
+          loadAudioWithFallback(url, () => {
+            if (!audioRef.current) return;
+            audioRef.current.volume = 0;
+            audioRef.current.play().catch(() => {});
+            // Fade in
+            let inVol = 0;
+            const inInterval = setInterval(() => {
+              inVol = Math.min(targetVol, inVol + step);
+              if (audioRef.current) audioRef.current.volume = inVol;
+              if (inVol >= targetVol) clearInterval(inInterval);
+            }, 20);
+          });
         }
       }
     }, 20);
@@ -2426,6 +2455,7 @@ export default function GameWorld() {
                       🎁 Login Bonus
                     </button>
                     <Btn onClick={openSettings}     disabled={busy}>⚙️ ตั้งค่า</Btn>
+                    <Btn onClick={() => setDisplaySettingsOpen(true)} disabled={busy}>🎨 ปรับแสง</Btn>
                   </div>
                 </div>
               )}
@@ -5307,6 +5337,8 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
           onToggle: toggleBgm,
           onVolume: (v) => { setBgmVolume(v); localStorage.setItem('game_bgm_vol', String(v)); },
         }}
+        externalOpen={displaySettingsOpen}
+        onExternalClose={() => setDisplaySettingsOpen(false)}
       />
 
       {/* ── Item Detail Modal ── */}
