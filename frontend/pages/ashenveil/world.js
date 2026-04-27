@@ -235,6 +235,9 @@ export default function GameWorld() {
   const [loginBonusData,   setLoginBonusData]   = useState(null);  // { streak, reward, alreadyClaimed }
   const [showLoginBonus,   setShowLoginBonus]   = useState(false); // popup visible
 
+  // ── Display Settings (theme/font/brightness/BGM) ──
+  const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
+
   // ── Pending Loot (inventory overflow) ──
   const [pendingLoot,      setPendingLoot]      = useState([]);    // drops รอตัดสินใจ
   const [pendingLootModal, setPendingLootModal] = useState(false); // แสดง modal
@@ -2426,6 +2429,7 @@ export default function GameWorld() {
                       🎁 Login Bonus
                     </button>
                     <Btn onClick={openSettings}     disabled={busy}>⚙️ ตั้งค่า</Btn>
+                    <Btn onClick={() => setDisplaySettingsOpen(true)} disabled={busy}>🎨 ปรับแสง</Btn>
                   </div>
                 </div>
               )}
@@ -5307,6 +5311,8 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
           onToggle: toggleBgm,
           onVolume: (v) => { setBgmVolume(v); localStorage.setItem('game_bgm_vol', String(v)); },
         }}
+        externalOpen={displaySettingsOpen}
+        onExternalClose={() => setDisplaySettingsOpen(false)}
       />
 
       {/* ── Item Detail Modal ── */}
