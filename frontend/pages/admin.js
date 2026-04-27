@@ -2468,20 +2468,25 @@ const SIM_CLASSES = [
   { name:'Ranger',    baseATK:17, baseDEF:9,  baseHP:98,  baseMP:75,  sigMult:2.6, sigMP:32, basicMult:1.15, magic:false, weaponTier:3 },
   { name:'Witch',     baseATK:20, baseDEF:5,  baseHP:78,  baseMP:130, sigMult:2.8, sigMP:55, basicMult:0.9,  magic:true,  weaponTier:1 },
 ];
+// SIM_ZONES — ค่าเฉลี่ยจาก monster จริงในฐานข้อมูล (excl. mini-boss)
+// ATK city_ruins ปรับลง (excl. shadow_rogue 110 → ค่าเฉลี่ยทั่วไป)
+// ATK vorath_citadel ปรับลง (excl. void_priest 460 / abyssal_dragon 520)
 const SIM_ZONES = [
-  { name:'Starter', monHP:80,   monATK:10,  monDEF:6,  level:1  },
-  { name:'Forest',  monHP:160,  monATK:18,  monDEF:11, level:10 },
-  { name:'Cave',    monHP:280,  monATK:30,  monDEF:18, level:20 },
-  { name:'Dungeon', monHP:500,  monATK:50,  monDEF:28, level:35 },
-  { name:'Ruins',   monHP:900,  monATK:85,  monDEF:45, level:55 },
-  { name:'Abyss',   monHP:1600, monATK:140, monDEF:70, level:80 },
+  { name:'Town Outskirts', monHP:300,  monATK:22,  monDEF:6,  level:1  },
+  { name:'Forest Path',    monHP:580,  monATK:36,  monDEF:12, level:5  },
+  { name:'Dark Cave',      monHP:750,  monATK:45,  monDEF:17, level:10 },
+  { name:'City Ruins',     monHP:548,  monATK:65,  monDEF:18, level:15 },
+  { name:'Cursed Marsh',   monHP:1200, monATK:100, monDEF:27, level:22 },
+  { name:'Void Frontier',  monHP:2100, monATK:175, monDEF:32, level:33 },
+  { name:'Shadowfell',     monHP:2600, monATK:230, monDEF:44, level:45 },
+  { name:'Vorath Citadel', monHP:1600, monATK:265, monDEF:67, level:55 },
 ];
 const SIM_BASELINE = {
   defK:1.0, defCap:0.75, magCap:0.20,
   cr:0.10, cm:1.50, scr:0.03, scm:2.50,
   mpR:8,
   wt:[0,8,16,28,45,68],
-  zScale:[0,1.0,1.3,1.7,2.2,3.0,4.2],
+  zScale:[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0],
 };
 
 function simCalcDR(def, atk, defK, cap) {
@@ -2533,7 +2538,7 @@ function BalanceSimTab() {
   const [scm,     setScm]     = useState(2.50);
   const [mpR,     setMpR]     = useState(8);
   const [wt,      setWt]      = useState([0,8,16,28,45,68]);
-  const [zScale,  setZScale]  = useState([1.0,1.3,1.7,2.2,3.0,4.2]);
+  const [zScale,  setZScale]  = useState([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]);
   const [sigMults,setSigMults]= useState(SIM_CLASSES.map(c => c.sigMult));
   const [view,    setView]    = useState('ratio');
   const [selZone, setSelZone] = useState(0);
@@ -2593,7 +2598,7 @@ function BalanceSimTab() {
     setCr(SIM_BASELINE.cr); setCm(SIM_BASELINE.cm); setScr(SIM_BASELINE.scr); setScm(SIM_BASELINE.scm);
     setMpR(SIM_BASELINE.mpR);
     setWt([...SIM_BASELINE.wt]);
-    setZScale([1.0,1.3,1.7,2.2,3.0,4.2]);
+    setZScale([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]);
     setSigMults(SIM_CLASSES.map(c => c.sigMult));
   }
 
