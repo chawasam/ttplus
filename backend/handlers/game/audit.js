@@ -600,6 +600,7 @@ async function getGameData(req, res) {
       return {
         name:       cls,           // 'WARRIOR', 'MAGE', …
         baseATK:    stats.atk,
+        baseMAG:    stats.mag || 0,
         baseDEF:    stats.def,
         baseHP:     stats.hp,
         baseMP:     stats.mp,

@@ -2461,28 +2461,30 @@ const RANK_COLOR = { S:'#f59e0b', A:'#f87171', B:'#60a5fa', C:'#4ade80', D:'#94a
 // sigMult:           ค่าจาก combat.js LIMIT_BREAKS[class].dmgMult
 // weaponTier/basicMult/sigMP: sim parameter (ปรับได้ใน admin)
 const SIM_CLASSES = [
-  // sigMult = rotation skill mult (NOT Limit Break — LB ใช้แค่ครั้งเดียว/fight)
-  { name:'Warrior',     baseATK:22, baseDEF:18, baseHP:150, baseMP:40,  sigMult:2.5, sigMP:25, basicMult:0.90, magic:false, weaponTier:3 },
-  { name:'Rogue',       baseATK:20, baseDEF:12, baseHP:110, baseMP:60,  sigMult:2.5, sigMP:28, basicMult:1.10, magic:false, weaponTier:3 },
-  { name:'Cleric',      baseATK:14, baseDEF:14, baseHP:120, baseMP:100, sigMult:2.5, sigMP:40, basicMult:0.70, magic:true,  weaponTier:1 },
-  { name:'Ranger',      baseATK:18, baseDEF:12, baseHP:115, baseMP:70,  sigMult:2.5, sigMP:30, basicMult:1.00, magic:false, weaponTier:3 },
-  { name:'Mage',        baseATK:10, baseDEF:8,  baseHP:90,  baseMP:130, sigMult:3.5, sigMP:45, basicMult:1.00, magic:true,  weaponTier:1 },
-  { name:'Bard',        baseATK:14, baseDEF:10, baseHP:105, baseMP:90,  sigMult:2.0, sigMP:38, basicMult:0.80, magic:true,  weaponTier:1 },
-  { name:'Berserker',   baseATK:28, baseDEF:14, baseHP:170, baseMP:30,  sigMult:3.0, sigMP:30, basicMult:1.10, magic:false, weaponTier:3 },
-  { name:'Engineer',    baseATK:18, baseDEF:20, baseHP:130, baseMP:60,  sigMult:2.5, sigMP:30, basicMult:1.00, magic:false, weaponTier:3 },
-  { name:'Runesmith',   baseATK:16, baseDEF:18, baseHP:120, baseMP:80,  sigMult:2.5, sigMP:35, basicMult:0.90, magic:false, weaponTier:3 },
-  { name:'Assassin',    baseATK:25, baseDEF:10, baseHP:100, baseMP:70,  sigMult:3.5, sigMP:28, basicMult:1.20, magic:false, weaponTier:4 },
-  { name:'Hexblade',    baseATK:18, baseDEF:12, baseHP:105, baseMP:100, sigMult:2.5, sigMP:42, basicMult:0.90, magic:true,  weaponTier:2 },
-  { name:'Phantom',     baseATK:15, baseDEF:8,  baseHP:95,  baseMP:110, sigMult:2.5, sigMP:45, basicMult:0.90, magic:true,  weaponTier:1 },
-  { name:'Deathknight', baseATK:22, baseDEF:16, baseHP:140, baseMP:60,  sigMult:2.5, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
-  { name:'Necromancer', baseATK:10, baseDEF:8,  baseHP:95,  baseMP:130, sigMult:3.0, sigMP:50, basicMult:0.80, magic:true,  weaponTier:1 },
-  { name:'Gravecaller', baseATK:12, baseDEF:10, baseHP:110, baseMP:110, sigMult:2.5, sigMP:45, basicMult:0.80, magic:true,  weaponTier:1 },
-  { name:'Voidwalker',  baseATK:18, baseDEF:10, baseHP:100, baseMP:100, sigMult:2.5, sigMP:35, basicMult:1.00, magic:false, weaponTier:3 },
-  { name:'Rifter',      baseATK:24, baseDEF:8,  baseHP:105, baseMP:90,  sigMult:2.5, sigMP:28, basicMult:1.10, magic:false, weaponTier:4 },
-  { name:'Soulseer',    baseATK:8,  baseDEF:9,  baseHP:90,  baseMP:120, sigMult:2.5, sigMP:45, basicMult:0.90, magic:true,  weaponTier:1 },
-  { name:'Wildguard',   baseATK:24, baseDEF:16, baseHP:145, baseMP:50,  sigMult:2.5, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
-  { name:'Tracker',     baseATK:20, baseDEF:12, baseHP:115, baseMP:65,  sigMult:3.0, sigMP:28, basicMult:1.10, magic:false, weaponTier:3 },
-  { name:'Shaman',      baseATK:14, baseDEF:12, baseHP:110, baseMP:100, sigMult:2.5, sigMP:42, basicMult:0.90, magic:true,  weaponTier:2 },
+  // baseATK = ใช้สำหรับ physical classes
+  // baseMAG = ใช้สำหรับ magic classes (magic:true) — ใน simRun จะใช้ baseMAG แทน baseATK
+  // ค่า mag จาก CLASS_BASE_STATS จริงใน account.js
+  { name:'Warrior',     baseATK:22, baseMAG:5,  baseDEF:18, baseHP:150, baseMP:40,  sigMult:2.5, sigMP:25, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Rogue',       baseATK:20, baseMAG:8,  baseDEF:12, baseHP:110, baseMP:60,  sigMult:2.5, sigMP:28, basicMult:1.10, magic:false, weaponTier:3 },
+  { name:'Cleric',      baseATK:14, baseMAG:20, baseDEF:14, baseHP:120, baseMP:100, sigMult:2.5, sigMP:40, basicMult:0.70, magic:true,  weaponTier:1 },
+  { name:'Ranger',      baseATK:18, baseMAG:10, baseDEF:12, baseHP:115, baseMP:70,  sigMult:2.5, sigMP:30, basicMult:1.00, magic:false, weaponTier:3 },
+  { name:'Mage',        baseATK:10, baseMAG:30, baseDEF:8,  baseHP:90,  baseMP:130, sigMult:3.5, sigMP:45, basicMult:1.00, magic:true,  weaponTier:1 },
+  { name:'Bard',        baseATK:14, baseMAG:18, baseDEF:10, baseHP:105, baseMP:90,  sigMult:2.0, sigMP:38, basicMult:0.80, magic:true,  weaponTier:1 },
+  { name:'Berserker',   baseATK:28, baseMAG:3,  baseDEF:14, baseHP:170, baseMP:30,  sigMult:3.0, sigMP:30, basicMult:1.10, magic:false, weaponTier:3 },
+  { name:'Engineer',    baseATK:18, baseMAG:12, baseDEF:20, baseHP:130, baseMP:60,  sigMult:2.5, sigMP:30, basicMult:1.00, magic:false, weaponTier:3 },
+  { name:'Runesmith',   baseATK:16, baseMAG:18, baseDEF:18, baseHP:120, baseMP:80,  sigMult:2.5, sigMP:35, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Assassin',    baseATK:25, baseMAG:8,  baseDEF:10, baseHP:100, baseMP:70,  sigMult:3.5, sigMP:28, basicMult:1.20, magic:false, weaponTier:4 },
+  { name:'Hexblade',    baseATK:18, baseMAG:22, baseDEF:12, baseHP:105, baseMP:100, sigMult:2.5, sigMP:42, basicMult:0.90, magic:true,  weaponTier:2 },
+  { name:'Phantom',     baseATK:15, baseMAG:25, baseDEF:8,  baseHP:95,  baseMP:110, sigMult:2.5, sigMP:45, basicMult:0.90, magic:true,  weaponTier:1 },
+  { name:'Deathknight', baseATK:22, baseMAG:12, baseDEF:16, baseHP:140, baseMP:60,  sigMult:2.5, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Necromancer', baseATK:10, baseMAG:32, baseDEF:8,  baseHP:95,  baseMP:130, sigMult:3.0, sigMP:50, basicMult:0.80, magic:true,  weaponTier:1 },
+  { name:'Gravecaller', baseATK:12, baseMAG:25, baseDEF:10, baseHP:110, baseMP:110, sigMult:2.5, sigMP:45, basicMult:0.80, magic:true,  weaponTier:1 },
+  { name:'Voidwalker',  baseATK:18, baseMAG:20, baseDEF:10, baseHP:100, baseMP:100, sigMult:2.5, sigMP:35, basicMult:1.00, magic:false, weaponTier:3 },
+  { name:'Rifter',      baseATK:24, baseMAG:15, baseDEF:8,  baseHP:105, baseMP:90,  sigMult:2.5, sigMP:28, basicMult:1.10, magic:false, weaponTier:4 },
+  { name:'Soulseer',    baseATK:8,  baseMAG:30, baseDEF:9,  baseHP:90,  baseMP:120, sigMult:2.5, sigMP:45, basicMult:0.90, magic:true,  weaponTier:1 },
+  { name:'Wildguard',   baseATK:24, baseMAG:5,  baseDEF:16, baseHP:145, baseMP:50,  sigMult:2.5, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Tracker',     baseATK:20, baseMAG:8,  baseDEF:12, baseHP:115, baseMP:65,  sigMult:3.0, sigMP:28, basicMult:1.10, magic:false, weaponTier:3 },
+  { name:'Shaman',      baseATK:14, baseMAG:22, baseDEF:12, baseHP:110, baseMP:100, sigMult:2.5, sigMP:42, basicMult:0.90, magic:true,  weaponTier:2 },
 ];
 // SIM_ZONES — ค่าเฉลี่ยจาก monster จริงในฐานข้อมูล (excl. mini-boss)
 // ATK city_ruins ปรับลง (excl. shadow_rogue 110 → ค่าเฉลี่ยทั่วไป)
@@ -2515,7 +2517,8 @@ function simCalcECrit(cr, cm, scr, scm) {
 }
 function simRun(cls, zone, pr, classIdx) {
   const weapATK = pr.wt[cls.weaponTier] || 0;
-  const rawATK  = cls.baseATK + weapATK;
+  // magic classes ใช้ MAG stat (baseMAG) แทน ATK — ตรงกับ combat.js: max(1, mag - def*0.15)
+  const rawATK  = cls.magic ? (cls.baseMAG || 0) + weapATK : cls.baseATK + weapATK;
   const sigMult = pr.classSigMult[classIdx ?? 0] || cls.sigMult;
   const cap     = cls.magic ? pr.magCap : pr.defCap;
   const monDR   = simCalcDR(zone.monDEF, rawATK, pr.defK, cap);
