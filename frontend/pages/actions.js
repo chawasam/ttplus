@@ -109,10 +109,142 @@ function Toggle({ label, checked, onChange }) {
   );
 }
 
+// ── OBS WebSocket v5 helper — fetch scenes & sources ─────────────────────────
+function fetchObsLists(host, port, onResult) {
+  // onResult({ scenes: string[], inputs: string[], error?: string })
+  let ws;
+  const pending = new Map(); // requestId → callback
+  const timeout = setTimeout(() => {
+    onResult({ scenes: [], inputs: [], error: 'Timeout — OBS ไม่ตอบสนอง' });
+    try { ws?.close(); } catch {}
+  }, 4000);
+
+  try {
+    ws = new WebSocket(`ws://${host}:${port}`);
+  } catch {
+    clearTimeout(timeout);
+    onResult({ scenes: [], inputs: [], error: 'เปิด WebSocket ไม่ได้' });
+    return;
+  }
+
+  ws.onerror = () => {
+    clearTimeout(timeout);
+    onResult({ scenes: [], inputs: [], error: 'เชื่อม OBS ไม่ได้ — เปิด WebSocket Server ใน OBS ก่อน' });
+  };
+
+  ws.onopen = () => {
+    // OBS WS v5: first message is Hello (op:0), we reply with Identify (op:1)
+    // But if no password, we can send requests right after the Hello
+  };
+
+  let identified = false;
+  const results = { scenes: null, inputs: null };
+
+  const checkDone = () => {
+    if (results.scenes !== null && results.inputs !== null) {
+      clearTimeout(timeout);
+      onResult({ scenes: results.scenes, inputs: results.inputs });
+      ws.close();
+    }
+  };
+
+  const sendRequest = (requestType, requestId) => {
+    ws.send(JSON.stringify({ op: 6, d: { requestType, requestId, requestData: {} } }));
+  };
+
+  ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+    const { op, d } = msg;
+
+    if (op === 0) {
+      // Hello — identify (no auth)
+      ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
+    } else if (op === 2) {
+      // Identified — now safe to send requests
+      identified = true;
+      sendRequest('GetSceneList', 'scenes');
+      sendRequest('GetInputList',  'inputs');
+    } else if (op === 7) {
+      // RequestResponse
+      if (d.requestId === 'scenes') {
+        results.scenes = (d.responseData?.scenes || [])
+          .map(s => s.sceneName)
+          .filter(Boolean)
+          .reverse(); // OBS returns oldest first
+      } else if (d.requestId === 'inputs') {
+        results.inputs = (d.responseData?.inputs || [])
+          .map(s => s.inputName)
+          .filter(Boolean);
+      }
+      checkDone();
+    }
+  };
+}
+
+// ── OBS Dropdown (Scene or Source) ───────────────────────────────────────────
+function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholder }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-gray-400">{label}</label>
+        <button
+          type="button"
+          onClick={onFetch}
+          disabled={loading}
+          className="text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-50 flex items-center gap-1"
+        >
+          {loading ? '⏳ กำลังโหลด...' : '🔄 โหลดจาก OBS'}
+        </button>
+      </div>
+      {items.length > 0 ? (
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+        >
+          <option value="">— เลือก {label} —</option>
+          {items.map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Action Form Modal ────────────────────────────────────────────────────────
-function ActionModal({ initial, onSave, onClose }) {
+function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
   const [form, setForm] = useState(initial || DEFAULT_ACTION);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // OBS dropdown state
+  const [obsScenes,  setObsScenes]  = useState([]);
+  const [obsInputs,  setObsInputs]  = useState([]);
+  const [obsLoading, setObsLoading] = useState(false);
+  const [obsError,   setObsError]   = useState('');
+
+  const loadObsLists = () => {
+    setObsLoading(true);
+    setObsError('');
+    fetchObsLists(obsHost || 'localhost', obsPort || 4455, ({ scenes, inputs, error }) => {
+      setObsLoading(false);
+      if (error) {
+        setObsError(error);
+        return;
+      }
+      setObsScenes(scenes);
+      setObsInputs(inputs);
+    });
+  };
 
   const toggleType = (t) => {
     setForm(p => ({
@@ -188,8 +320,16 @@ function ActionModal({ initial, onSave, onClose }) {
         {form.types.includes('switch_obs_scene') && (
           <div className="space-y-2 border border-gray-800 rounded p-3">
             <p className="text-xs text-gray-400 font-medium">🎬 OBS Scene</p>
-            <Input label="ชื่อ Scene ที่จะสลับไป" value={form.obsScene} onChange={v => set('obsScene', v)}
-              placeholder="เช่น Scene ของขวัญ" />
+            {obsError && <p className="text-[10px] text-red-400">{obsError}</p>}
+            <ObsSelect
+              label="ชื่อ Scene ที่จะสลับไป"
+              value={form.obsScene}
+              onChange={v => set('obsScene', v)}
+              items={obsScenes}
+              loading={obsLoading}
+              onFetch={loadObsLists}
+              placeholder="เช่น Scene ของขวัญ"
+            />
             <div className="flex items-center gap-3">
               <Input label="กี่วินาทีแล้วกลับ (0 = เปิดตลอด)" value={form.obsSceneDuration}
                 onChange={v => set('obsSceneDuration', v)} type="number" min={0} className="flex-1" />
@@ -204,8 +344,16 @@ function ActionModal({ initial, onSave, onClose }) {
         {form.types.includes('activate_obs_source') && (
           <div className="space-y-2 border border-gray-800 rounded p-3">
             <p className="text-xs text-gray-400 font-medium">👁 OBS Source</p>
-            <Input label="ชื่อ Source ที่จะเปิด" value={form.obsSource} onChange={v => set('obsSource', v)}
-              placeholder="เช่น ภาพ Rose Animation" />
+            {obsError && <p className="text-[10px] text-red-400">{obsError}</p>}
+            <ObsSelect
+              label="ชื่อ Source ที่จะเปิด"
+              value={form.obsSource}
+              onChange={v => set('obsSource', v)}
+              items={obsInputs}
+              loading={obsLoading}
+              onFetch={loadObsLists}
+              placeholder="เช่น ภาพ Rose Animation"
+            />
             <Input label="กี่วินาทีแล้วปิด (0 = เปิดตลอด)" value={form.obsSourceDuration}
               onChange={v => set('obsSourceDuration', v)} type="number" min={0} />
           </div>
@@ -747,6 +895,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           initial={actionModal.data}
           onSave={saveAction}
           onClose={() => setActionModal(null)}
+          obsHost={obsHost}
+          obsPort={obsPort}
         />
       )}
       {eventModal && (
