@@ -422,10 +422,15 @@ export default function FireworksWidget() {
     const explodePcount = [10, 20, 30].includes(pcountParam) ? pcountParam : 10;
 
     // ── Spawn rocket + play sound ──
-    // repeatCount > 1 → spawn หลาย rocket ทยอย delay ทีละลูก
+    // isRepeatEnd=false (intermediate combo tap) → จุด 1 ลูกทันที
+    // isRepeatEnd=true + isStreakable=true (combo final) → ไม่จุดซ้ำ (จุดครบแล้วทีละ tap)
+    // isRepeatEnd=true + isStreakable=false (non-combo) → จุด repeatCount ลูก ทยอย delay
     async function spawnFromGift(data) {
       const safe = sanitizeEvent(data);
       if (safe.diamondCount <= 0) return;
+
+      // Combo final event — ไม่จุดซ้ำ (แต่ละ tap จุดไปแล้ว)
+      if (data.isRepeatEnd === true && data.isStreakable === true) return;
 
       // Load avatar + gift image ครั้งเดียว แชร์ทุก rocket
       const [avatarImg, giftImg] = await Promise.all([
@@ -433,25 +438,31 @@ export default function FireworksWidget() {
         loadImage(safe.giftPictureUrl),
       ]);
 
-      const count = Math.max(1, Math.min(safe.repeatCount || 1, 50)); // cap 50 ลูก
-      const GAP_MS = count <= 3 ? 400 : count <= 10 ? 300 : 200;     // ห่างน้อยลงถ้าเยอะ
+      const spawnOne = () => {
+        if (!runningRef.current) return;
+        playFirework(volume);
+        rocketsRef.current.push(makeRocket({
+          avatarImg,
+          giftImg,
+          giftEmoji:  '🎁',
+          senderName: safe.nickname,
+          giftName:   safe.giftName,
+          coins:      safe.diamondCount,
+          patterns:   explodePatterns,
+          pcount:     explodePcount,
+        }));
+      };
 
-      for (let i = 0; i < count; i++) {
-        const delay = i * GAP_MS;
-        setTimeout(() => {
-          if (!runningRef.current) return;
-          playFirework(volume);
-          rocketsRef.current.push(makeRocket({
-            avatarImg,
-            giftImg,
-            giftEmoji:  '🎁',
-            senderName: safe.nickname,
-            giftName:   safe.giftName,
-            coins:      safe.diamondCount,   // แต่ละลูก = 1 ชิ้น
-            patterns:   explodePatterns,
-            pcount:     explodePcount,
-          }));
-        }, delay);
+      if (data.isRepeatEnd === false) {
+        // Intermediate tap → จุด 1 ลูกทันที
+        spawnOne();
+      } else {
+        // Non-combo gift (repeatCount อาจ > 1) → ทยอย delay
+        const count = Math.max(1, Math.min(safe.repeatCount || 1, 50));
+        const GAP_MS = count <= 3 ? 400 : count <= 10 ? 300 : 200;
+        for (let i = 0; i < count; i++) {
+          setTimeout(spawnOne, i * GAP_MS);
+        }
       }
     }
 

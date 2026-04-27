@@ -155,12 +155,17 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
     });
 
     connection.on('gift', (data) => {
-      if (data.giftType === 1 && !data.repeatEnd) return;
+      const isStreakable = data.giftType === 1;          // gift ที่กดค้างได้ (combo)
+      const isRepeatEnd  = !isStreakable || !!data.repeatEnd; // true = event สุดท้าย / non-combo
+
       const safe         = sanitizeTikTokEvent(data);
       const diamondCount = Math.max(0, Number(data.diamondCount) || 0);
       const repeatCount  = Math.min(Number(data.repeatCount) || 1, 9999);
-      const coinsThisEvent = diamondCount * repeatCount;
-      const giftPayload  = {
+
+      // ── Emit ทุก event (intermediate + final) ให้ widget แสดงผลทันที ──
+      // isRepeatEnd=false  → intermediate tap (fireworks จุด 1 ลูก)
+      // isRepeatEnd=true   → final / non-combo (fireworks จุดตาม repeatCount)
+      const giftPayload = {
         type: 'gift',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
@@ -169,9 +174,16 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         giftPictureUrl:    safe.giftPictureUrl,
         diamondCount,
         repeatCount,
-        timestamp:         Date.now(),
+        isStreakable,   // widget ใช้ตัดสินใจจำนวน rocket
+        isRepeatEnd,    // widget ใช้ตัดสินใจจำนวน rocket
+        timestamp:      Date.now(),
       };
       emitAll('gift', giftPayload);
+
+      // ── คิดเงิน / leaderboard / ลูกเล่น TT เฉพาะ event สุดท้ายเท่านั้น ──
+      if (!isRepeatEnd) return;
+
+      const coinsThisEvent = diamondCount * repeatCount;
       // Update gifts leaderboard
       const glb = giftsLeaderboard.get(userId) || new Map();
       const gprev = glb.get(safe.uniqueId) || { nickname: safe.nickname, profilePictureUrl: safe.profilePictureUrl, totalCoins: 0 };
@@ -191,7 +203,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
           ipHash,
         }).catch(err => console.error('[TikTok] processGift error:', err?.message));
       }
-      // ลูกเล่น TT — fire gift events
+      // ลูกเล่น TT — fire gift events (เฉพาะ final)
       processEvent(userId, 'gift', giftPayload).catch(() => {});
     });
 
