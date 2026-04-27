@@ -2882,19 +2882,29 @@ function DatabaseTab() {
   const [subTab,    setSubTab]    = useState('monsters');
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(false);
+  const [loadErr,   setLoadErr]   = useState(null);
   const [search,    setSearch]    = useState('');
   const [zoneFilter,setZoneFilter]= useState('all');
   const [typeFilter,setTypeFilter]= useState('all');
   const [selected,  setSelected]  = useState(null);
 
-  useEffect(() => {
-    if (data) return;
+  const loadData = useCallback(() => {
+    if (loading) return;
     setLoading(true);
+    setLoadErr(null);
     api.get('/api/game/audit/gamedata')
-      .then(r => setData(r.data))
-      .catch(() => toast.error('โหลด gamedata ไม่ได้'))
+      .then(r => { setData(r.data); setLoadErr(null); })
+      .catch(err => {
+        const status = err?.response?.status;
+        const msg    = err?.response?.data?.error || err?.message || 'unknown';
+        console.error('[DatabaseTab] gamedata error', status, msg);
+        setLoadErr(`${status ? status + ' — ' : ''}${msg}`);
+        toast.error(`gamedata: ${status || 'error'} ${msg.slice(0,60)}`);
+      })
       .finally(() => setLoading(false));
-  }, [data]);
+  }, [loading]);
+
+  useEffect(() => { if (!data && !loading) loadData(); }, []);
 
   const exportJSON = (key) => {
     if (!data) return;
@@ -4219,7 +4229,24 @@ function DatabaseTab() {
           <div style={{ color:'#e5e7eb', fontWeight:800, fontSize:18 }}>🗄️ Game Database</div>
           <div style={{ color:'#4b5563', fontSize:12, marginTop:2 }}>Read-only viewer — แก้ไขผ่าน code + push</div>
         </div>
-        {loading && <div style={{ color:'#6b7280', fontSize:13 }}>⏳ กำลังโหลด...</div>}
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          {loading && <div style={{ color:'#6b7280', fontSize:13 }}>⏳ กำลังโหลด...</div>}
+          {!loading && data && (
+            <button onClick={() => { setData(null); setTimeout(loadData, 50); }}
+              style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #374151', color:'#9ca3af', background:'transparent', cursor:'pointer', fontSize:12 }}>
+              ↻ Reload
+            </button>
+          )}
+          {!loading && loadErr && (
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <span style={{ color:'#f87171', fontSize:12 }}>❌ {loadErr}</span>
+              <button onClick={loadData}
+                style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #f8717144', color:'#f87171', background:'transparent', cursor:'pointer', fontSize:12 }}>
+                ↺ Retry
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Sub-tabs */}
@@ -4235,7 +4262,18 @@ function DatabaseTab() {
         ))}
       </div>
 
-      {!data && !loading && <div style={{ color:'#6b7280', textAlign:'center', padding:40 }}>กดปุ่ม refresh หรือรอโหลด...</div>}
+      {!data && !loading && !loadErr && <div style={{ color:'#6b7280', textAlign:'center', padding:40 }}>กำลังเตรียมข้อมูล...</div>}
+      {!data && !loading && loadErr && (
+        <div style={{ textAlign:'center', padding:60 }}>
+          <div style={{ color:'#f87171', fontSize:14, marginBottom:16 }}>โหลดข้อมูลไม่สำเร็จ</div>
+          <div style={{ color:'#4b5563', fontSize:12, marginBottom:20, fontFamily:'monospace', background:'#0d1117', padding:'8px 16px', borderRadius:8, display:'inline-block' }}>{loadErr}</div>
+          <br/>
+          <button onClick={loadData}
+            style={{ padding:'8px 20px', borderRadius:8, border:'1px solid #60a5fa44', color:'#60a5fa', background:'transparent', cursor:'pointer', fontSize:13 }}>
+            ↺ ลองใหม่
+          </button>
+        </div>
+      )}
       {data && subTab === 'monsters'    && <MonsterView />}
       {data && subTab === 'npcs'        && <NpcView />}
       {data && subTab === 'maps'        && <MapView />}
