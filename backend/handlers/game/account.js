@@ -715,5 +715,7 @@ module.exports = {
   createCharacter, loadCharacter, deleteCharacter,
   getUnlockedRaces,
   checkChatVerify,
+  CLASS_BASE_STATS,   // exported for admin balance sim
+  CLASSES_BY_RACE,    // exported for admin balance sim
   // pendingVerifications ถูกย้ายไป Firestore แล้ว — ไม่ export อีกต่อไป
 };

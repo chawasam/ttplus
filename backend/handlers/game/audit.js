@@ -552,7 +552,65 @@ async function getGameData(req, res) {
       })),
     };
 
-    return res.json({ monsters, npcs, zones, items, skills, crafting, dungeons, worldBosses, achievements, quests });
+    // ── Combat Constants (for Balance Sim slider defaults) ───────────────────
+    const { CLASS_BASE_STATS } = require('./account');
+    const { LIMIT_BREAK_DEFS } = require('./combat');
+
+    const combatConstants = {
+      cr:     0.10,                         // base crit rate (all classes)
+      cm:     1.50,                         // crit damage multiplier (default)
+      cmAssassin: 1.90,                     // assassin crit mult
+      scm:    2.20,                         // super crit multiplier
+      scrDiv: 3,                            // superCrit threshold = critChance / scrDiv
+      defSubK:  0.5,                        // physical formula: max(1, atk - def*0.5)
+      magSubK:  0.15,                       // magic formula:    max(1, mag - def*0.15)
+    };
+
+    // SIM weapon-tier & basicMult per class (admin-side sim parameters)
+    const SIM_PARAMS = {
+      warrior:     { weaponTier:3, basicMult:0.90, sigMP:30 },
+      rogue:       { weaponTier:3, basicMult:1.10, sigMP:30 },
+      cleric:      { weaponTier:1, basicMult:0.70, sigMP:45 },
+      ranger:      { weaponTier:3, basicMult:1.00, sigMP:32 },
+      mage:        { weaponTier:1, basicMult:1.00, sigMP:50 },
+      bard:        { weaponTier:1, basicMult:0.80, sigMP:40 },
+      berserker:   { weaponTier:5, basicMult:1.30, sigMP:25 },
+      engineer:    { weaponTier:3, basicMult:1.00, sigMP:30 },
+      runesmith:   { weaponTier:3, basicMult:0.90, sigMP:35 },
+      assassin:    { weaponTier:4, basicMult:1.20, sigMP:30 },
+      hexblade:    { weaponTier:2, basicMult:0.90, sigMP:45 },
+      phantom:     { weaponTier:1, basicMult:0.90, sigMP:50 },
+      deathknight: { weaponTier:3, basicMult:0.90, sigMP:30 },
+      necromancer: { weaponTier:1, basicMult:0.80, sigMP:55 },
+      gravecaller: { weaponTier:1, basicMult:0.80, sigMP:50 },
+      voidwalker:  { weaponTier:3, basicMult:1.00, sigMP:35 },
+      rifter:      { weaponTier:4, basicMult:1.10, sigMP:30 },
+      soulseer:    { weaponTier:1, basicMult:0.90, sigMP:50 },
+      wildguard:   { weaponTier:3, basicMult:0.90, sigMP:30 },
+      tracker:     { weaponTier:3, basicMult:1.10, sigMP:30 },
+      shaman:      { weaponTier:2, basicMult:0.90, sigMP:45 },
+    };
+
+    const classData = Object.entries(CLASS_BASE_STATS).map(([cls, stats]) => {
+      const key = cls.toLowerCase();
+      const lb  = LIMIT_BREAK_DEFS[key] || {};
+      const sp  = SIM_PARAMS[key]   || { weaponTier:2, basicMult:1.0, sigMP:35 };
+      return {
+        name:       cls,           // 'WARRIOR', 'MAGE', …
+        baseATK:    stats.atk,
+        baseDEF:    stats.def,
+        baseHP:     stats.hp,
+        baseMP:     stats.mp,
+        sigMult:    lb.dmgMult  || 4.0,
+        magic:      lb.magicDamage || false,
+        sigName:    lb.name     || '',
+        weaponTier: sp.weaponTier,
+        basicMult:  sp.basicMult,
+        sigMP:      sp.sigMP,
+      };
+    });
+
+    return res.json({ monsters, npcs, zones, items, skills, crafting, dungeons, worldBosses, achievements, quests, combatConstants, classData });
   } catch (err) {
     console.error('[Audit] getGameData:', err.message);
     return res.status(500).json({ error: 'Server error' });

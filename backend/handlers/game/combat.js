@@ -1850,4 +1850,4 @@ async function cleanupStaleBattles() {
   }
 }
 
-module.exports = { startBattle, processAction, rest, cleanupStaleBattles };
+module.exports = { startBattle, processAction, rest, cleanupStaleBattles, LIMIT_BREAK_DEFS };
