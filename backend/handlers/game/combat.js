@@ -3,7 +3,7 @@ const admin  = require('firebase-admin');
 const { MONSTERS, getMonster, getRandomMonster, calcDamage, calcSpellDamage, rollZoneTierDrop } = require('../../data/monsters');
 const { getDungeonMonster }  = require('../../data/dungeons');
 const { ITEMS, getItem, rollItem, ITEM_QUALITY } = require('../../data/items');
-const { addGold }            = require('./currency');
+const { addGold, deductGold } = require('./currency');
 const { trackQuestProgress }    = require('./quests');
 const { trackStoryStep, trackMainQuestStep } = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
@@ -521,10 +521,11 @@ async function processAction(req, res) {
     // If counter killed player
     if (state.player.hp <= 0) {
       log.push('💀 คุณพ่ายแพ้โดยการโต้กลับของ ' + state.enemy.name);
-      await handlePlayerDeath(uid, state);
+      const penalty = await handlePlayerDeath(uid, state);
+      if (penalty.goldLost > 0) log.push(`💸 เสีย ${penalty.goldLost} Gold และ ${penalty.xpLost} XP`);
       state.result = 'defeat';
       await deleteBattle(db, battleId);
-      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
+      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId, penalty });
     }
   }
 
@@ -811,7 +812,8 @@ async function processAction(req, res) {
   // ===== Check player dead =====
   if (state.player.hp <= 0) {
     log.push('💀 คุณพ่ายแพ้... Respawn ที่ Town Square');
-    await handlePlayerDeath(uid, state);
+    const penalty = await handlePlayerDeath(uid, state);
+    if (penalty.goldLost > 0) log.push(`💸 เสีย ${penalty.goldLost} Gold และ ${penalty.xpLost} XP`);
 
     // Fail dungeon run if in a dungeon
     if (state.dungeonRunId) {
@@ -826,7 +828,7 @@ async function processAction(req, res) {
     await deleteBattle(db, battleId);
     // Achievement check for death
     checkAchievements(uid, 'death', 1).catch(() => {});
-    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
+    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId, penalty });
   }
 
   // ── Phase 3: Per-turn class mechanics (after enemy turn) ─────────
@@ -1653,14 +1655,20 @@ async function handlePlayerDeath(uid, state) {
   try {
     const accountDoc = await db.collection('game_accounts').doc(uid).get();
     const charId     = accountDoc.data()?.characterId;
-    if (!charId) return;
+    if (!charId) return { goldLost: 0, xpLost: 0 };
+
+    // ── Gold penalty: เสีย 5% Gold (min 50, max 2000) ──────────────────────
+    const currentGold   = accountDoc.data().gold || 0;
+    const rawGoldLoss   = Math.max(50, Math.floor(currentGold * 0.05));
+    const goldLoss      = Math.min(rawGoldLoss, Math.min(currentGold, 2000));
 
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
 
-    // เสีย 10% XP
+    // เสีย 10% XP ของ XP ที่มีในระดับปัจจุบัน
     const xpLoss = Math.floor((char.xp || 0) * 0.1);
+
     await charRef.update({
       hp:         char.hpMax,     // respawn full HP
       mp:         char.mpMax,
@@ -1669,8 +1677,17 @@ async function handlePlayerDeath(uid, state) {
       status:     [],
       deathCount: admin.firestore.FieldValue.increment(1),
     });
+
+    if (goldLoss > 0) {
+      await db.collection('game_accounts').doc(uid).update({
+        gold: admin.firestore.FieldValue.increment(-goldLoss),
+      });
+    }
+
+    return { goldLost: goldLoss, xpLost: xpLoss };
   } catch (err) {
     console.error('[Combat] handlePlayerDeath:', err.message);
+    return { goldLost: 0, xpLost: 0 };
   }
 }
 
@@ -1735,7 +1752,9 @@ function sanitizeState(state) {
   };
 }
 
-// REST endpoint (for polling)
+// REST endpoint — ฟื้นฟู HP/MP เต็ม แลกกับ 100 Gold
+const REST_GOLD_COST = 100;
+
 async function rest(req, res) {
   const uid = req.user.uid;
   const db  = admin.firestore();
@@ -1745,6 +1764,12 @@ async function rest(req, res) {
     const charId     = accountDoc.data()?.characterId;
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
+    // ── หัก Gold ก่อน ────────────────────────────────────────────────────
+    const goldResult = await deductGold(uid, REST_GOLD_COST, 'rest');
+    if (!goldResult.success) {
+      return res.status(400).json({ error: `Gold ไม่พอ — ต้องการ ${REST_GOLD_COST} Gold เพื่อพักผ่อน` });
+    }
+
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
@@ -1752,7 +1777,14 @@ async function rest(req, res) {
     await charRef.update({ hp: char.hpMax, mp: char.mpMax });
     trackQuestProgress(uid, 'rest', 1).catch(() => {});
     trackWeeklyProgress(uid, 'rest', 1).catch(() => {});
-    return res.json({ success: true, hp: char.hpMax, mp: char.mpMax, msg: '💤 พักผ่อนแล้ว — HP และ MP เต็ม' });
+    return res.json({
+      success:  true,
+      hp:       char.hpMax,
+      mp:       char.mpMax,
+      goldCost: REST_GOLD_COST,
+      newGold:  goldResult.newTotal,
+      msg:      `💤 พักผ่อนแล้ว — HP/MP เต็ม (เสีย ${REST_GOLD_COST} Gold)`,
+    });
   } catch (err) {
     console.error('[Combat] rest:', err.message);
     res.status(500).json({ error: 'Server error' });

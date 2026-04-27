@@ -253,6 +253,12 @@ export default function GameWorld() {
   const [levelUpFlash,   setLevelUpFlash]   = useState(null);   // null | newLevel number
   const levelUpFlashTimer = useRef(null);
 
+  // ── Rest Confirm Dialog ──
+  const [restConfirmOpen, setRestConfirmOpen] = useState(false);
+
+  // ── Death Penalty Toast ──
+  const [deathPenalty,   setDeathPenalty]   = useState(null);   // null | { goldLost, xpLost }
+
   // ── Settings / Verify ──
   const [verifyStatus,   setVerifyStatus]   = useState(null);   // { verified, tiktokUniqueId, vjCooldownDaysLeft, canChangeVJ }
   const [settingsTiktok, setSettingsTiktok] = useState('');     // input username
@@ -1232,7 +1238,17 @@ export default function GameWorld() {
           setDungeonRunId(null);
           setDungeonRoom(null);
         }
-        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); }, 1500);
+        // Apply death penalty on frontend
+        if (data.penalty) {
+          const p = data.penalty;
+          if (p.goldLost > 0) setGold(g => Math.max(0, g - p.goldLost));
+          if (p.xpLost   > 0) setChar(c => c ? { ...c, xp: Math.max(0, (c.xp || 0) - p.xpLost) } : c);
+          setDeathPenalty(p);
+        }
+        // Respawn at town
+        setChar(c => c ? { ...c, location: 'town_square' } : c);
+        setZone('town_square');
+        setTimeout(() => { setBattle(null); setScreen(SCREENS.WORLD); setDeathPenalty(null); }, 3500);
       } else if (data.state?.result === 'fled') {
         setTimeout(() => { setBattle(null); setScreen(dungeonRunId ? SCREENS.DUNGEON_ROOM : SCREENS.WORLD); }, 1000);
       } else {
@@ -1253,12 +1269,21 @@ export default function GameWorld() {
     setScreen(SCREENS.WORLD);
   }, []);
 
+  // Step 1: open confirm dialog
+  const handleRestPrompt = useCallback(() => {
+    if (busy) return;
+    setRestConfirmOpen(true);
+  }, [busy]);
+
+  // Step 2: confirmed → call API
   const handleRest = useCallback(async () => {
+    setRestConfirmOpen(false);
     if (busy) return;
     setBusy(true);
     try {
       const { data } = await rest();
       setChar(c => c ? { ...c, hp: data.hp, mp: data.mp } : c);
+      if (data.newGold !== undefined) setGold(data.newGold);
       addLog(data.msg);
       toast.success(data.msg);
     } catch (err) {
@@ -1745,6 +1770,34 @@ export default function GameWorld() {
         </div>
       )}
 
+      {/* ── REST CONFIRM DIALOG ── */}
+      {restConfirmOpen && (
+        <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4"
+          onClick={() => setRestConfirmOpen(false)}>
+          <div className="bg-gray-950 border border-amber-900 rounded-xl p-5 w-full max-w-xs text-center shadow-2xl"
+            style={{ fontFamily: "'Courier New', Courier, monospace" }}
+            onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-3">💤</div>
+            <p className="text-amber-300 font-bold text-sm mb-1">พักผ่อน — ฟื้นฟู HP/MP เต็ม</p>
+            <p className="text-gray-400 text-xs mb-1">ค่าใช้จ่าย: <span className="text-yellow-400 font-bold">100 Gold</span></p>
+            <p className="text-gray-600 text-[10px] mb-4">Gold ปัจจุบัน: {gold.toLocaleString()}</p>
+            {gold < 100 && (
+              <p className="text-red-400 text-xs mb-3">⚠️ Gold ไม่พอ!</p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setRestConfirmOpen(false)}
+                className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:bg-gray-800/40">
+                ยกเลิก
+              </button>
+              <button onClick={handleRest} disabled={gold < 100}
+                className="flex-1 py-2 rounded border border-amber-700 text-amber-300 text-xs hover:bg-amber-900/30 disabled:opacity-40 disabled:cursor-not-allowed">
+                ยืนยัน (−100G)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ZONE DETAIL MODAL ── */}
       {zoneDetailModal && (
         <div className="fixed inset-0 bg-black/80 z-[70] flex items-end justify-center p-4"
@@ -2044,7 +2097,7 @@ export default function GameWorld() {
                         title="สู้ Zone Boss (24h cooldown)"
                       >💀 Zone Boss</Btn>
                     )}
-                    <Btn onClick={handleRest}     disabled={busy}>💤 พักผ่อน</Btn>
+                    <Btn onClick={handleRestPrompt} disabled={busy}>💤 พักผ่อน</Btn>
                     <Btn onClick={loadInventory}  disabled={busy}>🎒 Inventory</Btn>
                     <Btn onClick={loadShop}       disabled={busy}>🏪 ร้านค้า</Btn>
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
@@ -2505,27 +2558,77 @@ export default function GameWorld() {
                     </div>
                   ) : (
                     /* ── Defeat / Fled: auto-dismiss, button as fallback ── */
-                    <button
-                      onClick={() => { setBattle(null); setBattleRewards(null); setScreen(SCREENS.WORLD); }}
-                      className={`w-full text-center text-sm py-2 rounded border ${
-                        battle.result === 'defeat'
-                          ? 'text-red-400 border-red-900 hover:bg-red-900/30'
-                          : 'text-gray-400 border-gray-800 hover:bg-gray-900/30'
-                      }`}
-                    >
-                      {battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
-                    </button>
+                    <div>
+                      {battle.result === 'defeat' && deathPenalty && (
+                        <div className="mb-2 p-2 rounded border border-red-900 bg-red-950/30 text-xs text-center space-y-0.5">
+                          <p className="text-red-400 font-bold">💀 ถูกลงโทษ</p>
+                          {deathPenalty.goldLost > 0 && <p className="text-yellow-500">💰 เสีย {deathPenalty.goldLost.toLocaleString()} Gold</p>}
+                          {deathPenalty.xpLost   > 0 && <p className="text-blue-400">⬇️ เสีย {deathPenalty.xpLost.toLocaleString()} XP</p>}
+                          <p className="text-gray-600 text-[10px]">Respawn ที่ Town Square...</p>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => { setBattle(null); setBattleRewards(null); setDeathPenalty(null); setScreen(SCREENS.WORLD); }}
+                        className={`w-full text-center text-sm py-2 rounded border ${
+                          battle.result === 'defeat'
+                            ? 'text-red-400 border-red-900 hover:bg-red-900/30'
+                            : 'text-gray-400 border-gray-800 hover:bg-gray-900/30'
+                        }`}
+                      >
+                        {battle.result === 'defeat' ? '💀 พ่ายแพ้... (กดเพื่อออก)' : '🏃 หนีได้! (กดเพื่อออก)'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
 
               {/* INVENTORY */}
               {screen === SCREENS.INVENTORY && (
-                <div className="max-h-60 overflow-y-auto">
+                <div className="max-h-screen overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-gray-400 text-xs">[ 🎒 Inventory — คลิกเพื่อจัดการ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
+
+                  {/* ── Equipped Items Bar ── */}
+                  {(() => {
+                    const SLOT_ICON = {
+                      HEAD:'🪖', FACE:'😷', CHEST:'🛡️', GLOVES:'🧤', LEGS:'👖', FEET:'👢', CAPE:'🧣',
+                      MAIN_HAND:'⚔️', OFF_HAND:'🗡️', RING_L:'💍', RING_R:'💍', AMULET:'📿', BELT:'🪢', RELIC:'🔮',
+                    };
+                    const SLOT_LABEL = {
+                      HEAD:'หมวก', FACE:'หน้า', CHEST:'เกราะ', GLOVES:'ถุงมือ', LEGS:'กางเกง',
+                      FEET:'รองเท้า', CAPE:'เสื้อคลุม', MAIN_HAND:'อาวุธ', OFF_HAND:'มือซ้าย',
+                      RING_L:'แหวนL', RING_R:'แหวนR', AMULET:'สร้อย', BELT:'เข็มขัด', RELIC:'โบราณ',
+                    };
+                    const PRIO_SLOTS = ['MAIN_HAND','OFF_HAND','CHEST','HEAD','LEGS','FEET','GLOVES','CAPE','RING_L','RING_R','AMULET','BELT','RELIC','FACE'];
+                    const equipped = PRIO_SLOTS.map(slot => {
+                      const instanceId = equipment[slot];
+                      const item = instanceId ? inventory.find(i => i.instanceId === instanceId) : null;
+                      return { slot, item };
+                    });
+                    const hasAny = equipped.some(e => e.item);
+                    return (
+                      <div className="mb-3 border border-gray-800 rounded p-2 bg-gray-900/30">
+                        <p className="text-gray-500 text-[10px] mb-2">⚔️ สวมใส่อยู่ในขณะนี้</p>
+                        {!hasAny && <p className="text-gray-700 text-xs text-center py-1">ยังไม่ได้สวมใส่อุปกรณ์ใด</p>}
+                        <div className="grid grid-cols-2 gap-1">
+                          {equipped.filter(e => e.item).map(({ slot, item }) => (
+                            <button key={slot} onClick={() => setItemModal({ item, context: 'inv' })}
+                              className={`flex items-center gap-1 px-1.5 py-1 rounded border border-gray-700 bg-black/20 text-left text-[10px] hover:bg-gray-800/40 truncate`}>
+                              <span className="shrink-0">{SLOT_ICON[slot] || '📦'}</span>
+                              <span className={`truncate ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
+                                {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
+                              </span>
+                              <span className="text-gray-700 text-[9px] shrink-0 ml-auto">{SLOT_LABEL[slot]}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── Item List ── */}
                   {inventory.length === 0 && <p className="text-gray-500 text-xs">ว่างเปล่า...</p>}
                   {inventory.map(item => (
                     <div key={item.instanceId}
@@ -3068,8 +3171,37 @@ export default function GameWorld() {
                         );
                       })}
 
-                      <div className="border border-gray-800 rounded p-2 text-xs text-gray-600 text-center">
-                        💎 RP ได้จาก: Gift ใน TikTok Live (10 💎 = 1 RP) · ดูสตรีม (1 RP/5 นาที)
+                      {/* RP Rate Info */}
+                      <div className="border border-purple-900/40 rounded p-2.5 text-xs bg-purple-950/20 space-y-2">
+                        <p className="text-purple-400 font-bold text-center">💎 วิธีรับ Realm Points (RP)</p>
+                        <div className="space-y-1.5 text-gray-400">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg shrink-0">🎁</span>
+                            <div>
+                              <p className="text-amber-300 font-semibold">Gift ใน TikTok LIVE</p>
+                              <p className="text-gray-500 text-[10px]">ทุก 10 TikTok Diamond = <span className="text-purple-400 font-bold">1 RP</span></p>
+                              <p className="text-gray-600 text-[10px]">ตัวอย่าง: Rose (1💎) ≈ 0.1 RP | Firework (288💎) ≈ 28 RP</p>
+                            </div>
+                          </div>
+                          <div className="border-t border-gray-800 pt-1.5 flex items-center gap-2">
+                            <span className="text-lg shrink-0">📺</span>
+                            <div>
+                              <p className="text-amber-300 font-semibold">ดูสตรีม (Passive)</p>
+                              <p className="text-gray-500 text-[10px]">Online ทุก 5 นาที = <span className="text-purple-400 font-bold">1 RP</span> อัตโนมัติ</p>
+                              <p className="text-gray-600 text-[10px]">~12 RP/ชั่วโมง | 288 RP/วัน (ดูตลอด)</p>
+                            </div>
+                          </div>
+                          <div className="border-t border-gray-800 pt-1.5 flex items-center gap-2">
+                            <span className="text-lg shrink-0">🪙</span>
+                            <div>
+                              <p className="text-amber-300 font-semibold">แปลง RP → Gold</p>
+                              <p className="text-gray-500 text-[10px]">100 RP = <span className="text-yellow-500 font-bold">10 Gold</span> (ผ่านเมนู RP Shop)</p>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-gray-700 text-[10px] text-center pt-1 border-t border-gray-800">
+                          RP ใช้ซื้อ Boost, กล่อง Premium, Upgrade ถาวร และอื่น ๆ
+                        </p>
                       </div>
                     </>
                   )}
