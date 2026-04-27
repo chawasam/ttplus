@@ -105,7 +105,6 @@ export default function GiftLeaderboardWidget() {
             board.map((user, i) => {
               const isTop3 = i < 3;
               const accentColor = styles.ac;
-              const progressPercent = board.length > 0 ? (user.totalCoins / board[0].totalCoins) * 100 : 0;
 
               return (
                 <div
@@ -113,91 +112,35 @@ export default function GiftLeaderboardWidget() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
-                    marginBottom: 8,
-                    background: isTop3
-                      ? accentColor + '15'
-                      : styles.tc + '08',
-                    border: isTop3 ? `1px solid ${accentColor}40` : 'none',
+                    gap: 8,
+                    marginBottom: 6,
+                    padding: '6px 10px',
                     borderRadius: Math.max(styles.br - 4, 4),
-                    padding: '8px 12px',
-                    animation: 'slideInUp 0.3s ease-out',
-                    animationDelay: `${i * 50}ms`,
-                    backdropFilter: 'blur(8px)',
+                    background: isTop3 ? accentColor + '15' : styles.tc + '08',
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: styles.fs + 4,
-                      width: 28,
-                      textAlign: 'center',
-                      flexShrink: 0,
-                      filter: isTop3 ? 'drop-shadow(0 0 6px rgba(255,215,0,0.4))' : 'none',
-                    }}
-                  >
+                  {/* ตรา */}
+                  <span style={{ fontSize: styles.fs + 2, width: 26, textAlign: 'center', flexShrink: 0 }}>
                     {MEDALS[i] || `#${i + 1}`}
                   </span>
 
-                  {user.profilePictureUrl && (
-                    <img
-                      src={user.profilePictureUrl}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '50%',
-                        border: `2px solid ${isTop3 ? accentColor : accentColor + '60'}`,
-                        flexShrink: 0,
-                        boxShadow: isTop3 ? `0 0 8px ${accentColor}40` : 'none',
-                      }}
-                    />
-                  )}
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p
-                      style={{
-                        color: styles.tc,
-                        fontSize: styles.fs,
-                        fontWeight: 600,
-                        margin: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {user.nickname || user.uniqueId}
-                    </p>
-                    <div
-                      style={{
-                        height: 4,
-                        background: styles.tc + '20',
-                        borderRadius: 2,
-                        marginTop: 4,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          background: accentColor,
-                          width: `${progressPercent}%`,
-                          transition: 'width 0.4s ease',
-                          boxShadow: `0 0 6px ${accentColor}60`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
+                  {/* ชื่อ */}
                   <span
                     style={{
-                      color: accentColor,
-                      fontSize: styles.fs - 1,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                      textShadow: '0 0 4px rgba(0,0,0,0.3)',
+                      flex: 1,
+                      color: styles.tc,
+                      fontSize: styles.fs,
+                      fontWeight: isTop3 ? 700 : 500,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                   >
+                    {user.nickname || user.uniqueId}
+                  </span>
+
+                  {/* เหรียญ */}
+                  <span style={{ color: accentColor, fontSize: styles.fs, fontWeight: 700, flexShrink: 0 }}>
                     💎 {user.totalCoins?.toLocaleString()}
                   </span>
                 </div>

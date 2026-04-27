@@ -61,7 +61,7 @@ function scheduleReconnect(userId, tiktokUsername, io, socketId) {
     if (activeConnections.has(userId)) return; // เชื่อมต่อแล้ว (อาจมีคนกด reconnect manual)
 
     try {
-      await startConnection(userId, tiktokUsername, io, socketId);
+      await startConnection(userId, tiktokUsername, io, socketId, true); // isReconnect=true → ไม่ reset leaderboard
       reconnectAttempts.delete(userId); // สำเร็จ — reset attempts
     } catch {
       // startConnection ส่ง error event ให้ frontend แล้ว
@@ -75,7 +75,7 @@ function scheduleReconnect(userId, tiktokUsername, io, socketId) {
 
 // ===== Main connection =====
 
-async function startConnection(userId, tiktokUsername, io, socketId) {
+async function startConnection(userId, tiktokUsername, io, socketId, isReconnect = false) {
   // ตรวจ server capacity
   if (activeConnections.size >= MAX_CONNECTIONS) {
     throw new Error('Server is at capacity. Please try again later.');
@@ -114,9 +114,12 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       manualDisconnect: false,
     });
 
-    // Reset leaderboards on new connection
-    likesLeaderboard.set(userId, new Map());
-    giftsLeaderboard.set(userId, new Map());
+    // Reset leaderboards เฉพาะ manual connect ใหม่ (ไม่รีเซ็ตตอน auto-reconnect)
+    // → ชื่อคนส่งของขวัญยังอยู่บน leaderboard แม้ VJ หลุดแล้วเชื่อมต่อใหม่
+    if (!isReconnect) {
+      likesLeaderboard.set(userId, new Map());
+      giftsLeaderboard.set(userId, new Map());
+    }
 
     await logSession({ userId, tiktokUsername, action: 'connect', roomId: state.roomId });
 
