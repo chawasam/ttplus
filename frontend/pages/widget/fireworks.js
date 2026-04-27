@@ -45,7 +45,7 @@ function drawCircleImg(ctx, img, cx, cy, r) {
 }
 
 // ── Build a rocket object ──────────────────────────────────────────────────
-function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins }) {
+function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins, patterns }) {
   // Launch: random X at bottom edge, Y fixed at bottom
   const startX = W * 0.08 + Math.random() * W * 0.84;
   const startY = H + AVATAR_R + 4;
@@ -73,6 +73,7 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
     senderName: senderName || '',
     giftName:   giftName   || '',
     coins:      coins      || 0,
+    patterns:   patterns   || ALL_PATTERNS,
 
     phase:      'launch',   // 'launch' | 'explode'
     labelAlpha: 0,
@@ -81,11 +82,12 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
 }
 
 // ── Create explosion particles (random pattern + count + flash) ──────────────
-const EXPLOSION_PATTERNS = ['ring', 'willow', 'scatter'];
+const ALL_PATTERNS = ['ring', 'willow', 'scatter', 'star', 'fan'];
 
 function explode(r) {
-  // สุ่ม pattern และจำนวน particle ทุกครั้ง
-  r.pattern = EXPLOSION_PATTERNS[Math.floor(Math.random() * EXPLOSION_PATTERNS.length)];
+  // สุ่ม pattern จากที่ผู้ใช้เลือก และจำนวน particle ทุกครั้ง
+  const pool  = (r.patterns && r.patterns.length > 0) ? r.patterns : ALL_PATTERNS;
+  r.pattern   = pool[Math.floor(Math.random() * pool.length)];
   const count = 6 + Math.floor(Math.random() * 9); // 6–14 ชิ้น
 
   // Flash วงกลมสว่างวูบที่จุดระเบิด
@@ -103,7 +105,17 @@ function explode(r) {
       // พุ่งขึ้นแล้วโค้งตกลงมาเหมือนต้นหลิว — ครึ่งบนของวง
       angle   = -Math.PI + Math.random() * Math.PI;
       speed   = 3.5 + Math.random() * 5.5;
-      gravity = 0.10 + Math.random() * 0.05; // gravity สูง → โค้งตกเร็ว
+      gravity = 0.10 + Math.random() * 0.05;
+    } else if (r.pattern === 'star') {
+      // แฉกสลับเร็ว-ช้า → เกิดรูปดาว
+      angle   = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.12;
+      speed   = i % 2 === 0 ? 7.5 + Math.random() * 2 : 3.5 + Math.random() * 1.5;
+      gravity = 0.05 + Math.random() * 0.03;
+    } else if (r.pattern === 'fan') {
+      // พุ่งขึ้นครึ่งวงบนเหมือนพัด
+      angle   = -Math.PI + (count > 1 ? (i / (count - 1)) : 0.5) * Math.PI + (Math.random() - 0.5) * 0.3;
+      speed   = 5 + Math.random() * 4;
+      gravity = 0.05 + Math.random() * 0.03;
     } else {
       // scatter — สุ่มทิศทางและความเร็วอิสระ
       angle   = Math.random() * Math.PI * 2;
@@ -399,13 +411,17 @@ export default function FireworksWidget() {
     const volParam = parseInt(params.get('vol') ?? '80');
     const volume   = Math.max(0, Math.min(100, isNaN(volParam) ? 80 : volParam)) / 100;
 
+    // ── Patterns (from URL param ?patterns=ring,willow,... default all) ──
+    const patternsParam = params.get('patterns') ?? 'ring,willow,scatter,star,fan';
+    const activePatterns = patternsParam.split(',').filter(p => ALL_PATTERNS.includes(p));
+    const explodePatterns = activePatterns.length > 0 ? activePatterns : ALL_PATTERNS;
+
     // ── Spawn rocket + play sound ──
     async function spawnFromGift(data) {
       const safe = sanitizeEvent(data);
       if (safe.diamondCount <= 0) return;
 
       // Play firework sound via Web Audio API (OBS autoplay-safe)
-      // boom aligns at 3s, sparkle ends at 6s — play from start
       playFirework(volume);
 
       // Load avatar + gift image concurrently
@@ -421,6 +437,7 @@ export default function FireworksWidget() {
         senderName: safe.nickname,
         giftName:   safe.giftName,
         coins:      safe.diamondCount * safe.repeatCount,
+        patterns:   explodePatterns,
       }));
     }
 

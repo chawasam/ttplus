@@ -757,7 +757,64 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
-      {/* ── Fireworks: Volume ── */}
+      {/* ── Fireworks: Pattern + Volume ── */}
+      {widgetId === 'fireworks' && (
+        <div className="space-y-3 pt-1">
+
+          {/* Pattern checkboxes */}
+          <div className="space-y-2">
+            <div className={clsx('text-xs font-semibold', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
+              💥 รูปแบบระเบิด (สุ่มจากที่เลือก)
+            </div>
+            {[
+              { id: 'ring',    label: 'Ring',    desc: 'กระจายรอบวงสม่ำเสมอ' },
+              { id: 'willow',  label: 'Willow',  desc: 'พุ่งขึ้นแล้วโค้งตกลงมา' },
+              { id: 'scatter', label: 'Scatter', desc: 'สุ่มทิศทางอิสระ' },
+              { id: 'star',    label: 'Star',    desc: 'แฉกสลับเร็ว-ช้า' },
+              { id: 'fan',     label: 'Fan',     desc: 'พุ่งขึ้นครึ่งวงบน' },
+            ].map(p => {
+              const active = (style.patterns ?? 'ring,willow,scatter,star,fan').split(',').includes(p.id);
+              const toggle = () => {
+                const cur  = (style.patterns ?? 'ring,willow,scatter,star,fan').split(',');
+                const next = active ? cur.filter(x => x !== p.id) : [...cur, p.id];
+                if (next.length === 0) return; // ต้องเลือกอย่างน้อย 1
+                set('patterns', next.join(','));
+              };
+              return (
+                <button
+                  key={p.id}
+                  onClick={toggle}
+                  className={clsx(
+                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition border text-left',
+                    active
+                      ? 'bg-orange-500/20 border-orange-500/60 text-orange-300'
+                      : theme === 'dark'
+                        ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                        : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
+                  )}
+                >
+                  <span className={clsx(
+                    'flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center text-[10px]',
+                    active
+                      ? 'bg-orange-500 border-orange-500 text-white'
+                      : theme === 'dark' ? 'border-gray-600' : 'border-gray-400'
+                  )}>
+                    {active ? '✓' : ''}
+                  </span>
+                  <span className="font-semibold">{p.label}</span>
+                  <span className={clsx('ml-auto', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>{p.desc}</span>
+                </button>
+              );
+            })}
+            <p className={clsx('text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+              💡 ติ๊กหลายอัน = สุ่มสลับทุก explosion
+            </p>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── Fireworks: Volume (แยก block) ── */}
       {widgetId === 'fireworks' && (
         <div className="space-y-1 pt-1">
           <div className={clsx('text-xs font-semibold mb-1', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
