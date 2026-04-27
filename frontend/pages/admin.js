@@ -2455,6 +2455,429 @@ const TYPE_COLOR = { beast:'#f59e0b', human:'#60a5fa', undead:'#a78bfa', void:'#
   elemental:'#34d399', demon:'#f87171', spirit:'#c084fc', construct:'#94a3b8' };
 const RANK_COLOR = { S:'#f59e0b', A:'#f87171', B:'#60a5fa', C:'#4ade80', D:'#94a3b8' };
 
+// ─── Balance Simulator ────────────────────────────────────────────────────────
+const SIM_CLASSES = [
+  { name:'Warrior',   baseATK:18, baseDEF:14, baseHP:120, baseMP:60,  sigMult:2.2, sigMP:30, basicMult:0.9,  magic:false, weaponTier:3 },
+  { name:'Paladin',   baseATK:12, baseDEF:18, baseHP:140, baseMP:70,  sigMult:1.8, sigMP:25, basicMult:0.7,  magic:false, weaponTier:2 },
+  { name:'Mage',      baseATK:22, baseDEF:6,  baseHP:80,  baseMP:120, sigMult:3.0, sigMP:50, basicMult:1.0,  magic:true,  weaponTier:2 },
+  { name:'Archer',    baseATK:16, baseDEF:8,  baseHP:95,  baseMP:80,  sigMult:2.5, sigMP:35, basicMult:1.1,  magic:false, weaponTier:3 },
+  { name:'Rogue',     baseATK:20, baseDEF:7,  baseHP:90,  baseMP:70,  sigMult:2.8, sigMP:30, basicMult:1.2,  magic:false, weaponTier:4 },
+  { name:'Cleric',    baseATK:10, baseDEF:10, baseHP:100, baseMP:100, sigMult:1.6, sigMP:40, basicMult:0.6,  magic:true,  weaponTier:2 },
+  { name:'Berserker', baseATK:24, baseDEF:5,  baseHP:110, baseMP:50,  sigMult:3.2, sigMP:25, basicMult:1.3,  magic:false, weaponTier:5 },
+  { name:'Monk',      baseATK:15, baseDEF:11, baseHP:105, baseMP:85,  sigMult:2.4, sigMP:35, basicMult:1.0,  magic:false, weaponTier:2 },
+  { name:'Ranger',    baseATK:17, baseDEF:9,  baseHP:98,  baseMP:75,  sigMult:2.6, sigMP:32, basicMult:1.15, magic:false, weaponTier:3 },
+  { name:'Witch',     baseATK:20, baseDEF:5,  baseHP:78,  baseMP:130, sigMult:2.8, sigMP:55, basicMult:0.9,  magic:true,  weaponTier:1 },
+];
+const SIM_ZONES = [
+  { name:'Starter', monHP:80,   monATK:10,  monDEF:6,  level:1  },
+  { name:'Forest',  monHP:160,  monATK:18,  monDEF:11, level:10 },
+  { name:'Cave',    monHP:280,  monATK:30,  monDEF:18, level:20 },
+  { name:'Dungeon', monHP:500,  monATK:50,  monDEF:28, level:35 },
+  { name:'Ruins',   monHP:900,  monATK:85,  monDEF:45, level:55 },
+  { name:'Abyss',   monHP:1600, monATK:140, monDEF:70, level:80 },
+];
+const SIM_BASELINE = {
+  defK:1.0, defCap:0.75, magCap:0.20,
+  cr:0.10, cm:1.50, scr:0.03, scm:2.50,
+  mpR:8,
+  wt:[0,8,16,28,45,68],
+  zScale:[0,1.0,1.3,1.7,2.2,3.0,4.2],
+};
+
+function simCalcDR(def, atk, defK, cap) {
+  return Math.min(cap, (def * defK) / (def * defK + atk));
+}
+function simCalcECrit(cr, cm, scr, scm) {
+  return (1 - cr) * 1.0 + (cr - scr) * cm + scr * scm;
+}
+function simRun(cls, zone, pr) {
+  const weapATK = pr.wt[cls.weaponTier] || 0;
+  const rawATK  = cls.baseATK + weapATK;
+  const sigMult = pr.classSigMult[SIM_CLASSES.indexOf(cls)] || cls.sigMult;
+  const cap     = cls.magic ? pr.magCap : pr.defCap;
+  const monDR   = simCalcDR(zone.monDEF, rawATK, pr.defK, cap);
+  const eCrit   = simCalcECrit(pr.cr, pr.cm, pr.scr, pr.scm);
+  const sigDmg  = rawATK * sigMult * (1 - monDR) * eCrit;
+  const basicDmg= rawATK * cls.basicMult * (1 - monDR) * eCrit;
+  const N       = Math.ceil(cls.sigMP / pr.mpR);
+  const avgDPS  = (sigDmg + (N - 1) * basicDmg) / N;
+  const adjMonATK = zone.monATK * pr.zScale[SIM_ZONES.indexOf(zone)];
+  const playerDR  = simCalcDR(cls.baseDEF, adjMonATK, pr.defK, pr.defCap);
+  const monDMG    = adjMonATK * (1 - playerDR);
+  const adjMonHP  = zone.monHP * pr.zScale[SIM_ZONES.indexOf(zone)];
+  const TTK  = avgDPS > 0 ? Math.ceil(adjMonHP / avgDPS) : 999;
+  const TSF  = monDMG > 0 ? Math.floor(cls.baseHP / monDMG) : 999;
+  const ratio = TTK > 0 ? TSF / TTK : 0;
+  return { avgDPS, TTK, TSF, ratio, monDMG, sigDmg, basicDmg, N, adjMonHP };
+}
+function simRatioColor(r) {
+  if (r < 0.8)  return '#ef4444';
+  if (r < 1.2)  return '#f97316';
+  if (r < 1.5)  return '#f59e0b';
+  if (r < 2.5)  return '#84cc16';
+  if (r < 4.0)  return '#22c55e';
+  return '#10b981';
+}
+function simBgColor(r) {
+  const c = simRatioColor(r);
+  return c + '22';
+}
+
+function BalanceSimTab() {
+  const [defK,    setDefK]    = useState(1.0);
+  const [defCap,  setDefCap]  = useState(0.75);
+  const [magCap,  setMagCap]  = useState(0.20);
+  const [cr,      setCr]      = useState(0.10);
+  const [cm,      setCm]      = useState(1.50);
+  const [scr,     setScr]     = useState(0.03);
+  const [scm,     setScm]     = useState(2.50);
+  const [mpR,     setMpR]     = useState(8);
+  const [wt,      setWt]      = useState([0,8,16,28,45,68]);
+  const [zScale,  setZScale]  = useState([0,1.0,1.3,1.7,2.2,3.0,4.2]);
+  const [sigMults,setSigMults]= useState(SIM_CLASSES.map(c => c.sigMult));
+  const [view,    setView]    = useState('ratio');
+  const [selZone, setSelZone] = useState(0);
+  const [popup,   setPopup]   = useState(null);
+  const [showFormula, setShowFormula] = useState(false);
+
+  const pr = { defK, defCap, magCap, cr, cm, scr, scm, mpR, wt, zScale, classSigMult: sigMults };
+  const matrix = SIM_CLASSES.map(cls => SIM_ZONES.map(zone => simRun(cls, zone, pr)));
+
+  // Balance metrics
+  const allRatios = matrix.flatMap(row => row.map(m => m.ratio));
+  const allDPS    = matrix.flatMap(row => row.map(m => m.avgDPS));
+  const meanDPS   = allDPS.reduce((a,b) => a+b, 0) / allDPS.length;
+  const stdDPS    = Math.sqrt(allDPS.map(v => (v-meanDPS)**2).reduce((a,b)=>a+b,0) / allDPS.length);
+  const cv        = stdDPS / meanDPS;
+  const parityScore = Math.max(0, 100 - cv * 200);
+  const inRange   = allRatios.filter(r => r >= 1.2 && r <= 4.0).length;
+  const diffScore = (inRange / allRatios.length) * 100;
+  const balScore  = Math.round((parityScore + diffScore) / 2);
+  const avgRatio  = allRatios.reduce((a,b)=>a+b,0) / allRatios.length;
+  const minRatio  = Math.min(...allRatios);
+
+  const issues = [];
+  if (minRatio < 0.8) issues.push({ t:'crit', m:`Min ratio ${minRatio.toFixed(2)} — บางอาชีพตายก่อนฆ่า mob ได้` });
+  else if (minRatio < 1.2) issues.push({ t:'warn', m:`Min ratio ${minRatio.toFixed(2)} — อยู่บนขอบอันตราย` });
+  if (cv > 0.5) issues.push({ t:'crit', m:`DPS spread CV=${cv.toFixed(2)} — ความต่างอาชีพสูงมาก` });
+  else if (cv > 0.3) issues.push({ t:'warn', m:`DPS spread CV=${cv.toFixed(2)} — มีความต่างพอสังเกต` });
+  const overpowered = SIM_CLASSES.filter((_,ci) => SIM_ZONES.every((_,zi) => matrix[ci][zi].ratio > 4.5));
+  if (overpowered.length) issues.push({ t:'warn', m:`${overpowered.map(c=>c.name).join(', ')} แข็งแกร่งเกินทุก zone` });
+  const underpowered = SIM_CLASSES.filter((_,ci) => SIM_ZONES.some((_,zi) => matrix[ci][zi].ratio < 1.0));
+  if (underpowered.length) issues.push({ t:'crit', m:`${underpowered.map(c=>c.name).join(', ')} ไม่รอดใน บาง zone` });
+  if (balScore >= 75) issues.push({ t:'ok', m:'สมดุลอยู่ในเกณฑ์ดี ไม่พบปัญหาหลัก' });
+  if (!issues.length) issues.push({ t:'ok', m:'ไม่พบปัญหาวิกฤต' });
+
+  const scoreColor = balScore > 70 ? '#22c55e' : balScore > 50 ? '#f59e0b' : '#ef4444';
+  const minColor   = minRatio < 1 ? '#ef4444' : minRatio < 1.5 ? '#f59e0b' : '#22c55e';
+  const cvColor    = cv < 0.3 ? '#22c55e' : cv < 0.5 ? '#f59e0b' : '#ef4444';
+
+  const sliderStyle = { accentColor:'#f59e0b', width:'100%', height:4, cursor:'pointer' };
+  const inputStyle  = { background:'#0a0a0a', border:'1px solid #374151', borderRadius:6, color:'#9ca3af', padding:'4px 8px', fontSize:11, width:'100%', cursor:'pointer' };
+  const sectionCard = { ...card, marginBottom:16 };
+  const tabBtn = (k) => ({
+    padding:'6px 14px', border:'none', borderRadius:6, fontSize:12, cursor:'pointer',
+    background: view===k ? '#f59e0b22' : 'transparent',
+    color: view===k ? '#f59e0b' : '#6b7280',
+    fontWeight: view===k ? 700 : 400,
+  });
+  const issueStyle = (t) => ({
+    padding:'6px 10px', borderRadius:6, marginBottom:6, fontSize:12,
+    borderLeft: `3px solid ${t==='crit'?'#ef4444':t==='warn'?'#f59e0b':'#22c55e'}`,
+    background: t==='crit'?'#ef444411':t==='warn'?'#f59e0b11':'#22c55e11',
+    color: t==='crit'?'#fca5a5':t==='warn'?'#fcd34d':'#86efac',
+  });
+
+  function resetAll() {
+    setDefK(SIM_BASELINE.defK); setDefCap(SIM_BASELINE.defCap); setMagCap(SIM_BASELINE.magCap);
+    setCr(SIM_BASELINE.cr); setCm(SIM_BASELINE.cm); setScr(SIM_BASELINE.scr); setScm(SIM_BASELINE.scm);
+    setMpR(SIM_BASELINE.mpR);
+    setWt([...SIM_BASELINE.wt]);
+    setZScale([...SIM_BASELINE.zScale]);
+    setSigMults(SIM_CLASSES.map(c => c.sigMult));
+  }
+
+  // Gauge arc drawing via canvas ref
+  const gaugeRef = useRef(null);
+  useEffect(() => {
+    const c = gaugeRef.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 120, 70);
+    ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(60, 62, 48, Math.PI, 2*Math.PI); ctx.stroke();
+    ctx.strokeStyle = scoreColor; ctx.lineWidth = 10;
+    const ang = Math.PI + Math.PI * (balScore / 100);
+    ctx.beginPath(); ctx.arc(60, 62, 48, Math.PI, ang); ctx.stroke();
+    ctx.fillStyle = scoreColor; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(balScore, 60, 56);
+    ctx.font = '10px system-ui'; ctx.fillStyle = '#6b7280';
+    ctx.fillText('/100', 60, 68);
+  }, [balScore, scoreColor]);
+
+  // DPS chart values for selected zone
+  const dpsData = SIM_CLASSES
+    .map((c,ci) => ({ name:c.name, dps: matrix[ci][selZone].avgDPS }))
+    .sort((a,b) => b.dps - a.dps);
+  const maxDPS = dpsData[0]?.dps || 1;
+
+  const slRow = (label, val, min, max, step, setter, fmt) => (
+    <div style={{ marginBottom:8 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+        <span style={{ fontSize:11, color:'#9ca3af' }}>{label}</span>
+        <span style={{ fontSize:11, fontWeight:700, color:'#f59e0b' }}>{fmt ? fmt(val) : val}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={val}
+        onChange={e => setter(parseFloat(e.target.value))} style={sliderStyle} />
+    </div>
+  );
+
+  return (
+    <div style={{ color:'#e5e7eb' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:20, fontWeight:800, color:'#f59e0b', letterSpacing:1 }}>⚖️ Balance Simulator</div>
+          <div style={{ fontSize:12, color:'#6b7280', marginTop:2 }}>จำลองผลกระทบต่อสมดุลเกมแบบ real-time — สูตร expected-value combat model</div>
+        </div>
+        <button onClick={resetAll} style={{ padding:'7px 16px', borderRadius:8, border:'1px solid #374151',
+          color:'#9ca3af', background:'transparent', cursor:'pointer', fontSize:13 }}>
+          ↺ Reset baseline
+        </button>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'240px 1fr', gap:16 }}>
+
+        {/* ── Left panel: sliders ── */}
+        <div>
+          <div style={sectionCard}>
+            <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Defense system</div>
+            {slRow('DEF factor k', defK, 0.1, 3, 0.05, setDefK, v => v.toFixed(2))}
+            {slRow('DEF cap (physical)', defCap, 0.3, 0.9, 0.01, setDefCap, v => v.toFixed(2))}
+            {slRow('DEF cap (magic)', magCap, 0.1, 0.5, 0.01, setMagCap, v => v.toFixed(2))}
+          </div>
+          <div style={sectionCard}>
+            <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Crit system</div>
+            {slRow('Crit rate', cr, 0.02, 0.4, 0.01, setCr, v => Math.round(v*100)+'%')}
+            {slRow('Crit multiplier', cm, 1.2, 3, 0.05, setCm, v => v.toFixed(2)+'×')}
+            {slRow('Super-crit rate', scr, 0, 0.2, 0.005, setScr, v => Math.round(v*100)+'%')}
+            {slRow('Super-crit mult', scm, 2, 6, 0.1, setScm, v => v.toFixed(2)+'×')}
+          </div>
+          <div style={sectionCard}>
+            <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>MP & rotation</div>
+            {slRow('MP regen / turn', mpR, 3, 20, 1, setMpR, v => Math.round(v))}
+          </div>
+          <div style={sectionCard}>
+            <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Weapon ATK (Tier 1–5)</div>
+            {[1,2,3,4,5].map(i => slRow(`T${i}`, wt[i], i===1?4:i===2?10:i===3?18:i===4?30:50, i===1?20:i===2?30:i===3?50:i===4?70:100, 1,
+              v => { const nw=[...wt]; nw[i]=Math.round(v); setWt(nw); }, v => Math.round(v)))}
+          </div>
+          <div style={sectionCard}>
+            <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Monster ATK scale (zone 1–6)</div>
+            {SIM_ZONES.map((z,i) => slRow(z.name, zScale[i+1], 0.5, 8, 0.05,
+              v => { const nz=[...zScale]; nz[i+1]=v; setZScale(nz); }, v => v.toFixed(2)+'×'))}
+          </div>
+          <div style={sectionCard}>
+            <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Class signature mult</div>
+            {SIM_CLASSES.map((c,i) => slRow(c.name, sigMults[i], 0.5, 6, 0.05,
+              v => { const nm=[...sigMults]; nm[i]=v; setSigMults(nm); }, v => v.toFixed(2)+'×'))}
+          </div>
+        </div>
+
+        {/* ── Right panel: output ── */}
+        <div>
+          {/* Score cards */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
+            {[
+              { label:'Balance score', val: balScore, color: scoreColor, suffix:'' },
+              { label:'Avg ratio TSF/TTK', val: avgRatio.toFixed(1), color:'#e5e7eb', suffix:'' },
+              { label:'Min ratio', val: minRatio.toFixed(2), color: minColor, suffix:'' },
+              { label:'DPS parity', val: Math.round(parityScore), color: cvColor, suffix:'' },
+            ].map(m => (
+              <div key={m.label} style={{ background:'#111827', border:'1px solid #1f2937', borderRadius:10, padding:'12px 14px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'#6b7280', marginBottom:4 }}>{m.label}</div>
+                <div style={{ fontSize:22, fontWeight:800, color:m.color }}>{m.val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Gauge + Issues */}
+          <div style={{ ...sectionCard, display:'flex', gap:16, alignItems:'flex-start' }}>
+            <canvas ref={gaugeRef} width={120} height={70} />
+            <div style={{ flex:1 }}>
+              {issues.map((iss,i) => (
+                <div key={i} style={issueStyle(iss.t)}>{iss.m}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Heatmap */}
+          <div style={sectionCard}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#e5e7eb' }}>Class × Zone heatmap</div>
+              <div style={{ display:'flex', gap:4 }}>
+                {['ratio','ttk','dps'].map(v => (
+                  <button key={v} onClick={() => setView(v)} style={tabBtn(v)}>
+                    {v==='ratio'?'TSF/TTK':v==='ttk'?'TTK':'DPS'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ borderCollapse:'collapse', width:'100%', fontSize:11 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign:'left', padding:'4px 8px', color:'#6b7280', fontWeight:500 }}>Class \ Zone</th>
+                    {SIM_ZONES.map(z => (
+                      <th key={z.name} style={{ padding:'4px 6px', color:'#6b7280', fontWeight:500, textAlign:'center', whiteSpace:'nowrap' }}>{z.name}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SIM_CLASSES.map((cls, ci) => (
+                    <tr key={cls.name}>
+                      <td style={{ padding:'3px 8px', fontWeight:600, color:'#e5e7eb', whiteSpace:'nowrap' }}>{cls.name}</td>
+                      {SIM_ZONES.map((zone, zi) => {
+                        const m = matrix[ci][zi];
+                        let displayVal, cellColor;
+                        if (view === 'ratio') {
+                          displayVal = m.ratio.toFixed(1);
+                          cellColor  = simRatioColor(m.ratio);
+                        } else if (view === 'ttk') {
+                          displayVal = m.TTK;
+                          cellColor  = m.TTK < 5 ? '#22c55e' : m.TTK < 15 ? '#84cc16' : m.TTK < 25 ? '#f59e0b' : '#ef4444';
+                        } else {
+                          const maxZ = Math.max(...SIM_CLASSES.map((_,cj) => matrix[cj][zi].avgDPS));
+                          const t = m.avgDPS / maxZ;
+                          cellColor = t > 0.8 ? '#22c55e' : t > 0.5 ? '#84cc16' : t > 0.3 ? '#f59e0b' : '#f97316';
+                          displayVal = m.avgDPS.toFixed(0);
+                        }
+                        return (
+                          <td key={zone.name}
+                            onClick={() => setPopup({ ci, zi, m, cls, zone })}
+                            style={{ padding:'4px 6px', textAlign:'center', cursor:'pointer', borderRadius:4,
+                              background: cellColor + '22', color: cellColor, fontWeight:600,
+                              transition:'filter .1s' }}
+                            onMouseEnter={e => e.currentTarget.style.filter='brightness(1.3)'}
+                            onMouseLeave={e => e.currentTarget.style.filter='brightness(1)'}>
+                            {displayVal}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* legend */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:8 }}>
+              <span style={{ fontSize:10, color:'#6b7280' }}>ต่ำ</span>
+              <div style={{ flex:1, height:6, borderRadius:3,
+                background:'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e)' }} />
+              <span style={{ fontSize:10, color:'#6b7280' }}>สูง</span>
+            </div>
+          </div>
+
+          {/* DPS bar chart */}
+          <div style={sectionCard}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#e5e7eb' }}>DPS comparison —</div>
+              <select value={selZone} onChange={e => setSelZone(parseInt(e.target.value))}
+                style={{ ...inputStyle, width:'auto', padding:'4px 8px' }}>
+                {SIM_ZONES.map((z,i) => <option key={i} value={i}>{z.name}</option>)}
+              </select>
+            </div>
+            {dpsData.map(d => (
+              <div key={d.name} style={{ marginBottom:6 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:2 }}>
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>{d.name}</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#e5e7eb' }}>{d.dps.toFixed(1)}</span>
+                </div>
+                <div style={{ height:8, background:'#1f2937', borderRadius:4, overflow:'hidden' }}>
+                  <div style={{
+                    width:`${(d.dps/maxDPS)*100}%`, height:'100%', borderRadius:4,
+                    background: d.dps/maxDPS > 0.8 ? '#22c55e' : d.dps/maxDPS > 0.5 ? '#84cc16' : d.dps/maxDPS > 0.3 ? '#f59e0b' : '#f97316',
+                    transition:'width .3s',
+                  }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Formula reference */}
+          <div style={sectionCard}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#e5e7eb' }}>Formula reference</div>
+              <button onClick={() => setShowFormula(v => !v)}
+                style={{ fontSize:11, color:'#6b7280', background:'none', border:'none', cursor:'pointer', textDecoration:'underline' }}>
+                {showFormula ? 'ซ่อน' : 'แสดง'}
+              </button>
+            </div>
+            {showFormula && (
+              <div style={{ marginTop:10, fontSize:11, color:'#9ca3af', lineHeight:1.8,
+                fontFamily:'system-ui', background:'#0a0a0a', borderRadius:8, padding:'12px 14px' }}>
+                <b style={{ color:'#f59e0b' }}>Defense reduction:</b><br/>
+                <code style={{ color:'#34d399' }}>DR = min(defCap, DEF×k / (DEF×k + ATK))</code><br/>
+                Magic: <code style={{ color:'#34d399' }}>DR = min(magicCap, DEF×k / (DEF×k + ATK))</code><br/><br/>
+                <b style={{ color:'#f59e0b' }}>Expected crit multiplier:</b><br/>
+                <code style={{ color:'#34d399' }}>E[C] = (1-cr)×1.0 + (cr-scr)×critMult + scr×superCritMult</code><br/><br/>
+                <b style={{ color:'#f59e0b' }}>Damage per hit:</b><br/>
+                <code style={{ color:'#34d399' }}>finalDmg = (baseATK + weaponATK) × skillMult × (1−DR) × E[C]</code><br/><br/>
+                <b style={{ color:'#f59e0b' }}>Skill rotation DPS:</b><br/>
+                <code style={{ color:'#34d399' }}>N = ceil(sigMP / mpRegen)  ← รอบ sig skill</code><br/>
+                <code style={{ color:'#34d399' }}>avgDPS = (sigDmg + (N−1)×basicDmg) / N</code><br/><br/>
+                <b style={{ color:'#f59e0b' }}>Balance ratios:</b><br/>
+                <code style={{ color:'#34d399' }}>TTK = ceil(monHP / avgDPS)</code><br/>
+                <code style={{ color:'#34d399' }}>TSF = floor(playerHP / monDmgPerTurn)</code><br/>
+                <code style={{ color:'#34d399' }}>ratio = TSF / TTK  (ideal ≈ 1.5–3.0)</code><br/><br/>
+                <b style={{ color:'#f59e0b' }}>Balance score:</b><br/>
+                <code style={{ color:'#34d399' }}>parityScore = max(0, 100 − CV×200)</code><br/>
+                <code style={{ color:'#34d399' }}>diffScore% = zones in ratio [1.2–4.0] / total</code><br/>
+                <code style={{ color:'#34d399' }}>balanceScore = (parityScore + diffScore) / 2</code>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Popup detail */}
+      {popup && (
+        <div onClick={() => setPopup(null)}
+          style={{ position:'fixed', inset:0, zIndex:50, display:'flex', alignItems:'center', justifyContent:'center',
+            background:'rgba(0,0,0,.5)' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:'#111827', border:'1px solid #374151', borderRadius:12, padding:'20px 24px',
+              minWidth:280, maxWidth:340 }}>
+            <div style={{ fontWeight:800, fontSize:15, color:'#f59e0b', marginBottom:12 }}>
+              {popup.cls.name} vs {popup.zone.name}
+            </div>
+            {[
+              ['TSF/TTK ratio', popup.m.ratio.toFixed(2), simRatioColor(popup.m.ratio)],
+              ['TTK (turns)', popup.m.TTK, '#e5e7eb'],
+              ['TSF (turns)', popup.m.TSF, '#e5e7eb'],
+              ['Avg DPS', popup.m.avgDPS.toFixed(1), '#60a5fa'],
+              ['Mon DMG/turn', popup.m.monDMG.toFixed(1), '#f87171'],
+              ['Sig skill dmg', popup.m.sigDmg.toFixed(1), '#a78bfa'],
+              ['Basic dmg', popup.m.basicDmg.toFixed(1), '#94a3b8'],
+              ['Rotation N', popup.m.N + ' turns', '#6b7280'],
+            ].map(([k,v,col]) => (
+              <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12 }}>
+                <span style={{ color:'#6b7280' }}>{k}</span>
+                <span style={{ fontWeight:700, color: col }}>{v}</span>
+              </div>
+            ))}
+            <button onClick={() => setPopup(null)}
+              style={{ marginTop:10, width:'100%', padding:'7px', borderRadius:8, border:'1px solid #374151',
+                color:'#9ca3af', background:'transparent', cursor:'pointer', fontSize:12 }}>
+              ปิด
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DatabaseTab() {
   const [subTab,    setSubTab]    = useState('monsters');
   const [data,      setData]      = useState(null);
@@ -3897,6 +4320,7 @@ export default function AdminPage() {
     { key:'items',     label:'🛒 Item Economy' },
     { key:'skills',    label:'⚔️ Skill Stats' },
     { key:'database',  label:'🗄️ Database' },
+    { key:'balance',   label:'⚖️ Balance Sim' },
   ];
 
   return (
@@ -3966,6 +4390,7 @@ export default function AdminPage() {
           {tab === 'items'     && <ItemEconomyTab />}
           {tab === 'skills'    && <SkillStatsTab />}
           {tab === 'database'  && <DatabaseTab />}
+          {tab === 'balance'   && <BalanceSimTab />}
         </div>
       </div>
     </>
