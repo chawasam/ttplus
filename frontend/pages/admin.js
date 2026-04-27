@@ -2456,17 +2456,32 @@ const TYPE_COLOR = { beast:'#f59e0b', human:'#60a5fa', undead:'#a78bfa', void:'#
 const RANK_COLOR = { S:'#f59e0b', A:'#f87171', B:'#60a5fa', C:'#4ade80', D:'#94a3b8' };
 
 // ─── Balance Simulator ────────────────────────────────────────────────────────
+// SIM_CLASSES — ค่าจาก CLASS_BASE_STATS + LIMIT_BREAKS จริงในเกม (21 อาชีพ)
+// baseATK/DEF/HP/MP: ค่าจาก account.js CLASS_BASE_STATS
+// sigMult:           ค่าจาก combat.js LIMIT_BREAKS[class].dmgMult
+// weaponTier/basicMult/sigMP: sim parameter (ปรับได้ใน admin)
 const SIM_CLASSES = [
-  { name:'Warrior',   baseATK:18, baseDEF:14, baseHP:120, baseMP:60,  sigMult:2.2, sigMP:30, basicMult:0.9,  magic:false, weaponTier:3 },
-  { name:'Paladin',   baseATK:12, baseDEF:18, baseHP:140, baseMP:70,  sigMult:1.8, sigMP:25, basicMult:0.7,  magic:false, weaponTier:2 },
-  { name:'Mage',      baseATK:22, baseDEF:6,  baseHP:80,  baseMP:120, sigMult:3.0, sigMP:50, basicMult:1.0,  magic:true,  weaponTier:2 },
-  { name:'Archer',    baseATK:16, baseDEF:8,  baseHP:95,  baseMP:80,  sigMult:2.5, sigMP:35, basicMult:1.1,  magic:false, weaponTier:3 },
-  { name:'Rogue',     baseATK:20, baseDEF:7,  baseHP:90,  baseMP:70,  sigMult:2.8, sigMP:30, basicMult:1.2,  magic:false, weaponTier:4 },
-  { name:'Cleric',    baseATK:10, baseDEF:10, baseHP:100, baseMP:100, sigMult:1.6, sigMP:40, basicMult:0.6,  magic:true,  weaponTier:2 },
-  { name:'Berserker', baseATK:24, baseDEF:5,  baseHP:110, baseMP:50,  sigMult:3.2, sigMP:25, basicMult:1.3,  magic:false, weaponTier:5 },
-  { name:'Monk',      baseATK:15, baseDEF:11, baseHP:105, baseMP:85,  sigMult:2.4, sigMP:35, basicMult:1.0,  magic:false, weaponTier:2 },
-  { name:'Ranger',    baseATK:17, baseDEF:9,  baseHP:98,  baseMP:75,  sigMult:2.6, sigMP:32, basicMult:1.15, magic:false, weaponTier:3 },
-  { name:'Witch',     baseATK:20, baseDEF:5,  baseHP:78,  baseMP:130, sigMult:2.8, sigMP:55, basicMult:0.9,  magic:true,  weaponTier:1 },
+  { name:'Warrior',     baseATK:22, baseDEF:18, baseHP:150, baseMP:40,  sigMult:5.0, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Rogue',       baseATK:20, baseDEF:12, baseHP:110, baseMP:60,  sigMult:6.0, sigMP:30, basicMult:1.10, magic:false, weaponTier:3 },
+  { name:'Cleric',      baseATK:14, baseDEF:14, baseHP:120, baseMP:100, sigMult:4.0, sigMP:45, basicMult:0.70, magic:true,  weaponTier:1 },
+  { name:'Ranger',      baseATK:18, baseDEF:12, baseHP:115, baseMP:70,  sigMult:4.0, sigMP:32, basicMult:1.00, magic:false, weaponTier:3 },
+  { name:'Mage',        baseATK:10, baseDEF:8,  baseHP:90,  baseMP:130, sigMult:8.0, sigMP:50, basicMult:1.00, magic:true,  weaponTier:1 },
+  { name:'Bard',        baseATK:14, baseDEF:10, baseHP:105, baseMP:90,  sigMult:3.0, sigMP:40, basicMult:0.80, magic:true,  weaponTier:1 },
+  { name:'Berserker',   baseATK:28, baseDEF:14, baseHP:170, baseMP:30,  sigMult:7.0, sigMP:25, basicMult:1.30, magic:false, weaponTier:5 },
+  { name:'Engineer',    baseATK:18, baseDEF:20, baseHP:130, baseMP:60,  sigMult:5.0, sigMP:30, basicMult:1.00, magic:false, weaponTier:3 },
+  { name:'Runesmith',   baseATK:16, baseDEF:18, baseHP:120, baseMP:80,  sigMult:6.0, sigMP:35, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Assassin',    baseATK:25, baseDEF:10, baseHP:100, baseMP:70,  sigMult:4.0, sigMP:30, basicMult:1.20, magic:false, weaponTier:4 },
+  { name:'Hexblade',    baseATK:18, baseDEF:12, baseHP:105, baseMP:100, sigMult:6.0, sigMP:45, basicMult:0.90, magic:true,  weaponTier:2 },
+  { name:'Phantom',     baseATK:15, baseDEF:8,  baseHP:95,  baseMP:110, sigMult:5.0, sigMP:50, basicMult:0.90, magic:true,  weaponTier:1 },
+  { name:'Deathknight', baseATK:22, baseDEF:16, baseHP:140, baseMP:60,  sigMult:4.0, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Necromancer', baseATK:10, baseDEF:8,  baseHP:95,  baseMP:130, sigMult:5.5, sigMP:55, basicMult:0.80, magic:true,  weaponTier:1 },
+  { name:'Gravecaller', baseATK:12, baseDEF:10, baseHP:110, baseMP:110, sigMult:5.0, sigMP:50, basicMult:0.80, magic:true,  weaponTier:1 },
+  { name:'Voidwalker',  baseATK:18, baseDEF:10, baseHP:100, baseMP:100, sigMult:6.0, sigMP:35, basicMult:1.00, magic:false, weaponTier:3 },
+  { name:'Rifter',      baseATK:24, baseDEF:8,  baseHP:105, baseMP:90,  sigMult:3.0, sigMP:30, basicMult:1.10, magic:false, weaponTier:4 },
+  { name:'Soulseer',    baseATK:8,  baseDEF:9,  baseHP:90,  baseMP:120, sigMult:5.0, sigMP:50, basicMult:0.90, magic:true,  weaponTier:1 },
+  { name:'Wildguard',   baseATK:24, baseDEF:16, baseHP:145, baseMP:50,  sigMult:4.0, sigMP:30, basicMult:0.90, magic:false, weaponTier:3 },
+  { name:'Tracker',     baseATK:20, baseDEF:12, baseHP:115, baseMP:65,  sigMult:6.0, sigMP:30, basicMult:1.10, magic:false, weaponTier:3 },
+  { name:'Shaman',      baseATK:14, baseDEF:12, baseHP:110, baseMP:100, sigMult:5.0, sigMP:45, basicMult:0.90, magic:true,  weaponTier:2 },
 ];
 // SIM_ZONES — ค่าเฉลี่ยจาก monster จริงในฐานข้อมูล (excl. mini-boss)
 // ATK city_ruins ปรับลง (excl. shadow_rogue 110 → ค่าเฉลี่ยทั่วไป)
@@ -2481,9 +2496,11 @@ const SIM_ZONES = [
   { name:'Shadowfell',     monHP:2600, monATK:230, monDEF:44, level:45 },
   { name:'Vorath Citadel', monHP:1600, monATK:265, monDEF:67, level:55 },
 ];
+// SIM_BASELINE — ค่าจริงจาก combat.js (อัปเดตอัตโนมัติผ่าน combatConstants API)
+// cr=0.10, cm=1.50, scm=2.20, scr=cr/3≈0.0333
 const SIM_BASELINE = {
   defK:1.0, defCap:0.75, magCap:0.20,
-  cr:0.10, cm:1.50, scr:0.03, scm:2.50,
+  cr:0.10, cm:1.50, scr:+(0.10/3).toFixed(4), scm:2.20,
   mpR:8,
   wt:[0,8,16,28,45,68],
   zScale:[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0],
@@ -2495,10 +2512,10 @@ function simCalcDR(def, atk, defK, cap) {
 function simCalcECrit(cr, cm, scr, scm) {
   return (1 - cr) * 1.0 + (cr - scr) * cm + scr * scm;
 }
-function simRun(cls, zone, pr) {
+function simRun(cls, zone, pr, classIdx) {
   const weapATK = pr.wt[cls.weaponTier] || 0;
   const rawATK  = cls.baseATK + weapATK;
-  const sigMult = pr.classSigMult[SIM_CLASSES.indexOf(cls)] || cls.sigMult;
+  const sigMult = pr.classSigMult[classIdx ?? 0] || cls.sigMult;
   const cap     = cls.magic ? pr.magCap : pr.defCap;
   const monDR   = simCalcDR(zone.monDEF, rawATK, pr.defK, cap);
   const eCrit   = simCalcECrit(pr.cr, pr.cm, pr.scr, pr.scm);
@@ -2529,24 +2546,57 @@ function simBgColor(r) {
 }
 
 function BalanceSimTab() {
-  const [defK,    setDefK]    = useState(1.0);
-  const [defCap,  setDefCap]  = useState(0.75);
-  const [magCap,  setMagCap]  = useState(0.20);
-  const [cr,      setCr]      = useState(0.10);
-  const [cm,      setCm]      = useState(1.50);
-  const [scr,     setScr]     = useState(0.03);
-  const [scm,     setScm]     = useState(2.50);
-  const [mpR,     setMpR]     = useState(8);
-  const [wt,      setWt]      = useState([0,8,16,28,45,68]);
-  const [zScale,  setZScale]  = useState([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]);
+  const [defK,    setDefK]    = useState(SIM_BASELINE.defK);
+  const [defCap,  setDefCap]  = useState(SIM_BASELINE.defCap);
+  const [magCap,  setMagCap]  = useState(SIM_BASELINE.magCap);
+  const [cr,      setCr]      = useState(SIM_BASELINE.cr);
+  const [cm,      setCm]      = useState(SIM_BASELINE.cm);
+  const [scr,     setScr]     = useState(SIM_BASELINE.scr);
+  const [scm,     setScm]     = useState(SIM_BASELINE.scm);
+  const [mpR,     setMpR]     = useState(SIM_BASELINE.mpR);
+  const [wt,      setWt]      = useState([...SIM_BASELINE.wt]);
+  const [zScale,  setZScale]  = useState([...SIM_BASELINE.zScale]);
   const [sigMults,setSigMults]= useState(SIM_CLASSES.map(c => c.sigMult));
   const [view,    setView]    = useState('ratio');
   const [selZone, setSelZone] = useState(0);
   const [popup,   setPopup]   = useState(null);
   const [showFormula, setShowFormula] = useState(false);
+  const [liveClasses, setLiveClasses] = useState(SIM_CLASSES);
+
+  // ── Load real game constants from API when tab mounts ──────────────────────
+  useEffect(() => {
+    api.get('/api/game/audit/gamedata').then(r => {
+      const cc  = r.data?.combatConstants;
+      const cls = r.data?.classData;
+      if (cc) {
+        setDefK(v  => v);          // defK is sim param, keep as-is
+        setCr(cc.cr);
+        setCm(cc.cm);
+        setScr(+(cc.cr / cc.scrDiv).toFixed(4));
+        setScm(cc.scm);
+      }
+      if (cls && Array.isArray(cls) && cls.length) {
+        // Merge real class data (baseATK/DEF/HP/MP + sigMult + magic) with sim params
+        const merged = cls.map(c => ({
+          name:       c.name.charAt(0).toUpperCase() + c.name.slice(1).toLowerCase(),
+          baseATK:    c.baseATK,
+          baseDEF:    c.baseDEF,
+          baseHP:     c.baseHP,
+          baseMP:     c.baseMP,
+          sigMult:    c.sigMult,
+          sigMP:      c.sigMP,
+          basicMult:  c.basicMult,
+          magic:      c.magic,
+          weaponTier: c.weaponTier,
+        }));
+        setLiveClasses(merged);
+        setSigMults(merged.map(c => c.sigMult));
+      }
+    }).catch(() => {/* silent — fall back to SIM_BASELINE */});
+  }, []);
 
   const pr = { defK, defCap, magCap, cr, cm, scr, scm, mpR, wt, zScale, classSigMult: sigMults };
-  const matrix = SIM_CLASSES.map(cls => SIM_ZONES.map(zone => simRun(cls, zone, pr)));
+  const matrix = liveClasses.map((cls, ci) => SIM_ZONES.map(zone => simRun(cls, zone, pr, ci)));
 
   // Balance metrics
   const allRatios = matrix.flatMap(row => row.map(m => m.ratio));
@@ -2566,9 +2616,9 @@ function BalanceSimTab() {
   else if (minRatio < 1.2) issues.push({ t:'warn', m:`Min ratio ${minRatio.toFixed(2)} — อยู่บนขอบอันตราย` });
   if (cv > 0.5) issues.push({ t:'crit', m:`DPS spread CV=${cv.toFixed(2)} — ความต่างอาชีพสูงมาก` });
   else if (cv > 0.3) issues.push({ t:'warn', m:`DPS spread CV=${cv.toFixed(2)} — มีความต่างพอสังเกต` });
-  const overpowered = SIM_CLASSES.filter((_,ci) => SIM_ZONES.every((_,zi) => matrix[ci][zi].ratio > 4.5));
+  const overpowered = liveClasses.filter((_,ci) => SIM_ZONES.every((_,zi) => matrix[ci][zi].ratio > 4.5));
   if (overpowered.length) issues.push({ t:'warn', m:`${overpowered.map(c=>c.name).join(', ')} แข็งแกร่งเกินทุก zone` });
-  const underpowered = SIM_CLASSES.filter((_,ci) => SIM_ZONES.some((_,zi) => matrix[ci][zi].ratio < 1.0));
+  const underpowered = liveClasses.filter((_,ci) => SIM_ZONES.some((_,zi) => matrix[ci][zi].ratio < 1.0));
   if (underpowered.length) issues.push({ t:'crit', m:`${underpowered.map(c=>c.name).join(', ')} ไม่รอดใน บาง zone` });
   if (balScore >= 75) issues.push({ t:'ok', m:'สมดุลอยู่ในเกณฑ์ดี ไม่พบปัญหาหลัก' });
   if (!issues.length) issues.push({ t:'ok', m:'ไม่พบปัญหาวิกฤต' });
@@ -2599,7 +2649,7 @@ function BalanceSimTab() {
     setMpR(SIM_BASELINE.mpR);
     setWt([...SIM_BASELINE.wt]);
     setZScale([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]);
-    setSigMults(SIM_CLASSES.map(c => c.sigMult));
+    setSigMults(liveClasses.map(c => c.sigMult));
   }
 
   // Gauge arc drawing via canvas ref
@@ -2621,7 +2671,7 @@ function BalanceSimTab() {
   }, [balScore, scoreColor]);
 
   // DPS chart values for selected zone
-  const dpsData = SIM_CLASSES
+  const dpsData = liveClasses
     .map((c,ci) => ({ name:c.name, dps: matrix[ci][selZone].avgDPS }))
     .sort((a,b) => b.dps - a.dps);
   const maxDPS = dpsData[0]?.dps || 1;
@@ -2684,7 +2734,7 @@ function BalanceSimTab() {
           </div>
           <div style={sectionCard}>
             <div style={{ color:'#6b7280', fontSize:11, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', marginBottom:10 }}>Class signature mult</div>
-            {SIM_CLASSES.map((c,i) => slRow(c.name, sigMults[i], 0.5, 6, 0.05,
+            {liveClasses.map((c,i) => slRow(c.name, sigMults[i], 0.5, 6, 0.05,
               v => { const nm=[...sigMults]; nm[i]=v; setSigMults(nm); }, v => v.toFixed(2)+'×', 'csm'+i))}
           </div>
         </div>
@@ -2739,7 +2789,7 @@ function BalanceSimTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {SIM_CLASSES.map((cls, ci) => (
+                  {liveClasses.map((cls, ci) => (
                     <tr key={cls.name}>
                       <td style={{ padding:'3px 8px', fontWeight:600, color:'#e5e7eb', whiteSpace:'nowrap' }}>{cls.name}</td>
                       {SIM_ZONES.map((zone, zi) => {
@@ -2752,7 +2802,7 @@ function BalanceSimTab() {
                           displayVal = m.TTK;
                           cellColor  = m.TTK < 5 ? '#22c55e' : m.TTK < 15 ? '#84cc16' : m.TTK < 25 ? '#f59e0b' : '#ef4444';
                         } else {
-                          const maxZ = Math.max(...SIM_CLASSES.map((_,cj) => matrix[cj][zi].avgDPS));
+                          const maxZ = Math.max(...liveClasses.map((_,cj) => matrix[cj][zi].avgDPS));
                           const t = m.avgDPS / maxZ;
                           cellColor = t > 0.8 ? '#22c55e' : t > 0.5 ? '#84cc16' : t > 0.3 ? '#f59e0b' : '#f97316';
                           displayVal = m.avgDPS.toFixed(0);
@@ -3363,43 +3413,43 @@ function DatabaseTab() {
         </div>
 
         <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 320px' : '1fr', gap:16 }}>
-          {/* Table */}
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead>
-                <tr style={{ background:'#0d1117' }}>
-                  {['','ชื่อ','Grade','Slot','Lv.','Stat หลัก','ขาย','ซื้อ','คลาส'].map(h =>
-                    <th key={h} style={thStyle}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(it => {
-                  const statStr = Object.entries(it.base||{}).map(([k,v]) => `${k}+${v}`).join(' ');
-                  const isSelected = selected?.itemId === it.itemId;
-                  return (
-                    <tr key={it.itemId}
-                      onClick={() => setSelected(isSelected ? null : it)}
-                      style={{ cursor:'pointer', background: isSelected ? '#1a2235' : 'transparent', transition:'background .1s' }}
-                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#111827'; }}
-                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
-                      <td style={tdStyle}>{it.emoji}</td>
-                      <td style={{ ...tdStyle, color:'#e5e7eb', fontWeight:600 }}>{it.name}</td>
-                      <td style={tdStyle}>
-                        <span style={{ ...badge(GRADE_COLOR[it.grade]||'#6b7280'), fontSize:10 }}>{it.grade}</span>
-                      </td>
-                      <td style={{ ...tdStyle, color:'#9ca3af', fontSize:11 }}>{SLOT_LABEL[it.type] || it.type}</td>
-                      <td style={{ ...tdStyle, color:'#f59e0b' }}>{it.levelReq}</td>
-                      <td style={{ ...tdStyle, color:'#4ade80', fontSize:11 }}>{statStr || '—'}</td>
-                      <td style={{ ...tdStyle, color:'#fbbf24', fontSize:11 }}>{it.sellPrice > 0 ? `${it.sellPrice}G` : '—'}</td>
-                      <td style={{ ...tdStyle, color:'#f87171', fontSize:11 }}>{it.buyPrice > 0 ? `${it.buyPrice}G` : '—'}</td>
-                      <td style={{ ...tdStyle, fontSize:10, color:'#6b7280' }}>
-                        {it.classReq?.length > 0 ? it.classReq.slice(0,2).join(', ') + (it.classReq.length > 2 ? `+${it.classReq.length-2}` : '') : 'ทุกคลาส'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {/* Card Grid */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(185px, 1fr))', gap:8, alignContent:'start' }}>
+            {filtered.map(it => {
+              const gc = GRADE_COLOR[it.grade] || '#6b7280';
+              const isSelected = selected?.itemId === it.itemId;
+              const statStr = Object.entries(it.base||{}).slice(0,3).map(([k,v]) => `${k.toUpperCase()}+${v}`).join(' · ');
+              return (
+                <div key={it.itemId}
+                  onClick={() => setSelected(isSelected ? null : it)}
+                  style={{
+                    background: isSelected ? '#111d30' : '#0d1117',
+                    border: `1px solid ${isSelected ? gc+'88' : gc+'22'}`,
+                    borderRadius:8, padding:'10px 12px', cursor:'pointer',
+                    transition:'all .15s',
+                    boxShadow: isSelected ? `0 0 0 1px ${gc}44` : 'none',
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = gc+'55'; }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = gc+'22'; }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                    <span style={{ fontSize:22, lineHeight:1 }}>{it.emoji}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ color:gc, fontWeight:700, fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{it.name}</div>
+                      <div style={{ display:'flex', gap:4, marginTop:2, flexWrap:'wrap' }}>
+                        <span style={{ ...badge(gc), fontSize:9, padding:'1px 4px' }}>{it.grade}</span>
+                        <span style={{ ...badge('#1f2937'), fontSize:9, padding:'1px 4px', color:'#6b7280' }}>{SLOT_LABEL[it.type]||it.type}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize:10, color:'#4ade80', marginBottom:4, minHeight:13 }}>{statStr || <span style={{ color:'#374151' }}>—</span>}</div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280' }}>
+                    <span>Lv.<span style={{ color:'#f59e0b' }}>{it.levelReq}</span></span>
+                    {it.buyPrice > 0 && <span>🛒<span style={{ color:'#f87171' }}>{it.buyPrice}G</span></span>}
+                    {it.sellPrice > 0 && <span>💰<span style={{ color:'#fbbf24' }}>{it.sellPrice}G</span></span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Detail panel */}
@@ -4144,6 +4194,13 @@ function DatabaseTab() {
       addEntry(r.resultItemId, { source: `Craft: ${r.name}`, sourceEmoji: '⚒️', zone: '—', chance: 1.0, type: 'craft', level: r.levelReq });
     });
 
+    // From NPC Shop (buyPrice > 0)
+    (data.items || []).forEach(it => {
+      if ((it.buyPrice || 0) > 0) {
+        addEntry(it.itemId, { source: `NPC Shop`, sourceEmoji: '🛒', zone: '—', chance: 1.0, type: 'shop', level: it.levelReq || 1, buyPrice: it.buyPrice });
+      }
+    });
+
     const q = search.toLowerCase();
     const itemNames = Object.keys(index).filter(itemId => {
       if (!q) return true;
@@ -4156,6 +4213,7 @@ function DatabaseTab() {
       zone_pool:   ['#60a5fa', '🗺️ Zone Pool'],
       dungeon_boss:['#a78bfa', '🏰 Dungeon'],
       craft:       ['#34d399', '⚒️ Craft'],
+      shop:        ['#fbbf24', '🛒 Shop'],
     };
 
     return (
@@ -4163,12 +4221,12 @@ function DatabaseTab() {
         <div style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
           <input style={{ ...inputStyle, flex:1, maxWidth:320 }} placeholder="🔍 พิมพ์ชื่อ item หรือ ID เพื่อค้นหาแหล่งดรอป..." value={search}
             onChange={e => setSearch(e.target.value)} />
-          <span style={{ color:'#4b5563', fontSize:12 }}>{itemNames.length} items มีแหล่งดรอป</span>
+          <span style={{ color:'#4b5563', fontSize:12 }}>{itemNames.length} items</span>
         </div>
-        <div style={{ color:'#374151', fontSize:11, marginBottom:16 }}>ข้อมูลจาก: monster drops + zone pool + dungeon boss + crafting recipe</div>
+        <div style={{ color:'#374151', fontSize:11, marginBottom:16 }}>ข้อมูลจาก: monster drops + zone pool + dungeon boss + crafting + NPC shop</div>
 
         {itemNames.length === 0 && search && <div style={{ color:'#4b5563', padding:20, textAlign:'center' }}>ไม่พบ item ที่ค้นหา</div>}
-        {!search && <div style={{ color:'#4b5563', padding:20, textAlign:'center' }}>พิมพ์ชื่อ item เพื่อค้นหาว่าดรอปจากไหน</div>}
+        {!search && <div style={{ color:'#4b5563', padding:20, textAlign:'center' }}>พิมพ์ชื่อ item เพื่อค้นหาว่าได้มาจากไหน</div>}
 
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {itemNames.slice(0, 50).map(itemId => {
@@ -4196,9 +4254,9 @@ function DatabaseTab() {
                         <span style={{ color:'#e5e7eb', fontSize:12, flex:1 }}>{src.source}</span>
                         <span style={{ color:'#6b7280', fontSize:11 }}>{src.zone}</span>
                         {src.level > 0 && <span style={{ color:'#f59e0b', fontSize:11 }}>Lv.{src.level}</span>}
-                        <span style={{ color: src.chance >= 0.5 ? '#34d399' : src.chance >= 0.2 ? '#fbbf24' : '#f87171',
+                        <span style={{ color: src.type === 'shop' ? '#fbbf24' : src.chance >= 0.5 ? '#34d399' : src.chance >= 0.2 ? '#fbbf24' : '#f87171',
                           fontWeight:700, fontSize:12 }}>
-                          {src.type === 'craft' ? '100%' : `${Math.round(src.chance*100)}%`}
+                          {src.type === 'craft' ? '100%' : src.type === 'shop' ? `${src.buyPrice}G` : `${Math.round(src.chance*100)}%`}
                         </span>
                       </div>
                     );
