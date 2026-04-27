@@ -67,7 +67,7 @@ const WIDGETS = [
       { key: 'ww',        label: 'ความกว้าง Widget (px) — ตรงกับ OBS Source Width', type: 'number', default: 380, min: 280, max: 800, step: 10 },
       { key: 'carda',     label: 'ความทึบแผง (0=โปร่งใส → 100=ทึบ)', type: 'number', default: 58,  min: 0,   max: 100, step: 5  },
       { key: '_g4',       label: '🔊 เสียง',                           type: 'group' },
-      { key: 'vol',       label: 'ระดับเสียง (0=เงียบ → 100=เสียงดังสุด)', type: 'number', default: 80, min: 0, max: 100, step: 5 },
+      { key: 'vol',       label: '🔊 ระดับเสียง',                      type: 'volume', default: 80 },
     ],
   },
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
@@ -551,6 +551,28 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                             <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>
                               {f.label}
                             </p>
+                            {f.type === 'volume' && (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="range"
+                                    min={0} max={100} step={5}
+                                    value={val}
+                                    onChange={e => setKey(f.key, Number(e.target.value))}
+                                    className="flex-1 accent-orange-500"
+                                  />
+                                  <span className={clsx('w-16 text-right text-xs font-bold font-mono flex-shrink-0',
+                                    val === 0
+                                      ? (isDark ? 'text-gray-500' : 'text-gray-400')
+                                      : 'text-orange-400')}>
+                                    {val === 0 ? '🔇 เงียบ' : `🔊 ${val}%`}
+                                  </span>
+                                </div>
+                                <div className={clsx('flex justify-between text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
+                                  <span>🔇 เงียบ (0)</span><span>🔊 ดังสุด (100)</span>
+                                </div>
+                              </div>
+                            )}
                             {f.type === 'number' && (
                               <div className="flex items-center gap-3">
                                 <input

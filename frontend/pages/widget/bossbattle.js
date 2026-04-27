@@ -642,6 +642,12 @@ export default function BossBattleWidget() {
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'bossbattle') return;
         if (style?._reset) { clearInterval(countdownRef.current); triggerReset(); }
+        // Real-time volume update — slider ใน customize เปลี่ยนได้ทันที
+        if (style?.vol !== undefined) {
+          const v = Math.max(0, Math.min(100, Number(style.vol)));
+          volRef.current = v;
+          setMasterVolume(v);
+        }
       },
     });
 
