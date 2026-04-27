@@ -1752,8 +1752,14 @@ function sanitizeState(state) {
   };
 }
 
-// REST endpoint — ฟื้นฟู HP/MP เต็ม แลกกับ 100 Gold
-const REST_GOLD_COST = 100;
+// REST endpoint — ฟื้นฟู HP/MP เต็ม แลกกับ Gold ตาม Level
+// Lv.1-10 = 20G | Lv.11-20 = 50G | Lv.21-40 = 100G | Lv.41+ = 200G
+function calcRestCost(level) {
+  if (level <= 10) return 20;
+  if (level <= 20) return 50;
+  if (level <= 40) return 100;
+  return 200;
+}
 
 async function rest(req, res) {
   const uid = req.user.uid;
@@ -1764,15 +1770,17 @@ async function rest(req, res) {
     const charId     = accountDoc.data()?.characterId;
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
-    // ── หัก Gold ก่อน ────────────────────────────────────────────────────
-    const goldResult = await deductGold(uid, REST_GOLD_COST, 'rest');
-    if (!goldResult.success) {
-      return res.status(400).json({ error: `Gold ไม่พอ — ต้องการ ${REST_GOLD_COST} Gold เพื่อพักผ่อน` });
-    }
-
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
+
+    const restCost = calcRestCost(char.level || 1);
+
+    // ── หัก Gold ก่อน ────────────────────────────────────────────────────
+    const goldResult = await deductGold(uid, restCost, 'rest');
+    if (!goldResult.success) {
+      return res.status(400).json({ error: `Gold ไม่พอ — ต้องการ ${restCost} Gold เพื่อพักผ่อน (Lv.${char.level || 1})` });
+    }
 
     await charRef.update({ hp: char.hpMax, mp: char.mpMax });
     trackQuestProgress(uid, 'rest', 1).catch(() => {});
@@ -1781,9 +1789,9 @@ async function rest(req, res) {
       success:  true,
       hp:       char.hpMax,
       mp:       char.mpMax,
-      goldCost: REST_GOLD_COST,
+      goldCost: restCost,
       newGold:  goldResult.newTotal,
-      msg:      `💤 พักผ่อนแล้ว — HP/MP เต็ม (เสีย ${REST_GOLD_COST} Gold)`,
+      msg:      `💤 พักผ่อนแล้ว — HP/MP เต็ม (เสีย ${restCost} Gold)`,
     });
   } catch (err) {
     console.error('[Combat] rest:', err.message);

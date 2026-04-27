@@ -127,40 +127,10 @@ async function addRealmPoints(uid, points = 1) {
   }
 }
 
-// ===== Redeem Realm Points → Gold =====
-// Rate: 100 RP = 10 gold (อัตราต่ำ)
+// ===== Redeem Realm Points → Gold (DISABLED) =====
+// RP ไม่อนุญาตให้แปลงเป็น Gold — RP ใช้ซื้อสินค้าใน RP Shop เท่านั้น
 async function redeemRealmPoints(req, res) {
-  const { amount } = req.body;
-  if (!amount || !Number.isInteger(amount) || amount < 100 || amount > 10000) {
-    return res.status(400).json({ error: 'จำนวน RP ต้องอยู่ระหว่าง 100 - 10,000' });
-  }
-
-  const uid = req.user.uid;
-  const db  = admin.firestore();
-  const ref = db.collection('game_accounts').doc(uid);
-
-  try {
-    const goldToAdd = Math.floor(amount / 100) * 10;
-
-    const result = await db.runTransaction(async (tx) => {
-      const doc = await tx.get(ref);
-      if (!doc.exists) throw new Error('Account not found');
-      const current = doc.data().realmPoints || 0;
-      if (current < amount) throw new Error('RP ไม่เพียงพอ');
-      const currentGold = doc.data().gold || 0;
-      tx.update(ref, {
-        realmPoints: current - amount,
-        gold: currentGold + goldToAdd,
-      });
-      return { newRP: current - amount, newGold: currentGold + goldToAdd };
-    });
-
-    return res.json({ success: true, rpUsed: amount, goldAdded: goldToAdd, ...result });
-  } catch (err) {
-    const isInsufficient = err.message.includes('RP ไม่เพียงพอ');
-    if (!isInsufficient) console.error('[Currency] redeemRP:', err.message);
-    return res.status(400).json({ error: err.message });
-  }
+  return res.status(403).json({ error: 'RP ไม่สามารถแปลงเป็น Gold ได้ — ใช้ RP ซื้อสินค้าใน RP Shop แทน' });
 }
 
 // ===== Get gold balance for a UID (internal helper — used by dailyShop, etc.) =====

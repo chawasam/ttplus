@@ -1771,32 +1771,41 @@ export default function GameWorld() {
       )}
 
       {/* ── REST CONFIRM DIALOG ── */}
-      {restConfirmOpen && (
-        <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4"
-          onClick={() => setRestConfirmOpen(false)}>
-          <div className="bg-gray-950 border border-amber-900 rounded-xl p-5 w-full max-w-xs text-center shadow-2xl"
-            style={{ fontFamily: "'Courier New', Courier, monospace" }}
-            onClick={e => e.stopPropagation()}>
-            <div className="text-4xl mb-3">💤</div>
-            <p className="text-amber-300 font-bold text-sm mb-1">พักผ่อน — ฟื้นฟู HP/MP เต็ม</p>
-            <p className="text-gray-400 text-xs mb-1">ค่าใช้จ่าย: <span className="text-yellow-400 font-bold">100 Gold</span></p>
-            <p className="text-gray-600 text-[10px] mb-4">Gold ปัจจุบัน: {gold.toLocaleString()}</p>
-            {gold < 100 && (
-              <p className="text-red-400 text-xs mb-3">⚠️ Gold ไม่พอ!</p>
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => setRestConfirmOpen(false)}
-                className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:bg-gray-800/40">
-                ยกเลิก
-              </button>
-              <button onClick={handleRest} disabled={gold < 100}
-                className="flex-1 py-2 rounded border border-amber-700 text-amber-300 text-xs hover:bg-amber-900/30 disabled:opacity-40 disabled:cursor-not-allowed">
-                ยืนยัน (−100G)
-              </button>
+      {restConfirmOpen && (() => {
+        const lv = char?.level || 1;
+        const restCost = lv <= 10 ? 20 : lv <= 20 ? 50 : lv <= 40 ? 100 : 200;
+        const canAfford = gold >= restCost;
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4"
+            onClick={() => setRestConfirmOpen(false)}>
+            <div className="bg-gray-950 border border-amber-900 rounded-xl p-5 w-full max-w-xs text-center shadow-2xl"
+              style={{ fontFamily: "'Courier New', Courier, monospace" }}
+              onClick={e => e.stopPropagation()}>
+              <div className="text-4xl mb-3">💤</div>
+              <p className="text-amber-300 font-bold text-sm mb-1">พักผ่อน — ฟื้นฟู HP/MP เต็ม</p>
+              <p className="text-gray-400 text-xs mb-0.5">
+                ค่าใช้จ่าย: <span className="text-yellow-400 font-bold">{restCost} Gold</span>
+                <span className="text-gray-600 text-[10px] ml-1">(Lv.{lv})</span>
+              </p>
+              <div className="text-[10px] text-gray-700 mb-3 space-y-0.5">
+                <p>Lv.1-10: 20G · Lv.11-20: 50G · Lv.21-40: 100G · Lv.41+: 200G</p>
+                <p>Gold ปัจจุบัน: <span className={canAfford ? 'text-yellow-600' : 'text-red-500'}>{gold.toLocaleString()}</span></p>
+              </div>
+              {!canAfford && <p className="text-red-400 text-xs mb-3">⚠️ Gold ไม่พอ!</p>}
+              <div className="flex gap-2">
+                <button onClick={() => setRestConfirmOpen(false)}
+                  className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:bg-gray-800/40">
+                  ยกเลิก
+                </button>
+                <button onClick={handleRest} disabled={!canAfford}
+                  className="flex-1 py-2 rounded border border-amber-700 text-amber-300 text-xs hover:bg-amber-900/30 disabled:opacity-40 disabled:cursor-not-allowed">
+                  ยืนยัน (−{restCost}G)
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── ZONE DETAIL MODAL ── */}
       {zoneDetailModal && (
@@ -3191,16 +3200,9 @@ export default function GameWorld() {
                               <p className="text-gray-600 text-[10px]">~12 RP/ชั่วโมง | 288 RP/วัน (ดูตลอด)</p>
                             </div>
                           </div>
-                          <div className="border-t border-gray-800 pt-1.5 flex items-center gap-2">
-                            <span className="text-lg shrink-0">🪙</span>
-                            <div>
-                              <p className="text-amber-300 font-semibold">แปลง RP → Gold</p>
-                              <p className="text-gray-500 text-[10px]">100 RP = <span className="text-yellow-500 font-bold">10 Gold</span> (ผ่านเมนู RP Shop)</p>
-                            </div>
-                          </div>
                         </div>
                         <p className="text-gray-700 text-[10px] text-center pt-1 border-t border-gray-800">
-                          RP ใช้ซื้อ Boost, กล่อง Premium, Upgrade ถาวร และอื่น ๆ
+                          RP ใช้ซื้อ Boost, กล่อง Premium, Upgrade ถาวร และอื่น ๆ เท่านั้น
                         </p>
                       </div>
                     </>
