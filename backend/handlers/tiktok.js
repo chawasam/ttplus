@@ -8,11 +8,17 @@ const { processEvent } = require('./actions/eventProcessor');
 const crypto = require('crypto');
 const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 
+const admin = require('firebase-admin');
+
 const activeConnections = new Map(); // userId -> { connection, tiktokUsername, connectedAt, manualDisconnect }
 const reconnectTimers   = new Map(); // userId -> timerId
 const reconnectAttempts = new Map(); // userId -> attempt count
 const likesLeaderboard  = new Map(); // vjId -> Map<uniqueId, {nickname, profilePictureUrl, likeCount}>
 const giftsLeaderboard  = new Map(); // vjId -> Map<uniqueId, {nickname, profilePictureUrl, totalCoins}>
+const recentMembers     = new Map(); // vjId -> [{uniqueId, nickname, profilePictureUrl, joinedAt}, ...] (max 50)
+const lbPersistTimers   = new Map(); // vjId -> debounce timer handle
+
+const MAX_MEMBERS_TRACK = 50;
 
 // จำกัด connections สูงสุดต่อ server (ป้องกัน resource exhaustion)
 const MAX_CONNECTIONS        = 100;
@@ -22,6 +28,50 @@ const RECONNECT_CAP_MS       = 60_000; // cap ที่ 60 วิ (ไม่ร�
 
 // Timeout สำหรับ connect (ms)
 const CONNECT_TIMEOUT_MS = 15000;
+
+// ===== Leaderboard Firestore Persistence =====
+
+// บันทึก leaderboard ลง Firestore แบบ debounced (รอ 5 วิ หลังอัปเดตล่าสุด)
+// ป้องกัน write เยอะเกินตอนมี gift combo
+function schedulePersistLeaderboard(userId) {
+  if (lbPersistTimers.has(userId)) clearTimeout(lbPersistTimers.get(userId));
+  const timer = setTimeout(async () => {
+    lbPersistTimers.delete(userId);
+    try {
+      const giftsData = getLeaderboard(userId, 'gifts');
+      const likesData = getLeaderboard(userId, 'likes');
+      await admin.firestore().collection('leaderboard_state').doc(userId).set({
+        gifts:     giftsData,
+        likes:     likesData,
+        updatedAt: Date.now(),
+      });
+    } catch {} // silent — in-memory ยังทำงานได้ปกติ
+  }, 5000);
+  lbPersistTimers.set(userId, timer);
+}
+
+// โหลด leaderboard จาก Firestore ถ้า in-memory ว่างเปล่า (เช่น backend restart)
+async function loadLeaderboardFromFirestore(userId) {
+  try {
+    const doc = await admin.firestore().collection('leaderboard_state').doc(userId).get();
+    if (!doc.exists) return;
+    const data = doc.data();
+    if (Array.isArray(data.gifts) && data.gifts.length > 0) {
+      const glb = new Map();
+      for (const item of data.gifts) {
+        if (item.uniqueId) glb.set(item.uniqueId, item);
+      }
+      giftsLeaderboard.set(userId, glb);
+    }
+    if (Array.isArray(data.likes) && data.likes.length > 0) {
+      const llb = new Map();
+      for (const item of data.likes) {
+        if (item.uniqueId) llb.set(item.uniqueId, item);
+      }
+      likesLeaderboard.set(userId, llb);
+    }
+  } catch {} // silent
+}
 
 // ===== Reconnect helpers =====
 
@@ -119,6 +169,9 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
     if (!isReconnect) {
       likesLeaderboard.set(userId, new Map());
       giftsLeaderboard.set(userId, new Map());
+      recentMembers.set(userId, []);
+      // ลบ Firestore state ของ session เก่า — session ใหม่เริ่มนับใหม่
+      admin.firestore().collection('leaderboard_state').doc(userId).delete().catch(() => {});
     }
 
     await logSession({ userId, tiktokUsername, action: 'connect', roomId: state.roomId });
@@ -194,6 +247,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       giftsLeaderboard.set(userId, glb);
       // Push leaderboard update ผ่าน socket ทันที (ไม่ต้องรอ REST poll)
       io.to(widgetRoom).emit('leaderboard_update', { type: 'gifts', data: getLeaderboard(userId, 'gifts') });
+      schedulePersistLeaderboard(userId); // debounced Firestore write
       // Game currency pipeline
       if (diamondCount > 0) {
         const socketIp = io?.sockets?.sockets?.get?.(socketId)?.handshake?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || '';
@@ -231,6 +285,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       likesLeaderboard.set(userId, lb);
       // Push leaderboard update ผ่าน socket ทันที
       io.to(widgetRoom).emit('leaderboard_update', { type: 'likes', data: getLeaderboard(userId, 'likes') });
+      schedulePersistLeaderboard(userId); // debounced Firestore write
       // ลูกเล่น TT — fire like events
       processEvent(userId, 'like', likePayload).catch(() => {});
     });
@@ -260,6 +315,33 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       emitAll('share', sharePayload);
       // ลูกเล่น TT — fire share events
       processEvent(userId, 'share', sharePayload).catch(() => {});
+    });
+
+    // ── Member join (คนกดเข้าดู live) ──
+    connection.on('member', (data) => {
+      const safe = sanitizeTikTokEvent(data);
+      if (!safe.uniqueId) return;
+      const members = recentMembers.get(userId) || [];
+      // ลบ entry เก่าของคนเดิม (ถ้ามี) แล้วใส่ใหม่ด้านบน
+      const filtered = members.filter(m => m.uniqueId !== safe.uniqueId);
+      filtered.unshift({
+        uniqueId:          safe.uniqueId,
+        nickname:          safe.nickname || safe.uniqueId,
+        profilePictureUrl: safe.profilePictureUrl || '',
+        joinedAt:          Date.now(),
+      });
+      recentMembers.set(userId, filtered.slice(0, MAX_MEMBERS_TRACK));
+      emitAll('member', {
+        uniqueId:          safe.uniqueId,
+        nickname:          safe.nickname,
+        profilePictureUrl: safe.profilePictureUrl,
+        timestamp:         Date.now(),
+      });
+      // ลูกเล่น TT — fire join events
+      processEvent(userId, 'join', {
+        type: 'join', uniqueId: safe.uniqueId, nickname: safe.nickname,
+        profilePictureUrl: safe.profilePictureUrl, timestamp: Date.now(),
+      }).catch(() => {});
     });
 
     connection.on('roomUser', (data) => {
@@ -347,4 +429,11 @@ function getLeaderboard(vjId, type) {
     .slice(0, 10);
 }
 
-module.exports = { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard };
+function getRecentMembers(vjId) {
+  return recentMembers.get(vjId) || [];
+}
+
+module.exports = {
+  startConnection, stopConnection, hasConnection, getActiveConnectionCount,
+  getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers,
+};

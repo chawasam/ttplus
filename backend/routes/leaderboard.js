@@ -2,16 +2,16 @@
 // รองรับทั้ง format ใหม่ (?cid=) และเก่า (/:vjId) เพื่อ backward compat
 const express = require('express');
 const router  = express.Router();
+const admin   = require('firebase-admin');
 const { getLeaderboard } = require('../handlers/tiktok');
 const { getUidForCid, registerCid } = require('../utils/widgetToken');
-const { db } = require('../firebase');
 
 // ── ดึง uid จาก cid (memory cache → Firestore fallback) ─────────────────────
 async function resolveCid(cid) {
   const uid = getUidForCid(cid);
   if (uid) return uid;
   try {
-    const doc = await db.collection('widget_cids').doc(String(cid)).get();
+    const doc = await admin.firestore().collection('widget_cids').doc(String(cid)).get();
     if (doc.exists && doc.data()?.uid) {
       registerCid(cid, doc.data().uid);
       return doc.data().uid;
@@ -37,8 +37,23 @@ router.get('/:vjId?', async (req, res) => {
 
   if (!vjId || vjId.length > 128) return res.status(400).json({ error: 'ต้องระบุ cid หรือ vjId' });
 
+  // ดึงจาก in-memory ก่อน (fast path)
   const data = getLeaderboard(vjId, type);
-  res.json({ type, data, updatedAt: Date.now() });
+  if (data.length > 0) return res.json({ type, data, updatedAt: Date.now() });
+
+  // Fallback: โหลดจาก Firestore (กรณี backend restart แต่ session ยังไม่จบ)
+  try {
+    const doc = await admin.firestore().collection('leaderboard_state').doc(vjId).get();
+    if (doc.exists) {
+      const stored = doc.data();
+      const fieldData = type === 'likes' ? stored.likes : stored.gifts;
+      if (Array.isArray(fieldData) && fieldData.length > 0) {
+        return res.json({ type, data: fieldData, updatedAt: stored.updatedAt || Date.now() });
+      }
+    }
+  } catch {}
+
+  res.json({ type, data: [], updatedAt: Date.now() });
 });
 
 module.exports = router;

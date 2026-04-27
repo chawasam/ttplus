@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { connectSocket, disconnectSocket } from '../lib/socket';
+import { connectSocket, disconnectSocket, setTokenRefresher } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { showError } from '../lib/errorHandler';
 import { sanitizeEvent } from '../lib/sanitize';
@@ -66,6 +66,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   const [viewers, setViewers]           = useState(0);
   const [totalLikes, setTotalLikes]     = useState(0);
   const [totalComments, setTotalComments] = useState(0);
+  const [recentMembers, setRecentMembers] = useState([]); // ผู้ชมที่เพิ่งเข้าห้อง (max 50)
 
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
@@ -193,6 +194,20 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     socket.on('follow',   (data) => { const s = sanitizeEvent(data); addEvent(s); });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
     socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));
+    // ── Viewer list (คนที่เข้าห้อง live) ──
+    socket.on('member', (data) => {
+      const uniqueId = String(data.uniqueId || '').slice(0, 64);
+      const nickname = String(data.nickname || uniqueId).slice(0, 100);
+      const pic = String(data.profilePictureUrl || '').slice(0, 512);
+      if (!uniqueId) return;
+      setRecentMembers(prev => {
+        const filtered = prev.filter(m => m.uniqueId !== uniqueId);
+        return [{ uniqueId, nickname, profilePictureUrl: pic, joinedAt: Date.now() }, ...filtered].slice(0, 50);
+      });
+    });
+    socket.on('recent_members', (data) => {
+      if (Array.isArray(data?.data)) setRecentMembers(data.data);
+    });
   }, [addEvent]);
 
   // ===== React to user prop (from _app.js) =====
@@ -202,6 +217,9 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     if (user) {
       // Connect socket + load settings เมื่อ login แล้ว
       user.getIdToken().then(token => {
+        // ลงทะเบียน token refresher — socket จะขอ fresh token ทุกครั้ง reconnect
+        // ป้องกัน "No active connection" เมื่อ Firebase ID token หมดอายุ (> 1 ชั่วโมง)
+        setTokenRefresher(() => user.getIdToken());
         const socket = connectSocket(token);
         socketRef.current = socket;
         setupSocketListeners(socket);
@@ -465,6 +483,53 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           <StatCard label="❤️ Likes"   value={totalLikes}    theme={theme} />
           <StatCard label="💬 แชท"     value={totalComments} theme={theme} />
         </div>
+
+        {/* ── Viewer List (คนที่เข้าดู live) ── */}
+        {recentMembers.length > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className={clsx('text-xs font-medium', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                🚪 ผู้ชมในห้อง ({recentMembers.length})
+              </p>
+              <button
+                onClick={() => setRecentMembers([])}
+                className="text-[10px] text-gray-600 hover:text-gray-400"
+              >
+                ล้าง
+              </button>
+            </div>
+            <div className={clsx(
+              'rounded-xl border overflow-hidden',
+              theme === 'dark' ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
+            )}>
+              <div className="max-h-48 overflow-y-auto">
+                {recentMembers.map((m, i) => (
+                  <div key={m.uniqueId} className={clsx(
+                    'flex items-center gap-2 px-3 py-1.5 text-xs',
+                    i !== recentMembers.length - 1 && (theme === 'dark' ? 'border-b border-gray-800' : 'border-b border-gray-100')
+                  )}>
+                    {m.profilePictureUrl ? (
+                      <img
+                        src={m.profilePictureUrl}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        className="w-5 h-5 rounded-full flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full bg-brand-700 flex-shrink-0 flex items-center justify-center text-[9px] text-white">
+                        {(m.nickname || m.uniqueId).charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className={clsx('truncate flex-1', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>
+                      {m.nickname || m.uniqueId}
+                    </span>
+                    <span className="text-gray-600 flex-shrink-0">@{m.uniqueId}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
 
