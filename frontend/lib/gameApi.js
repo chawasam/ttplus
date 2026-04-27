@@ -24,6 +24,8 @@ export const startBattle      = (zone, monsterId, dungeonRunId, bossData) =>
 export const battleAction     = (battleId, action, opts = {}) =>
   api.post('/api/game/battle/action', { battleId, action, ...opts });
 export const rest             = ()               => api.post('/api/game/battle/rest');
+export const claimPendingLoot = (trashInstanceIds = []) =>
+  api.post('/api/game/battle/claim-loot', { trashInstanceIds });
 
 // ===== Inventory =====
 export const getInventory     = ()               => api.get('/api/game/inventory');
@@ -51,6 +53,8 @@ export const acceptSideQuest  = (questId)        => api.post('/api/game/quest-lo
 // ===== RP Shop =====
 export const getRPShop        = ()               => api.get('/api/game/rp-shop');
 export const buyRPItem        = (itemId)         => api.post('/api/game/rp-shop/buy', { itemId });
+export const executeSkillReset = ()              => api.post('/api/game/rp-shop/skill-reset');
+export const executeStatReset  = ()              => api.post('/api/game/rp-shop/stat-reset');
 
 // ===== Skills =====
 export const getSkills        = ()               => api.get('/api/game/skills');
@@ -100,3 +104,13 @@ export const dungeonFlee      = ()               => api.post('/api/game/dungeon/
 export const getMainQuestLog  = ()                        => api.get('/api/game/quest-main');
 export const collectLore      = (loreId)                  => api.post('/api/game/quest-main/lore', { loreId });
 export const makeQuestChoice  = (choiceKey, choice)       => api.post('/api/game/quest-main/choice', { choiceKey, choice });
+
+// ===== Daily Shop =====
+export const getDailyShop        = ()         => api.get('/api/game/daily-shop');
+export const buyDailyShopItem    = (slotId)   => api.post('/api/game/daily-shop/buy', { slotId });
+
+// ===== Featured Dungeon =====
+export const getFeaturedDungeonStatus = ()    => api.get('/api/game/featured-dungeon');
+
+// ===== Zone Info =====
+export const getZoneInfo = (zoneId) => api.get(`/api/game/zone-info/${zoneId}`);

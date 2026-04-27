@@ -21,7 +21,7 @@ import { loadCharacter, getBalance, explore, travel, startBattle, battleAction, 
          getLeaderboard,
          getWorldBoss, attackWorldBoss,
          getCraftingRecipes, craftItem,
-         getZoneInfo } from '../../lib/gameApi';
+         getZoneInfo, claimPendingLoot } from '../../lib/gameApi';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -234,6 +234,12 @@ export default function GameWorld() {
   // ── Login Bonus ──
   const [loginBonusData,   setLoginBonusData]   = useState(null);  // { streak, reward, alreadyClaimed }
   const [showLoginBonus,   setShowLoginBonus]   = useState(false); // popup visible
+
+  // ── Pending Loot (inventory overflow) ──
+  const [pendingLoot,      setPendingLoot]      = useState([]);    // drops รอตัดสินใจ
+  const [pendingLootModal, setPendingLootModal] = useState(false); // แสดง modal
+  const [trashSelected,    setTrashSelected]    = useState([]);    // instanceId ที่เลือกทิ้ง
+  const [pendingLootBusy,  setPendingLootBusy]  = useState(false);
 
   // ── World Boss ──
   const [worldBossData,    setWorldBossData]    = useState(null);  // { active, boss, myDamage, cooldown, topPlayers }
@@ -1291,6 +1297,13 @@ export default function GameWorld() {
           if (rewards.xp) setChar(c => c ? { ...c, xp: Math.min((c.xp || 0) + rewards.xp, (c.xpToNext || 9999) - 1) } : c);
         }
 
+        // Pending loot (inventory overflow) — show modal
+        if (rewards.pendingDrops?.length) {
+          setPendingLoot(rewards.pendingDrops);
+          setTrashSelected([]);
+          setPendingLootModal(true);
+        }
+
         // Was this a dungeon battle?
         if (data.dungeonRunId) {
           // Dungeon: auto-advance to next room after brief pause (player sees result in log)
@@ -1383,6 +1396,33 @@ export default function GameWorld() {
     setBattleRewards(null);
     setScreen(SCREENS.WORLD);
   }, []);
+
+  // ── Pending Loot: claim selected (trash some to make room) ──
+  const handleClaimPendingLoot = useCallback(async () => {
+    if (pendingLootBusy) return;
+    setPendingLootBusy(true);
+    try {
+      const { data } = await claimPendingLoot(trashSelected);
+      if (data.saved?.length) {
+        const names = data.saved.map(s => `${s.itemEmoji} ${s.itemName}`).join(', ');
+        toast.success(`รับไอเทม: ${names}`, { duration: 4000 });
+      }
+      if (data.stillPending > 0) {
+        toast(`ยังมีไอเทมค้างอยู่ ${data.stillPending} ชิ้น — กระเป๋ายังเต็ม`, { icon: '⚠️' });
+        setPendingLoot(prev => prev.slice(data.saved?.length || 0));
+      } else {
+        setPendingLoot([]);
+        setPendingLootModal(false);
+      }
+      setTrashSelected([]);
+      // Refresh inventory
+      try { const r = await getInventory(); setInventory(r.data.items || []); } catch {}
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'เกิดข้อผิดพลาด');
+    } finally {
+      setPendingLootBusy(false);
+    }
+  }, [pendingLootBusy, trashSelected]);
 
   // Step 1: open confirm dialog
   const handleRestPrompt = useCallback(() => {
@@ -1885,6 +1925,78 @@ export default function GameWorld() {
         </div>
       )}
 
+      {/* ── PENDING LOOT MODAL (กระเป๋าเต็ม) ── */}
+      {pendingLootModal && pendingLoot.length > 0 && (
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4"
+          onClick={() => { if (!pendingLootBusy) setPendingLootModal(false); }}>
+          <div className="bg-gray-950 border border-red-800 rounded-xl p-5 w-full max-w-sm shadow-2xl"
+            style={{ fontFamily: "'Courier New', Courier, monospace" }}
+            onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-3">
+              <div className="text-3xl">⚠️</div>
+              <p className="text-red-400 font-bold text-sm mt-1">กระเป๋าของเต็ม!</p>
+              <p className="text-gray-400 text-xs mt-0.5">
+                มีไอเทม {pendingLoot.length} ชิ้นรอการตัดสินใจ
+              </p>
+            </div>
+
+            {/* Pending items */}
+            <div className="mb-3">
+              <p className="text-amber-300 text-xs font-bold mb-1.5">📦 ไอเทมที่ได้รับ (รอเก็บ)</p>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {pendingLoot.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded px-2 py-1">
+                    <span className="text-lg">{d.itemEmoji}</span>
+                    <span className="text-gray-200 text-xs flex-1">{d.itemName}</span>
+                    {d.quality && <span className="text-purple-400 text-[10px]">{d.quality}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Current inventory — pick items to trash */}
+            {inventory.length > 0 && (
+              <div className="mb-3">
+                <p className="text-gray-400 text-xs mb-1">
+                  🗑️ เลือกไอเทมที่จะทิ้ง ({trashSelected.length} เลือก — ต้องทิ้ง {Math.max(0, pendingLoot.length - ((char?.inventoryLimit || 30) - inventory.length + trashSelected.length))} อีก)
+                </p>
+                <div className="space-y-1 max-h-36 overflow-y-auto">
+                  {inventory.filter(it => !it.equipped).map(it => {
+                    const isSelected = trashSelected.includes(it.instanceId);
+                    return (
+                      <div key={it.instanceId}
+                        onClick={() => setTrashSelected(prev =>
+                          isSelected ? prev.filter(id => id !== it.instanceId) : [...prev, it.instanceId]
+                        )}
+                        className={`flex items-center gap-2 rounded px-2 py-1 cursor-pointer transition border ${
+                          isSelected ? 'border-red-600 bg-red-900/20' : 'border-gray-800 bg-gray-900 hover:border-gray-600'
+                        }`}>
+                        <span className="text-base">{it.emoji || '📦'}</span>
+                        <span className="text-gray-300 text-xs flex-1">{it.name}</span>
+                        {isSelected && <span className="text-red-400 text-[10px]">ทิ้ง</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-gray-600 text-[10px] mt-1">* ไอเทมที่สวมใส่อยู่จะไม่แสดง</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => { if (!pendingLootBusy) setPendingLootModal(false); }}
+                className="flex-1 py-2 rounded border border-gray-700 text-gray-400 text-xs hover:border-gray-500 transition">
+                ปิด (เก็บไว้ก่อน)
+              </button>
+              <button onClick={handleClaimPendingLoot}
+                disabled={pendingLootBusy}
+                className="flex-1 py-2 rounded border border-amber-700 bg-amber-900/20 text-amber-300 text-xs hover:bg-amber-900/40 transition disabled:opacity-40">
+                {pendingLootBusy ? '⏳...' : `✅ ยืนยัน${trashSelected.length ? ` (ทิ้ง ${trashSelected.length})` : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── REST CONFIRM DIALOG ── */}
       {restConfirmOpen && (() => {
         const lv = char?.level || 1;
@@ -2284,7 +2396,13 @@ export default function GameWorld() {
                       >💀 Zone Boss</Btn>
                     )}
                     <Btn onClick={handleRestPrompt} disabled={busy}>💤 พักผ่อน</Btn>
-                    <Btn onClick={loadInventory}  disabled={busy}>🎒 Inventory</Btn>
+                    <button onClick={loadInventory} disabled={busy}
+                      className="relative px-3 py-2 border border-gray-700 text-gray-300 hover:border-gray-500 hover:bg-gray-800/30 transition text-xs disabled:opacity-40 rounded">
+                      🎒 Inventory
+                      {(inventory.length >= (char?.inventoryLimit || 30) || pendingLoot.length > 0) && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border border-gray-900 animate-pulse" />
+                      )}
+                    </button>
                     <Btn onClick={loadShop}       disabled={busy}>🏪 ร้านค้า</Btn>
                     <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
                     <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
@@ -2737,6 +2855,18 @@ export default function GameWorld() {
                         </div>
                       )}
 
+                      {/* Pending drops warning */}
+                      {battleRewards?.pendingDrops?.length > 0 && (
+                        <div className="mt-2 p-2 rounded border border-red-800 bg-red-950/20 text-xs">
+                          <p className="text-red-400 font-bold">⚠️ กระเป๋าเต็ม! มีไอเทมค้างอยู่ {battleRewards.pendingDrops.length} ชิ้น</p>
+                          <p className="text-gray-500 text-[10px] mt-0.5">กด "จัดการไอเทมค้าง" เพื่อเลือกทิ้งของแล้วเก็บไอเทมใหม่</p>
+                          <button onClick={() => { setPendingLootModal(true); setTrashSelected([]); }}
+                            className="mt-1.5 w-full py-1 rounded border border-red-700 text-red-300 text-xs hover:bg-red-900/30 transition">
+                            📦 จัดการไอเทมค้าง ({battleRewards.pendingDrops.length} ชิ้น)
+                          </button>
+                        </div>
+                      )}
+
                       <button onClick={handleVictoryDismiss}
                         className="w-full text-center text-sm py-2 rounded border text-green-400 border-green-800 hover:bg-green-900/30 active:bg-green-900/50">
                         ▶ ดำเนินการต่อ
@@ -2786,6 +2916,40 @@ export default function GameWorld() {
                     <p className="text-gray-400 text-xs">[ 🎒 Inventory — คลิกเพื่อจัดการ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
+
+                  {/* ── Inventory capacity bar ── */}
+                  {(() => {
+                    const BASE_LIMIT = 30;
+                    const MAX_LIMIT  = 60; // 3 upgrades × 10
+                    const limit      = char?.inventoryLimit || BASE_LIMIT;
+                    const count      = inventory.length;
+                    const pct        = Math.min(100, Math.round((count / limit) * 100));
+                    const isUpgraded = limit > BASE_LIMIT;
+                    const isFull     = count >= limit;
+                    const barColor   = isFull ? '#ef4444' : pct >= 80 ? '#f59e0b' : '#34d399';
+                    return (
+                      <div className="mb-3 px-2 py-1.5 rounded border border-gray-800 bg-gray-900/30">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-gray-500 text-[10px]">🎒 ช่องเก็บของ</span>
+                          <span className="text-xs font-bold" style={{ color: barColor }}>
+                            {count}/{limit}
+                            {isUpgraded && <span className="text-gray-600 font-normal ml-1">(Max {MAX_LIMIT})</span>}
+                            {isFull && <span className="text-red-400 ml-1">เต็ม!</span>}
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-300"
+                            style={{ width: `${pct}%`, background: barColor }} />
+                        </div>
+                        {pendingLoot.length > 0 && (
+                          <button onClick={() => { setPendingLootModal(true); setTrashSelected([]); }}
+                            className="mt-1.5 w-full text-center py-1 rounded border border-red-700 bg-red-950/20 text-red-400 text-[10px] hover:bg-red-900/30 transition animate-pulse">
+                            ⚠️ มีไอเทมค้างอยู่ {pendingLoot.length} ชิ้น — กดเพื่อจัดการ
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* ── Sub-tab selector ── */}
                   <div className="flex gap-1 mb-3">

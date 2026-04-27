@@ -85,9 +85,20 @@ async function claimReward(req, res) {
         });
       }
 
-      // Item
+      // Item — check inventory capacity first
       let item = null;
       if (DAILY_BONUS.itemId) {
+        // Check if inventory has space
+        let hasSpace = true;
+        if (charId) {
+          const charDoc2     = await db.collection('game_characters').doc(charId).get();
+          const inventoryLimit = (charDoc2.exists ? charDoc2.data().inventoryLimit : null) || 30;
+          const invSnap      = await db.collection('game_inventory').where('uid', '==', uid).get();
+          hasSpace           = invSnap.size < inventoryLimit;
+        }
+        if (!hasSpace) {
+          return res.status(400).json({ error: 'กระเป๋าของเต็ม! กรุณาทิ้งหรือขายไอเทมก่อนรับรางวัล' });
+        }
         const instance = rollItem(DAILY_BONUS.itemId);
         if (instance) {
           await db.collection('game_inventory').add({ uid, ...instance });

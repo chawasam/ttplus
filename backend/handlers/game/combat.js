@@ -1618,16 +1618,41 @@ async function grantRewards(uid, state) {
     } catch {}
   }
 
+  // ── Inventory capacity check ──────────────────────────────────────────────
+  const BASE_INV_LIMIT = 30;
+  let inventoryLimit   = BASE_INV_LIMIT;
+  if (charId) {
+    // char is already loaded above (inside the charId block)
+    // Re-fetch if charId block was skipped (edge case)
+    try {
+      const cSnap = await db.collection('game_characters').doc(charId).get();
+      inventoryLimit = (cSnap.exists ? cSnap.data().inventoryLimit : null) || BASE_INV_LIMIT;
+    } catch {}
+  }
+  const invCountSnap = await db.collection('game_inventory').where('uid', '==', uid).get();
+  let slotsUsed      = invCountSnap.size;
+  const pendingDrops = [];
+
   // Item drops (from monster's individual drop table)
   for (const drop of state.enemy.drops || []) {
     if (!drop.itemId) continue;
     if (Math.random() < drop.chance) {
       const instance = rollItem(drop.itemId);
       if (instance) {
-        await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
-        rewards.items.push(drop.itemId);
         const def = getItem(drop.itemId);
-        log.push(`📦 ได้รับ ${def?.name || drop.itemId}`);
+        if (slotsUsed < inventoryLimit) {
+          await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+          rewards.items.push(drop.itemId);
+          log.push(`📦 ได้รับ ${def?.name || drop.itemId}`);
+          slotsUsed++;
+        } else {
+          pendingDrops.push({
+            ...instance,
+            itemName:  def?.name  || drop.itemId,
+            itemEmoji: def?.emoji || '📦',
+          });
+          log.push(`⚠️ กระเป๋าเต็ม! ${def?.name || drop.itemId} รอการตัดสินใจ`);
+        }
       }
     }
   }
@@ -1639,11 +1664,40 @@ async function grantRewards(uid, state) {
     if (tierItemId) {
       const instance = rollItem(tierItemId);
       if (instance) {
-        await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
-        rewards.items.push(tierItemId);
         const def = getItem(tierItemId);
-        log.push(`✨ Zone Drop! ได้รับ ${def?.name || tierItemId} (Tier ${instance.quality || 'Normal'})`);
+        if (slotsUsed < inventoryLimit) {
+          await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+          rewards.items.push(tierItemId);
+          log.push(`✨ Zone Drop! ได้รับ ${def?.name || tierItemId} (Tier ${instance.quality || 'Normal'})`);
+          slotsUsed++;
+        } else {
+          pendingDrops.push({
+            ...instance,
+            itemName:  def?.name  || tierItemId,
+            itemEmoji: def?.emoji || '📦',
+            zoneDrop:  true,
+          });
+          log.push(`⚠️ กระเป๋าเต็ม! ${def?.name || tierItemId} รอการตัดสินใจ`);
+        }
       }
+    }
+  }
+
+  // ── Store pending drops in Firestore if inventory was full ────────────────
+  if (pendingDrops.length > 0) {
+    try {
+      const pendingRef  = db.collection('game_pending_loot').doc(uid);
+      const pendingSnap = await pendingRef.get();
+      const existing    = pendingSnap.exists ? (pendingSnap.data().drops || []) : [];
+      await pendingRef.set({
+        uid,
+        drops:     [...existing, ...pendingDrops],
+        updatedAt: Date.now(),
+      });
+      rewards.pendingDrops  = pendingDrops;
+      rewards.inventoryFull = true;
+    } catch (e) {
+      console.error('[Combat] pendingDrops save error:', e.message);
     }
   }
 
@@ -1850,4 +1904,79 @@ async function cleanupStaleBattles() {
   }
 }
 
-module.exports = { startBattle, processAction, rest, cleanupStaleBattles, LIMIT_BREAK_DEFS };
+// ─────────────────────────────────────────────────────────────────────────────
+//  POST /api/game/battle/claim-loot
+//  body: { trashInstanceIds: string[] }  — inventory items ที่ผู้เล่นจะทิ้ง
+//  เลือก pending drops จาก game_pending_loot เข้า inventory แทน
+// ─────────────────────────────────────────────────────────────────────────────
+async function claimPendingLoot(req, res) {
+  const uid              = req.user.uid;
+  const { trashInstanceIds = [] } = req.body;
+  const db               = admin.firestore();
+
+  try {
+    // 1. Load pending loot doc
+    const pendingRef  = db.collection('game_pending_loot').doc(uid);
+    const pendingSnap = await pendingRef.get();
+    if (!pendingSnap.exists || !(pendingSnap.data().drops || []).length) {
+      return res.status(400).json({ error: 'ไม่มีไอเทมค้างอยู่' });
+    }
+    const pendingDrops = pendingSnap.data().drops;
+
+    // 2. Delete trashed inventory items
+    if (trashInstanceIds.length > 0) {
+      const trashPromises = trashInstanceIds.map(async (instId) => {
+        const snap = await db.collection('game_inventory')
+          .where('uid', '==', uid)
+          .where('instanceId', '==', instId)
+          .limit(1).get();
+        if (!snap.empty) await snap.docs[0].ref.delete();
+      });
+      await Promise.all(trashPromises);
+    }
+
+    // 3. Re-check inventory size + limit
+    const accountDoc   = await db.collection('game_accounts').doc(uid).get();
+    const charId       = accountDoc.data()?.characterId;
+    let   inventoryLimit = 30;
+    if (charId) {
+      const charSnap   = await db.collection('game_characters').doc(charId).get();
+      inventoryLimit   = (charSnap.exists ? charSnap.data().inventoryLimit : null) || 30;
+    }
+    const invSnap    = await db.collection('game_inventory').where('uid', '==', uid).get();
+    let   slotsUsed  = invSnap.size;
+
+    // 4. Save as many pending items as possible
+    const saved    = [];
+    const stillPending = [];
+    for (const drop of pendingDrops) {
+      if (slotsUsed < inventoryLimit) {
+        const { itemName, itemEmoji, zoneDrop, ...instance } = drop;
+        await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+        saved.push({ itemName, itemEmoji });
+        slotsUsed++;
+      } else {
+        stillPending.push(drop);
+      }
+    }
+
+    // 5. Update pending loot doc
+    if (stillPending.length > 0) {
+      await pendingRef.set({ uid, drops: stillPending, updatedAt: Date.now() });
+    } else {
+      await pendingRef.delete();
+    }
+
+    return res.json({
+      success:          true,
+      saved,
+      stillPending:     stillPending.length,
+      inventoryFull:    stillPending.length > 0,
+    });
+  } catch (err) {
+    console.error('[Combat] claimPendingLoot:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+module.exports = { startBattle, processAction, rest, cleanupStaleBattles, LIMIT_BREAK_DEFS, claimPendingLoot };

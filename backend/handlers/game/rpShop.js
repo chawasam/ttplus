@@ -185,8 +185,10 @@ async function buyRPItem(req, res) {
         }
         const charId = data.characterId;
         if (charId) {
+          const charSnap = await db.collection('game_characters').doc(charId).get();
+          const currentLimit = charSnap.exists ? (charSnap.data().inventoryLimit || 30) : 30;
           await db.collection('game_characters').doc(charId).update({
-            inventorySlots: admin.firestore.FieldValue.increment(ef.amount || 10),
+            inventoryLimit: currentLimit + (ef.amount || 10),
           });
         }
         await accountRef.set({ rpInventoryExpands: admin.firestore.FieldValue.increment(1) }, { merge: true });

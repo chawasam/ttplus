@@ -92,9 +92,10 @@ router.post('/travel',   explore.travel);
 router.get ('/zone-info/:zoneId', explore.getZoneInfo);
 
 // ----- Combat -----
-router.post('/battle/start',  battleLimiter, combat.startBattle);
-router.post('/battle/action', battleLimiter, combat.processAction);
-router.post('/battle/rest',   combat.rest);
+router.post('/battle/start',      battleLimiter, combat.startBattle);
+router.post('/battle/action',     battleLimiter, combat.processAction);
+router.post('/battle/rest',       combat.rest);
+router.post('/battle/claim-loot', combat.claimPendingLoot);
 
 // ----- Inventory -----
 router.get ('/inventory',        inventory.getInventory);
