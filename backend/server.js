@@ -186,7 +186,13 @@ app.post('/api/connect', verifyToken, connectLimiter, async (req, res) => {
   const clean = tiktokUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
   if (!clean) return res.status(400).json({ error: 'Invalid username format' });
 
-  const socketId = userSockets.get(req.user.uid);
+  // ถ้าหา socketId ไม่เจอ ให้รอ 1.5 วิ แล้วลองใหม่ครั้งเดียว
+  // ป้องกัน race condition: socket reconnect → firebase verifyIdToken ยังไม่เสร็จ
+  let socketId = userSockets.get(req.user.uid);
+  if (!socketId) {
+    await new Promise(r => setTimeout(r, 1500));
+    socketId = userSockets.get(req.user.uid);
+  }
   if (!socketId) return res.status(400).json({ error: 'No active connection. Please refresh.' });
 
   try {
