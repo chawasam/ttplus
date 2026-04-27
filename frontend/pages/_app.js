@@ -9,6 +9,7 @@ import '../styles/globals.css';
 // โหลดทุกหน้าพร้อมกัน — ไม่ unmount เมื่อสลับแถบ
 import Dashboard      from './dashboard';
 import TtsPage        from './tts';
+import ActionsPage    from './actions';
 import WidgetsPage    from './widgets';
 import SoundboardPage from './soundboard';
 import SettingsPage   from './settings';
@@ -119,6 +120,7 @@ function StatusBar({ theme }) {
 const PAGES = [
   { id: 'dashboard',  Component: Dashboard      },
   { id: 'tts',        Component: TtsPage        },
+  { id: 'actions',    Component: ActionsPage    },
   { id: 'widgets',    Component: WidgetsPage    },
   { id: 'soundboard', Component: SoundboardPage },
   { id: 'settings',   Component: SettingsPage   },
@@ -130,6 +132,7 @@ const PATH_TO_ID = {
   '/':           'dashboard',
   '/dashboard':  'dashboard',
   '/tts':        'tts',
+  '/actions':    'actions',
   '/widgets':    'widgets',
   '/soundboard': 'soundboard',
   '/settings':   'settings',

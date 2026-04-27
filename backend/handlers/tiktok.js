@@ -4,6 +4,7 @@ const { logSession, logError } = require('../utils/logger');
 const { sanitizeTikTokEvent, sanitizeStr } = require('../utils/validate');
 const { processGift }  = require('./game/tiktokCurrency');
 const { checkChatVerify } = require('./game/account');
+const { processEvent } = require('./actions/eventProcessor');
 const crypto = require('crypto');
 const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 
@@ -131,7 +132,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
 
     connection.on('chat', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      emitAll('chat', {
+      const chatPayload = {
         type: 'chat',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
@@ -140,9 +141,11 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         bio:               sanitizeStr(String(data.userDetails?.bioDescription || data.bioDescription || ''), 150),
         followRole:        Number(data.followRole) || 0,
         timestamp:         Date.now(),
-      });
-      // ตรวจ TikTok verify code ใน chat
+      };
+      emitAll('chat', chatPayload);
       checkChatVerify(safe.uniqueId, safe.comment || '').catch(() => {});
+      // ลูกเล่น TT — fire chat/command events
+      processEvent(userId, 'chat', { ...chatPayload, comment: safe.comment || '' }).catch(() => {});
     });
 
     connection.on('gift', (data) => {
@@ -150,7 +153,7 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
       const safe         = sanitizeTikTokEvent(data);
       const diamondCount = Math.max(0, Number(data.diamondCount) || 0);
       const repeatCount  = Math.min(Number(data.repeatCount) || 1, 9999);
-      emitAll('gift', {
+      const giftPayload  = {
         type: 'gift',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
@@ -160,7 +163,8 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
         diamondCount,
         repeatCount,
         timestamp:         Date.now(),
-      });
+      };
+      emitAll('gift', giftPayload);
       // Game currency pipeline
       if (diamondCount > 0) {
         const socketIp = io?.sockets?.sockets?.get?.(socketId)?.handshake?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || '';
@@ -175,39 +179,50 @@ async function startConnection(userId, tiktokUsername, io, socketId) {
           ipHash,
         }).catch(err => console.error('[TikTok] processGift error:', err?.message));
       }
+      // ลูกเล่น TT — fire gift events
+      processEvent(userId, 'gift', giftPayload).catch(() => {});
     });
 
     connection.on('like', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      emitAll('like', {
+      const likePayload = {
         type: 'like',
         uniqueId:       safe.uniqueId,
         nickname:       safe.nickname,
         likeCount:      Math.max(0, Number(data.likeCount) || 0),
         totalLikeCount: Math.max(0, Number(data.totalLikeCount) || 0),
         timestamp:      Date.now(),
-      });
+      };
+      emitAll('like', likePayload);
+      // ลูกเล่น TT — fire like events
+      processEvent(userId, 'like', likePayload).catch(() => {});
     });
 
     connection.on('follow', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      emitAll('follow', {
+      const followPayload = {
         type: 'follow',
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         timestamp:         Date.now(),
-      });
+      };
+      emitAll('follow', followPayload);
+      // ลูกเล่น TT — fire follow events
+      processEvent(userId, 'follow', followPayload).catch(() => {});
     });
 
     connection.on('share', (data) => {
       const safe = sanitizeTikTokEvent(data);
-      emitAll('share', {
+      const sharePayload = {
         type: 'share',
         uniqueId:  safe.uniqueId,
         nickname:  safe.nickname,
         timestamp: Date.now(),
-      });
+      };
+      emitAll('share', sharePayload);
+      // ลูกเล่น TT — fire share events
+      processEvent(userId, 'share', sharePayload).catch(() => {});
     });
 
     connection.on('roomUser', (data) => {

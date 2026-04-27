@@ -4,6 +4,7 @@ import clsx from 'clsx';
 const navItems = [
   { id: 'dashboard',  icon: '📊',  label: 'Dashboard'   },
   { id: 'tts',        icon: '🔊',  label: 'TTS (สิริ)'  },
+  { id: 'actions',    icon: '🎭',  label: 'ลูกเล่น TT'  },
   { id: 'widgets',    icon: '🎛️', label: 'Widgets'     },
   { id: 'soundboard', icon: '🎹',  label: 'Soundboard'  },
   { id: 'settings',   icon: '⚙️', label: 'Settings'    },

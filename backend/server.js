@@ -268,6 +268,10 @@ app.get('/api/stats', verifyToken, async (req, res) => {
 const gameRouter = require('./routes/game');
 app.use('/api/game', gameRouter);
 
+// ===== ลูกเล่น TT — Actions & Events =====
+const actionsRouter = require('./routes/actions');
+app.use('/api/actions', actionsRouter);
+
 // ===== Overlay Route (public, no auth) =====
 const { getOverlayState } = require('./handlers/game/overlay');
 app.get('/api/overlay/:tiktokId', getOverlayState);
