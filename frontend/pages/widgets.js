@@ -66,6 +66,8 @@ const WIDGETS = [
       { key: 'side',      label: 'ตำแหน่ง',   type: 'select',  default: 'center', options: [{ value:'center', label:'■ กลาง' }, { value:'left', label:'◀ ซ้าย' }, { value:'right', label:'ขวา ▶' }] },
       { key: 'ww',        label: 'ความกว้าง Widget (px) — ตรงกับ OBS Source Width', type: 'number', default: 380, min: 280, max: 800, step: 10 },
       { key: 'carda',     label: 'ความทึบแผง (0=โปร่งใส → 100=ทึบ)', type: 'number', default: 58,  min: 0,   max: 100, step: 5  },
+      { key: '_g4',       label: '🔊 เสียง',                           type: 'group' },
+      { key: 'vol',       label: 'ระดับเสียง (0=เงียบ → 100=เสียงดังสุด)', type: 'number', default: 80, min: 0, max: 100, step: 5 },
     ],
   },
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
