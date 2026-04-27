@@ -2,8 +2,7 @@
 // OBS Size: 800 × 800 — transparent background
 // Rocket = sender avatar (circle), explosion particles = gift image/emoji
 // Physics: launch from bottom (random X), drift by wind to targetX, random targetY
-// Timing: launch 3 s → explosion aligned with firework.mp3 audio
-// URL params: cid=<token>  vol=<0-100>  preview=1
+// URL params: cid=<token>  preview=1
 
 import { useEffect, useRef } from 'react';
 import Head from 'next/head';
@@ -45,7 +44,7 @@ function drawCircleImg(ctx, img, cx, cy, r) {
 }
 
 // ── Build a rocket object ──────────────────────────────────────────────────
-function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins, volume }) {
+function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins }) {
   // Launch: random X at bottom edge, Y fixed at bottom
   const startX = W * 0.08 + Math.random() * W * 0.84;
   const startY = H + AVATAR_R + 4;
@@ -77,7 +76,6 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
     phase:      'launch',   // 'launch' | 'explode'
     labelAlpha: 0,
     done:       false,
-    volume:     volume ?? 0.8,
   };
 }
 
@@ -254,9 +252,7 @@ export default function FireworksWidget() {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // ── Read volume from URL ──
     const params = new URLSearchParams(window.location.search);
-    const volume = Math.max(0, Math.min(1, parseFloat(params.get('vol') ?? '80') / 100));
 
     // ── Animation loop ──
     let raf;
@@ -299,15 +295,6 @@ export default function FireworksWidget() {
         loadImage(safe.giftPictureUrl),
       ]);
 
-      // Play firework sound from start — explosion boom is at 3 s in the file
-      try {
-        const audio = new Audio('/sfx/firework.mp3');
-        audio.volume = volume;
-        audio.play().catch(() => {});
-        // Auto-cleanup after 7 s
-        setTimeout(() => { audio.pause(); audio.src = ''; }, 7000);
-      } catch (_) {}
-
       rocketsRef.current.push(makeRocket({
         avatarImg,
         giftImg,
@@ -315,7 +302,6 @@ export default function FireworksWidget() {
         senderName: safe.nickname,
         giftName:   safe.giftName,
         coins:      safe.diamondCount * safe.repeatCount,
-        volume,
       }));
     }
 

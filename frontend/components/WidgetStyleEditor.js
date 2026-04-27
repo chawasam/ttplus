@@ -163,28 +163,6 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         />
       </div>
 
-      {/* Fireworks-specific: volume */}
-      {widgetId === 'fireworks' && (
-        <div className="space-y-1">
-          <div className={row}>
-            <span className={label}>🔊 ระดับเสียงพลุ</span>
-            <span className={clsx('text-xs font-mono', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-              {style.vol ?? 80}%
-            </span>
-          </div>
-          <input
-            type="range" min="0" max="100"
-            value={style.vol ?? 80}
-            onChange={e => set('vol', +e.target.value)}
-            className="w-full accent-brand-500"
-          />
-          <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-            <span>เงียบ (0%)</span>
-            <span>เสียงดังสุด (100%)</span>
-          </div>
-        </div>
-      )}
-
       {/* Chat-specific: direction + max messages */}
       {widgetId === 'chat' && (
         <>
