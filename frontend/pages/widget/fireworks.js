@@ -80,23 +80,50 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
   };
 }
 
-// ── Create explosion particles ───────────────────────────────────────────────
+// ── Create explosion particles (random pattern + count + flash) ──────────────
+const EXPLOSION_PATTERNS = ['ring', 'willow', 'scatter'];
+
 function explode(r) {
-  for (let i = 0; i < PARTICLE_COUNT; i++) {
-    const angle = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.3;
-    const speed = 4.5 + Math.random() * 5.5; // เร็วขึ้น → กระจายกว้างเหมือนพลุจริง
+  // สุ่ม pattern และจำนวน particle ทุกครั้ง
+  r.pattern = EXPLOSION_PATTERNS[Math.floor(Math.random() * EXPLOSION_PATTERNS.length)];
+  const count = 6 + Math.floor(Math.random() * 9); // 6–14 ชิ้น
+
+  // Flash วงกลมสว่างวูบที่จุดระเบิด
+  r.flash = { alpha: 1.0, radius: 10 };
+
+  for (let i = 0; i < count; i++) {
+    let angle, speed, gravity;
+
+    if (r.pattern === 'ring') {
+      // สม่ำเสมอรอบวง — เหมือนพลุดอกไม้จริง
+      angle   = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+      speed   = 5.5 + Math.random() * 2.5;
+      gravity = 0.055 + Math.random() * 0.03;
+    } else if (r.pattern === 'willow') {
+      // พุ่งขึ้นแล้วโค้งตกลงมาเหมือนต้นหลิว — ครึ่งบนของวง
+      angle   = -Math.PI + Math.random() * Math.PI;
+      speed   = 3.5 + Math.random() * 5.5;
+      gravity = 0.10 + Math.random() * 0.05; // gravity สูง → โค้งตกเร็ว
+    } else {
+      // scatter — สุ่มทิศทางและความเร็วอิสระ
+      angle   = Math.random() * Math.PI * 2;
+      speed   = 2 + Math.random() * 9;
+      gravity = 0.05 + Math.random() * 0.05;
+    }
+
+    const upBias = r.pattern === 'willow' ? 2.2 : 1.2;
     r.particles.push({
       x:        r.targetX,
       y:        r.targetY,
       vx:       Math.cos(angle) * speed,
-      vy:       Math.sin(angle) * speed - 1.2,  // upward bias ให้ดูเหมือนพุ่งออก
-      gravity:  0.06 + Math.random() * 0.04,
+      vy:       Math.sin(angle) * speed - upBias,
+      gravity,
       alpha:    0.95 + Math.random() * 0.05,
-      decay:    0.0035 + Math.random() * 0.003, // lasts ~2.5–3 s
+      decay:    0.0032 + Math.random() * 0.003,
       size:     26 + Math.random() * 16,
       rotation: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.18,
-      trail:    [],  // เก็บตำแหน่งย้อนหลัง → วาดเส้นหาง
+      trail:    [],
     });
   }
 }
@@ -164,6 +191,25 @@ function tickRocket(ctx, r, now) {
   } else if (r.phase === 'explode') {
     const explodeElapsed = now - r.explodeTime;
     let alive = false;
+
+    // ── Flash วูบ ──────────────────────────────────────────────────────────
+    if (r.flash && r.flash.alpha > 0) {
+      r.flash.radius += 14;          // ขยายเร็ว
+      r.flash.alpha  -= 0.07;        // จาง ~14 frames ≈ 0.23 วิ
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, r.flash.alpha);
+      // วงนอก (ส้ม-ขาว)
+      ctx.beginPath();
+      ctx.arc(r.targetX, r.targetY, r.flash.radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,230,160,1)';
+      ctx.fill();
+      // วงในสว่างกว่า (ขาวสุด)
+      ctx.beginPath();
+      ctx.arc(r.targetX, r.targetY, r.flash.radius * 0.45, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,230,1)';
+      ctx.fill();
+      ctx.restore();
+    }
 
     for (const p of r.particles) {
       if (p.alpha <= 0) continue;
