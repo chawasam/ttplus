@@ -55,9 +55,9 @@ const DEFAULT_ACTION = {
   alertText: 'ขอบคุณ {username}! 🎉',
   ttsText: 'ขอบคุณ {username} ที่ส่ง {giftname}!',
   obsScene: '',
-  obsSceneDuration: 0,
+  obsSceneReturn: false,   // กลับ scene เดิมหลังจบ (ใช้ displayDuration เป็น timing)
   obsSource: '',
-  obsSourceDuration: 0,
+  obsSourceReturn: false,  // ปิด source กลับหลังจบ (ใช้ displayDuration เป็น timing)
   displayDuration: 5,
   overlayScreen: 1,
   globalCooldown: 0,
@@ -374,12 +374,15 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
               onFetch={loadObsLists}
               placeholder="เช่น Scene ของขวัญ"
             />
-            <div className="flex items-center gap-3">
-              <Input label="กี่วินาทีแล้วกลับ (0 = เปิดตลอด)" value={form.obsSceneDuration}
-                onChange={v => set('obsSceneDuration', v)} type="number" min={0} className="flex-1" />
-            </div>
-            {form.obsSceneDuration > 0 && (
-              <p className="text-[10px] text-gray-500">สลับไป {form.obsScene || '...'} → รอ {form.obsSceneDuration} วิ → กลับ Scene เดิม</p>
+            <Toggle
+              label={`↩ กลับ Scene เดิมหลังจบ (${form.displayDuration}s)`}
+              checked={!!form.obsSceneReturn}
+              onChange={v => set('obsSceneReturn', v)}
+            />
+            {form.obsSceneReturn && (
+              <p className="text-[10px] text-gray-500">
+                สลับไป "{form.obsScene || '...'}" → รอ {form.displayDuration}s → กลับ Scene เดิม
+              </p>
             )}
           </div>
         )}
@@ -398,8 +401,16 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
               onFetch={loadObsLists}
               placeholder="เช่น ภาพ Rose Animation"
             />
-            <Input label="กี่วินาทีแล้วปิด (0 = เปิดตลอด)" value={form.obsSourceDuration}
-              onChange={v => set('obsSourceDuration', v)} type="number" min={0} />
+            <Toggle
+              label={`↩ ปิด Source กลับหลังจบ (${form.displayDuration}s)`}
+              checked={!!form.obsSourceReturn}
+              onChange={v => set('obsSourceReturn', v)}
+            />
+            {form.obsSourceReturn && (
+              <p className="text-[10px] text-gray-500">
+                เปิด "{form.obsSource || '...'}" → รอ {form.displayDuration}s → ปิดกลับ
+              </p>
+            )}
           </div>
         )}
 
@@ -642,12 +653,15 @@ function fireObsCommands(host, port, action) {
 
       // Switch scene
       if (action.types?.includes('switch_obs_scene') && action.obsScene) {
-        send('SetCurrentProgramScene', { sceneName: action.obsScene });
-
-        // Return to previous scene after duration
-        if (action.obsSceneDuration > 0) {
-          // First get current scene so we can return to it
+        // Save current scene name before switching (for return)
+        let prevScene = null;
+        if (action.obsSceneReturn) {
+          // We'll capture the current scene from GetCurrentProgramScene response
+          // For now send the switch immediately and handle return in onmessage
           send('GetCurrentProgramScene', {});
+          // Switch will happen after we get the response
+        } else {
+          send('SetCurrentProgramScene', { sceneName: action.obsScene });
         }
       }
 
@@ -659,23 +673,29 @@ function fireObsCommands(host, port, action) {
           sceneItemEnabled: true,
         });
 
-        if (action.obsSourceDuration > 0) {
+        if (action.obsSourceReturn) {
+          const dur = (action.displayDuration || 5) * 1000;
           setTimeout(() => {
             send('SetSceneItemEnabled', {
               sceneName: action.obsScene || '',
               sceneItemName: action.obsSource,
               sceneItemEnabled: false,
             });
-          }, action.obsSourceDuration * 1000);
+          }, dur);
         }
       }
 
       // Close after commands sent (small delay to ensure delivery)
       setTimeout(() => { try { ws.close(); } catch {} }, 1000);
     } else if (msg.op === 7) {
-      // Response — handle GetCurrentProgramScene for scene return
-      if (msg.d.requestType === 'GetCurrentProgramScene' || msg.d.responseData?.currentProgramSceneName) {
-        // Already switched — this response is the NEW scene, ignore
+      // Response to GetCurrentProgramScene — switch scene then schedule return
+      const current = msg.d.responseData?.currentProgramSceneName;
+      if (current && action.types?.includes('switch_obs_scene') && action.obsScene && action.obsSceneReturn) {
+        send('SetCurrentProgramScene', { sceneName: action.obsScene });
+        const dur = (action.displayDuration || 5) * 1000;
+        setTimeout(() => {
+          send('SetCurrentProgramScene', { sceneName: current });
+        }, dur);
       }
     }
   };
@@ -723,8 +743,8 @@ function PreviewModal({ action, onClose, obsHost, obsPort }) {
       // Brief feedback messages
       setTimeout(() => setObsMsg(
         action.types?.includes('switch_obs_scene')
-          ? `✅ สลับไป "${action.obsScene}"${action.obsSceneDuration > 0 ? ` · กลับใน ${action.obsSceneDuration}s` : ''}`
-          : `✅ เปิด Source "${action.obsSource}"${action.obsSourceDuration > 0 ? ` · ปิดใน ${action.obsSourceDuration}s` : ''}`
+          ? `✅ สลับไป "${action.obsScene}"${action.obsSceneReturn ? ` · กลับใน ${action.displayDuration}s` : ''}`
+          : `✅ เปิด Source "${action.obsSource}"${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`
       ), 600);
     }
 

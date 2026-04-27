@@ -59,22 +59,39 @@ export default function MyActionsOverlay() {
   // ── Execute OBS commands ──
   const executeObs = useCallback((item) => {
     const obs = obsRef.current;
+    const dur = (item.displayDuration || 5) * 1000;
+
     // Switch scene
-    if (item.obsScene) {
-      obs.switchScene(item.obsScene);
-      if (item.obsSceneDuration > 0) {
-        setTimeout(() => {
-          // กลับ scene เดิม (ไม่รู้ชื่อ scene เดิม — ใช้ GetCurrentProgramScene ก่อน แต่ทำแบบง่ายก่อน)
-          obs.send('GetCurrentProgramScene', {});
-        }, item.obsSceneDuration * 1000);
+    if (item.types?.includes('switch_obs_scene') && item.obsScene) {
+      if (item.obsSceneReturn && obs.ws && obs.ready) {
+        // Get current scene first, then switch, then return after duration
+        const reqId = 'gcp_' + Date.now();
+        const origHandler = obs.ws.onmessage;
+        obs.ws.onmessage = (evt) => {
+          if (origHandler) origHandler(evt);
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.op === 7 && msg.d.requestId === reqId) {
+              const prevScene = msg.d.responseData?.currentProgramSceneName;
+              obs.switchScene(item.obsScene);
+              if (prevScene) setTimeout(() => obs.switchScene(prevScene), dur);
+              obs.ws.onmessage = origHandler; // restore
+            }
+          } catch {}
+        };
+        obs.ws.send(JSON.stringify({
+          op: 6, d: { requestType: 'GetCurrentProgramScene', requestId: reqId, requestData: {} },
+        }));
+      } else {
+        obs.switchScene(item.obsScene);
       }
     }
-    // Activate source
-    if (item.obsSource) {
+
+    // Activate / deactivate source
+    if (item.types?.includes('activate_obs_source') && item.obsSource) {
       obs.setSourceVisible(item.obsScene || '', item.obsSource, true);
-      if (item.obsSourceDuration > 0) {
-        setTimeout(() => obs.setSourceVisible(item.obsScene || '', item.obsSource, false),
-          item.obsSourceDuration * 1000);
+      if (item.obsSourceReturn) {
+        setTimeout(() => obs.setSourceVisible(item.obsScene || '', item.obsSource, false), dur);
       }
     }
   }, []);
