@@ -757,6 +757,31 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
+      {/* ── Fireworks: Volume ── */}
+      {widgetId === 'fireworks' && (
+        <div className="space-y-1 pt-1">
+          <div className={clsx('text-xs font-semibold mb-1', theme === 'dark' ? 'text-orange-400' : 'text-orange-600')}>
+            🔊 เสียงพลุ
+          </div>
+          <div className={row}>
+            <span className={label}>ระดับเสียง</span>
+            <span className={clsx('text-xs font-mono font-bold',
+              (style.vol ?? 80) === 0 ? (theme === 'dark' ? 'text-gray-500' : 'text-gray-400') : 'text-orange-400')}>
+              {(style.vol ?? 80) === 0 ? '🔇 เงียบ' : `${style.vol ?? 80}%`}
+            </span>
+          </div>
+          <input
+            type="range" min="0" max="100" step="5"
+            value={style.vol ?? 80}
+            onChange={e => set('vol', +e.target.value)}
+            className="w-full accent-orange-500"
+          />
+          <div className={clsx('flex justify-between text-xs', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+            <span>🔇 เงียบ (0)</span><span>🔊 ดังสุด (100)</span>
+          </div>
+        </div>
+      )}
+
       {/* Reset all */}
       <button
         onClick={() => onChange({ ...d })}

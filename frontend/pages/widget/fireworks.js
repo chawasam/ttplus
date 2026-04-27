@@ -284,10 +284,23 @@ export default function FireworksWidget() {
     };
     raf = requestAnimationFrame(loop);
 
+    // ── Volume (from URL param ?vol=0-100, default 80) ──
+    const volParam = parseInt(params.get('vol') ?? '80');
+    const volume   = Math.max(0, Math.min(100, isNaN(volParam) ? 80 : volParam)) / 100;
+
     // ── Spawn rocket + play sound ──
     async function spawnFromGift(data) {
       const safe = sanitizeEvent(data);
       if (safe.diamondCount <= 0) return;
+
+      // Play firework sound from start (boom aligns at 3s, sparkle ends at 6s)
+      if (volume > 0) {
+        try {
+          const sfx = new Audio('/sfx/firework.mp3');
+          sfx.volume = volume;
+          sfx.play().catch(() => {});
+        } catch (_) {}
+      }
 
       // Load avatar + gift image concurrently
       const [avatarImg, giftImg] = await Promise.all([
