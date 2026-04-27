@@ -1,15 +1,65 @@
 // handlers/game/combat.js — Server-side battle logic
 const admin  = require('firebase-admin');
-const { MONSTERS, getMonster, getRandomMonster, calcDamage } = require('../../data/monsters');
+const { MONSTERS, getMonster, getRandomMonster, calcDamage, calcSpellDamage, rollZoneTierDrop } = require('../../data/monsters');
 const { getDungeonMonster }  = require('../../data/dungeons');
-const { getItem, rollItem }  = require('../../data/items');
-const { addGold }            = require('./currency');
+const { ITEMS, getItem, rollItem, ITEM_QUALITY } = require('../../data/items');
+const { addGold, deductGold } = require('./currency');
 const { trackQuestProgress }    = require('./quests');
 const { trackStoryStep, trackMainQuestStep } = require('./quest_engine');
 const { trackWeeklyProgress }   = require('./weeklyQuests');
-const { getSkill }              = require('../../data/skills');
+const { getSkill, getClassSkills } = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { logReward } = require('../../utils/anticheat');
+
+// ── Calculate total equipment stat bonuses ────────────────────────────────────
+// Returns { atk, def, spd, hp_bonus, crit_rate, mp_bonus, mp_regen, ... }
+async function calcEquipBonus(uid) {
+  const db = admin.firestore();
+  const bonus = { atk:0, def:0, spd:0, hp_bonus:0, crit_rate:0, mp_bonus:0, mp_regen:0,
+                  atk_bonus:0, block_rate:0, void_dmg:0, lifesteal:0, gold_bonus:0 };
+  try {
+    const equipDoc = await db.collection('game_equipment').doc(uid).get();
+    if (!equipDoc.exists) return bonus;
+    const equipped = equipDoc.data(); // { HEAD: instanceId, CHEST: instanceId, ... }
+
+    for (const [slot, instanceId] of Object.entries(equipped)) {
+      if (!instanceId) continue;
+      const snap = await db.collection('game_inventory')
+        .where('uid', '==', uid).where('instanceId', '==', instanceId).limit(1).get();
+      if (snap.empty) continue;
+      const inst = snap.docs[0].data();
+      const def = ITEMS[inst.itemId];
+      if (!def) continue;
+
+      // Fixed base stats
+      for (const [stat, val] of Object.entries(def.base || {})) {
+        if (bonus[stat] !== undefined) bonus[stat] += val;
+        else if (stat === 'atk' || stat === 'def' || stat === 'spd') bonus[stat] += val;
+      }
+
+      // Rolled stats with quality multiplier
+      const qualityMult = ITEM_QUALITY[inst.quality]?.mult || 1.0;
+      const rolls = inst.rolls || {};
+      for (const [stat, val] of Object.entries(rolls)) {
+        const scaled = Math.round(val * qualityMult);
+        if (stat === 'atk' || stat === 'atk_bonus') bonus.atk += scaled;
+        else if (stat === 'def') bonus.def += scaled;
+        else if (stat === 'spd') bonus.spd += scaled;
+        else if (stat === 'hp_bonus') bonus.hp_bonus += scaled;
+        else if (stat === 'crit_rate') bonus.crit_rate += scaled;
+        else if (stat === 'mp_bonus') bonus.mp_bonus += scaled;
+        else if (stat === 'mp_regen') bonus.mp_regen += scaled;
+        else if (stat === 'block_rate') bonus.block_rate += scaled;
+        else if (stat === 'void_dmg') bonus.void_dmg += scaled;
+        else if (stat === 'lifesteal') bonus.lifesteal += scaled;
+        else if (stat === 'gold_bonus') bonus.gold_bonus += scaled;
+      }
+    }
+  } catch (err) {
+    console.error('[Combat] calcEquipBonus error:', err.message);
+  }
+  return bonus;
+}
 
 // Active battles — persisted in Firestore (game_battles collection)
 // Each document: { battleId, uid, state: <JSON>, createdAt, updatedAt }
@@ -153,25 +203,30 @@ async function startBattle(req, res) {
     const char = charDoc.data();
     if (char.hp <= 0) return res.status(400).json({ error: 'Character หมดพลัง ต้อง Rest ก่อน' });
 
+    // ── Equipment bonuses ──────────────────────────────────────────────────
+    const equipBonus = await calcEquipBonus(uid);
+    const baseAtk = char.atk + equipBonus.atk;
+    const baseDef = char.def + equipBonus.def;
+
     // Passive skill bonuses applied at battle start
     const className = (char.class || '').toLowerCase();
-    let passiveAtk = char.atk, passiveDef = char.def, passiveCrit = 0.1, passiveMpRegen = 0;
+    let passiveAtk = baseAtk, passiveDef = baseDef, passiveCrit = 0.1 + (equipBonus.crit_rate / 100), passiveMpRegen = equipBonus.mp_regen || 0;
     // Iron Will (warrior): DEF +10%
-    if (className === 'warrior')     passiveDef     = Math.floor(char.def * 1.1);
+    if (className === 'warrior')     passiveDef     = Math.floor(baseDef * 1.1);
     // Overclock (engineer): DEF +15%
-    if (className === 'engineer')    passiveDef     = Math.floor(char.def * 1.15);
+    if (className === 'engineer')    passiveDef     = Math.floor(baseDef * 1.15);
     // Rune Forge (runesmith): ATK +10%
-    if (className === 'runesmith')   passiveAtk     = Math.floor(char.atk * 1.1);
+    if (className === 'runesmith')   passiveAtk     = Math.floor(baseAtk * 1.1);
     // Mana Flow (mage): +5 MP/turn
-    if (className === 'mage')        passiveMpRegen = 5;
+    if (className === 'mage')        passiveMpRegen = Math.max(passiveMpRegen, 5);
     // Inspiring Melody (bard): +5 MP/turn + ATK +5%
-    if (className === 'bard')      { passiveMpRegen = 5; passiveAtk = Math.floor(char.atk * 1.05); }
+    if (className === 'bard')      { passiveMpRegen = Math.max(passiveMpRegen, 5); passiveAtk = Math.floor(baseAtk * 1.05); }
     // Forest Stride (ranger): Crit +5%
-    if (className === 'ranger')      passiveCrit    = 0.15;
+    if (className === 'ranger')      passiveCrit    = Math.max(passiveCrit, 0.1 + (equipBonus.crit_rate / 100) + 0.05);
     // True Sight (soulseer): Crit +8%
-    if (className === 'soulseer')    passiveCrit    = 0.18;
+    if (className === 'soulseer')    passiveCrit    = Math.max(passiveCrit, 0.1 + (equipBonus.crit_rate / 100) + 0.08);
     // Lethal Focus (assassin): Crit +10%
-    if (className === 'assassin')    passiveCrit    = 0.20;
+    if (className === 'assassin')    passiveCrit    = Math.max(passiveCrit, 0.1 + (equipBonus.crit_rate / 100) + 0.10);
     // Shadow Veil (rogue): flee 90% — handled at flee action
     // Bloodthirst (berserker): ATK +20% at <50% HP — handled per turn
     // Divine Grace (cleric): +8 HP/turn — handled per turn
@@ -192,18 +247,19 @@ async function startBattle(req, res) {
       result: null,
       player: {
         hp:         char.hp,
-        hpMax:      char.hpMax,
+        hpMax:      char.hpMax + (equipBonus.hp_bonus || 0),
         mp:         char.mp,
-        mpMax:      char.mpMax,
+        mpMax:      char.mpMax + (equipBonus.mp_bonus || 0),
         atk:        passiveAtk,
         atkBase:    passiveAtk,     // base before buffs
         def:        passiveDef,
         defBase:    passiveDef,
-        spd:        char.spd,
+        spd:        char.spd + (equipBonus.spd || 0),
         mag:        char.mag,
-        critChance: passiveCrit,    // base crit (with passive)
+        critChance: passiveCrit,    // base crit (with passive + gear)
         critMult:   className === 'assassin' ? 1.9 : 1.5, // crit damage multiplier (assassin gets 1.9)
-        mpRegen:    passiveMpRegen, // MP regen per turn (mage passive)
+        mpRegen:    passiveMpRegen, // MP regen per turn
+        lifesteal:  equipBonus.lifesteal || 0,  // % HP return on hit
         isGuarding: false,          // Guard action flag
         status: [],
         buffs:  [],                 // active self-buffs { type, atkMult, defMult, critBonus, duration }
@@ -266,7 +322,6 @@ async function startBattle(req, res) {
     await saveBattle(db, battleId, state);
 
     // Build skill info for frontend
-    const { getClassSkills } = require('../../data/skills');
     const classSkills = getClassSkills(className).filter(s => (char.unlockedSkills || []).includes(s.id));
 
     return res.json({ battleId, state: sanitizeState(state), availableSkills: classSkills });
@@ -466,10 +521,11 @@ async function processAction(req, res) {
     // If counter killed player
     if (state.player.hp <= 0) {
       log.push('💀 คุณพ่ายแพ้โดยการโต้กลับของ ' + state.enemy.name);
-      await handlePlayerDeath(uid, state);
+      const penalty = await handlePlayerDeath(uid, state);
+      if (penalty.goldLost > 0) log.push(`💸 เสีย ${penalty.goldLost} Gold และ ${penalty.xpLost} XP`);
       state.result = 'defeat';
       await deleteBattle(db, battleId);
-      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
+      return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId, penalty });
     }
   }
 
@@ -487,6 +543,48 @@ async function processAction(req, res) {
     if (p2.attackMsg) state.enemy.attackMsg = p2.attackMsg;
     if (p2.regen !== undefined) state.enemy.regen = p2.regen;
     log.push(p2.phaseMsg || `🔥 ${state.enemy.name} เข้าสู่ Phase 2!`);
+  }
+
+  // ===== Vorath True Form — Full Enemy Replacement at 30% HP =====
+  if (
+    state.enemy.monsterId === 'vorath_boss' &&
+    !state.enemy.vorathPhase2 &&
+    state.enemy.hp > 0 &&
+    state.enemy.hp <= Math.floor(state.enemy.hpMax * 0.30)
+  ) {
+    const { getMonster } = require('../data/monsters');
+    const trueForm = getMonster('vorath_true');
+    if (trueForm) {
+      state.enemy.vorathPhase2 = true;
+      // Dramatic phase entry logs
+      if (trueForm.phaseEntry?.log) {
+        log.push(...trueForm.phaseEntry.log);
+      }
+      // Replace enemy with true form (keep player HP/state)
+      state.enemy = {
+        monsterId:     trueForm.monsterId,
+        name:          trueForm.name,
+        emoji:         trueForm.emoji,
+        hp:            trueForm.hp,
+        hpMax:         trueForm.hp,
+        atk:           trueForm.atk,
+        def:           trueForm.def,
+        spd:           trueForm.spd,
+        regen:         trueForm.regen || 0,
+        type:          trueForm.type,
+        xpReward:      trueForm.xpReward,
+        goldReward:    trueForm.goldReward,
+        statusAttack:  trueForm.statusAttack || null,
+        attackMsg:     trueForm.attackMsg || [],
+        counters:      trueForm.counters || [],
+        drops:         trueForm.drops || [],
+        flee_chance:   0,
+        special:       trueForm.special,
+        phase2Applied: false,
+        phase2:        null,
+        vorathPhase2:  true, // prevent re-trigger
+      };
+    }
   }
 
   // ===== Check enemy dead =====
@@ -714,7 +812,8 @@ async function processAction(req, res) {
   // ===== Check player dead =====
   if (state.player.hp <= 0) {
     log.push('💀 คุณพ่ายแพ้... Respawn ที่ Town Square');
-    await handlePlayerDeath(uid, state);
+    const penalty = await handlePlayerDeath(uid, state);
+    if (penalty.goldLost > 0) log.push(`💸 เสีย ${penalty.goldLost} Gold และ ${penalty.xpLost} XP`);
 
     // Fail dungeon run if in a dungeon
     if (state.dungeonRunId) {
@@ -729,7 +828,7 @@ async function processAction(req, res) {
     await deleteBattle(db, battleId);
     // Achievement check for death
     checkAchievements(uid, 'death', 1).catch(() => {});
-    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId });
+    return res.json({ battleId, state: { ...sanitizeState(state), log, result: 'defeat' }, dungeonRunId: state.dungeonRunId, penalty });
   }
 
   // ── Phase 3: Per-turn class mechanics (after enemy turn) ─────────
@@ -1000,7 +1099,8 @@ function applyLimitBreak(state, log) {
   for (let h = 0; h < hits; h++) {
     let dmg;
     if (lbDef.magicDamage) {
-      dmg = Math.floor(state.player.mag * lbDef.dmgMult);
+      // Limit break spells use same formula: mag - def*0.15
+      dmg = Math.floor(calcSpellDamage(state.player.mag, state.enemy.def) * lbDef.dmgMult);
     } else {
       if (lbDef.armorPierce) {
         dmg = Math.floor(state.player.atk * lbDef.dmgMult);
@@ -1123,7 +1223,8 @@ function applySkill(state, skillId, log) {
 
     let dmg;
     if (skillDef.magicDamage) {
-      dmg = Math.floor(state.player.mag * skillDef.damage);
+      // Spell damage: DEF reduces only 15% → magic penetrates armor, strong vs heavy-DEF enemies
+      dmg = Math.floor(calcSpellDamage(state.player.mag, state.enemy.def) * skillDef.damage);
     } else {
       dmg = Math.floor(calcDamage(state.player.atk, state.enemy.def) * skillDef.damage);
     }
@@ -1476,6 +1577,25 @@ async function grantRewards(uid, state) {
       updates.skillPoints = (char.skillPoints || 0) + 1;
       log.push(`🎉 LEVEL UP! คุณขึ้นเป็น Level ${newLevel}!`);
       rewards.levelUp = newLevel;
+
+      // ── Auto-unlock skills at new level ───────────────────────────────────
+      const allClassSkills  = getClassSkills(className);
+      const currentUnlocked = Array.isArray(char.unlockedSkills) ? [...char.unlockedSkills] : [];
+      const newlyUnlocked   = [];
+      for (const sk of allClassSkills) {
+        if ((sk.minLevel || 1) <= newLevel && !currentUnlocked.includes(sk.id)) {
+          currentUnlocked.push(sk.id);
+          newlyUnlocked.push(sk.name || sk.id);
+        }
+      }
+      if (newlyUnlocked.length > 0) {
+        updates.unlockedSkills = currentUnlocked;
+        // Also update in-memory state so current battle reflects new skills
+        state.unlockedSkills = currentUnlocked;
+        log.push(`✨ สกิลใหม่ปลดล็อก: ${newlyUnlocked.join(', ')}`);
+        rewards.newSkills = newlyUnlocked;
+      }
+      // ──────────────────────────────────────────────────────────────────────
     }
     await charRef.update(updates);
   }
@@ -1490,7 +1610,7 @@ async function grantRewards(uid, state) {
     } catch {}
   }
 
-  // Item drops
+  // Item drops (from monster's individual drop table)
   for (const drop of state.enemy.drops || []) {
     if (!drop.itemId) continue;
     if (Math.random() < drop.chance) {
@@ -1500,6 +1620,21 @@ async function grantRewards(uid, state) {
         rewards.items.push(drop.itemId);
         const def = getItem(drop.itemId);
         log.push(`📦 ได้รับ ${def?.name || drop.itemId}`);
+      }
+    }
+  }
+
+  // ── Zone Tier bonus drop (equipment appropriate to zone level) ────────────
+  // Bosses already have rich drops — skip tier bonus for them
+  if (state.enemy.special !== 'zone_boss' && state.enemy.special !== 'final_boss') {
+    const tierItemId = rollZoneTierDrop(state.enemy.zone);
+    if (tierItemId) {
+      const instance = rollItem(tierItemId);
+      if (instance) {
+        await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+        rewards.items.push(tierItemId);
+        const def = getItem(tierItemId);
+        log.push(`✨ Zone Drop! ได้รับ ${def?.name || tierItemId} (Tier ${instance.quality || 'Normal'})`);
       }
     }
   }
@@ -1518,16 +1653,43 @@ async function grantRewards(uid, state) {
 async function handlePlayerDeath(uid, state) {
   const db = admin.firestore();
   try {
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    const charId     = accountDoc.data()?.characterId;
-    if (!charId) return;
+    const accountRef = db.collection('game_accounts').doc(uid);
+    const accountDoc = await accountRef.get();
+    const accountData = accountDoc.data() || {};
+    const charId      = accountData.characterId;
+    if (!charId) return { goldLost: 0, xpLost: 0, stoneUsed: false };
+
+    // ── Resurrection Stone: ถ้ามีหินให้หักหินแทนและข้าม penalty ─────────────
+    const stones = accountData.resurrectionStones || 0;
+    if (stones > 0) {
+      await accountRef.update({ resurrectionStones: stones - 1 });
+      // respawn full HP/MP ที่ town ต้องทำเหมือนกัน
+      const charRef2 = db.collection('game_characters').doc(charId);
+      const charDoc2 = await charRef2.get();
+      const char2    = charDoc2.data();
+      await charRef2.update({
+        hp:         char2.hpMax,
+        mp:         char2.mpMax,
+        location:   'town_square',
+        status:     [],
+        deathCount: admin.firestore.FieldValue.increment(1),
+      });
+      console.log(`[Combat] 💎 Resurrection Stone used uid=${uid} stones left: ${stones - 1}`);
+      return { goldLost: 0, xpLost: 0, stoneUsed: true, stonesLeft: stones - 1 };
+    }
+
+    // ── Gold penalty: เสีย 5% Gold (min 50, max 2000) ──────────────────────
+    const currentGold   = accountData.gold || 0;
+    const rawGoldLoss   = Math.max(50, Math.floor(currentGold * 0.05));
+    const goldLoss      = Math.min(rawGoldLoss, Math.min(currentGold, 2000));
 
     const charRef = db.collection('game_characters').doc(charId);
     const charDoc = await charRef.get();
     const char    = charDoc.data();
 
-    // เสีย 10% XP
+    // เสีย 10% XP ของ XP ที่มีในระดับปัจจุบัน
     const xpLoss = Math.floor((char.xp || 0) * 0.1);
+
     await charRef.update({
       hp:         char.hpMax,     // respawn full HP
       mp:         char.mpMax,
@@ -1536,8 +1698,17 @@ async function handlePlayerDeath(uid, state) {
       status:     [],
       deathCount: admin.firestore.FieldValue.increment(1),
     });
+
+    if (goldLoss > 0) {
+      await accountRef.update({
+        gold: admin.firestore.FieldValue.increment(-goldLoss),
+      });
+    }
+
+    return { goldLost: goldLoss, xpLost: xpLoss, stoneUsed: false };
   } catch (err) {
     console.error('[Combat] handlePlayerDeath:', err.message);
+    return { goldLost: 0, xpLost: 0, stoneUsed: false };
   }
 }
 
@@ -1602,7 +1773,15 @@ function sanitizeState(state) {
   };
 }
 
-// REST endpoint (for polling)
+// REST endpoint — ฟื้นฟู HP/MP เต็ม แลกกับ Gold ตาม Level
+// Lv.1-10 = 20G | Lv.11-20 = 50G | Lv.21-40 = 100G | Lv.41+ = 200G
+function calcRestCost(level) {
+  if (level <= 10) return 20;
+  if (level <= 20) return 50;
+  if (level <= 40) return 100;
+  return 200;
+}
+
 async function rest(req, res) {
   const uid = req.user.uid;
   const db  = admin.firestore();
@@ -1616,10 +1795,25 @@ async function rest(req, res) {
     const charDoc = await charRef.get();
     const char    = charDoc.data();
 
+    const restCost = calcRestCost(char.level || 1);
+
+    // ── หัก Gold ก่อน ────────────────────────────────────────────────────
+    const goldResult = await deductGold(uid, restCost, 'rest');
+    if (!goldResult.success) {
+      return res.status(400).json({ error: `Gold ไม่พอ — ต้องการ ${restCost} Gold เพื่อพักผ่อน (Lv.${char.level || 1})` });
+    }
+
     await charRef.update({ hp: char.hpMax, mp: char.mpMax });
     trackQuestProgress(uid, 'rest', 1).catch(() => {});
     trackWeeklyProgress(uid, 'rest', 1).catch(() => {});
-    return res.json({ success: true, hp: char.hpMax, mp: char.mpMax, msg: '💤 พักผ่อนแล้ว — HP และ MP เต็ม' });
+    return res.json({
+      success:  true,
+      hp:       char.hpMax,
+      mp:       char.mpMax,
+      goldCost: restCost,
+      newGold:  goldResult.newTotal,
+      msg:      `💤 พักผ่อนแล้ว — HP/MP เต็ม (เสีย ${restCost} Gold)`,
+    });
   } catch (err) {
     console.error('[Combat] rest:', err.message);
     res.status(500).json({ error: 'Server error' });

@@ -128,11 +128,18 @@ async function addRealmPoints(uid, points = 1) {
 }
 
 // ===== Redeem Realm Points → Gold =====
-// Rate: 100 RP = 10 gold (อัตราต่ำ)
+// Rate: 5 RP = 1 Gold  (1,000 RP = 200 Gold)
+// min: 100 RP ต่อครั้ง | daily cap: 5,000 RP / วัน
+const RP_TO_GOLD_RATE = 5;         // 5 RP = 1 Gold
+const RP_REDEEM_MIN   = 100;       // ขั้นต่ำ 100 RP
+const RP_REDEEM_MAX   = 5000;      // daily cap 5,000 RP
+
 async function redeemRealmPoints(req, res) {
   const { amount } = req.body;
-  if (!amount || !Number.isInteger(amount) || amount < 100 || amount > 10000) {
-    return res.status(400).json({ error: 'จำนวน RP ต้องอยู่ระหว่าง 100 - 10,000' });
+  if (!amount || !Number.isInteger(amount) || amount < RP_REDEEM_MIN || amount > RP_REDEEM_MAX) {
+    return res.status(400).json({
+      error: `RP ที่แลกได้ต้องอยู่ระหว่าง ${RP_REDEEM_MIN}–${RP_REDEEM_MAX} RP ต่อครั้ง`,
+    });
   }
 
   const uid = req.user.uid;
@@ -140,27 +147,62 @@ async function redeemRealmPoints(req, res) {
   const ref = db.collection('game_accounts').doc(uid);
 
   try {
-    const goldToAdd = Math.floor(amount / 100) * 10;
+    const goldToAdd = Math.floor(amount / RP_TO_GOLD_RATE);
+
+    // ตรวจ daily cap (เก็บ redeemRpToday + redeemRpDate ใน account)
+    const doc     = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const data    = doc.data();
+    const todayKey = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const usedToday = data.redeemRpDate === todayKey ? (data.redeemRpToday || 0) : 0;
+
+    if (usedToday + amount > RP_REDEEM_MAX) {
+      const remaining = Math.max(0, RP_REDEEM_MAX - usedToday);
+      return res.status(400).json({ error: `เกิน daily cap — แลกได้อีก ${remaining} RP วันนี้` });
+    }
 
     const result = await db.runTransaction(async (tx) => {
-      const doc = await tx.get(ref);
-      if (!doc.exists) throw new Error('Account not found');
-      const current = doc.data().realmPoints || 0;
+      const d = await tx.get(ref);
+      if (!d.exists) throw new Error('Account not found');
+      const current = d.data().realmPoints || 0;
       if (current < amount) throw new Error('RP ไม่เพียงพอ');
-      const currentGold = doc.data().gold || 0;
+      const currentGold  = d.data().gold || 0;
+      const usedTd = d.data().redeemRpDate === todayKey ? (d.data().redeemRpToday || 0) : 0;
+      if (usedTd + amount > RP_REDEEM_MAX) throw new Error(`เกิน daily cap`);
       tx.update(ref, {
-        realmPoints: current - amount,
-        gold: currentGold + goldToAdd,
+        realmPoints:   current - amount,
+        gold:          currentGold + goldToAdd,
+        redeemRpToday: usedTd + amount,
+        redeemRpDate:  todayKey,
       });
       return { newRP: current - amount, newGold: currentGold + goldToAdd };
     });
 
-    return res.json({ success: true, rpUsed: amount, goldAdded: goldToAdd, ...result });
+    return res.json({
+      success:  true,
+      rpUsed:   amount,
+      goldAdded: goldToAdd,
+      ...result,
+      msg: `💰 แลก ${amount} RP → ${goldToAdd} Gold สำเร็จ`,
+    });
   } catch (err) {
-    const isInsufficient = err.message.includes('RP ไม่เพียงพอ');
-    if (!isInsufficient) console.error('[Currency] redeemRP:', err.message);
+    const safe = ['RP ไม่เพียงพอ', 'เกิน daily cap'].some(s => err.message.includes(s));
+    if (!safe) console.error('[Currency] redeemRP:', err.message);
     return res.status(400).json({ error: err.message });
   }
 }
 
-module.exports = { addGold, deductGold, getBalance, addRealmPoints, redeemRealmPoints };
+// ===== Get gold balance for a UID (internal helper — used by dailyShop, etc.) =====
+async function getGold(uid) {
+  const db = admin.firestore();
+  try {
+    const doc = await db.collection('game_accounts').doc(uid).get();
+    if (!doc.exists) return 0;
+    return doc.data().gold || 0;
+  } catch (err) {
+    console.error('[Currency] getGold:', err.message);
+    return 0;
+  }
+}
+
+module.exports = { addGold, deductGold, getBalance, getGold, addRealmPoints, redeemRealmPoints };

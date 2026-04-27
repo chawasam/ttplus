@@ -7,58 +7,45 @@ async function getLeaderboard(req, res) {
   const db = admin.firestore();
 
   try {
-    // Run all queries in parallel
-    const [levelSnap, killSnap, achSnap] = await Promise.all([
-      // Top by level
+    // Run level + kill boards in parallel; fetch all ach docs for sort in memory
+    const [levelSnap, killSnap, achAllSnap] = await Promise.all([
       db.collection('game_characters')
-        .orderBy('level', 'desc').orderBy('xp', 'desc').limit(10).get(),
-      // Top by kills
+        .orderBy('level', 'desc').limit(10).get(),
       db.collection('game_characters')
         .orderBy('monstersKilled', 'desc').limit(10).get(),
-      // Top by achievements
-      db.collection('game_achievements')
-        .orderBy('unlockedCount', 'desc').limit(10).get(),
+      // Fetch all achievement docs (no index needed) and sort by count in memory
+      db.collection('game_achievements').get(),
     ]);
-
-    // Helper: extract character rows
-    const charRows = (snap) => snap.docs.map((d, i) => {
-      const c = d.data();
-      return {
-        rank:     i + 1,
-        name:     c.name     || '???',
-        race:     c.race     || '',
-        class:    c.class    || '',
-        level:    c.level    || 1,
-        value:    null, // filled per category
-        title:    c.title    || '',
-      };
-    });
 
     const levelBoard = levelSnap.docs.map((d, i) => {
       const c = d.data();
-      return { rank: i+1, name: c.name||'???', race: c.race||'', class: c.class||'', level: c.level||1, value: c.level||1, title: c.title||'' };
+      return { rank: i+1, name: c.name||'???', race: c.race||'', class: c.class||'', level: c.level||1, value: c.level||1, title: c.equippedTitle||'' };
     });
 
     const killBoard = killSnap.docs.map((d, i) => {
       const c = d.data();
-      return { rank: i+1, name: c.name||'???', race: c.race||'', class: c.class||'', level: c.level||1, value: c.monstersKilled||0, title: c.title||'' };
+      return { rank: i+1, name: c.name||'???', race: c.race||'', class: c.class||'', level: c.level||1, value: c.monstersKilled||0, title: c.equippedTitle||'' };
     });
 
-    // Achievements need join with characters
+    // Sort achievement docs by unlockedIds.length desc, take top 10, then join characters
+    const sortedAch = achAllSnap.docs
+      .map(d => ({ uid: d.id, count: (d.data().unlockedIds || []).length }))
+      .filter(x => x.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
     const achBoard = [];
-    for (let i = 0; i < achSnap.docs.length; i++) {
-      const ach = achSnap.docs[i].data();
-      const uid = achSnap.docs[i].id;
+    for (const { uid, count } of sortedAch) {
       const acct = await db.collection('game_accounts').doc(uid).get();
       const charId = acct.data()?.characterId;
       if (!charId) continue;
-      const char = await db.collection('game_characters').doc(charId).get();
-      if (!char.exists) continue;
-      const c = char.data();
+      const charDoc = await db.collection('game_characters').doc(charId).get();
+      if (!charDoc.exists) continue;
+      const c = charDoc.data();
       achBoard.push({
         rank: achBoard.length + 1,
         name: c.name||'???', race: c.race||'', class: c.class||'', level: c.level||1,
-        value: (ach.unlockedIds||[]).length, title: c.title||'',
+        value: count, title: c.equippedTitle||'',
       });
       if (achBoard.length >= 10) break;
     }

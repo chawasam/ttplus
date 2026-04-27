@@ -1,5 +1,5 @@
 // data/rp_shop.js — Realm Points shop catalog
-// RP ได้จาก: gift ใน TikTok Live (10 diamonds = 1 RP) หรือดูสตรีม (1 RP/5 นาที)
+// RP ได้จาก: gift ใน TikTok Live (5 diamonds = 1 RP) หรือดูสตรีม (1 RP/5 นาที)
 
 const RP_SHOP_ITEMS = [
 
@@ -87,6 +87,48 @@ const RP_SHOP_ITEMS = [
     emoji:    '📜',
   },
 
+  // ──── CONSUMABLES (ใหม่) ────────────────────────────────────────
+  {
+    id:       'rp_resurrection_stone',
+    name:     '💎 Resurrection Stone',
+    desc:     'เมื่อตาย: หักหิน 1 ก้อนแทนการเสีย Gold+XP — เก็บได้ไม่จำกัด',
+    category: 'consumable',
+    rpPrice:  300,
+    itemId:   null,
+    effect:   { type: 'resurrection_stone' },
+    emoji:    '💎',
+  },
+  {
+    id:       'rp_stamina_refill',
+    name:     '⚡ เติม Stamina เต็ม',
+    desc:     'เติม Stamina กลับ 100% ทันที — ใช้ได้ทุกเวลา ไม่ต้องรอ',
+    category: 'consumable',
+    rpPrice:  100,
+    itemId:   null,
+    effect:   { type: 'stamina_refill' },
+    emoji:    '⚡',
+  },
+  {
+    id:       'rp_dungeon_key',
+    name:     '🗝️ Dungeon Key',
+    desc:     'เพิ่มสิทธิ์เข้า Dungeon +1 ครั้งทันที — ใช้ได้วันนั้น',
+    category: 'consumable',
+    rpPrice:  250,
+    itemId:   null,
+    effect:   { type: 'dungeon_key' },
+    emoji:    '🗝️',
+  },
+  {
+    id:       'rp_vip_7days',
+    name:     '👑 VIP 7 วัน',
+    desc:     'EXP+10%, Gold+10%, Stamina regen ×2 เป็นเวลา 7 วัน — เหมาะสำหรับ grind สัปดาห์',
+    category: 'consumable',
+    rpPrice:  1000,
+    itemId:   null,
+    effect:   { type: 'vip_7days', durationMs: 7 * 24 * 3600000 },
+    emoji:    '👑',
+  },
+
   // ──── PERMANENT UPGRADES ────────────────────────────────────────
   {
     id:       'rp_inventory_expansion',
@@ -111,6 +153,37 @@ const RP_SHOP_ITEMS = [
   },
 
   // ──── CHARACTER SERVICES ────────────────────────────────────────
+  {
+    id:       'rp_skill_reset',
+    name:     '🔄 Skill Reset',
+    desc:     'คืน Skill Points ทั้งหมดที่ใช้ไป — สามารถ unlock skill ใหม่ได้ทันที',
+    category: 'service',
+    rpPrice:  500,
+    itemId:   null,
+    effect:   { type: 'skill_reset' },
+    emoji:    '🔄',
+  },
+  {
+    id:       'rp_stat_reset',
+    name:     '↩️ Stat Reset',
+    desc:     'คืน Stat Points ทั้งหมดที่ใช้ไป — จัดสรร stat ใหม่ได้เลย',
+    category: 'service',
+    rpPrice:  600,
+    itemId:   null,
+    effect:   { type: 'stat_reset' },
+    emoji:    '↩️',
+  },
+  {
+    id:       'rp_profile_frame',
+    name:     '🖼️ Profile Frame พิเศษ',
+    desc:     'กรอบโปรไฟล์ Ashenveil Flame — แสดงบน Leaderboard และ Profile',
+    category: 'cosmetic',
+    rpPrice:  400,
+    itemId:   null,
+    effect:   { type: 'profile_frame', frameId: 'ashenveil_flame' },
+    oneTime:  true,
+    emoji:    '🖼️',
+  },
   {
     id:       'rp_class_change',
     name:     '⚗️ Class Change Scroll',
