@@ -3,16 +3,16 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 import SKINS, { SkinParticles } from '../../lib/chatSkins';
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
-const POLL_MS = 5000;
+const POLL_MS = 10000; // fallback REST poll ทุก 10s (socket เป็น primary)
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function GiftLeaderboardWidget() {
   const [board, setBoard] = useState([]);
   const [styles, setStyles] = useState(null);
-  const [vjId, setVjId] = useState('');
 
   // Resolve skin CSS from SKINS map
   const skinId = styles?.raw?.skin || '';
@@ -20,12 +20,10 @@ export default function GiftLeaderboardWidget() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    // รองรับทั้ง ?cid= (format ใหม่) และ ?vjId= (backward compat)
     const vid = params.get('cid') || params.get('vjId') || '';
     const isPreview = params.get('preview') === '1';
     const s = parseWidgetStyles(params, 'giftLeaderboard');
     setStyles(s);
-    setVjId(vid);
 
     if (isPreview) {
       setBoard([
@@ -42,6 +40,14 @@ export default function GiftLeaderboardWidget() {
 
     if (!vid) return;
 
+    // ── Socket (primary — real-time update ทุกครั้งที่มีของขวัญ) ──
+    const socket = createWidgetSocket(vid, {
+      leaderboard_update: ({ type, data }) => {
+        if (type === 'gifts' && Array.isArray(data)) setBoard(data);
+      },
+    });
+
+    // ── REST poll (fallback — ดึงข้อมูลเริ่มต้น + กรณี socket หลุด) ──
     const poll = async () => {
       try {
         const isCid = /^\d{4,8}$/.test(vid);
@@ -50,13 +56,16 @@ export default function GiftLeaderboardWidget() {
           : `${BACKEND}/api/leaderboard/${vid}?type=gifts`;
         const res = await fetch(url);
         const data = await res.json();
-        if (Array.isArray(data.data)) setBoard(data.data);
+        if (Array.isArray(data.data) && data.data.length > 0) setBoard(data.data);
       } catch {}
     };
 
     poll();
     const interval = setInterval(poll, POLL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      socket?.disconnect();
+    };
   }, []);
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
@@ -199,14 +208,8 @@ export default function GiftLeaderboardWidget() {
 
         <style>{`
           @keyframes slideInUp {
-            from {
-              opacity: 0;
-              transform: translateY(8px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
           }
         `}</style>
       </div>

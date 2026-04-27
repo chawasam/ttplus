@@ -21,17 +21,27 @@ const EXPLODE_MS     = 3200; // ms explosion animation stays alive
 // ── Easing ──────────────────────────────────────────────────────────────────
 const easeOutQuad = t => 1 - (1 - t) * (1 - t);
 
-// ── Image loader (with CORS + timeout) ──────────────────────────────────────
+// ── Image loader (with CORS + timeout + cache) ──────────────────────────────
+// Cache ป้องกัน combo events รอพร้อมกัน → จุดพร้อมกัน
+const _imgCache = new Map(); // url → img | null | Promise
+
 function loadImage(src) {
-  return new Promise(resolve => {
-    if (!src) { resolve(null); return; }
+  if (!src) return Promise.resolve(null);
+  if (_imgCache.has(src)) {
+    const cached = _imgCache.get(src);
+    // ถ้าเป็น Promise (กำลังโหลด) → รอร่วมกัน
+    return cached instanceof Promise ? cached : Promise.resolve(cached);
+  }
+  const p = new Promise(resolve => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    const timer = setTimeout(() => resolve(null), 3000);
-    img.onload  = () => { clearTimeout(timer); resolve(img); };
-    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    const timer = setTimeout(() => { _imgCache.set(src, null); resolve(null); }, 3000);
+    img.onload  = () => { clearTimeout(timer); _imgCache.set(src, img); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); _imgCache.set(src, null); resolve(null); };
     img.src = src;
   });
+  _imgCache.set(src, p); // เก็บ Promise ก่อน เพื่อ share โหลดเดียวกัน
+  return p;
 }
 
 // ── Draw a circular-clipped image ──────────────────────────────────────────
