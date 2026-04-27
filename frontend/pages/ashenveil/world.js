@@ -3618,7 +3618,7 @@ export default function GameWorld() {
                           <span className="text-base shrink-0">🎁</span>
                           <div>
                             <p className="text-amber-300 font-semibold">Gift ใน TikTok LIVE</p>
-                            <p className="text-gray-500 text-[10px]">10,000 Coins ≈ <span className="text-purple-400 font-bold">1,000 RP</span> · ทุก 5 Diamond = 1 RP</p>
+                            <p className="text-gray-500 text-[10px]">เปย์ VJ <span className="text-purple-400 font-bold">10 Coin = 1 RP</span> · ยิ่งเปย์ยิ่งได้ RP สะสมแลกของพิเศษ</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 border-t border-gray-800 pt-1.5">
