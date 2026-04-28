@@ -18,7 +18,7 @@ const admin = require('firebase-admin');
 const { generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
-const { startConnection, stopConnection, hasConnection, getActiveConnectionCount } = require('./handlers/tiktok');
+const { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers } = require('./handlers/tiktok');
 const { cleanupStaleBattles } = require('./handlers/game/combat');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
@@ -86,7 +86,7 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin',      process.env.FRONTEND_URL);
   res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods',     'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Methods',     'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers',     'Content-Type, Authorization, x-csrf-token');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
@@ -186,7 +186,13 @@ app.post('/api/connect', verifyToken, connectLimiter, async (req, res) => {
   const clean = tiktokUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
   if (!clean) return res.status(400).json({ error: 'Invalid username format' });
 
-  const socketId = userSockets.get(req.user.uid);
+  // ถ้าหา socketId ไม่เจอ ให้รอ 1.5 วิ แล้วลองใหม่ครั้งเดียว
+  // ป้องกัน race condition: socket reconnect → firebase verifyIdToken ยังไม่เสร็จ
+  let socketId = userSockets.get(req.user.uid);
+  if (!socketId) {
+    await new Promise(r => setTimeout(r, 1500));
+    socketId = userSockets.get(req.user.uid);
+  }
   if (!socketId) return res.status(400).json({ error: 'No active connection. Please refresh.' });
 
   try {
@@ -271,6 +277,10 @@ app.use('/api/game', gameRouter);
 // ===== ลูกเล่น TT — Actions & Events =====
 const actionsRouter = require('./routes/actions');
 app.use('/api/actions', actionsRouter);
+
+// ===== Leaderboard Route (public, no auth) =====
+const leaderboardRouter = require('./routes/leaderboard');
+app.use('/api/leaderboard', leaderboardRouter);
 
 // ===== Overlay Route (public, no auth) =====
 const { getOverlayState } = require('./handlers/game/overlay');
@@ -392,7 +402,31 @@ io.on('connection', (socket) => {
     }
 
     socket.join(`widget_${userId}`);
+    // widget_audio_${userId} — เฉพาะ OBS browser source (widget URL) เท่านั้นที่อยู่ใน room นี้
+    // dashboard socket ไม่ได้ call join_widget → ไม่เข้า room นี้
+    // ใช้สำหรับส่ง events ที่มีเสียง (TTS, alert, fireworks) เฉพาะ widget URL ในอนาคต
+    socket.join(`widget_audio_${userId}`);
     socket.emit('widget_joined', { success: true });
+
+    // ── Emit leaderboard state ทันทีที่ widget join ──
+    // ถ้ามีข้อมูลใน memory → ส่งเลย (ไม่ต้องรอ gift ถัดไป)
+    // ถ้า memory ว่าง (backend restart) → โหลดจาก Firestore แล้วส่ง
+    (async () => {
+      try {
+        let giftsData = getLeaderboard(userId, 'gifts');
+        let likesData = getLeaderboard(userId, 'likes');
+        if (giftsData.length === 0 && likesData.length === 0) {
+          await loadLeaderboardFromFirestore(userId);
+          giftsData = getLeaderboard(userId, 'gifts');
+          likesData = getLeaderboard(userId, 'likes');
+        }
+        if (giftsData.length > 0) socket.emit('leaderboard_update', { type: 'gifts', data: giftsData });
+        if (likesData.length > 0) socket.emit('leaderboard_update', { type: 'likes', data: likesData });
+        // ส่ง recent members ด้วย
+        const members = getRecentMembers(userId);
+        if (members.length > 0) socket.emit('recent_members', { data: members });
+      } catch {}
+    })();
 
     // Auto-connect TikTok live ถ้ายังไม่มี connection อยู่
     // ทำให้ widget ดึงแชทสดได้โดยไม่ต้องมี dashboard เปิดค้างไว้

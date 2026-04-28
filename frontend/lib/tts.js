@@ -12,9 +12,10 @@ export const GEMINI_25_MODEL = 'gemini-2.5-flash-preview-tts';
 
 const MAX_QUEUE = 8;
 
-let _queue    = [];
-let _busy     = false;
-let _audioCtx = null;   // shared AudioContext สำหรับ Gemini TTS
+let _queue         = [];
+let _busy          = false;
+let _audioCtx      = null;   // shared AudioContext สำหรับ Gemini TTS
+let _currentSource = null;   // AudioContext BufferSource ที่กำลังเล่นอยู่ (สำหรับ clearTTSQueue)
 let _cfg = {
   enabled:        false,
   readChat:       true,
@@ -106,9 +107,12 @@ async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI
     const audio   = new Audio(objectUrl);
     audio.volume  = Math.max(0, Math.min(1, _cfg.volume));
     audio.oncanplaythrough = () => { /* ready */ };
-    audio.onended  = () => resolve(true);
-    audio.onerror  = () => resolve(false);
-    audio.play().catch(() => resolve(false));
+    // timeout: ถ้า audio แขวนค้าง (network หลุดระหว่างเล่น) → resolve false หลัง 30 วิ
+    const cleanup = (result) => { clearTimeout(timer); resolve(result); };
+    const timer   = setTimeout(() => resolve(false), 30000);
+    audio.onended = () => cleanup(true);
+    audio.onerror = () => cleanup(false);
+    audio.play().catch(() => cleanup(false));
   });
 
   URL.revokeObjectURL(objectUrl);
@@ -151,7 +155,11 @@ async function _speakGemini(text, voiceOverride, personaOverride, model = GEMINI
     const gain    = _audioCtx.createGain();
     gain.gain.value = Math.max(0, Math.min(1, _cfg.volume));
     source.connect(gain).connect(_audioCtx.destination);
-    source.onended = resolve;
+    // เก็บ reference เพื่อให้ clearTTSQueue() หยุดได้
+    _currentSource = source;
+    // timeout: max 60 วิ ป้องกัน queue แช่แข็งถ้า AudioContext แขวน
+    const timer = setTimeout(() => { try { source.stop(); } catch {} resolve(); }, 60000);
+    source.onended = () => { clearTimeout(timer); _currentSource = null; resolve(); };
     source.start(0);
   });
 }
@@ -210,9 +218,12 @@ async function _speakGoogle(text) {
   return new Promise((resolve, reject) => {
     const audio   = new Audio(`data:audio/mp3;base64,${audioContent}`);
     audio.volume  = Math.max(0, Math.min(1, _cfg.volume));
-    audio.onended = resolve;
-    audio.onerror = () => reject(new Error('audio play error'));
-    audio.play().catch(reject);
+    // timeout 30 วิ ป้องกัน queue แช่แข็ง
+    const cleanup = (ok, err) => { clearTimeout(timer); ok ? resolve() : reject(err); };
+    const timer   = setTimeout(() => reject(new Error('Google TTS audio timeout')), 30000);
+    audio.onended = () => cleanup(true);
+    audio.onerror = () => cleanup(false, new Error('audio play error'));
+    audio.play().catch(e => cleanup(false, e));
   });
 }
 
@@ -397,6 +408,11 @@ export function clearTTSQueue() {
   _queue = [];
   _busy  = false;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+  // หยุด AudioContext source ที่กำลังเล่นอยู่ (Gemini TTS fallback)
+  if (_currentSource) {
+    try { _currentSource.stop(); } catch { /* ignore: อาจหยุดแล้ว */ }
+    _currentSource = null;
+  }
 }
 
 export function getVoices() {

@@ -82,47 +82,100 @@ const DEFAULT_EVENT = {
 };
 
 // ── TikTok Gift list (ชื่อจริงตาม TikTok + coins) ────────────────────────────
+// หมายเหตุ: รายชื่อนี้เป็นค่า default — ระบบจะ merge กับรายชื่อจริง
+// ที่รวบรวมจาก extendedGiftInfo ระหว่าง live session โดยอัตโนมัติ
 const TIKTOK_GIFTS = [
-  // ── 1–5 coins ──
-  { name: 'Rose',            coins: 1   },
-  { name: 'TikTok',          coins: 1   },
-  { name: 'Ice Cream Cone',  coins: 1   },
-  { name: 'Finger Heart',    coins: 5   },
-  { name: 'Panda',           coins: 5   },
-  { name: 'Italian Hand',    coins: 5   },
-  { name: 'Sunglasses',      coins: 5   },
-  { name: 'GG',              coins: 5   },
-  // ── 10–99 coins ──
-  { name: 'Love Bang',       coins: 25  },
-  { name: 'Mini Speaker',    coins: 25  },
-  { name: 'Hand Heart',      coins: 10  },
-  { name: 'Sun Cream',       coins: 50  },
-  { name: 'Mic',             coins: 50  },
-  { name: 'Cap',             coins: 99  },
-  // ── 100–499 coins ──
-  { name: 'Football',        coins: 100 },
-  { name: 'Rainbow Puke',    coins: 100 },
-  { name: 'Corgi',           coins: 200 },
-  { name: 'Mirror',          coins: 299 },
-  { name: 'Rose Bouquet',    coins: 299 },
+  // ── 1 coin ──
+  { name: 'Rose',              coins: 1    },
+  { name: 'TikTok',            coins: 1    },
+  { name: 'Ice Cream Cone',    coins: 1    },
+  { name: 'Heart Me',          coins: 1    },
+  { name: 'Confetti',          coins: 1    },
+  { name: 'Cheer',             coins: 1    },
+  { name: 'Hat',               coins: 1    },
+  { name: 'Love You',          coins: 1    },
+  { name: 'Like',              coins: 1    },
+  { name: 'Thumbs Up',         coins: 1    },
+  { name: 'Doughnut',          coins: 1    },
+  { name: 'Tree',              coins: 1    },
+  // ── 5 coins ──
+  { name: 'Finger Heart',      coins: 5    },
+  { name: 'Panda',             coins: 5    },
+  { name: 'Italian Hand',      coins: 5    },
+  { name: 'Sunglasses',        coins: 5    },
+  { name: 'GG',                coins: 5    },
+  { name: 'Rainbow',           coins: 5    },
+  { name: 'Shooting Star',     coins: 5    },
+  // ── 10 coins ──
+  { name: 'Hand Heart',        coins: 10   },
+  { name: 'Star',              coins: 10   },
+  { name: 'Birthday Cake',     coins: 10   },
+  // ── 25 coins ──
+  { name: 'Love Bang',         coins: 25   },
+  { name: 'Mini Speaker',      coins: 25   },
+  { name: 'Butterfly',         coins: 25   },
+  // ── 50 coins ──
+  { name: 'Sun Cream',         coins: 50   },
+  { name: 'Mic',               coins: 50   },
+  { name: 'Wishing Bottle',    coins: 50   },
+  { name: 'Lucky Cat',         coins: 50   },
+  // ── 99 coins ──
+  { name: 'Cap',               coins: 99   },
+  { name: 'Microphone',        coins: 99   },
+  // ── 100–199 coins ──
+  { name: 'Football',          coins: 100  },
+  { name: 'Rainbow Puke',      coins: 100  },
+  { name: 'Concert',           coins: 100  },
+  { name: 'Carnival',          coins: 100  },
+  { name: 'Drum',              coins: 100  },
+  { name: 'Gift Box',          coins: 100  },
+  // ── 200–299 coins ──
+  { name: 'Corgi',             coins: 200  },
+  { name: 'Mirror',            coins: 299  },
+  { name: 'Rose Bouquet',      coins: 299  },
+  { name: 'Flying Beauty',     coins: 299  },
+  // ── 300–499 coins ──
+  { name: 'Silver Crown',      coins: 399  },
+  { name: 'Balloons',          coins: 399  },
   // ── 500–999 coins ──
-  { name: 'Galaxy',          coins: 500 },
-  { name: 'Concert',         coins: 500 },
-  { name: 'Perfume',         coins: 500 },
-  // ── 1,000–4,999 coins ──
-  { name: "I'm Very Rich",   coins: 1000 },
-  { name: 'Garland',         coins: 1000 },
-  { name: 'Rocket',          coins: 1000 },
-  { name: 'Train',           coins: 1000 },
-  { name: 'Paper Crane',     coins: 1000 },
-  { name: 'Lollipop',        coins: 1999 },
-  { name: 'Crown',           coins: 2999 },
-  // ── 5,000+ coins ──
-  { name: 'Drama Queen',     coins: 5000  },
-  { name: 'Interstellar',    coins: 6999  },
-  { name: 'TikTok Universe', coins: 10000 },
-  { name: 'Lion',            coins: 29999 },
-  { name: 'Universe',        coins: 34999 },
+  { name: 'Galaxy',            coins: 500  },
+  { name: 'Perfume',           coins: 500  },
+  { name: 'Drama Queen',       coins: 500  },
+  { name: 'Money Gun',         coins: 500  },
+  { name: 'Gem',               coins: 500  },
+  { name: 'Duck Duck',         coins: 699  },
+  { name: 'Sports Car',        coins: 699  },
+  { name: 'Ferris Wheel',      coins: 899  },
+  // ── 1,000–1,999 coins ──
+  { name: "I'm Very Rich",     coins: 1000 },
+  { name: 'Garland',           coins: 1000 },
+  { name: 'Rocket',            coins: 1000 },
+  { name: 'Train',             coins: 1000 },
+  { name: 'Paper Crane',       coins: 1000 },
+  { name: 'Gaming Chair',      coins: 1000 },
+  { name: 'Airplane',          coins: 1000 },
+  { name: 'Dragon',            coins: 1000 },
+  { name: 'Lollipop',          coins: 1999 },
+  { name: 'Luxury Car',        coins: 1999 },
+  // ── 2,000–4,999 coins ──
+  { name: 'Crown',             coins: 2999 },
+  { name: 'Dino Land',         coins: 2999 },
+  { name: 'Planet',            coins: 2999 },
+  { name: 'Ship',              coins: 3999 },
+  { name: 'Money Rain',        coins: 3999 },
+  // ── 5,000–9,999 coins ──
+  { name: 'Interstellar',      coins: 6999 },
+  { name: 'Fantasy',           coins: 6999 },
+  { name: 'Fireworks',         coins: 6999 },
+  { name: 'Private Jet',       coins: 9999 },
+  // ── 10,000+ coins ──
+  { name: 'TikTok Universe',   coins: 10000 },
+  { name: 'Gamer Girl',        coins: 10000 },
+  { name: 'Diamond Flight',    coins: 19999 },
+  { name: 'Lion',              coins: 29999 },
+  { name: 'Universe',          coins: 34999 },
+  { name: 'Falcon',            coins: 44999 },
+  { name: 'Power Punch',       coins: 49999 },
 ];
 
 // ── Small helpers ────────────────────────────────────────────────────────────
@@ -150,6 +203,113 @@ function Toggle({ label, checked, onChange }) {
       </div>
       <span className="text-sm text-gray-300">{label}</span>
     </label>
+  );
+}
+
+// ── GiftPicker — inline chip grid with price filter (แบบ C) ─────────────────
+const PRICE_FILTERS = [
+  { id: 'all',  label: 'ทั้งหมด',   min: 0,    max: Infinity },
+  { id: 'f1',   label: '1–9 🪙',    min: 1,    max: 9        },
+  { id: 'f2',   label: '10–99 🪙',  min: 10,   max: 99       },
+  { id: 'f3',   label: '100–999 🪙',min: 100,  max: 999      },
+  { id: 'f4',   label: '1k+ 🪙',    min: 1000, max: Infinity },
+];
+
+function GiftPicker({ value, onChange, giftList }) {
+  const [priceFilter, setPriceFilter] = useState('all');
+  const [search,      setSearch]      = useState('');
+
+  const pf = PRICE_FILTERS.find(f => f.id === priceFilter) || PRICE_FILTERS[0];
+
+  const visible = giftList.filter(g => {
+    const inPrice  = g.coins >= pf.min && g.coins <= pf.max;
+    const inSearch = !search.trim() || g.name.toLowerCase().includes(search.toLowerCase());
+    return inPrice && inSearch;
+  });
+
+  const selected = giftList.find(g => g.name === value) || null;
+
+  return (
+    <div className="space-y-2">
+      {/* Selected preview (แสดงตอนเลือกแล้ว) */}
+      {selected && (
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-brand-900/40 border border-brand-700/50 rounded-lg">
+          {selected.pictureUrl
+            ? <img src={selected.pictureUrl} alt="" className="w-6 h-6 rounded object-cover shrink-0" onError={e => { e.target.style.display = 'none'; }} />
+            : <span className="text-lg leading-none shrink-0">🎁</span>
+          }
+          <span className="text-sm text-brand-200 font-medium flex-1 truncate">{selected.name}</span>
+          <span className="text-xs text-brand-400 shrink-0">{selected.coins.toLocaleString()} 🪙</span>
+          <button type="button" onClick={() => onChange('')}
+            className="text-brand-500 hover:text-brand-300 text-xs px-1 shrink-0">✕</button>
+        </div>
+      )}
+
+      {/* Search */}
+      <input
+        value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="ค้นหาของขวัญ..."
+        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none placeholder-gray-600"
+      />
+
+      {/* Price filter tabs */}
+      <div className="flex gap-1.5 flex-wrap">
+        {PRICE_FILTERS.map(f => (
+          <button type="button" key={f.id}
+            onClick={() => setPriceFilter(f.id)}
+            className={clsx(
+              'text-[11px] px-2.5 py-0.5 rounded-full border transition-colors',
+              priceFilter === f.id
+                ? 'bg-brand-700/50 border-brand-600 text-brand-200'
+                : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'
+            )}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Chip grid */}
+      <div className="h-40 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 p-1.5">
+        {visible.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-gray-600 text-xs">
+            {search ? `ไม่พบ "${search}"` : 'ไม่มีของขวัญในช่วงราคานี้'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-1">
+            {visible.map(g => (
+              <button type="button" key={g.name}
+                onClick={() => onChange(g.name === value ? '' : g.name)}
+                className={clsx(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left transition-colors',
+                  g.name === value
+                    ? 'bg-brand-800/60 border-brand-600 text-white'
+                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:bg-gray-750'
+                )}>
+                {g.pictureUrl
+                  ? <img src={g.pictureUrl} alt="" className="w-7 h-7 rounded object-cover shrink-0" onError={e => { e.target.style.display = 'none'; }} />
+                  : <span className="text-xl leading-none w-7 h-7 flex items-center justify-center shrink-0">🎁</span>
+                }
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium truncate leading-tight">{g.name}</div>
+                  <div className={clsx('text-[10px]', g.name === value ? 'text-brand-400' : 'text-gray-500')}>
+                    {g.coins.toLocaleString()} 🪙
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[10px] text-gray-600">
+        {visible.length}/{giftList.length} รายการ · รูปภาพจะเพิ่มอัตโนมัติหลัง live
+        {' '}·{' '}
+        <button type="button" className="text-brand-500 underline hover:text-brand-400"
+          onClick={() => { const c = prompt('ชื่อ Gift (ตรงๆ จาก TikTok):'); if (c?.trim()) onChange(c.trim()); }}>
+          พิมพ์เองถ้าไม่มีในลิสต์
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -562,7 +722,7 @@ const EVENT_TABS = [
   { id: 'actions', icon: '🎬', label: 'Actions' },
 ];
 
-function EventModal({ initial, actions, onSave, onClose }) {
+function EventModal({ initial, actions, giftList, onSave, onClose }) {
   const [form, setForm] = useState({
     ...DEFAULT_EVENT,
     ...(initial || {}),
@@ -621,22 +781,13 @@ function EventModal({ initial, actions, onSave, onClose }) {
                 onChange={v => set('minCoins', v)} type="number" min={1} />
             )}
             {form.trigger === 'specific_gift' && (
-              <div className="space-y-1">
-                <label className="text-xs text-gray-400">เลือก Gift</label>
-                <select value={form.specificGiftName} onChange={e => set('specificGiftName', e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full">
-                  <option value="">— เลือก Gift —</option>
-                  {TIKTOK_GIFTS.map(g => (
-                    <option key={g.name} value={g.name}>{g.name} ({g.coins.toLocaleString()} coins)</option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-gray-500">
-                  ไม่มีในลิสต์?{' '}
-                  <button type="button" className="text-brand-400 underline hover:text-brand-300"
-                    onClick={() => { const c = prompt('ชื่อ Gift (ตรงๆ จาก TikTok):'); if (c?.trim()) set('specificGiftName', c.trim()); }}>
-                    พิมพ์เอง
-                  </button>
-                </p>
+              <div>
+                <label className="text-xs text-gray-400 mb-1.5 block">เลือก Gift</label>
+                <GiftPicker
+                  value={form.specificGiftName}
+                  onChange={v => set('specificGiftName', v)}
+                  giftList={giftList}
+                />
               </div>
             )}
             {form.trigger === 'likes' && (
@@ -1184,15 +1335,19 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading,   setLoginLoading]   = useState(false);
 
+  // Dynamic gift catalog (รวบรวมจาก TikTok live session จริง)
+  const [dynamicGifts, setDynamicGifts] = useState([]);
+
   // ── Load data ──
   const loadData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [aRes, eRes, obsRes] = await Promise.all([
+      const [aRes, eRes, obsRes, giftRes] = await Promise.all([
         api.get('/api/actions'),
         api.get('/api/actions/events'),
         api.get('/api/actions/obs-settings'),
+        api.get('/api/actions/gift-catalog').catch(() => ({ data: { gifts: [] } })),
       ]);
       setActions(aRes.data.actions || []);
       setEvents(eRes.data.events   || []);
@@ -1200,6 +1355,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       setObsHost(obs.host || 'localhost');
       setObsPort(obs.port || 4455);
       setObsPassword(obs.password || '');
+      setDynamicGifts(giftRes.data.gifts || []);
     } catch (err) {
       toast.error('โหลดข้อมูลไม่ได้');
     } finally {
@@ -1699,6 +1855,18 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         <EventModal
           initial={eventModal.data}
           actions={actions}
+          giftList={(() => {
+            // รวม static + dynamic (dynamic override static ถ้าชื่อซ้ำ — ได้ข้อมูลจาก TikTok จริง)
+            const map = new Map(TIKTOK_GIFTS.map(g => [g.name, { ...g, pictureUrl: '' }]));
+            for (const dg of dynamicGifts) {
+              map.set(dg.name, {
+                name:       dg.name,
+                coins:      dg.diamondCount,
+                pictureUrl: dg.pictureUrl || '',
+              });
+            }
+            return Array.from(map.values()).sort((a, b) => a.coins - b.coins);
+          })()}
           onSave={saveEvent}
           onClose={() => setEventModal(null)}
         />
