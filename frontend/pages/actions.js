@@ -1333,106 +1333,153 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     <div className={clsx('min-h-screen flex', theme === 'dark' ? 'bg-gray-950 text-gray-200' : 'bg-white text-gray-900')}>
       <Sidebar theme={theme} setTheme={setTheme} activePage={activePage} setActivePage={setActivePage} />
 
-      <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-5">
+      <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto pb-24 md:pb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl font-bold text-white">🎭 ลูกเล่น TT</h1>
             <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live</p>
           </div>
           {requireLogin && (
             <button onClick={() => setShowLoginModal(true)}
-              className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-3 py-1.5 rounded-lg">
+              className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg">
               Login
             </button>
           )}
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-5 bg-gray-900 p-1 rounded-lg w-fit">
+        {/* Tabs — scroll แนวนอนบนมือถือ */}
+        <div className="flex gap-1 mb-5 bg-gray-900 p-1 rounded-xl overflow-x-auto scrollbar-none">
           {[
             { id: 'actions', label: '⚡ Actions' },
             { id: 'events',  label: '🔗 Events' },
-            { id: 'overlay', label: '📺 Overlay URL' },
+            { id: 'overlay', label: '📺 Overlay' },
             { id: 'obs',     label: '🎬 OBS' },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={clsx('px-3 py-1.5 rounded text-sm font-medium transition-colors',
-                tab === t.id ? 'bg-brand-600 text-white' : 'text-gray-400 hover:text-white')}>
+              className={clsx(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0',
+                tab === t.id ? 'bg-brand-600 text-white' : 'text-gray-400 hover:text-white'
+              )}>
               {t.label}
             </button>
           ))}
         </div>
 
-        {loading && <p className="text-gray-500 text-sm">กำลังโหลด...</p>}
+        {loading && (
+          <div className="flex items-center gap-2 py-8 justify-center text-gray-500 text-sm">
+            <span className="animate-spin">⏳</span> กำลังโหลด...
+          </div>
+        )}
 
         {/* ── Tab: Actions ── */}
         {tab === 'actions' && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-400">Actions คือสิ่งที่เกิดขึ้นบน stream เมื่อมี event</p>
+            {/* Description + desktop create button */}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-400 leading-snug">
+                Actions คือสิ่งที่เกิดขึ้นบน stream เมื่อมี event trigger
+              </p>
               <button onClick={() => setActionModal({ data: null })}
-                className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-3 py-1.5 rounded-lg flex items-center gap-1">
+                className="hidden md:flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg font-medium shrink-0 transition-colors">
                 + สร้าง Action
               </button>
             </div>
 
             {actions.length === 0 && !loading && (
-              <div className="text-center py-12 text-gray-600">
-                <p className="text-3xl mb-2">⚡</p>
-                <p className="text-sm">ยังไม่มี Actions — กด "+ สร้าง Action" เพื่อเริ่ม</p>
+              <div className="text-center py-14 text-gray-600 border border-dashed border-gray-800 rounded-xl">
+                <p className="text-4xl mb-3">⚡</p>
+                <p className="text-sm font-medium text-gray-500">ยังไม่มี Actions</p>
+                <p className="text-xs text-gray-600 mt-1">กดปุ่ม "+ สร้าง Action" เพื่อเริ่ม</p>
               </div>
             )}
 
-            <div className="rounded-lg overflow-hidden border border-gray-800">
-              {actions.map((a, idx) => (
-                <div key={a.id} className={clsx(
-                  'flex items-center gap-2 px-3 py-1.5 transition-colors',
-                  !a.enabled && 'opacity-50',
-                  idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-900/50',
-                  idx !== actions.length - 1 && 'border-b border-gray-800'
-                )}>
-                  {/* Index */}
-                  <span className="text-[10px] text-gray-600 w-4 shrink-0 text-right select-none">{idx + 1}</span>
+            {/* Action cards */}
+            <div className="space-y-2">
+              {actions.map((a) => {
+                const typeIcons = (a.types || [])
+                  .map(t => ACTION_TYPES.find(x => x.id === t))
+                  .filter(Boolean);
+                const isConfirmDel = confirmDelete?.id === a.id && confirmDelete?.type === 'action';
+                return (
+                  <div key={a.id} className={clsx(
+                    'border rounded-xl transition-colors',
+                    a.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-55'
+                  )}>
+                    {/* Main row */}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {/* Toggle pill */}
+                      <button
+                        onClick={() => toggleAction(a)}
+                        className={clsx(
+                          'shrink-0 w-10 h-6 rounded-full transition-colors flex items-center px-0.5',
+                          a.enabled ? 'bg-green-600' : 'bg-gray-700'
+                        )}
+                      >
+                        <div className={clsx(
+                          'w-5 h-5 rounded-full bg-white transition-transform',
+                          a.enabled ? 'translate-x-4' : 'translate-x-0'
+                        )} />
+                      </button>
 
-                  {/* Name + meta */}
-                  <div className="flex-1 min-w-0 flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-200 truncate leading-none">{a.name}</p>
-                    <span className="text-[10px] text-gray-600 shrink-0 leading-none">
-                      {(a.types || []).map(t => ACTION_TYPES.find(x => x.id === t)?.icon).filter(Boolean).join('')}
-                    </span>
-                    <span className="text-[10px] text-gray-700 shrink-0 leading-none hidden md:inline">
-                      S{a.overlayScreen} · {a.displayDuration}s
-                    </span>
-                  </div>
+                      {/* Name + type icons */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-100 truncate">{a.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {typeIcons.map(t => (
+                            <span key={t.id} className="text-[11px] bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">
+                              {t.icon} {t.label}
+                            </span>
+                          ))}
+                          <span className="text-[11px] text-gray-600">{a.displayDuration}s · S{a.overlayScreen}</span>
+                        </div>
+                      </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => setPreviewAction(a)}
-                      className="text-[11px] text-brand-400 hover:text-brand-300 px-1.5 py-0.5 rounded bg-brand-900/30 hover:bg-brand-900/60 border border-brand-900 transition-colors leading-none"
-                    >
-                      ▶
-                    </button>
-                    <button onClick={() => toggleAction(a)}
-                      className={clsx('text-[11px] px-1.5 py-0.5 rounded leading-none', a.enabled ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-600')}>
-                      {a.enabled ? 'เปิด' : 'ปิด'}
-                    </button>
-                    <button onClick={() => setActionModal({ data: { ...a } })}
-                      className="text-[11px] text-gray-500 hover:text-white px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 leading-none">
-                      แก้ไข
-                    </button>
-                    <button onClick={() => deleteAction(a.id)}
-                      className={clsx(
-                        'text-[11px] px-1.5 py-0.5 rounded leading-none transition-colors',
-                        confirmDelete?.id === a.id && confirmDelete?.type === 'action'
-                          ? 'bg-red-600 text-white animate-pulse'
-                          : 'text-red-600 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
-                      )}>
-                      {confirmDelete?.id === a.id && confirmDelete?.type === 'action' ? 'ยืนยัน?' : 'ลบ'}
-                    </button>
+                      {/* Desktop buttons — hidden on mobile */}
+                      <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => setPreviewAction(a)}
+                          className="text-xs text-brand-400 hover:text-brand-300 px-3 py-1.5 rounded-lg bg-brand-900/30 hover:bg-brand-900/60 border border-brand-800/50 transition-colors font-medium">
+                          ▶ ทดสอบ
+                        </button>
+                        <button onClick={() => setActionModal({ data: { ...a } })}
+                          className="text-xs text-gray-300 hover:text-white px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors">
+                          แก้ไข
+                        </button>
+                        <button onClick={() => deleteAction(a.id)}
+                          className={clsx(
+                            'text-xs px-3 py-1.5 rounded-lg transition-colors',
+                            isConfirmDel
+                              ? 'bg-red-600 text-white animate-pulse'
+                              : 'text-red-500 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
+                          )}>
+                          {isConfirmDel ? 'ยืนยันลบ?' : 'ลบ'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Mobile buttons row */}
+                    <div className="flex md:hidden border-t border-gray-800">
+                      <button onClick={() => setPreviewAction(a)}
+                        className="flex-1 flex items-center justify-center gap-1 py-2.5 text-sm text-brand-400 hover:bg-brand-900/20 transition-colors border-r border-gray-800">
+                        ▶ ทดสอบ
+                      </button>
+                      <button onClick={() => setActionModal({ data: { ...a } })}
+                        className="flex-1 flex items-center justify-center py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors border-r border-gray-800">
+                        แก้ไข
+                      </button>
+                      <button onClick={() => deleteAction(a.id)}
+                        className={clsx(
+                          'flex-1 flex items-center justify-center py-2.5 text-sm transition-colors',
+                          isConfirmDel
+                            ? 'bg-red-600 text-white animate-pulse'
+                            : 'text-red-500 hover:bg-gray-800'
+                        )}>
+                        {isConfirmDel ? 'ยืนยัน?' : 'ลบ'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1440,66 +1487,127 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* ── Tab: Events ── */}
         {tab === 'events' && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-400">Events คือตัว trigger ที่จะเรียก Actions</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-400 leading-snug">
+                Events คือตัว trigger ที่จะเรียก Actions เมื่อเกิดเหตุการณ์ใน Live
+              </p>
               <button onClick={() => setEventModal({ data: null })}
-                className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-3 py-1.5 rounded-lg">
+                className="hidden md:flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg font-medium shrink-0 transition-colors">
                 + สร้าง Event
               </button>
             </div>
 
             {events.length === 0 && !loading && (
-              <div className="text-center py-12 text-gray-600">
-                <p className="text-3xl mb-2">🔗</p>
-                <p className="text-sm">ยังไม่มี Events — กด "+ สร้าง Event" เพื่อเริ่ม</p>
+              <div className="text-center py-14 text-gray-600 border border-dashed border-gray-800 rounded-xl">
+                <p className="text-4xl mb-3">🔗</p>
+                <p className="text-sm font-medium text-gray-500">ยังไม่มี Events</p>
+                <p className="text-xs text-gray-600 mt-1">กดปุ่ม "+ สร้าง Event" เพื่อเริ่ม</p>
               </div>
             )}
 
-            {events.map(ev => {
-              const trigger = TRIGGER_LIST.find(t => t.id === ev.trigger);
-              const linkedActions = actions.filter(a => ev.actionIds?.includes(a.id));
-              const randomActions = actions.filter(a => ev.randomActionIds?.includes(a.id));
-              return (
-                <div key={ev.id} className={clsx(
-                  'border rounded-lg p-3 flex items-center gap-3 transition-colors',
-                  ev.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-60'
-                )}>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white">{trigger?.label || ev.trigger}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label}
-                      {ev.trigger === 'command' && ` · "${ev.keyword}"`}
-                      {ev.trigger === 'gift_min_coins' && ` · ≥${ev.minCoins} coins`}
-                      {ev.trigger === 'specific_gift' && ` · ${ev.specificGiftName}`}
-                      {ev.trigger === 'likes' && ` · ${ev.likesCount} likes`}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      {linkedActions.length > 0 && `▶ ${linkedActions.map(a => a.name).join(', ')}`}
-                      {randomActions.length > 0 && ` 🎲 ${randomActions.map(a => a.name).join(', ')}`}
-                    </p>
+            <div className="space-y-2">
+              {events.map(ev => {
+                const trigger      = TRIGGER_LIST.find(t => t.id === ev.trigger);
+                const linkedActions = actions.filter(a => ev.actionIds?.includes(a.id));
+                const randomActions = actions.filter(a => ev.randomActionIds?.includes(a.id));
+                const isConfirmDel  = confirmDelete?.id === ev.id && confirmDelete?.type === 'event';
+
+                // param string
+                let param = '';
+                if (ev.trigger === 'command')        param = `"${ev.keyword}"`;
+                if (ev.trigger === 'gift_min_coins') param = `≥${ev.minCoins} coins`;
+                if (ev.trigger === 'specific_gift')  param = ev.specificGiftName;
+                if (ev.trigger === 'likes')          param = `${ev.likesCount} likes`;
+
+                return (
+                  <div key={ev.id} className={clsx(
+                    'border rounded-xl transition-colors',
+                    ev.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-55'
+                  )}>
+                    {/* Main row */}
+                    <div className="flex items-start gap-3 px-4 py-3">
+                      {/* Toggle */}
+                      <button
+                        onClick={() => toggleEvent(ev)}
+                        className={clsx(
+                          'shrink-0 mt-0.5 w-10 h-6 rounded-full transition-colors flex items-center px-0.5',
+                          ev.enabled ? 'bg-green-600' : 'bg-gray-700'
+                        )}
+                      >
+                        <div className={clsx(
+                          'w-5 h-5 rounded-full bg-white transition-transform',
+                          ev.enabled ? 'translate-x-4' : 'translate-x-0'
+                        )} />
+                      </button>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        {/* Trigger label */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-gray-100">{trigger?.label || ev.trigger}</p>
+                          {param && (
+                            <span className="text-xs bg-gray-800 text-brand-400 px-2 py-0.5 rounded font-mono">
+                              {param}
+                            </span>
+                          )}
+                        </div>
+                        {/* Who */}
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          👤 {WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label || ev.whoCanTrigger}
+                        </p>
+                        {/* Linked actions */}
+                        {(linkedActions.length > 0 || randomActions.length > 0) && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {linkedActions.map(a => (
+                              <span key={a.id} className="text-[11px] bg-brand-900/40 border border-brand-800/50 text-brand-300 px-2 py-0.5 rounded-full">
+                                ✅ {a.name}
+                              </span>
+                            ))}
+                            {randomActions.map(a => (
+                              <span key={a.id} className="text-[11px] bg-purple-900/40 border border-purple-800/50 text-purple-300 px-2 py-0.5 rounded-full">
+                                🎲 {a.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Desktop buttons */}
+                      <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => setEventModal({ data: { ...ev } })}
+                          className="text-xs text-gray-300 hover:text-white px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors">
+                          แก้ไข
+                        </button>
+                        <button onClick={() => deleteEvent(ev.id)}
+                          className={clsx(
+                            'text-xs px-3 py-1.5 rounded-lg transition-colors',
+                            isConfirmDel
+                              ? 'bg-red-600 text-white animate-pulse'
+                              : 'text-red-500 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
+                          )}>
+                          {isConfirmDel ? 'ยืนยันลบ?' : 'ลบ'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Mobile buttons */}
+                    <div className="flex md:hidden border-t border-gray-800">
+                      <button onClick={() => setEventModal({ data: { ...ev } })}
+                        className="flex-1 flex items-center justify-center py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors border-r border-gray-800">
+                        แก้ไข
+                      </button>
+                      <button onClick={() => deleteEvent(ev.id)}
+                        className={clsx(
+                          'flex-1 flex items-center justify-center py-2.5 text-sm transition-colors',
+                          isConfirmDel ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 hover:bg-gray-800'
+                        )}>
+                        {isConfirmDel ? 'ยืนยัน?' : 'ลบ'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => toggleEvent(ev)}
-                      className={clsx('text-xs px-2 py-0.5 rounded', ev.enabled ? 'bg-green-900 text-green-400' : 'bg-gray-800 text-gray-500')}>
-                      {ev.enabled ? 'เปิด' : 'ปิด'}
-                    </button>
-                    <button onClick={() => setEventModal({ data: { ...ev } })}
-                      className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-gray-800">
-                      แก้ไข
-                    </button>
-                    <button onClick={() => deleteEvent(ev.id)}
-                      className={clsx(
-                        'text-xs px-2 py-0.5 rounded transition-colors',
-                        confirmDelete?.id === ev.id && confirmDelete?.type === 'event'
-                          ? 'bg-red-600 text-white animate-pulse'
-                          : 'text-red-500 hover:text-red-400 bg-gray-800'
-                      )}>
-                      {confirmDelete?.id === ev.id && confirmDelete?.type === 'event' ? 'ยืนยัน?' : 'ลบ'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -1618,6 +1726,17 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             <button onClick={() => setShowLoginModal(false)} className="w-full text-gray-500 text-sm">ยกเลิก</button>
           </div>
         </div>
+      )}
+
+      {/* FAB — Floating Action Button สำหรับมือถือ (hidden บน desktop) */}
+      {(tab === 'actions' || tab === 'events') && user && (
+        <button
+          onClick={() => tab === 'actions' ? setActionModal({ data: null }) : setEventModal({ data: null })}
+          className="md:hidden fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-2xl flex items-center justify-center shadow-lg shadow-brand-900/50 transition-colors active:scale-95"
+          style={{ touchAction: 'manipulation' }}
+        >
+          +
+        </button>
       )}
     </div>
   );
