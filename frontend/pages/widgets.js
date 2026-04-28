@@ -13,6 +13,19 @@ import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂','🐺','🦊','🐲','🦅'];
 
+const NP_STYLES = [
+  { id: 'glass',     icon: '🔲', name: 'Glass',     desc: 'Frosted glass card' },
+  { id: 'eq',        icon: '📊', name: 'EQ Bars',   desc: 'Animated equalizer BG' },
+  { id: 'notes',     icon: '🎵', name: 'Notes',     desc: 'Falling music notes' },
+  { id: 'vinyl',     icon: '💿', name: 'Vinyl',     desc: 'Spinning vinyl record' },
+  { id: 'aurora',    icon: '🌌', name: 'Aurora',    desc: 'Northern lights BG' },
+  { id: 'neon',      icon: '💡', name: 'Neon',      desc: 'Neon club glow' },
+  { id: 'cassette',  icon: '📼', name: 'Cassette',  desc: 'Retro cassette tape' },
+  { id: 'pulse',     icon: '🔴', name: 'Pulse',     desc: 'Sonar pulse rings' },
+  { id: 'particles', icon: '✨', name: 'Particles', desc: 'Floating sparkles' },
+  { id: 'spectrum',  icon: '🌈', name: 'Spectrum',  desc: 'Spectrum + progress' },
+];
+
 // Boss presets — เพิ่ม boss ใหม่ที่นี่ (images host ใน /public/boss/)
 // frames: relative path 6 ไฟล์ คั่นด้วย comma (idle1,idle2,idle3,enrage1,enrage2,death)
 const BOSS_PRESETS = [
@@ -78,6 +91,16 @@ const WIDGETS = [
   { id: 'gift-leaderboard',  icon: '🎁', name: 'Gift Leaderboard',  desc: 'Top 10 ผู้ส่งของขวัญมากที่สุด ตอนไลฟ์', size: '300 × 520' },
   { id: 'fireworks',         icon: '🎆', name: 'Gift Fireworks',    desc: 'พลุของขวัญ — Rocket = avatar ผู้ส่ง, ระเบิด = รูปของขวัญ', size: '800 × 800' },
   { id: 'myactions',         icon: '🎬', name: 'Actions Overlay',   desc: 'แสดง GIF/วิดีโอ/Alert จากระบบ ลูกเล่น TT บน OBS', size: '1920 × 1080', noStyle: true },
+  {
+    id: 'nowplaying', icon: '🎶', name: 'Now Playing',
+    desc: 'แสดงเพลงที่กำลังฟังจาก Spotify — 10 สไตล์ให้เลือก เชื่อมต่อ Spotify ได้ที่ Settings',
+    size: 'ขึ้นอยู่กับ Style', noStyle: true, noToken: true,
+    configFields: [
+      { key: 'style', label: '🎨 เลือก Style', type: 'nowplaying_style', default: 'glass' },
+      { key: 'fade',  label: '🌫️ Fade รอบขอบ Widget', type: 'toggle', default: 1,
+        onLabel: 'เปิด — ขอบ Widget จะ Fade โปร่งใส (แนะนำสำหรับ OBS)', offLabel: 'ปิด — ขอบทึบ' },
+    ],
+  },
   // ── ซ่อนชั่วคราว — ยังไม่พร้อมใช้งาน ──
   // { id: 'dungeon', icon: '🏚️', name: 'Dungeon Activity', desc: 'แสดงผู้เล่นที่กำลัง run dungeon อยู่ + feed เหตุการณ์ live', size: '360 × 480', noStyle: true },
   // { id: 'leaderboard', ... }
@@ -89,6 +112,7 @@ const WIDGET_GROUPS = [
   { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
   { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard'] },
   { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
+  { id: 'music', label: '🎵 Music',                   ids: ['nowplaying'] },
 ];
 
 // user, authLoading มาจาก _app.js
@@ -108,7 +132,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     try { return localStorage.getItem('ttplus_howto') !== '0'; } catch { return true; }
   });
   // group collapse state — default เปิดทั้งหมด
-  const [groupOpen, setGroupOpen] = useState({ chat: true, gifts: true, obs: true });
+  const [groupOpen, setGroupOpen] = useState({ chat: true, gifts: true, obs: true, music: true });
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
   // config สำหรับ widget ที่มี configFields (bossbattle, egghatch ฯลฯ)
@@ -226,6 +250,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   }, [customConfigs]);
 
   const getWidgetUrl = useCallback((widgetId) => {
+    // nowplaying ใช้ ?uid= แทน ?cid=
+    if (widgetId === 'nowplaying') {
+      if (!baseUrl || !user?.uid) return '';
+      const cfg   = customConfigs['nowplaying'] || {};
+      const style = cfg.style || 'glass';
+      const fade  = cfg.fade ?? 1;
+      return `${baseUrl}/widget/nowplaying?uid=${user.uid}&style=${style}&fade=${fade}`;
+    }
     if (!baseUrl || !widgetCid) return '';
     const w = WIDGETS.find(ww => ww.id === widgetId);
     // ทุก widget ใช้ ?cid= เหมือนกันหมด (leaderboard, myactions, fireworks, ฯลฯ)
@@ -235,7 +267,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [widgetCid, baseUrl, styles, buildCustomParams]);
+  }, [widgetCid, baseUrl, styles, buildCustomParams, user, customConfigs]);
 
   const copyUrl = useCallback((widgetId) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -261,6 +293,13 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
+    // nowplaying preview ใช้ style + fade params
+    if (widgetId === 'nowplaying') {
+      const cfg   = customConfigs['nowplaying'] || {};
+      const style = cfg.style || 'glass';
+      const fade  = cfg.fade ?? 1;
+      return `${baseUrl}/widget/nowplaying?preview=1&style=${style}&fade=${fade}`;
+    }
     const w = WIDGETS.find(ww => ww.id === widgetId);
     // preview ใช้ ?preview=1 เสมอ — ไม่ต้องการ cid/vjId
     const base = `${baseUrl}/widget/${widgetId}?preview=1`;
@@ -270,7 +309,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [baseUrl, styles, buildCustomParams]);
+  }, [baseUrl, styles, buildCustomParams, customConfigs]);
 
   const saveStyleForWidget = useCallback(async (widgetId, style) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -418,8 +457,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                 {isGroupOpen && (
                   <div className="space-y-3">
                     {groupWidgets.map((w) => {
-                      const url = getWidgetUrl(w.id);
+                      const url          = getWidgetUrl(w.id);
                       const isDrawerOpen = drawerWidget === w.id;
+                      // nowplaying ไม่ต้องรอ widgetCid — ใช้ uid แทน
+                      const widgetReady  = w.noToken ? !!user?.uid : tokenReady;
                       return (
                         <div key={w.id} className={clsx('rounded-xl border overflow-hidden', card)}>
                           <div className="p-4">
@@ -441,14 +482,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                             <div className="flex items-center gap-2 mb-3">
                               <div
                                 className={clsx('flex-1 rounded-lg px-3 py-2 font-mono text-xs truncate cursor-pointer', urlBox)}
-                                title={tokenReady ? url : ''}
-                                onClick={() => tokenReady && copyUrl(w.id)}
+                                title={widgetReady ? url : ''}
+                                onClick={() => widgetReady && copyUrl(w.id)}
                               >
-                                {tokenReady ? url : (tokenLoading ? '⏳ กำลังโหลด...' : '— รอสักครู่ —')}
+                                {widgetReady ? url : (w.noToken ? '🔒 Login ก่อนเพื่อรับ URL' : tokenLoading ? '⏳ กำลังโหลด...' : '— รอสักครู่ —')}
                               </div>
                               <button
                                 onClick={() => copyUrl(w.id)}
-                                disabled={!tokenReady}
+                                disabled={!widgetReady}
                                 className="shrink-0 px-3 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold transition disabled:opacity-50"
                               >
                                 📋 Copy
@@ -576,6 +617,37 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                         </div>
                       );
                       if (f.hideInUI) return null;
+                      if (f.type === 'nowplaying_style') {
+                        const cur = cfg[f.key] ?? f.default;
+                        return (
+                          <div key={f.key}>
+                            <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {NP_STYLES.map(s => (
+                                <button key={s.id} onClick={() => setKey('style', s.id)}
+                                  className={clsx(
+                                    'flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-left transition',
+                                    cur === s.id
+                                      ? 'border-brand-500 bg-brand-500/15'
+                                      : isDark ? 'border-gray-700 bg-gray-800/50 hover:border-gray-500' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                                  )}>
+                                  <span className="text-lg flex-shrink-0">{s.icon}</span>
+                                  <div className="min-w-0">
+                                    <p className={clsx('text-xs font-semibold leading-tight', isDark ? 'text-gray-200' : 'text-gray-800')}>{s.name}</p>
+                                    <p className={clsx('text-[10px] leading-tight', isDark ? 'text-gray-500' : 'text-gray-400')}>{s.desc}</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                            {/* Spotify connect hint */}
+                            {!user && (
+                              <p className={clsx('text-[10px] mt-2', isDark ? 'text-yellow-400/80' : 'text-yellow-600')}>
+                                ⚠️ ต้อง Login และเชื่อมต่อ Spotify ใน Settings ก่อนใช้งาน
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
                       if (f.type === 'bosstype') {
                         const curType  = cfg['bosstype'] ?? f.default;
                         const curEmoji = cfg['emoji'] ?? '🐉';
@@ -694,19 +766,24 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                   </button>
                 )}
                 {/* Custom config: reset + copy URL */}
-                {dw.configFields && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { const s=socketRef.current||getSocket(); if(s?.connected){s.emit('push_style_update',{widgetId:dw.id,style:{_reset:true}});toast.success(`🔄 Reset ${dw.name} แล้ว`);}else{toast.error('ต้อง Login และ Connect Socket ก่อน');} }}
-                      className={clsx('flex-1 py-2.5 rounded-xl text-sm font-semibold border transition', isDark?'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20':'bg-red-50 border-red-200 text-red-600 hover:bg-red-100')}>
-                      🔄 Reset
-                    </button>
-                    <button onClick={() => copyUrl(dw.id)} disabled={!tokenReady}
-                      className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
-                      📋 Copy URL
-                    </button>
-                  </div>
-                )}
+                {dw.configFields && (() => {
+                  const dwReady = dw.noToken ? !!user?.uid : tokenReady;
+                  return (
+                    <div className="flex gap-2">
+                      {!dw.noToken && (
+                        <button
+                          onClick={() => { const s=socketRef.current||getSocket(); if(s?.connected){s.emit('push_style_update',{widgetId:dw.id,style:{_reset:true}});toast.success(`🔄 Reset ${dw.name} แล้ว`);}else{toast.error('ต้อง Login และ Connect Socket ก่อน');} }}
+                          className={clsx('flex-1 py-2.5 rounded-xl text-sm font-semibold border transition', isDark?'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20':'bg-red-50 border-red-200 text-red-600 hover:bg-red-100')}>
+                          🔄 Reset
+                        </button>
+                      )}
+                      <button onClick={() => copyUrl(dw.id)} disabled={!dwReady}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
+                        📋 Copy URL
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </>
