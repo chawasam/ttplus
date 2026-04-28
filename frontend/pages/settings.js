@@ -13,7 +13,7 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
   const [settings, setSettings] = useState({ tiktokUsername: '' });
-  const [stats, setStats]       = useState(null);
+  const [heapMB, setHeapMB]     = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -32,19 +32,17 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
     })();
   }, [user]);
 
-  // ── Server Stats polling ──────────────────────────────────────────────────
+  // ── Browser tab memory (JS Heap) ─────────────────────────────────────────
   useEffect(() => {
-    if (!user) return;
-    const fetchStats = async () => {
-      try {
-        const res = await api.get('/api/system/stats');
-        setStats(res.data);
-      } catch {}
+    const readHeap = () => {
+      const mem = performance?.memory;
+      if (!mem) return;
+      setHeapMB(Math.round(mem.usedJSHeapSize / 1024 / 1024));
     };
-    fetchStats();
-    const interval = setInterval(fetchStats, 5000);
+    readHeap();
+    const interval = setInterval(readHeap, 5000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, []);
 
   const handleGoogleLogin = useCallback(async () => {
     setLoginLoading(true);
@@ -101,42 +99,18 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
             <Label theme={theme}>Default TikTok Username</Label>
             <input className={inputClass} value={settings.tiktokUsername || ''} onChange={e => set('tiktokUsername', e.target.value)} placeholder="@username" />
           </Section>
-          {/* Server Stats */}
-          <Section title="🖥 Server Status" theme={theme}>
-            <Label theme={theme}>ทรัพยากรที่ backend server (Railway) ใช้อยู่ตอนนี้ — อัพเดตทุก 5 วินาที</Label>
-            {!stats ? (
-              <p className="text-xs text-gray-500 animate-pulse">กำลังโหลด...</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 mt-1">
-                {/* CPU */}
-                <div className={clsx('rounded-lg p-3', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100')}>
-                  <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">CPU</p>
-                  <p className={clsx('text-2xl font-bold tabular-nums', stats.cpu > 70 ? 'text-red-400' : stats.cpu > 40 ? 'text-yellow-400' : 'text-green-400')}>
-                    {stats.cpu}<span className="text-sm font-normal text-gray-500">%</span>
-                  </p>
-                  <div className="mt-2 h-1.5 rounded-full bg-gray-700 overflow-hidden">
-                    <div className={clsx('h-full rounded-full transition-all duration-500', stats.cpu > 70 ? 'bg-red-400' : stats.cpu > 40 ? 'bg-yellow-400' : 'bg-green-400')}
-                      style={{ width: `${stats.cpu}%` }} />
-                  </div>
-                </div>
-                {/* RAM */}
-                <div className={clsx('rounded-lg p-3', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100')}>
-                  <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">RAM (RSS)</p>
-                  <p className={clsx('text-2xl font-bold tabular-nums', stats.ram.rss > 400 ? 'text-red-400' : stats.ram.rss > 200 ? 'text-yellow-400' : 'text-green-400')}>
-                    {stats.ram.rss}<span className="text-sm font-normal text-gray-500"> MB</span>
-                  </p>
-                  <p className="text-[10px] text-gray-500 mt-1">Heap {stats.ram.heapUsed} / {stats.ram.heapTotal} MB</p>
-                </div>
-                {/* Uptime */}
-                <div className={clsx('col-span-2 rounded-lg p-3', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100')}>
-                  <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">Uptime</p>
-                  <p className="text-sm font-semibold text-gray-300">
-                    {Math.floor(stats.uptime / 3600)}h {Math.floor((stats.uptime % 3600) / 60)}m {stats.uptime % 60}s
-                  </p>
-                </div>
+          {/* Browser Tab RAM */}
+          {heapMB !== null && (
+            <Section title="🖥 การใช้งาน RAM (Browser Tab นี้)" theme={theme}>
+              <Label theme={theme}>RAM ที่ ttsam.app ใช้อยู่ใน browser tab นี้ — อัพเดตทุก 5 วินาที</Label>
+              <div className={clsx('rounded-lg p-3 mt-1 flex items-center gap-4', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100')}>
+                <p className={clsx('text-3xl font-bold tabular-nums', heapMB > 300 ? 'text-red-400' : heapMB > 150 ? 'text-yellow-400' : 'text-green-400')}>
+                  {heapMB}<span className="text-sm font-normal text-gray-500"> MB</span>
+                </p>
+                <p className="text-[10px] text-gray-500 leading-relaxed">JS Heap ที่ใช้จริง<br/>วัดเฉพาะ tab นี้เท่านั้น<br/>(รองรับเฉพาะ Chrome)</p>
               </div>
-            )}
-          </Section>
+            </Section>
+          )}
 
           <Section title="Appearance" theme={theme}>
             <Label theme={theme}>Theme</Label>
