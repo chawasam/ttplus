@@ -148,6 +148,36 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const socketRef = useRef(null);
 
+  // ── ฟังเสียง Alert ใน Browser (default OFF) ──
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    try { return localStorage.getItem('ttplus_widgets_audio') === '1'; } catch { return false; }
+  });
+  const audioEnabledRef = useRef(false);
+  useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
+
+  // Web Audio API — เล่น chime เล็กๆ เมื่อมี event
+  const playDing = useCallback((type = 'gift') => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // gift → C5-E5-G5 (สดใส), follow → A4-C5 (อบอุ่น), like → E5 สั้นๆ
+      const freqs = type === 'gift'   ? [523, 659, 784]
+                  : type === 'follow' ? [440, 523]
+                  : [659];
+      let t = ctx.currentTime;
+      freqs.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq; osc.type = 'sine';
+        gain.gain.setValueAtTime(0, t + i * 0.13);
+        gain.gain.linearRampToValueAtTime(0.22, t + i * 0.13 + 0.02);
+        gain.gain.linearRampToValueAtTime(0, t + i * 0.13 + 0.38);
+        osc.start(t + i * 0.13); osc.stop(t + i * 0.13 + 0.42);
+      });
+      setTimeout(() => ctx.close(), 2000);
+    } catch {}
+  }, []);
+
   // ===== React to user prop =====
   useEffect(() => {
     setBaseUrl(window.location.origin);
@@ -156,11 +186,19 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     let mounted = true;
 
     if (user) {
-      // Connect socket for real-time style push
+      // Connect socket for real-time style push + audio alerts
       user.getIdToken().then(token => {
         if (!mounted) return;
         const socket = connectSocket(token);
         socketRef.current = socket;
+
+        // ── Audio alert listeners (ใช้เมื่อ audioEnabled ON) ──
+        const onGift   = () => { if (audioEnabledRef.current) playDing('gift');   };
+        const onFollow = () => { if (audioEnabledRef.current) playDing('follow'); };
+        const onLike   = () => { if (audioEnabledRef.current) playDing('like');   };
+        socket.on('gift',   onGift);
+        socket.on('follow', onFollow);
+        socket.on('like',   onLike);
       });
 
       // Load settings + fetch widget token
@@ -366,6 +404,27 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* ฟังเสียง Alert ใน Browser — default OFF */}
+            {user && (
+              <button
+                onClick={() => {
+                  const next = !audioEnabled;
+                  setAudioEnabled(next);
+                  try { localStorage.setItem('ttplus_widgets_audio', next ? '1' : '0'); } catch {}
+                  if (next) playDing('gift'); // ทดสอบเสียงเมื่อเปิด
+                }}
+                title={audioEnabled ? 'ปิดเสียง Alert บนเบราว์เซอร์นี้' : 'เปิดเสียง Alert บนเบราว์เซอร์นี้'}
+                className={clsx(
+                  'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
+                  audioEnabled
+                    ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                    : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
+                )}
+              >
+                {audioEnabled ? '🔊' : '🔇'}
+                <span className="hidden sm:inline">{audioEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
+              </button>
+            )}
             {!user && (
               <button onClick={() => setShowLoginModal(true)}
                 className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-semibold transition">

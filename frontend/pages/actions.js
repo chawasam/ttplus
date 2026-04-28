@@ -472,6 +472,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
   };
 
   const testTts = () => {
+    if (!audioEnabled) { toast('🔇 เปิดเสียงก่อนนะครับ — กดปุ่ม 🔊 มุมขวาบน', { duration: 2500 }); return; }
     const text = (form.ttsText || 'ทดสอบเสียง')
       .replace('{username}', 'ทดสอบ').replace('{giftname}', 'Rose');
     speak(text);
@@ -1082,7 +1083,7 @@ function fireObsCommands(host, port, action) {
 }
 
 // ── Preview / Test Modal ─────────────────────────────────────────────────────
-function PreviewModal({ action, onClose, obsHost, obsPort }) {
+function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled }) {
   const [visible, setVisible] = useState(false);
   const [obsMsg,  setObsMsg]  = useState('');
   const audioRef = useRef(null);
@@ -1104,8 +1105,8 @@ function PreviewModal({ action, onClose, obsHost, obsPort }) {
       audioRef.current = audio;
     }
 
-    // TTS
-    if (action.types?.includes('read_tts') && action.ttsText) {
+    // TTS — เล่นเฉพาะเมื่อ audioEnabled
+    if (audioEnabled && action.types?.includes('read_tts') && action.ttsText) {
       const text = action.ttsText
         .replace('{username}', 'ทดสอบ')
         .replace('{giftname}', 'Rose')
@@ -1339,6 +1340,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   // Dynamic gift catalog (รวบรวมจาก TikTok live session จริง)
   const [dynamicGifts, setDynamicGifts] = useState([]);
 
+  // ── ฟังเสียงทดสอบ TTS ใน Browser (default OFF) ──
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    try { return localStorage.getItem('ttplus_actions_audio') === '1'; } catch { return false; }
+  });
+
   // ── Load data ──
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -1497,12 +1503,32 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             <h1 className="text-xl font-bold text-white">🎭 ลูกเล่น TT</h1>
             <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live</p>
           </div>
-          {requireLogin && (
-            <button onClick={() => setShowLoginModal(true)}
-              className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg">
-              Login
+          <div className="flex items-center gap-2">
+            {/* ฟังเสียง TTS ทดสอบ ใน Browser */}
+            <button
+              onClick={() => {
+                const next = !audioEnabled;
+                setAudioEnabled(next);
+                try { localStorage.setItem('ttplus_actions_audio', next ? '1' : '0'); } catch {}
+              }}
+              title={audioEnabled ? 'ปิดเสียงทดสอบ TTS' : 'เปิดเสียงทดสอบ TTS'}
+              className={clsx(
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
+                audioEnabled
+                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                  : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
+              )}
+            >
+              {audioEnabled ? '🔊' : '🔇'}
+              <span className="hidden sm:inline">{audioEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
             </button>
-          )}
+            {requireLogin && (
+              <button onClick={() => setShowLoginModal(true)}
+                className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg">
+                Login
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs — scroll แนวนอนบนมือถือ */}
@@ -1880,6 +1906,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           onClose={() => setPreviewAction(null)}
           obsHost={obsHost}
           obsPort={obsPort}
+          audioEnabled={audioEnabled}
         />
       )}
 

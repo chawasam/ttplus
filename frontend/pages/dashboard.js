@@ -100,15 +100,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     try { return localStorage.getItem('ttplus_ac') !== '0'; } catch { return true; }
   });
 
-  // ── Per-device audio toggle ──
-  // default: OFF → เสียงออกเฉพาะเครื่องที่ user เปิดเอง
-  // widget URL ใน OBS จะเป็นตัวเล่นเสียงหลัก ไม่ใช่ dashboard
-  const [audioEnabled, setAudioEnabled] = useState(() => {
-    try { return localStorage.getItem('ttplus_audio_device') === '1'; } catch { return false; }
-  });
-  const audioEnabledRef = useRef(false);
-  // ── TDZ-safe: sync audioEnabledRef หลัง state ถูก declare แล้ว ──
-  useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -219,7 +210,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
       // เล่นเสียง TTS เฉพาะเมื่อ user เปิดเสียงบนเครื่องนี้ไว้
       // (default OFF — ให้ widget URL ใน OBS เป็นตัวเล่นเสียงหลัก)
-      if (s.comment && audioEnabledRef.current) speak(s.comment, 'chat');
+      if (s.comment) speak(s.comment, 'chat');
     });
     socket.on('gift',     (data) => { addEvent(sanitizeEvent(data)); });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
@@ -435,24 +426,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>Dashboard</h1>
           <div className="flex items-center gap-2">
-            {/* Per-device audio toggle — default OFF ให้ widget URL ใน OBS เล่นเสียงแทน */}
-            <button
-              onClick={() => {
-                const next = !audioEnabled;
-                setAudioEnabled(next);
-                try { localStorage.setItem('ttplus_audio_device', next ? '1' : '0'); } catch {}
-              }}
-              title={audioEnabled ? 'เสียงเปิดบนเครื่องนี้ — คลิกเพื่อปิด' : 'เสียงปิดบนเครื่องนี้ — คลิกเพื่อเปิด'}
-              className={clsx(
-                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
-                audioEnabled
-                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                  : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
-              )}
-            >
-              {audioEnabled ? '🔊' : '🔇'}
-              <span className="hidden sm:inline">{audioEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
-            </button>
             <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-400 hover:text-white transition text-lg" aria-label="Toggle theme">
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
