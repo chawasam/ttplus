@@ -194,6 +194,13 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
   });
 
   socket.on('gift', (data) => {
+    // กรอง intermediate streak events ออก — รอเฉพาะ final event เพื่อป้องกัน double-spawn
+    // isStreakable=true (giftType=1) → TikTok ยิงทั้ง intermediate (isRepeatEnd=false) และ final
+    // coinjar ต้องการเฉพาะ final หรือ non-streakable เพื่อนับจำนวนถูกต้อง
+    const isStreakable = !!data.isStreakable;
+    const isRepeatEnd  = !isStreakable || !!data.isRepeatEnd;
+    if (!isRepeatEnd) return; // ข้าม intermediate — รอ final event
+
     const safe     = sanitizeEvent(data);
     const emoji    = getEmoji(safe.giftName || '');
     const imgUrl   = safeTikTokImageUrl(safe.giftPictureUrl) || null;
