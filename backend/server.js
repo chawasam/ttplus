@@ -402,6 +402,10 @@ io.on('connection', (socket) => {
     }
 
     socket.join(`widget_${userId}`);
+    // widget_audio_${userId} — เฉพาะ OBS browser source (widget URL) เท่านั้นที่อยู่ใน room นี้
+    // dashboard socket ไม่ได้ call join_widget → ไม่เข้า room นี้
+    // ใช้สำหรับส่ง events ที่มีเสียง (TTS, alert, fireworks) เฉพาะ widget URL ในอนาคต
+    socket.join(`widget_audio_${userId}`);
     socket.emit('widget_joined', { success: true });
 
     // ── Emit leaderboard state ทันทีที่ widget join ──
