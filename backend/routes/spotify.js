@@ -170,7 +170,10 @@ router.delete('/disconnect', verifyToken, async (req, res) => {
 });
 
 // ── GET /api/spotify/now-playing?uid=xxx OR ?cid=xxx — widget เรียก (public) ──
+// Public endpoint — ต้อง allow * เพราะ OBS / browser ต่างๆ fetch ตรง
 router.get('/now-playing', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.removeHeader('Access-Control-Allow-Credentials'); // * ไม่รองรับ credentials
   const { uid, cid } = req.query;
 
   // resolve uid จาก cid (รองรับ widget URL แบบ cid เหมือน widget อื่น)
