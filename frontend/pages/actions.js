@@ -556,9 +556,21 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
 }
 
 // ── Event Form Modal ─────────────────────────────────────────────────────────
+const EVENT_TABS = [
+  { id: 'trigger', icon: '⚡', label: 'Trigger' },
+  { id: 'who',     icon: '👤', label: 'ผู้ส่ง' },
+  { id: 'actions', icon: '🎬', label: 'Actions' },
+];
+
 function EventModal({ initial, actions, onSave, onClose }) {
-  const [form, setForm] = useState(initial || DEFAULT_EVENT);
+  const [form, setForm] = useState({
+    ...DEFAULT_EVENT,
+    ...(initial || {}),
+    actionIds:       Array.isArray(initial?.actionIds)       ? initial.actionIds       : [],
+    randomActionIds: Array.isArray(initial?.randomActionIds) ? initial.randomActionIds : [],
+  });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const [activeTab, setActiveTab] = useState('trigger');
 
   const toggleActionId = (id, field) => {
     setForm(p => ({
@@ -567,166 +579,274 @@ function EventModal({ initial, actions, onSave, onClose }) {
     }));
   };
 
+  // badge counts สำหรับแสดงบน tab
+  const allCount    = form.actionIds.length;
+  const randomCount = form.randomActionIds.length;
+
+  const renderPanel = () => {
+    switch (activeTab) {
+
+      // ── Trigger tab ────────────────────────────────────────────────────────
+      case 'trigger':
+        return (
+          <div className="space-y-3">
+            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Trigger จากอะไร?</p>
+            <div className="space-y-1">
+              {TRIGGER_LIST.map(t => (
+                <label key={t.id} className={clsx(
+                  'flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
+                  form.trigger === t.id
+                    ? 'border-brand-500 bg-brand-900/30 text-white'
+                    : t.popular
+                      ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
+                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                )}>
+                  <input type="radio" name="trigger" value={t.id} checked={form.trigger === t.id}
+                    onChange={() => set('trigger', t.id)} className="accent-brand-500" />
+                  <span className="flex-1">{t.label}</span>
+                  {t.popular && form.trigger !== t.id && (
+                    <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1.5 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+                  )}
+                </label>
+              ))}
+            </div>
+
+            {/* Trigger params */}
+            {form.trigger === 'command' && (
+              <Input label="Keyword (เช่น !สุ่ม)" value={form.keyword}
+                onChange={v => set('keyword', v)} placeholder="!สุ่ม" />
+            )}
+            {form.trigger === 'gift_min_coins' && (
+              <Input label="จำนวน coins ขั้นต่ำ" value={form.minCoins}
+                onChange={v => set('minCoins', v)} type="number" min={1} />
+            )}
+            {form.trigger === 'specific_gift' && (
+              <div className="space-y-1">
+                <label className="text-xs text-gray-400">เลือก Gift</label>
+                <select value={form.specificGiftName} onChange={e => set('specificGiftName', e.target.value)}
+                  className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full">
+                  <option value="">— เลือก Gift —</option>
+                  {TIKTOK_GIFTS.map(g => (
+                    <option key={g.name} value={g.name}>{g.name} ({g.coins.toLocaleString()} coins)</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500">
+                  ไม่มีในลิสต์?{' '}
+                  <button type="button" className="text-brand-400 underline hover:text-brand-300"
+                    onClick={() => { const c = prompt('ชื่อ Gift (ตรงๆ จาก TikTok):'); if (c?.trim()) set('specificGiftName', c.trim()); }}>
+                    พิมพ์เอง
+                  </button>
+                </p>
+              </div>
+            )}
+            {form.trigger === 'likes' && (
+              <Input label="Like ครบกี่ครั้ง" value={form.likesCount}
+                onChange={v => set('likesCount', v)} type="number" min={1} />
+            )}
+          </div>
+        );
+
+      // ── Who tab ────────────────────────────────────────────────────────────
+      case 'who':
+        return (
+          <div className="space-y-3">
+            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">ใครสามารถ trigger ได้?</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {WHO_LIST.map(w => (
+                <label key={w.id} className={clsx(
+                  'flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
+                  form.whoCanTrigger === w.id
+                    ? 'border-brand-500 bg-brand-900/30 text-white'
+                    : w.popular
+                      ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
+                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                )}>
+                  <input type="radio" name="who" value={w.id} checked={form.whoCanTrigger === w.id}
+                    onChange={() => set('whoCanTrigger', w.id)} className="accent-brand-500" />
+                  <span className="flex-1">{w.label}</span>
+                  {w.popular && form.whoCanTrigger !== w.id && (
+                    <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1.5 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            {form.whoCanTrigger === 'specific_user' && (
+              <Input label="TikTok username" value={form.specificUser}
+                onChange={v => set('specificUser', v)} placeholder="@username" />
+            )}
+          </div>
+        );
+
+      // ── Actions tab ────────────────────────────────────────────────────────
+      case 'actions':
+        return (
+          <div className="space-y-4">
+            {actions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-2">
+                <p className="text-2xl">⚠️</p>
+                <p className="text-sm text-yellow-500">ยังไม่มี Actions — กลับไปสร้าง Action ก่อน</p>
+              </div>
+            ) : (
+              <>
+                {/* ── ทำทั้งหมด ── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide flex-1">
+                      ✅ ทำทั้งหมดที่เลือก
+                    </p>
+                    {allCount > 0 && (
+                      <span className="text-[10px] bg-brand-700/60 text-brand-300 px-1.5 py-0.5 rounded font-medium">
+                        {allCount} รายการ
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-600 mb-2">เมื่อ trigger — ทำ action เหล่านี้ทุกอันพร้อมกัน</p>
+                  <div className="space-y-1">
+                    {actions.map(a => {
+                      const on = form.actionIds.includes(a.id);
+                      return (
+                        <label key={a.id} className={clsx(
+                          'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
+                          on ? 'border-brand-500 bg-brand-900/20 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                        )}>
+                          <span className={clsx(
+                            'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+                            on ? 'bg-brand-600 border-brand-500' : 'border-gray-600'
+                          )}>
+                            {on && <span className="text-white text-[9px] leading-none">✓</span>}
+                          </span>
+                          <input type="checkbox" className="hidden" checked={on}
+                            onChange={() => toggleActionId(a.id, 'actionIds')} />
+                          <span className="flex-1 truncate">{a.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── สุ่ม 1 จาก pool ── */}
+                <div className="border-t border-gray-800 pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide flex-1">
+                      🎲 สุ่ม 1 จาก pool
+                    </p>
+                    {randomCount > 0 && (
+                      <span className="text-[10px] bg-purple-700/60 text-purple-300 px-1.5 py-0.5 rounded font-medium">
+                        pool {randomCount} รายการ
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-600 mb-2">
+                    เพิ่ม action เข้า pool — ระบบจะสุ่มเลือก 1 รายการทุกครั้งที่ trigger
+                    {randomCount >= 2 && (
+                      <span className="text-purple-400 ml-1">
+                        (แต่ละรายการมีโอกาส {Math.round(100 / randomCount)}%)
+                      </span>
+                    )}
+                  </p>
+                  <div className="space-y-1">
+                    {actions.map(a => {
+                      const on = form.randomActionIds.includes(a.id);
+                      return (
+                        <label key={a.id} className={clsx(
+                          'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
+                          on ? 'border-purple-500 bg-purple-900/20 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                        )}>
+                          <span className={clsx(
+                            'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+                            on ? 'bg-purple-600 border-purple-500' : 'border-gray-600'
+                          )}>
+                            {on && <span className="text-white text-[9px] leading-none">✓</span>}
+                          </span>
+                          <input type="checkbox" className="hidden" checked={on}
+                            onChange={() => toggleActionId(a.id, 'randomActionIds')} />
+                          <span className="flex-1 truncate">{a.name}</span>
+                          {on && randomCount >= 2 && (
+                            <span className="text-[10px] text-purple-400 shrink-0">
+                              ~{Math.round(100 / randomCount)}%
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+
+      default: return null;
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-5 space-y-4 my-4">
-        <div className="flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
           <h3 className="text-white font-bold text-base">{initial?.id ? 'แก้ไข Event' : 'สร้าง Event ใหม่'}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
         </div>
 
-        {/* Who */}
-        <div>
-          <p className="text-xs text-gray-400 mb-2">ใครสามารถ trigger ได้?</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {WHO_LIST.map(w => (
-              <label key={w.id} className={clsx(
-                'flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-sm transition-colors',
-                form.whoCanTrigger === w.id
-                  ? 'border-brand-500 bg-brand-900/30 text-white'
-                  : w.popular
-                    ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
-                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
-              )}>
-                <input type="radio" name="who" value={w.id} checked={form.whoCanTrigger === w.id}
-                  onChange={() => set('whoCanTrigger', w.id)} className="accent-brand-500" />
-                <span className="flex-1">{w.label}</span>
-                {w.popular && form.whoCanTrigger !== w.id && (
-                  <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
-                )}
-              </label>
-            ))}
-          </div>
-          {form.whoCanTrigger === 'specific_user' && (
-            <Input className="mt-2" label="TikTok username" value={form.specificUser}
-              onChange={v => set('specificUser', v)} placeholder="@username" />
-          )}
-        </div>
+        {/* Body: sidebar ซ้าย + content ขวา */}
+        <div className="flex flex-1 min-h-0">
 
-        {/* Trigger */}
-        <div>
-          <p className="text-xs text-gray-400 mb-2">Trigger จากอะไร?</p>
-          <div className="space-y-1.5">
-            {TRIGGER_LIST.map(t => (
-              <label key={t.id} className={clsx(
-                'flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-sm transition-colors',
-                form.trigger === t.id
-                  ? 'border-brand-500 bg-brand-900/30 text-white'
-                  : t.popular
-                    ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
-                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
-              )}>
-                <input type="radio" name="trigger" value={t.id} checked={form.trigger === t.id}
-                  onChange={() => set('trigger', t.id)} className="accent-brand-500" />
-                <span className="flex-1">{t.label}</span>
-                {t.popular && form.trigger !== t.id && (
-                  <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+          {/* Sidebar ซ้าย */}
+          <div className="w-36 shrink-0 border-r border-gray-800 flex flex-col pt-2">
+            {EVENT_TABS.map(tab => {
+              const badge = tab.id === 'actions'
+                ? (allCount + randomCount) || null
+                : null;
+              return (
+                <div key={tab.id}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-3 cursor-pointer select-none transition-colors text-sm border-l-2',
+                    activeTab === tab.id
+                      ? 'border-brand-500 bg-brand-900/30 text-white'
+                      : 'border-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
+                  )}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span>{tab.icon}</span>
+                  <span className="flex-1">{tab.label}</span>
+                  {badge && (
+                    <span className="text-[10px] bg-brand-700/70 text-brand-200 px-1.5 py-0.5 rounded-full font-medium">
+                      {badge}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Summary ด้านล่าง sidebar */}
+            {(allCount > 0 || randomCount > 0) && (
+              <div className="mt-auto mx-2 mb-3 p-2 rounded-lg bg-gray-800/60 border border-gray-700 space-y-1">
+                {allCount > 0 && (
+                  <p className="text-[10px] text-gray-400">✅ ทำ {allCount} รายการ</p>
                 )}
-              </label>
-            ))}
+                {randomCount > 0 && (
+                  <p className="text-[10px] text-gray-400">🎲 สุ่มจาก {randomCount} รายการ</p>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Trigger params */}
-          {form.trigger === 'command' && (
-            <Input className="mt-2" label="Keyword (เช่น !สุ่ม)" value={form.keyword}
-              onChange={v => set('keyword', v)} placeholder="!สุ่ม" />
-          )}
-          {form.trigger === 'gift_min_coins' && (
-            <Input className="mt-2" label="จำนวน coins ขั้นต่ำ" value={form.minCoins}
-              onChange={v => set('minCoins', v)} type="number" min={1} />
-          )}
-          {form.trigger === 'specific_gift' && (
-            <div className="mt-2 flex flex-col gap-1">
-              <label className="text-xs text-gray-400">เลือก Gift</label>
-              <select
-                value={form.specificGiftName}
-                onChange={e => set('specificGiftName', e.target.value)}
-                className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
-              >
-                <option value="">— เลือก Gift —</option>
-                {TIKTOK_GIFTS.map(g => (
-                  <option key={g.name} value={g.name}>
-                    {g.name}  ({g.coins.toLocaleString()} coins)
-                  </option>
-                ))}
-              </select>
-              {form.specificGiftName && (
-                <p className="text-[10px] text-gray-500 mt-0.5">
-                  หรือพิมพ์ชื่อเองถ้าไม่มีในลิสต์ →{' '}
-                  <button
-                    type="button"
-                    className="text-brand-400 underline hover:text-brand-300"
-                    onClick={() => {
-                      const custom = prompt('ชื่อ Gift (พิมพ์ตรงๆ จาก TikTok):');
-                      if (custom?.trim()) set('specificGiftName', custom.trim());
-                    }}
-                  >
-                    พิมพ์เอง
-                  </button>
-                </p>
-              )}
-              {!form.specificGiftName && (
-                <p className="text-[10px] text-gray-500 mt-0.5">
-                  ไม่มีในลิสต์?{' '}
-                  <button
-                    type="button"
-                    className="text-brand-400 underline hover:text-brand-300"
-                    onClick={() => {
-                      const custom = prompt('ชื่อ Gift (พิมพ์ตรงๆ จาก TikTok):');
-                      if (custom?.trim()) set('specificGiftName', custom.trim());
-                    }}
-                  >
-                    พิมพ์เอง
-                  </button>
-                </p>
-              )}
-            </div>
-          )}
-          {form.trigger === 'likes' && (
-            <Input className="mt-2" label="Like ครบกี่ครั้ง" value={form.likesCount}
-              onChange={v => set('likesCount', v)} type="number" min={1} />
-          )}
+          {/* Content ขวา */}
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {renderPanel()}
+          </div>
         </div>
 
-        {/* Actions to trigger */}
-        {actions.length === 0 ? (
-          <p className="text-xs text-yellow-500">⚠️ ยังไม่มี Actions — สร้าง Action ก่อน</p>
-        ) : (
-          <>
-            <div>
-              <p className="text-xs text-gray-400 mb-2">Trigger ทั้งหมดนี้ (เลือกได้หลายอย่าง)</p>
-              <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                {actions.map(a => (
-                  <label key={a.id} className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.actionIds.includes(a.id)}
-                      onChange={() => toggleActionId(a.id, 'actionIds')} className="accent-brand-500" />
-                    <span className="text-sm text-gray-300">{a.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-2">Trigger แบบสุ่ม 1 อัน (เลือกได้หลายอย่าง)</p>
-              <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                {actions.map(a => (
-                  <label key={a.id} className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.randomActionIds.includes(a.id)}
-                      onChange={() => toggleActionId(a.id, 'randomActionIds')} className="accent-brand-500" />
-                    <span className="text-sm text-gray-300">{a.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="flex gap-2 pt-1">
+        {/* Footer */}
+        <div className="flex gap-2 px-5 py-4 border-t border-gray-800 shrink-0">
           <button onClick={() => onSave(form)}
-            className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded py-2 text-sm font-medium">
+            className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded py-2 text-sm font-medium transition-colors">
             ✓ บันทึก
           </button>
           <button onClick={onClose}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded py-2 text-sm">
+            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded py-2 text-sm transition-colors">
             ยกเลิก
           </button>
         </div>
