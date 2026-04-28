@@ -1,5 +1,12 @@
 // widget/nowplaying.js — Spotify Now Playing Overlay สำหรับ OBS
-// URL params: ?cid=xxx &style=glass|eq|notes|vinyl|aurora|neon|cassette|pulse|particles|spectrum &fade=0|1
+// URL params: ?cid=xxx &style=glass|eq|notes|vinyl|aurora|neon|cassette|pulse|particles|spectrum|simple
+//             &fade=0|1
+//             &fontSize=13           (ขนาดตัวอักษร title, px, ค่าเริ่มต้น 13)
+//             &titleColor=ffffff     (สี title — hex ไม่ต้องใส่ #)
+//             &artistColor=ffffff99  (สี artist — hex ไม่ต้องใส่ #)
+//             &marquee=1             (ตัวหนังสือวิ่ง, 0=off)
+//             &marqueeSpeed=8        (วินาทีต่อรอบ, ค่าเริ่มต้น 8)
+//             &marqueeDir=left|right (ทิศทางวิ่ง, ค่าเริ่มต้น left)
 import { useEffect, useState, useRef } from 'react';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 
@@ -24,6 +31,8 @@ const BASE_CSS = `
   @keyframes particleFloat { 0%{transform:translateY(0) scale(1);opacity:.85} 100%{transform:translateY(-84px) scale(.15);opacity:0} }
   @keyframes reelSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
   @keyframes reelSpinR { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
+  @keyframes marqueeLeft  { 0%{transform:translateX(0)}    100%{transform:translateX(-50%)} }
+  @keyframes marqueeRight { 0%{transform:translateX(-50%)} 100%{transform:translateX(0)}    }
 `;
 
 const DEMO_TRACK = {
@@ -36,11 +45,76 @@ const DEMO_TRACK = {
   progressMs: 80000,
 };
 
+// ── Color parser ───────────────────────────────────────────────────────────────
+function parseColor(raw, def) {
+  if (!raw) return def;
+  if (raw.startsWith('#') || raw.startsWith('rgb')) return raw;
+  if (/^[0-9a-fA-F]{3,8}$/.test(raw)) return `#${raw}`;
+  return def;
+}
+
+// ── DEFAULT cfg ───────────────────────────────────────────────────────────────
+const DEFAULT_CFG = {
+  style: 'glass', fade: true,
+  fontSize: 13, titleColor: '#fff', artistColor: 'rgba(255,255,255,0.6)',
+  marquee: false, marqueeSpeed: 8, marqueeDir: 'left',
+};
+
+// ── Text helpers with marquee support ─────────────────────────────────────────
+
+function TitleText({ text, cfg, extra = {} }) {
+  const style = {
+    color: cfg.titleColor,
+    fontSize: cfg.fontSize,
+    fontWeight: 700,
+    margin: 0,
+    lineHeight: 1.3,
+    ...extra,
+  };
+  if (cfg.marquee) {
+    const anim = cfg.marqueeDir === 'right' ? 'marqueeRight' : 'marqueeLeft';
+    return (
+      <div style={{ overflow: 'hidden', width: '100%' }}>
+        <div style={{ display: 'inline-flex', animation: `${anim} ${cfg.marqueeSpeed}s linear infinite`, whiteSpace: 'nowrap' }}>
+          <span style={{ ...style, paddingRight: '3em' }}>{text}</span>
+          <span style={{ ...style, paddingRight: '3em' }}>{text}</span>
+        </div>
+      </div>
+    );
+  }
+  return <p style={{ ...style, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</p>;
+}
+
+function ArtistText({ text, cfg, extra = {} }) {
+  const fontSize = Math.max(9, cfg.fontSize - 2);
+  const style = {
+    color: cfg.artistColor,
+    fontSize,
+    fontWeight: 400,
+    ...extra,
+  };
+  if (cfg.marquee) {
+    const anim   = cfg.marqueeDir === 'right' ? 'marqueeRight' : 'marqueeLeft';
+    const speed  = cfg.marqueeSpeed * 1.3;
+    return (
+      <div style={{ overflow: 'hidden', width: '100%', marginTop: 3 }}>
+        <div style={{ display: 'inline-flex', animation: `${anim} ${speed}s linear infinite`, whiteSpace: 'nowrap' }}>
+          <span style={{ ...style, paddingRight: '3em' }}>{text}</span>
+          <span style={{ ...style, paddingRight: '3em' }}>{text}</span>
+        </div>
+      </div>
+    );
+  }
+  return <p style={{ ...style, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</p>;
+}
+
+// ── Main Widget ───────────────────────────────────────────────────────────────
+
 export default function NowPlayingWidget() {
   const [track,   setTrack]   = useState(null);
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [cfg,     setCfg]     = useState({ style: 'glass', fade: true });
+  const [cfg,     setCfg]     = useState(DEFAULT_CFG);
   const prevIdRef = useRef('');
   const timerRef  = useRef(null);
 
@@ -50,7 +124,16 @@ export default function NowPlayingWidget() {
     const cid   = p.get('cid') || p.get('uid'); // รองรับ cid (ใหม่) และ uid (เก่า)
     const style = p.get('style') || 'glass';
     const fade  = p.get('fade') !== '0';
-    setCfg({ style, fade });
+
+    // text customization
+    const fontSize     = Math.max(8, Math.min(36, parseInt(p.get('fontSize') || '13', 10)));
+    const titleColor   = parseColor(p.get('titleColor'), '#fff');
+    const artistColor  = parseColor(p.get('artistColor'), 'rgba(255,255,255,0.6)');
+    const marquee      = p.get('marquee') === '1';
+    const marqueeSpeed = Math.max(2, parseFloat(p.get('marqueeSpeed') || '8'));
+    const marqueeDir   = p.get('marqueeDir') === 'right' ? 'right' : 'left';
+
+    setCfg({ style, fade, fontSize, titleColor, artistColor, marquee, marqueeSpeed, marqueeDir });
 
     if (p.get('preview') === '1') {
       setTrack(DEMO_TRACK);
@@ -98,6 +181,7 @@ export default function NowPlayingWidget() {
           const s = newStyle?.style;
           const f = newStyle?.fade;
           setCfg(prev => ({
+            ...prev,  // preserve fontSize, titleColor, marquee etc. from URL
             style: s || prev.style,
             fade:  f !== undefined ? f !== '0' && f !== 0 : prev.fade,
           }));
@@ -129,17 +213,17 @@ export default function NowPlayingWidget() {
 
   const inner = (() => {
     switch (cfg.style) {
-      case 'eq':        return <StyleEQ        track={track} />;
-      case 'notes':     return <StyleNotes     track={track} />;
-      case 'vinyl':     return <StyleVinyl     track={track} />;
-      case 'aurora':    return <StyleAurora    track={track} />;
-      case 'neon':      return <StyleNeon      track={track} />;
-      case 'cassette':  return <StyleCassette  track={track} />;
-      case 'pulse':     return <StylePulse     track={track} />;
-      case 'particles': return <StyleParticles track={track} />;
-      case 'spectrum':  return <StyleSpectrum  track={track} />;
-      case 'simple':    return <StyleSimple    track={track} />;
-      default:          return <StyleGlass     track={track} />;
+      case 'eq':        return <StyleEQ        track={track} cfg={cfg} />;
+      case 'notes':     return <StyleNotes     track={track} cfg={cfg} />;
+      case 'vinyl':     return <StyleVinyl     track={track} cfg={cfg} />;
+      case 'aurora':    return <StyleAurora    track={track} cfg={cfg} />;
+      case 'neon':      return <StyleNeon      track={track} cfg={cfg} />;
+      case 'cassette':  return <StyleCassette  track={track} cfg={cfg} />;
+      case 'pulse':     return <StylePulse     track={track} cfg={cfg} />;
+      case 'particles': return <StyleParticles track={track} cfg={cfg} />;
+      case 'spectrum':  return <StyleSpectrum  track={track} cfg={cfg} />;
+      case 'simple':    return <StyleSimple    track={track} cfg={cfg} />;
+      default:          return <StyleGlass     track={track} cfg={cfg} />;
     }
   })();
 
@@ -222,7 +306,7 @@ function EQBars({ count, playing, gradient }) {
 }
 
 // ── Style 1: Glass ────────────────────────────────────────────────────────────
-function StyleGlass({ track }) {
+function StyleGlass({ track, cfg }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 12,
@@ -238,13 +322,9 @@ function StyleGlass({ track }) {
       <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
           <MiniEQBars playing={track.playing} />
-          <p style={{ color: '#fff', fontSize: 13, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
-            {track.title}
-          </p>
+          <TitleText text={track.title} cfg={cfg} />
         </div>
-        <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 11, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {track.artist}
-        </p>
+        <ArtistText text={track.artist} cfg={cfg} />
       </div>
       <SpotifyLogo />
     </div>
@@ -252,7 +332,7 @@ function StyleGlass({ track }) {
 }
 
 // ── Style 2: EQ Bars ─────────────────────────────────────────────────────────
-function StyleEQ({ track }) {
+function StyleEQ({ track, cfg }) {
   return (
     <div style={{
       position: 'relative', width: 380, height: 88,
@@ -269,12 +349,8 @@ function StyleEQ({ track }) {
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
         <AlbumArt src={track.albumArt} size={60} radius={6} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <p style={{ color: '#fff', fontSize: 14, fontWeight: 800, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: '0 1px 8px rgba(0,0,0,.8)' }}>
-            {track.title}
-          </p>
-          <p style={{ color: 'rgba(255,255,255,.7)', fontSize: 11, margin: '3px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.artist}
-          </p>
+          <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 800, textShadow: '0 1px 8px rgba(0,0,0,.8)' }} />
+          <ArtistText text={track.artist} cfg={cfg} />
         </div>
         <SpotifyLogo />
       </div>
@@ -283,7 +359,7 @@ function StyleEQ({ track }) {
 }
 
 // ── Style 3: Falling Notes ────────────────────────────────────────────────────
-function StyleNotes({ track }) {
+function StyleNotes({ track, cfg }) {
   const NOTE_CHARS = ['♩','♪','♫','♬','🎵','🎶'];
   const notes = Array.from({ length: 14 }, (_, i) => {
     const s = (i * 137 + 23) % 100;
@@ -315,12 +391,8 @@ function StyleNotes({ track }) {
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
         <AlbumArt src={track.albumArt} size={58} radius={8} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.title}
-          </p>
-          <p style={{ color: 'rgba(255,255,255,.65)', fontSize: 11, margin: '3px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.artist}
-          </p>
+          <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 700 }} />
+          <ArtistText text={track.artist} cfg={cfg} />
         </div>
         <SpotifyLogo />
       </div>
@@ -329,7 +401,7 @@ function StyleNotes({ track }) {
 }
 
 // ── Style 4: Vinyl Record ─────────────────────────────────────────────────────
-function StyleVinyl({ track }) {
+function StyleVinyl({ track, cfg }) {
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', fontFamily: 'system-ui,sans-serif', userSelect: 'none', gap: 10 }}>
       {/* Vinyl disc */}
@@ -372,16 +444,17 @@ function StyleVinyl({ track }) {
         borderRadius: 10, padding: '7px 18px',
         textAlign: 'center', minWidth: 170, maxWidth: 220,
         border: '1px solid rgba(255,255,255,0.08)',
+        overflow: 'hidden',
       }}>
-        <p style={{ color: '#fff', fontSize: 13, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</p>
-        <p style={{ color: 'rgba(255,255,255,.58)', fontSize: 11, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.artist}</p>
+        <TitleText text={track.title} cfg={cfg} extra={{ textAlign: 'center' }} />
+        <ArtistText text={track.artist} cfg={cfg} extra={{ textAlign: 'center' }} />
       </div>
     </div>
   );
 }
 
 // ── Style 5: Aurora ───────────────────────────────────────────────────────────
-function StyleAurora({ track }) {
+function StyleAurora({ track, cfg }) {
   return (
     <div style={{
       position: 'relative', width: 380, height: 88,
@@ -403,12 +476,8 @@ function StyleAurora({ track }) {
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
         <AlbumArt src={track.albumArt} size={60} radius={8} extra={{ boxShadow: '0 2px 14px rgba(0,0,0,.6)' }} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: '0 1px 8px rgba(0,0,0,.6)' }}>
-            {track.title}
-          </p>
-          <p style={{ color: 'rgba(255,255,255,.7)', fontSize: 11, margin: '3px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.artist}
-          </p>
+          <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 700, textShadow: '0 1px 8px rgba(0,0,0,.6)' }} />
+          <ArtistText text={track.artist} cfg={cfg} />
         </div>
         <SpotifyLogo />
       </div>
@@ -417,7 +486,7 @@ function StyleAurora({ track }) {
 }
 
 // ── Style 6: Neon Club ────────────────────────────────────────────────────────
-function StyleNeon({ track }) {
+function StyleNeon({ track, cfg }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 12,
@@ -430,12 +499,8 @@ function StyleNeon({ track }) {
     }}>
       <AlbumArt src={track.albumArt} size={56} radius={6} extra={{ filter: 'brightness(1.05) saturate(1.15)' }} />
       <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <p style={{ color: '#fff', fontSize: 13, fontWeight: 800, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', animation: 'neonText 2.2s ease-in-out infinite' }}>
-          {track.title}
-        </p>
-        <p style={{ color: '#1DB954', fontSize: 11, margin: '4px 0 5px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', opacity: .85 }}>
-          {track.artist}
-        </p>
+        <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 800, animation: 'neonText 2.2s ease-in-out infinite' }} />
+        <ArtistText text={track.artist} cfg={cfg} extra={{ marginBottom: 5 }} />
         <MiniEQBars playing={track.playing} />
       </div>
       <SpotifyLogo />
@@ -444,7 +509,7 @@ function StyleNeon({ track }) {
 }
 
 // ── Style 7: Cassette ─────────────────────────────────────────────────────────
-function StyleCassette({ track }) {
+function StyleCassette({ track, cfg }) {
   return (
     <div style={{
       width: 320, borderRadius: 14,
@@ -458,14 +523,19 @@ function StyleCassette({ track }) {
         background: 'linear-gradient(130deg,#e85d20,#f7931e 50%,#ffd040)',
         borderRadius: 8, padding: '7px 10px', marginBottom: 12,
         display: 'flex', alignItems: 'center', gap: 8,
+        overflow: 'hidden',
       }}>
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <p style={{ color: '#1a0800', fontSize: 11, fontWeight: 900, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', letterSpacing: 1, fontFamily: 'system-ui,sans-serif' }}>
-            ♫ {track.title.toUpperCase()}
-          </p>
-          <p style={{ color: 'rgba(26,8,0,.72)', fontSize: 9, margin: '2px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', fontFamily: 'system-ui,sans-serif' }}>
-            {track.artist}
-          </p>
+          <TitleText
+            text={`♫ ${track.title.toUpperCase()}`}
+            cfg={cfg}
+            extra={{ fontWeight: 900, letterSpacing: 1, fontFamily: 'system-ui,sans-serif' }}
+          />
+          <ArtistText
+            text={track.artist}
+            cfg={cfg}
+            extra={{ fontFamily: 'system-ui,sans-serif' }}
+          />
         </div>
         {track.albumArt && (
           <img src={track.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 4, objectFit: 'cover', flexShrink: 0, boxShadow: '0 1px 5px rgba(0,0,0,.4)' }} />
@@ -513,7 +583,7 @@ function StyleCassette({ track }) {
 }
 
 // ── Style 8: Pulse Rings ──────────────────────────────────────────────────────
-function StylePulse({ track }) {
+function StylePulse({ track, cfg }) {
   return (
     <div style={{
       position: 'relative', width: 210, height: 210,
@@ -546,20 +616,17 @@ function StylePulse({ track }) {
         backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
         borderRadius: 9, padding: '6px 12px',
         border: '1px solid rgba(255,255,255,0.07)',
+        overflow: 'hidden',
       }}>
-        <p style={{ color: '#fff', fontSize: 12, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {track.title}
-        </p>
-        <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 10, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {track.artist}
-        </p>
+        <TitleText text={track.title} cfg={cfg} extra={{ textAlign: 'center' }} />
+        <ArtistText text={track.artist} cfg={cfg} extra={{ textAlign: 'center' }} />
       </div>
     </div>
   );
 }
 
 // ── Style 9: Particles ────────────────────────────────────────────────────────
-function StyleParticles({ track }) {
+function StyleParticles({ track, cfg }) {
   const pts = Array.from({ length: 18 }, (_, i) => {
     const s = (i * 137 + 23) % 100;
     return {
@@ -592,12 +659,8 @@ function StyleParticles({ track }) {
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
         <AlbumArt src={track.albumArt} size={58} radius={8} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.title}
-          </p>
-          <p style={{ color: 'rgba(255,255,255,.65)', fontSize: 11, margin: '3px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.artist}
-          </p>
+          <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 700 }} />
+          <ArtistText text={track.artist} cfg={cfg} />
         </div>
         <SpotifyLogo />
       </div>
@@ -606,7 +669,7 @@ function StyleParticles({ track }) {
 }
 
 // ── Style 10: Spectrum ────────────────────────────────────────────────────────
-function StyleSpectrum({ track }) {
+function StyleSpectrum({ track, cfg }) {
   const progress = track.durationMs ? Math.min(1, track.progressMs / track.durationMs) : 0;
   return (
     <div style={{
@@ -620,12 +683,8 @@ function StyleSpectrum({ track }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 6px' }}>
         <AlbumArt src={track.albumArt} size={52} radius={6} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <p style={{ color: '#fff', fontSize: 13, fontWeight: 700, margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.title}
-          </p>
-          <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 11, margin: '2px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {track.artist}
-          </p>
+          <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 700 }} />
+          <ArtistText text={track.artist} cfg={cfg} />
         </div>
         <SpotifyLogo />
       </div>
@@ -646,7 +705,7 @@ function StyleSpectrum({ track }) {
 }
 
 // ── Style 11: Simple ─────────────────────────────────────────────────────────
-function StyleSimple({ track }) {
+function StyleSimple({ track, cfg }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 12,
@@ -660,12 +719,8 @@ function StyleSimple({ track }) {
     }}>
       <AlbumArt src={track.albumArt} size={60} radius={8} />
       <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <p style={{ color: '#fff', fontSize: 14, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
-          {track.title}
-        </p>
-        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {track.artist}
-        </p>
+        <TitleText text={track.title} cfg={cfg} extra={{ fontWeight: 700 }} />
+        <ArtistText text={track.artist} cfg={cfg} />
       </div>
     </div>
   );
