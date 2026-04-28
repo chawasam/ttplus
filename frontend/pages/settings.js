@@ -17,6 +17,7 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   const [settings, setSettings]       = useState({ tiktokUsername: '' });
   const [heapMB, setHeapMB]           = useState(null);
   const [spotifyConnected, setSpotifyConnected] = useState(false);
+  const [spotifyAccount,  setSpotifyAccount]  = useState(''); // displayName
 
   useEffect(() => {
     if (!user) return;
@@ -38,9 +39,18 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   // ── Spotify status ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
-    api.get('/api/spotify/status').then(r => setSpotifyConnected(r.data.connected)).catch(() => {});
+    api.get('/api/spotify/status').then(r => {
+      setSpotifyConnected(r.data.connected);
+      if (r.data.connected) setSpotifyAccount(r.data.displayName || '');
+    }).catch(() => {});
     // รับ message จาก popup เมื่อ connect สำเร็จ
-    const onMsg = (e) => { if (e.data === 'spotify_connected') setSpotifyConnected(true); };
+    const onMsg = (e) => {
+      if (e.data === 'spotify_connected') {
+        setSpotifyConnected(true);
+        // ดึงชื่อบัญชีใหม่หลัง connect
+        api.get('/api/spotify/status').then(r => setSpotifyAccount(r.data.displayName || '')).catch(() => {});
+      }
+    };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
   }, [user]);
@@ -145,15 +155,20 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
             ) : spotifyConnected ? (
               /* connect แล้ว */
               <div className="mt-2 space-y-2">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="flex items-center gap-1.5 text-xs text-green-400 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-                    เชื่อมต่อแล้ว — Widget พร้อมแสดงเพลง
+                    <span className="w-2 h-2 rounded-full bg-green-400 inline-block animate-pulse" />
+                    เชื่อมต่อแล้ว
                   </span>
+                  {spotifyAccount ? (
+                    <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', theme === 'dark' ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700')}>
+                      🎵 {spotifyAccount}
+                    </span>
+                  ) : null}
                   <button
                     onClick={disconnectSpotify}
                     className="text-xs text-gray-500 hover:text-red-400 transition underline">
-                    ยกเลิกการเชื่อมต่อ
+                    ยกเลิก
                   </button>
                 </div>
                 <p className={clsx('text-[10px]', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>

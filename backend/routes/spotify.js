@@ -85,39 +85,82 @@ router.get('/auth', async (req, res) => {
   res.redirect(url.toString());
 });
 
+// ── helper — HTML page สำหรับ popup (ปิดอัตโนมัติ + fallback message) ─────────
+function popupPage({ success, accountName = '', errorMsg = '' }) {
+  const color  = success ? '#1DB954' : '#f87171';
+  const icon   = success ? '✅' : '❌';
+  const title  = success ? 'เชื่อมต่อ Spotify สำเร็จ!' : 'เกิดข้อผิดพลาด';
+  const sub    = success && accountName ? `บัญชี: <strong>${accountName}</strong>` : (errorMsg || '');
+  const event  = success ? 'spotify_connected' : 'spotify_error';
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;color:#e5e7eb;font-family:system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100vh;text-align:center;gap:10px}
+.icon{font-size:52px}.title{font-size:18px;font-weight:700;color:${color}}
+.sub{font-size:13px;color:#9ca3af}.note{font-size:11px;color:#374151;margin-top:16px}</style>
+</head><body>
+<div class="icon">${icon}</div>
+<div class="title">${title}</div>
+${sub ? `<div class="sub">${sub}</div>` : ''}
+<div class="note">ปิดหน้าต่างนี้ได้เลย</div>
+<script>
+  try{if(window.opener)window.opener.postMessage('${event}','*');}catch(e){}
+  setTimeout(function(){try{window.close();}catch(e){}},1200);
+</script>
+</body></html>`;
+}
+
 // ── GET /api/spotify/callback — รับ code แลก token ──────────────────────────
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  if (error || !code || !state) return res.send('<script>window.close();</script>');
+  if (error || !code || !state) {
+    return res.send(popupPage({ success: false, errorMsg: error === 'access_denied' ? 'ยกเลิกการเชื่อมต่อ' : 'ไม่ได้รับ authorization code' }));
+  }
 
   try {
     const uid = Buffer.from(state, 'base64').toString('utf8');
+
+    // แลก code → tokens
     const tokenRes = await axios.post('https://accounts.spotify.com/api/token',
       new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI }),
       { headers: { Authorization: spotifyAuthHeader(), 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
     const { access_token, refresh_token, expires_in } = tokenRes.data;
+
+    // ดึง Spotify profile เพื่อเก็บชื่อบัญชี
+    let displayName = '';
+    let spotifyId   = '';
+    try {
+      const meRes = await axios.get('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+      displayName = meRes.data.display_name || meRes.data.id || '';
+      spotifyId   = meRes.data.id || '';
+    } catch { /* ไม่ critical */ }
+
     await db().collection('spotify_tokens').doc(uid).set({
       accessToken:  access_token,
       refreshToken: refresh_token,
       expiresAt:    Date.now() + (expires_in - 60) * 1000,
       connectedAt:  Date.now(),
+      displayName,
+      spotifyId,
     });
-    // ปิดหน้าต่างและแจ้ง parent
-    res.send(`<script>
-      if(window.opener) window.opener.postMessage('spotify_connected','*');
-      window.close();
-    </script>`);
+
+    res.send(popupPage({ success: true, accountName: displayName }));
   } catch (e) {
-    console.error('[Spotify] callback error:', e?.message);
-    res.send('<script>window.close();</script>');
+    console.error('[Spotify] callback error:', e?.response?.data || e?.message);
+    res.send(popupPage({ success: false, errorMsg: 'token exchange ล้มเหลว — กรุณาลองใหม่' }));
   }
 });
 
-// ── GET /api/spotify/status — ตรวจสอบว่า connect แล้วหรือยัง ────────────────
+// ── GET /api/spotify/status — ตรวจสอบว่า connect แล้วหรือยัง + ชื่อบัญชี ────
 router.get('/status', verifyToken, async (req, res) => {
   const doc = await db().collection('spotify_tokens').doc(req.user.uid).get();
-  res.json({ connected: doc.exists });
+  if (!doc.exists) return res.json({ connected: false });
+  const { displayName, spotifyId, connectedAt } = doc.data();
+  res.json({ connected: true, displayName: displayName || '', spotifyId: spotifyId || '', connectedAt: connectedAt || null });
 });
 
 // ── DELETE /api/spotify/disconnect — ยกเลิกการเชื่อมต่อ ─────────────────────
