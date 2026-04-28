@@ -577,7 +577,7 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setSkinTab(tab.id)}
+                onClick={() => { setSkinTab(tab.id); if (tab.id === 'none') set('skin', ''); }}
                 className={clsx(
                   'px-2.5 py-1 rounded-lg text-xs font-semibold transition border',
                   skinTab === tab.id
