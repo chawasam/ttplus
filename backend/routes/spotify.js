@@ -44,8 +44,37 @@ async function getValidToken(uid) {
 }
 
 // ── GET /api/spotify/auth — redirect ไป Spotify OAuth ───────────────────────
-router.get('/auth', verifyToken, (req, res) => {
-  const uid   = req.user.uid;
+// รองรับ 2 วิธีส่ง Firebase token:
+//   1. Authorization: Bearer <token>  (axios / API call ปกติ)
+//   2. ?t=<token>                     (window.open ไม่สามารถส่ง header ได้)
+router.get('/auth', async (req, res) => {
+  let uid;
+
+  // ── วิธีที่ 1: Authorization header (API call) ──
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1], true);
+      uid = decoded.uid;
+    } catch {
+      return res.status(401).send('<script>window.close();</script>');
+    }
+  }
+
+  // ── วิธีที่ 2: ?t= query param (window.open redirect flow) ──
+  if (!uid && req.query.t) {
+    const qt = String(req.query.t);
+    if (qt.length > 4096) return res.status(401).send('<script>window.close();</script>');
+    try {
+      const decoded = await admin.auth().verifyIdToken(qt, true);
+      uid = decoded.uid;
+    } catch {
+      return res.status(401).send('<script>window.close();</script>');
+    }
+  }
+
+  if (!uid) return res.status(401).send('<script>window.close();</script>');
+
   const state = Buffer.from(uid).toString('base64');
   const url   = new URL('https://accounts.spotify.com/authorize');
   url.searchParams.set('response_type', 'code');
