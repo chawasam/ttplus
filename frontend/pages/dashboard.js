@@ -74,7 +74,11 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   const socketRef            = useRef(null);
   const wasConnectedRef      = useRef(false); // true = เคย connect TikTok ในรอบนี้
-  const manualDisconnectRef  = useRef(false); // true = user กด disconnect เอง
+  // manualDisconnectRef: persist ผ่าน sessionStorage เพื่อป้องกัน auto-connect ยิงหลัง refresh
+  // (sessionStorage หายเมื่อปิด tab — behavior ที่ต้องการ)
+  const manualDisconnectRef  = useRef(
+    typeof window !== 'undefined' && sessionStorage.getItem('ttplus_manual_dc') === '1'
+  );
   const tiktokUsernameRef    = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
   const autoConnectDoneRef   = useRef(false); // ป้องกัน auto-connect ซ้ำในรอบเดียวกัน
   const [autoConnect, setAutoConnect] = useState(() => {
@@ -323,6 +327,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     const cleanUsername = rawUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
     if (!cleanUsername) { toast.error('Username ไม่ถูกต้อง (ใช้ได้เฉพาะ a-z, 0-9, . และ _)'); return; }
     manualDisconnectRef.current = false; // user กด connect เอง — อนุญาต auto-reconnect
+    try { sessionStorage.removeItem('ttplus_manual_dc'); } catch {}
     setConnecting(true);
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
@@ -353,6 +358,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   const handleDisconnect = useCallback(async () => {
     manualDisconnectRef.current = true;  // user กด disconnect เอง — ห้าม auto-reconnect
+    try { sessionStorage.setItem('ttplus_manual_dc', '1'); } catch {}
     wasConnectedRef.current = false;
     try {
       await api.post('/api/disconnect');

@@ -3,7 +3,7 @@
 const express = require('express');
 const router  = express.Router();
 const admin   = require('firebase-admin');
-const { getLeaderboard } = require('../handlers/tiktok');
+const { getLeaderboard, loadLeaderboardFromFirestore } = require('../handlers/tiktok');
 const { getUidForCid, registerCid } = require('../utils/widgetToken');
 
 // ── ดึง uid จาก cid (memory cache → Firestore fallback) ─────────────────────
@@ -41,16 +41,12 @@ router.get('/:vjId?', async (req, res) => {
   const data = getLeaderboard(vjId, type);
   if (data.length > 0) return res.json({ type, data, updatedAt: Date.now() });
 
-  // Fallback: โหลดจาก Firestore (กรณี backend restart แต่ session ยังไม่จบ)
+  // Fallback: โหลดจาก Firestore และ populate in-memory Maps ด้วย
+  // ทำให้ request ถัดๆ ไปใช้ in-memory (fast path) ไม่ต้องอ่าน Firestore ซ้ำ
   try {
-    const doc = await admin.firestore().collection('leaderboard_state').doc(vjId).get();
-    if (doc.exists) {
-      const stored = doc.data();
-      const fieldData = type === 'likes' ? stored.likes : stored.gifts;
-      if (Array.isArray(fieldData) && fieldData.length > 0) {
-        return res.json({ type, data: fieldData, updatedAt: stored.updatedAt || Date.now() });
-      }
-    }
+    await loadLeaderboardFromFirestore(vjId);
+    const freshData = getLeaderboard(vjId, type);
+    if (freshData.length > 0) return res.json({ type, data: freshData, updatedAt: Date.now() });
   } catch {}
 
   res.json({ type, data: [], updatedAt: Date.now() });
