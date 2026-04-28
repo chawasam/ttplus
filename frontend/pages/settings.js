@@ -51,8 +51,8 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
       const idToken = await auth.currentUser.getIdToken();
       window.open(
         `${API_URL}/api/spotify/auth?t=${encodeURIComponent(idToken)}`,
-        '_blank',
-        'width=500,height=700,noopener'
+        'spotify_auth',
+        'width=500,height=700'
       );
     } catch {
       toast.error('ไม่สามารถเริ่ม Spotify connect ได้ — ลอง login ใหม่');
