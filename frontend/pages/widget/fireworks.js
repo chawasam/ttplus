@@ -92,61 +92,101 @@ function makeRocket({ avatarImg, giftImg, giftEmoji, senderName, giftName, coins
   };
 }
 
-// ── Create explosion particles (random pattern + count + flash) ──────────────
+// ── Pattern definitions — สี trail + flash ประจำแต่ละแบบ ──────────────────
 const ALL_PATTERNS = ['ring', 'willow', 'scatter', 'star', 'fan'];
 
+const PATTERN_COLOR = {
+  ring:    { r: 255, g: 220, b: 80  },  // ทอง   — วงกลมคลาสสิก
+  willow:  { r: 80,  g: 255, b: 140 },  // เขียว — โค้งตกเหมือนต้นหลิว
+  star:    { r: 255, g: 255, b: 255 },  // ขาว   — แฉกสว่าง
+  fan:     { r: 80,  g: 180, b: 255 },  // ฟ้า   — พุ่งขึ้นแน่น
+  scatter: { r: 220, g: 100, b: 255 },  // ม่วง  — chaos สุ่มทิศ
+};
+
+function patternRGB(pat) {
+  return PATTERN_COLOR[pat] || PATTERN_COLOR.ring;
+}
+
+// ── Create explosion particles (random pattern + count + flash) ──────────────
 function explode(r) {
-  // สุ่ม pattern จากที่ผู้ใช้เลือก และจำนวน particle ทุกครั้ง
   const pool  = (r.patterns && r.patterns.length > 0) ? r.patterns : ALL_PATTERNS;
   r.pattern   = pool[Math.floor(Math.random() * pool.length)];
-  const count = r.pcount || 10; // จำนวนสะเก็ด: 10 | 20 | 30 จาก customize
+  const count = r.pcount || 10;
+  const col   = patternRGB(r.pattern);
 
-  // Flash วงกลมสว่างวูบที่จุดระเบิด
-  r.flash = { alpha: 1.0, radius: 10 };
+  // Flash — สีตาม pattern
+  r.flash = { alpha: 1.0, radius: 10, col };
 
   for (let i = 0; i < count; i++) {
-    let angle, speed, gravity;
+    let angle, speed, gravity, upBias, decay, trailWidth;
 
     if (r.pattern === 'ring') {
-      // สม่ำเสมอรอบวง — เหมือนพลุดอกไม้จริง
-      angle   = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
-      speed   = 5.5 + Math.random() * 2.5;
-      gravity = 0.055 + Math.random() * 0.03;
+      // วงกลมสม่ำเสมอ 360° — ทอง
+      angle      = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
+      speed      = 6 + Math.random() * 2;
+      gravity    = 0.055 + Math.random() * 0.025;
+      upBias     = 1.0;
+      decay      = 0.0028 + Math.random() * 0.002;
+      trailWidth = 3.5;
+
     } else if (r.pattern === 'willow') {
-      // พุ่งขึ้นแล้วโค้งตกลงมาเหมือนต้นหลิว — ครึ่งบนของวง
-      angle   = -Math.PI + Math.random() * Math.PI;
-      speed   = 3.5 + Math.random() * 5.5;
-      gravity = 0.10 + Math.random() * 0.05;
+      // พุ่งขึ้นแล้วโค้งตกหนัก upBias สูง gravity มาก — เขียว
+      angle      = -Math.PI + Math.random() * Math.PI;
+      speed      = 4 + Math.random() * 6;
+      gravity    = 0.18 + Math.random() * 0.07;  // หนักกว่าเดิม 2× — ตกโค้งชัด
+      upBias     = 3.8;                           // พุ่งขึ้นสูงก่อนตก
+      decay      = 0.0020 + Math.random() * 0.002; // อยู่นานกว่า
+      trailWidth = 4.5;                           // หางหนา
+
     } else if (r.pattern === 'star') {
-      // แฉกสลับเร็ว-ช้า → เกิดรูปดาว
-      angle   = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.12;
-      speed   = i % 2 === 0 ? 7.5 + Math.random() * 2 : 3.5 + Math.random() * 1.5;
-      gravity = 0.05 + Math.random() * 0.03;
+      // แฉกสลับยาว-สั้น ชัด — ขาว
+      // angle แน่น (±0.04) เพื่อให้แฉกไม่เบลอ
+      angle      = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.04;
+      speed      = i % 2 === 0
+        ? 11 + Math.random() * 1.5   // แฉกยาว
+        : 2  + Math.random() * 0.8;  // แฉกสั้น — ต่างกันชัด
+      gravity    = 0.04 + Math.random() * 0.02;
+      upBias     = 0.8;
+      decay      = 0.0026 + Math.random() * 0.002;
+      trailWidth = 2.5;
+
     } else if (r.pattern === 'fan') {
-      // พุ่งขึ้นครึ่งวงบนเหมือนพัด
-      angle   = -Math.PI + (count > 1 ? (i / (count - 1)) : 0.5) * Math.PI + (Math.random() - 0.5) * 0.3;
-      speed   = 5 + Math.random() * 4;
-      gravity = 0.05 + Math.random() * 0.03;
+      // พุ่งขึ้น 90° แน่น (ไม่ใช่ 180°) เร็วและสูง — ฟ้า
+      const fanHalf = Math.PI * 0.25; // ±45° จากบน
+      angle      = -Math.PI / 2 + (count > 1 ? (i / (count - 1) - 0.5) * 2 * fanHalf : 0)
+                   + (Math.random() - 0.5) * 0.08;
+      speed      = 9 + Math.random() * 4;   // เร็วกว่าเดิมมาก
+      gravity    = 0.07 + Math.random() * 0.03;
+      upBias     = 1.5;
+      decay      = 0.0030 + Math.random() * 0.002;
+      trailWidth = 3.0;
+
     } else {
-      // scatter — สุ่มทิศทางและความเร็วอิสระ
-      angle   = Math.random() * Math.PI * 2;
-      speed   = 2 + Math.random() * 9;
-      gravity = 0.05 + Math.random() * 0.05;
+      // scatter — chaos สุ่มทิศ+ความเร็วต่างกันมาก — ม่วง
+      angle      = Math.random() * Math.PI * 2;
+      speed      = Math.random() < 0.3
+        ? 1 + Math.random() * 2          // บางตัวช้ามาก (30%)
+        : 7 + Math.random() * 7;         // ส่วนใหญ่เร็วแรง (70%)
+      gravity    = 0.04 + Math.random() * 0.10;
+      upBias     = 1.0;
+      decay      = 0.0028 + Math.random() * 0.003;
+      trailWidth = 2 + Math.random() * 3;
     }
 
-    const upBias = r.pattern === 'willow' ? 2.2 : 1.2;
     r.particles.push({
-      x:        r.targetX,
-      y:        r.targetY,
-      vx:       Math.cos(angle) * speed,
-      vy:       Math.sin(angle) * speed - upBias,
+      x:          r.targetX,
+      y:          r.targetY,
+      vx:         Math.cos(angle) * speed,
+      vy:         Math.sin(angle) * speed - upBias,
       gravity,
-      alpha:    0.95 + Math.random() * 0.05,
-      decay:    0.0032 + Math.random() * 0.003,
-      size:     26 + Math.random() * 16,
-      rotation: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.18,
-      trail:    [],
+      alpha:      0.95 + Math.random() * 0.05,
+      decay,
+      size:       26 + Math.random() * 16,
+      rotation:   Math.random() * Math.PI * 2,
+      rotSpeed:   (Math.random() - 0.5) * 0.18,
+      trail:      [],
+      trailWidth,
+      col,        // สีประจำ pattern
     });
   }
 }
@@ -215,21 +255,20 @@ function tickRocket(ctx, r, now) {
     const explodeElapsed = now - r.explodeTime;
     let alive = false;
 
-    // ── Flash วูบ ──────────────────────────────────────────────────────────
+    // ── Flash วูบ (สีตาม pattern) ──────────────────────────────────────────
     if (r.flash && r.flash.alpha > 0) {
-      r.flash.radius += 14;          // ขยายเร็ว
-      r.flash.alpha  -= 0.07;        // จาง ~14 frames ≈ 0.23 วิ
+      r.flash.radius += 14;
+      r.flash.alpha  -= 0.07;
+      const fc = r.flash.col || { r: 255, g: 220, b: 80 };
       ctx.save();
       ctx.globalAlpha = Math.max(0, r.flash.alpha);
-      // วงนอก (ส้ม-ขาว)
       ctx.beginPath();
       ctx.arc(r.targetX, r.targetY, r.flash.radius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,230,160,1)';
+      ctx.fillStyle = `rgba(${fc.r},${fc.g},${fc.b},1)`;
       ctx.fill();
-      // วงในสว่างกว่า (ขาวสุด)
       ctx.beginPath();
       ctx.arc(r.targetX, r.targetY, r.flash.radius * 0.45, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,230,1)';
+      ctx.fillStyle = 'rgba(255,255,255,1)';
       ctx.fill();
       ctx.restore();
     }
@@ -251,18 +290,19 @@ function tickRocket(ctx, r, now) {
 
       if (p.alpha <= 0) continue;
 
-      // ── วาดเส้นหาง (trail) ──────────────────────────────────────────────
+      // ── วาดเส้นหาง (trail) — สีตาม pattern ────────────────────────────────
       if (p.trail.length > 1) {
+        const c = p.col || { r: 255, g: 220, b: 120 };
         ctx.save();
         for (let t = 1; t < p.trail.length; t++) {
-          const f    = t / p.trail.length;          // 0 = เก่า, 1 = ใหม่
+          const f    = t / p.trail.length;
           const prev = p.trail[t - 1];
           const curr = p.trail[t];
           ctx.beginPath();
           ctx.moveTo(prev.x, prev.y);
           ctx.lineTo(curr.x, curr.y);
-          ctx.strokeStyle = `rgba(255,220,120,${f * f * p.alpha * 0.85})`;
-          ctx.lineWidth   = f * 3.5;
+          ctx.strokeStyle = `rgba(${c.r},${c.g},${c.b},${f * f * p.alpha * 0.90})`;
+          ctx.lineWidth   = f * (p.trailWidth || 3.5);
           ctx.lineCap     = 'round';
           ctx.stroke();
         }
