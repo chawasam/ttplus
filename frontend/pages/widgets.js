@@ -84,6 +84,13 @@ const WIDGETS = [
   // { id: 'egghatch', ... }
 ];
 
+// ── Widget groups — ลำดับและสมาชิกในแต่ละหมวด ──────────────────────────────
+const WIDGET_GROUPS = [
+  { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
+  { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard'] },
+  { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
+];
+
 // user, authLoading มาจาก _app.js
 export default function WidgetsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
   const [widgetCid, setWidgetCid]     = useState(''); // channel ID สั้น เช่น "10001"
@@ -94,7 +101,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       Object.entries(WIDGET_DEFAULTS).map(([k, v]) => [k, { ...v }])
     )
   );
-  const [expanded, setExpanded]       = useState({});
+  // drawer: widgetId ที่กำลัง customize | null = ปิด
+  const [drawerWidget, setDrawerWidget] = useState(null);
+  // howto: collapsed/expanded — จำไว้ใน localStorage
+  const [howtoOpen, setHowtoOpen] = useState(() => {
+    try { return localStorage.getItem('ttplus_howto') !== '0'; } catch { return true; }
+  });
+  // group collapse state — default เปิดทั้งหมด
+  const [groupOpen, setGroupOpen] = useState({ chat: true, gifts: true, obs: true });
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
   // config สำหรับ widget ที่มี configFields (bossbattle, egghatch ฯลฯ)
@@ -277,8 +291,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     }
   }, [user, styles]);
 
-  const toggleExpand = useCallback((id) =>
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] })), []);
+  const toggleHowto = () => setHowtoOpen(prev => {
+    const next = !prev;
+    try { localStorage.setItem('ttplus_howto', next ? '1' : '0'); } catch {}
+    return next;
+  });
+  const toggleGroup = (id) => setGroupOpen(prev => ({ ...prev, [id]: !prev[id] }));
 
   const tokenReady = !!widgetCid && !tokenLoading;
 
@@ -343,453 +361,357 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
           </div>
         )}
 
-        {/* วิธีใช้ */}
-        <div className={clsx('rounded-xl p-4 mb-6 border',
+        {/* วิธีใช้ — collapsible */}
+        <div className={clsx('rounded-xl mb-5 border overflow-hidden',
           isDark ? 'bg-blue-500/10 border-blue-500/25' : 'bg-blue-50 border-blue-200')}>
-          <h3 className="text-blue-400 font-semibold text-sm mb-3">📌 วิธีใช้กับ TikTok Studio / OBS</h3>
-          <div className="space-y-2">
-            {[
-              { n: '1', t: 'Login ด้วย Google',    d: 'กดปุ่ม Login มุมขวาบน — URL ของคุณจะถูกสร้างอัตโนมัติและไม่เปลี่ยนแปลง' },
-              { n: '2', t: 'Copy URL ของ Widget',   d: 'กด 📋 Copy URL → วางใน OBS หรือ TikTok Studio ครั้งเดียวพอ' },
-              { n: '3', t: 'Customize ได้ตลอด',    d: 'กด ⚙️ Customize → ปรับสี → กด บันทึก → Widget update ทันที ไม่ต้อง copy URL ใหม่!' },
-              { n: '4', t: 'TikTok Studio',          d: 'Copy Link ในเว็บ → Add Sources → Link → วาง URL (Ctrl+V)' },
-            ].map(s => (
-              <div key={s.n} className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 bg-blue-500 text-white">{s.n}</span>
-                <div>
-                  <p className={clsx('text-sm font-semibold', isDark ? 'text-white' : 'text-gray-900')}>{s.t}</p>
-                  <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>{s.d}</p>
+          <button
+            onClick={toggleHowto}
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-blue-400 font-semibold text-sm">📌 วิธีใช้กับ TikTok Studio / OBS</span>
+            <span className={clsx('text-blue-400 text-sm transition-transform', howtoOpen ? 'rotate-180' : '')}>▾</span>
+          </button>
+          {howtoOpen && (
+            <div className="px-4 pb-4 space-y-2 border-t border-blue-500/20 pt-3">
+              {[
+                { n: '1', t: 'Login ด้วย Google',    d: 'กดปุ่ม Login มุมขวาบน — URL ของคุณจะถูกสร้างอัตโนมัติและไม่เปลี่ยนแปลง' },
+                { n: '2', t: 'Copy URL ของ Widget',   d: 'กด 📋 Copy URL → วางใน OBS หรือ TikTok Studio ครั้งเดียวพอ' },
+                { n: '3', t: 'Customize ได้ตลอด',    d: 'กด ⚙️ Customize → ปรับสี → กด บันทึก → Widget update ทันที ไม่ต้อง copy URL ใหม่!' },
+                { n: '4', t: 'TikTok Studio',          d: 'Copy Link ในเว็บ → Add Sources → Link → วาง URL (Ctrl+V)' },
+              ].map(s => (
+                <div key={s.n} className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 bg-blue-500 text-white">{s.n}</span>
+                  <div>
+                    <p className={clsx('text-sm font-semibold', isDark ? 'text-white' : 'text-gray-900')}>{s.t}</p>
+                    <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>{s.d}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Widget Cards */}
-        <div className="space-y-4">
-          {WIDGETS.map((w) => {
-            const style  = styles[w.id] || WIDGET_DEFAULTS[w.id];
-            const url    = getWidgetUrl(w.id);
-            const isOpen = !!expanded[w.id];
-
+        {/* Widget Groups */}
+        <div className="space-y-6">
+          {WIDGET_GROUPS.map(group => {
+            const groupWidgets = WIDGET_GROUPS
+              ? group.ids.map(id => WIDGETS.find(w => w.id === id)).filter(Boolean)
+              : [];
+            const isGroupOpen = groupOpen[group.id] !== false;
             return (
-              <div key={w.id} className={clsx('rounded-xl border overflow-hidden', card)}>
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{w.icon}</span>
-                      <div>
-                        <h3 className={clsx('font-bold text-sm', isDark ? 'text-white' : 'text-gray-900')}>{w.name}</h3>
-                        <p className={clsx('text-xs', isDark ? 'text-gray-400' : 'text-gray-500')}>{w.desc}</p>
-                      </div>
-                    </div>
-                    <span className={clsx('text-xs px-2 py-1 rounded font-mono flex-shrink-0', isDark ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500')}>
-                      {w.size} px
-                    </span>
-                  </div>
+              <div key={group.id}>
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  className="w-full flex items-center gap-2 mb-3 text-left group"
+                >
+                  <span className={clsx('text-sm font-bold', isDark ? 'text-gray-200' : 'text-gray-700')}>{group.label}</span>
+                  <div className={clsx('flex-1 h-px', isDark ? 'bg-gray-800' : 'bg-gray-200')} />
+                  <span className={clsx(
+                    'text-xs transition-transform',
+                    isDark ? 'text-gray-500' : 'text-gray-400',
+                    isGroupOpen ? 'rotate-180' : ''
+                  )}>▾</span>
+                </button>
 
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={clsx('flex-1 rounded-lg px-3 py-2 font-mono text-xs truncate cursor-pointer select-all', urlBox)}
-                      title={tokenReady ? url : ''}
-                      onClick={() => tokenReady && copyUrl(w.id)}>
-                      {tokenReady
-                        ? url
-                        : (tokenLoading ? '⏳ กำลังโหลด...' : '— รอสักครู่ —')}
-                    </div>
-                    <button onClick={() => copyUrl(w.id)} disabled={!tokenReady}
-                      className="flex-shrink-0 px-3 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold transition disabled:opacity-50 whitespace-nowrap">
-                      📋 Copy URL
-                    </button>
-                  </div>
+                {/* Widget cards in group */}
+                {isGroupOpen && (
+                  <div className="space-y-3">
+                    {groupWidgets.map((w) => {
+                      const url = getWidgetUrl(w.id);
+                      const isDrawerOpen = drawerWidget === w.id;
+                      return (
+                        <div key={w.id} className={clsx('rounded-xl border overflow-hidden', card)}>
+                          <div className="p-4">
+                            {/* Top: icon + name + size */}
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{w.icon}</span>
+                                <div>
+                                  <h3 className={clsx('font-bold text-sm', isDark ? 'text-white' : 'text-gray-900')}>{w.name}</h3>
+                                  <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>{w.desc}</p>
+                                </div>
+                              </div>
+                              <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-mono flex-shrink-0 ml-2', isDark ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')}>
+                                {w.size}
+                              </span>
+                            </div>
 
-                  {/* Boss Battle — quick side copy */}
-                  {w.id === 'bossbattle' && (
-                    <div className="flex gap-1.5 mb-2">
-                      {[
-                        { side: 'left',   label: '◀ ซ้าย' },
-                        { side: 'center', label: '■ กลาง' },
-                        { side: 'right',  label: 'ขวา ▶' },
-                      ].map(({ side, label }) => (
-                        <button
-                          key={side}
-                          onClick={() => copyBossBattleSide(side)}
-                          disabled={!tokenReady}
-                          className={clsx(
-                            'flex-1 py-1.5 rounded-lg text-xs font-semibold transition border disabled:opacity-40',
-                            isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-brand-500/50 hover:text-brand-300' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-brand-50 hover:border-brand-200 hover:text-brand-700'
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                            {/* URL row */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <div
+                                className={clsx('flex-1 rounded-lg px-3 py-2 font-mono text-xs truncate cursor-pointer', urlBox)}
+                                title={tokenReady ? url : ''}
+                                onClick={() => tokenReady && copyUrl(w.id)}
+                              >
+                                {tokenReady ? url : (tokenLoading ? '⏳ กำลังโหลด...' : '— รอสักครู่ —')}
+                              </div>
+                              <button
+                                onClick={() => copyUrl(w.id)}
+                                disabled={!tokenReady}
+                                className="shrink-0 px-3 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold transition disabled:opacity-50"
+                              >
+                                📋 Copy
+                              </button>
+                            </div>
 
-                  <div className="flex gap-2">
-                    <a href={getPreviewUrl(w.id)} target="_blank" rel="noreferrer"
-                      className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold text-center transition border', btn2nd)}>
-                      ▶ Test
-                    </a>
-                    {(!w.noStyle || w.configFields) && (
-                      <button onClick={() => toggleExpand(w.id)}
-                        className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold transition border',
-                          isOpen ? 'bg-brand-500/10 border-brand-500/40 text-brand-400' : btn2nd)}>
-                        ⚙️ {isOpen ? 'ปิด' : 'Customize'}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                            {/* Boss Battle quick-side copy */}
+                            {w.id === 'bossbattle' && (
+                              <div className="flex gap-1.5 mb-3">
+                                {[
+                                  { side: 'left',   label: '◀ ซ้าย' },
+                                  { side: 'center', label: '■ กลาง' },
+                                  { side: 'right',  label: 'ขวา ▶' },
+                                ].map(({ side, label }) => (
+                                  <button
+                                    key={side}
+                                    onClick={() => copyBossBattleSide(side)}
+                                    disabled={!tokenReady}
+                                    className={clsx(
+                                      'flex-1 py-1.5 rounded-lg text-xs font-semibold transition border disabled:opacity-40',
+                                      isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-brand-500/50 hover:text-brand-300'
+                                             : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-brand-50 hover:border-brand-200 hover:text-brand-700'
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
 
-                {/* Standard style editor */}
-                {!w.noStyle && isOpen && (
-                  <div className={clsx('border-t px-4 pb-4 pt-3', divider)}>
-                    <WidgetStyleEditor
-                      widgetId={w.id}
-                      style={style}
-                      onChange={newStyle => setStyles(prev => ({ ...prev, [w.id]: newStyle }))}
-                      theme={theme}
-                    />
-                    <button onClick={() => saveStyleForWidget(w.id, style)}
-                      className="mt-3 w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition">
-                      💾 บันทึกและ Update Widget {w.name} แบบ Real-time
-                    </button>
-                  </div>
-                )}
-
-                {/* Custom config editor (bossbattle, egghatch ฯลฯ) */}
-                {w.configFields && isOpen && (() => {
-                  const cfg    = customConfigs[w.id] || {};
-                  const setKey = (k, v) => setCustomConfigs(prev => ({ ...prev, [w.id]: { ...prev[w.id], [k]: v } }));
-                  return (
-                    <div className={clsx('border-t px-4 pb-4 pt-3 space-y-4', divider)}>
-                      {w.configFields.map(f => {
-                        // ── Section header ──
-                        if (f.type === 'group') return (
-                          <div key={f.key} className={clsx('flex items-center gap-2 pt-1', isDark ? 'border-gray-700' : 'border-gray-100')}>
-                            <span className={clsx('text-xs font-bold tracking-wide', isDark ? 'text-gray-300' : 'text-gray-600')}>{f.label}</span>
-                            <div className={clsx('flex-1 h-px', isDark ? 'bg-gray-700' : 'bg-gray-200')} />
-                          </div>
-                        );
-                        // ── Hidden fields (managed by bosstype selector) ──
-                        if (f.hideInUI) return null;
-                        // ── Boss Sprite preset selector ──
-                        if (f.type === 'bosstype') {
-                          const curType  = cfg['bosstype'] ?? f.default;
-                          const curEmoji = cfg['emoji'] ?? '🐉';
-                          return (
-                            <div key={f.key}>
-                              <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
-                              <div className="grid grid-cols-3 gap-2">
-                                {/* Emoji option */}
+                            {/* Action buttons */}
+                            <div className="flex gap-2">
+                              <a
+                                href={getPreviewUrl(w.id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold text-center transition border', btn2nd)}
+                              >
+                                ▶ ดูตัวอย่าง
+                              </a>
+                              {(!w.noStyle || w.configFields) && (
                                 <button
-                                  onClick={() => { setKey('bosstype', 'emoji'); setKey('bossframes', ''); setKey('bossimg', ''); }}
-                                  className={clsx('p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition',
-                                    curType === 'emoji'
-                                      ? 'border-brand-500 bg-brand-500/15'
-                                      : isDark ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' : 'border-gray-200 hover:border-gray-300 bg-gray-50'
+                                  onClick={() => setDrawerWidget(isDrawerOpen ? null : w.id)}
+                                  className={clsx(
+                                    'flex-1 py-2 rounded-lg text-sm font-semibold transition border',
+                                    isDrawerOpen
+                                      ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
+                                      : btn2nd
                                   )}
                                 >
-                                  <span style={{ fontSize: 32, lineHeight: 1 }}>{curEmoji}</span>
-                                  <span className={clsx('text-xs font-medium leading-tight text-center', isDark ? 'text-gray-300' : 'text-gray-600')}>Emoji</span>
+                                  ⚙️ Customize
                                 </button>
-                                {/* Boss presets */}
-                                {BOSS_PRESETS.map(preset => (
-                                  <button
-                                    key={preset.id}
-                                    onClick={() => {
-                                      const absFrames = preset.frames.split(',').map(p => `${baseUrl}${p}`).join(',');
-                                      setKey('bosstype',   preset.id);
-                                      setKey('bossframes', absFrames);
-                                      setKey('bossimg',    '');
-                                    }}
-                                    className={clsx('p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition',
-                                      curType === preset.id
-                                        ? 'border-brand-500 bg-brand-500/15'
-                                        : isDark ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' : 'border-gray-200 hover:border-gray-300 bg-gray-50'
-                                    )}
-                                  >
-                                    <img src={preset.preview} alt={preset.name}
-                                      style={{ width: 42, height: 42, objectFit: 'contain', imageRendering: 'pixelated' }}
-                                    />
-                                    <span className={clsx('text-xs font-medium leading-tight text-center', isDark ? 'text-gray-300' : 'text-gray-600')}>{preset.name}</span>
-                                  </button>
-                                ))}
-                              </div>
-                              {/* Show selected preset desc */}
-                              {curType !== 'emoji' && BOSS_PRESETS.find(p => p.id === curType) && (
-                                <p className={clsx('text-xs mt-2', isDark ? 'text-gray-500' : 'text-gray-400')}>
-                                  {BOSS_PRESETS.find(p => p.id === curType).desc}
-                                </p>
                               )}
-                            </div>
-                          );
-                        }
-                        // ── Side-by-side row (e.g. taprate + tapdmg) ──
-                        if (f.type === 'row') return (
-                          <div key={f.key}>
-                            <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
-                            <div className="grid grid-cols-2 gap-3">
-                              {f.fields.map(sf => {
-                                const sv = cfg[sf.key] ?? sf.default;
-                                return (
-                                  <div key={sf.key}>
-                                    <p className={clsx('text-xs mb-1', isDark ? 'text-gray-500' : 'text-gray-400')}>{sf.label}</p>
-                                    <input type="number" min={sf.min} max={sf.max} step={sf.step || 1} value={sv}
-                                      onChange={e => setKey(sf.key, Math.max(sf.min, Math.min(sf.max, Number(e.target.value))))}
-                                      className={clsx('w-full px-2 py-1.5 rounded-lg text-sm text-center font-mono border',
-                                        isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                        const val = cfg[f.key] ?? f.default;
-                        return (
-                          <div key={f.key}>
-                            <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>
-                              {f.label}
-                            </p>
-                            {f.type === 'volume' && (
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    type="range"
-                                    min={0} max={100} step={5}
-                                    value={val}
-                                    onChange={e => setKey(f.key, Number(e.target.value))}
-                                    className="flex-1 accent-orange-500"
-                                  />
-                                  <span className={clsx('w-16 text-right text-xs font-bold font-mono flex-shrink-0',
-                                    val === 0
-                                      ? (isDark ? 'text-gray-500' : 'text-gray-400')
-                                      : 'text-orange-400')}>
-                                    {val === 0 ? '🔇 เงียบ' : `🔊 ${val}%`}
-                                  </span>
-                                </div>
-                                <div className={clsx('flex justify-between text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
-                                  <span>🔇 เงียบ (0)</span><span>🔊 ดังสุด (100)</span>
-                                </div>
-                              </div>
-                            )}
-                            {f.type === 'number' && (
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="range"
-                                  min={f.min} max={f.max} step={f.step || 1}
-                                  value={val}
-                                  onChange={e => setKey(f.key, Number(e.target.value))}
-                                  className="flex-1 accent-brand-500"
-                                />
-                                <input
-                                  type="number"
-                                  min={f.min} max={f.max} step={f.step || 1}
-                                  value={val}
-                                  onChange={e => setKey(f.key, Math.max(f.min, Math.min(f.max, Number(e.target.value))))}
-                                  className={clsx('w-24 px-2 py-1 rounded-lg text-sm text-center font-mono border',
-                                    isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
-                                />
-                              </div>
-                            )}
-                            {f.type === 'text' && (
-                              <input
-                                type="text"
-                                value={val}
-                                maxLength={f.maxLen || 40}
-                                onChange={e => setKey(f.key, e.target.value)}
-                                className={clsx('w-full px-3 py-2 rounded-lg text-sm border',
-                                  isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
-                              />
-                            )}
-                            {f.type === 'url' && (
-                              <div className="space-y-2">
-                                <input
-                                  type="url"
-                                  value={val}
-                                  placeholder="https://example.com/boss.png"
-                                  onChange={e => setKey(f.key, e.target.value)}
-                                  className={clsx('w-full px-3 py-2 rounded-lg text-xs border font-mono',
-                                    isDark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-600' : 'bg-gray-100 border-gray-200 text-gray-900 placeholder-gray-400')}
-                                />
-                                {val && (
-                                  <div className="flex items-center gap-3">
-                                    <img src={val} alt="preview" crossOrigin="anonymous"
-                                      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
-                                      onError={e => { e.currentTarget.style.opacity = '0.3'; }}
-                                    />
-                                    <span className={clsx('text-xs', isDark ? 'text-gray-500' : 'text-gray-400')}>ตัวอย่างรูปบอส</span>
-                                    <button onClick={() => setKey(f.key, '')}
-                                      className={clsx('ml-auto text-xs px-2 py-0.5 rounded border transition',
-                                        isDark ? 'border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-500/40' : 'border-gray-300 text-gray-400 hover:text-red-500')}>
-                                      ✕ ล้าง
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {f.type === 'emoji' && (
-                              <div className="flex gap-2 flex-wrap">
-                                {f.options.map(em => (
-                                  <button
-                                    key={em}
-                                    onClick={() => setKey(f.key, em)}
-                                    className={clsx(
-                                      'w-10 h-10 rounded-xl text-xl flex items-center justify-center border-2 transition',
-                                      val === em
-                                        ? 'border-brand-500 bg-brand-500/15'
-                                        : isDark ? 'border-gray-700 hover:border-gray-500' : 'border-gray-200 hover:border-gray-400'
-                                    )}
-                                  >{em}</button>
-                                ))}
-                              </div>
-                            )}
-                            {f.type === 'toggle' && (
-                              <button
-                                onClick={() => setKey(f.key, val ? 0 : 1)}
-                                className={clsx(
-                                  'w-full py-2 rounded-lg text-sm font-semibold border transition',
-                                  val
-                                    ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
-                                    : isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-500'
-                                )}
-                              >
-                                {val ? `✅ ${f.onLabel}` : `⬜ ${f.offLabel}`}
-                              </button>
-                            )}
-                            {f.type === 'select' && (
-                              <div className="flex gap-2 flex-wrap">
-                                {f.options.map(opt => (
-                                  <button
-                                    key={opt.value}
-                                    onClick={() => setKey(f.key, opt.value)}
-                                    className={clsx(
-                                      'flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition',
-                                      val === opt.value
-                                        ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
-                                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
-                                    )}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            {f.type === 'element' && (
-                              <div className="space-y-1.5">
-                                {BOSS_ELEMENTS.map(el => (
-                                  <button
-                                    key={el.val}
-                                    onClick={() => setKey(f.key, el.val)}
-                                    className={clsx(
-                                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium border transition text-left',
-                                      val === el.val
-                                        ? 'bg-brand-500/15 border-brand-500/50 text-brand-300'
-                                        : isDark ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300'
-                                    )}
-                                  >
-                                    <span className="font-bold">{el.label}</span>
-                                    <span className={clsx('text-xs ml-auto', isDark ? 'text-gray-500' : 'text-gray-400')}>{el.desc}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <div className={clsx('rounded-lg p-3 text-xs border mt-2',
-                        isDark ? 'bg-blue-500/10 border-blue-500/25 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700')}>
-                        💡 หลัง Copy URL แล้วกด Test เพื่อดูตัวอย่าง — กด <strong>R</strong> ในหน้า preview เพื่อ reset
-                      </div>
-
-                      {/* Boss Battle: วิธีเล่น + ระบบธาตุ */}
-                      {w.id === 'bossbattle' && (
-                        <div className={clsx('rounded-xl border mt-2 overflow-hidden', isDark ? 'border-gray-700' : 'border-gray-200')}>
-                          <div className={clsx('px-3 py-2 text-xs font-bold tracking-wide flex items-center justify-between', isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>
-                            <span>📖 วิธีเล่น & ระบบธาตุ</span>
-                            <a href="/bossbattle-guide" target="_blank" rel="noopener noreferrer"
-                              className={clsx('flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold border transition',
-                                isDark ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 hover:bg-purple-500/25' : 'bg-purple-50 border-purple-200 text-purple-600 hover:bg-purple-100')}>
-                              🗺️ ตารางธาตุ ↗
-                            </a>
-                          </div>
-                          <div className={clsx('px-3 py-3 space-y-3 text-xs', isDark ? 'bg-gray-900 text-gray-400' : 'bg-white text-gray-500')}>
-                            <div>
-                              <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>🎮 การเล่น</p>
-                              <p>ผู้ชม TikTok Live ส่งของขวัญ → ของขวัญทำดาเมจบอส ตาม <strong>diamond × ตัวคูณดาเมจ</strong></p>
-                              <p className="mt-1">ธาตุของขวัญถูกกำหนดจากชื่อ เช่น Rose/Heart = ไฟ, Ice/Fish = น้ำ</p>
-                            </div>
-                            <div>
-                              <p className={clsx('font-semibold mb-1.5', isDark ? 'text-gray-200' : 'text-gray-700')}>⚗️ ระบบธาตุ (ความสัมพันธ์วงกลม)</p>
-                              <div className="grid grid-cols-1 gap-1">
-                                {[
-                                  { beat: '🔥 ไฟ', vs: '🌍 ดิน', mult: '×2 dmg', hint: 'Rose, Heart, Fire, Star...' },
-                                  { beat: '💧 น้ำ', vs: '🔥 ไฟ',  mult: '×2 dmg', hint: 'Ice, Fish, Snow, Wave...' },
-                                  { beat: '🌪️ ลม', vs: '💧 น้ำ', mult: '×2 dmg', hint: 'Butterfly, Bird, Cloud...' },
-                                  { beat: '🌍 ดิน', vs: '🌪️ ลม', mult: '×2 dmg', hint: 'Panda, Diamond, Crown...' },
-                                ].map(r => (
-                                  <div key={r.beat} className={clsx('flex items-center gap-2 px-2 py-1.5 rounded-lg', isDark ? 'bg-gray-800' : 'bg-gray-50')}>
-                                    <span className="font-bold w-16 flex-shrink-0">{r.beat}</span>
-                                    <span className="text-gray-400">▶</span>
-                                    <span className="w-16 flex-shrink-0">{r.vs}</span>
-                                    <span className={clsx('font-bold', isDark ? 'text-yellow-400' : 'text-yellow-600')}>{r.mult}</span>
-                                    <span className={clsx('truncate ml-auto', isDark ? 'text-gray-600' : 'text-gray-400')}>{r.hint}</span>
-                                  </div>
-                                ))}
-                                <div className={clsx('flex items-center gap-2 px-2 py-1.5 rounded-lg', isDark ? 'bg-red-900/20 border border-red-800/30' : 'bg-red-50 border border-red-100')}>
-                                  <span className={clsx('font-semibold', isDark ? 'text-red-400' : 'text-red-600')}>⚠️ ผิดธาตุ</span>
-                                  <span className={clsx('text-xs ml-auto', isDark ? 'text-gray-500' : 'text-gray-400')}>ส่งธาตุที่อ่อนต่อบอส → Heal boss +50% dmg</span>
-                                </div>
-                                <div className={clsx('flex items-center gap-2 px-2 py-1.5 rounded-lg', isDark ? 'bg-gray-800' : 'bg-gray-50')}>
-                                  <span>⚪ กลาง</span>
-                                  <span className="ml-auto text-gray-400">ทุกของขวัญ ×1 dmg (ไม่มีธาตุ)</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div>
-                              <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>🔥 Streak Bonus</p>
-                              <p>ส่งธาตุที่ชนะ 3 ครั้งติดกัน → <strong className={isDark ? 'text-yellow-400' : 'text-yellow-600'}>×3 dmg</strong> (streak bonus ×1.5 เพิ่มเติม)</p>
-                            </div>
-                            <div>
-                              <p className={clsx('font-semibold mb-1', isDark ? 'text-gray-200' : 'text-gray-700')}>❤️ Like → Damage</p>
-                              <p>ตั้ง <strong>ทุกกี่ like</strong> ทำดาเมจ 1 ครั้ง + <strong>ดาเมจต่อครั้ง</strong></p>
-                              <p className="mt-0.5 opacity-75">เช่น: ทุก 5 like = 10 dmg → taprate=5, tapdmg=10</p>
                             </div>
                           </div>
                         </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            const socket = socketRef.current || getSocket();
-                            if (socket?.connected) {
-                              socket.emit('push_style_update', { widgetId: w.id, style: { _reset: true } });
-                              toast.success(`🔄 Reset ${w.name} แล้ว`);
-                            } else {
-                              toast.error('ต้อง Login และ Connect Socket ก่อน');
-                            }
-                          }}
-                          className={clsx('flex-1 py-2.5 rounded-xl text-sm font-semibold border transition',
-                            isDark ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100')}
-                        >
-                          🔄 Reset {w.name}
-                        </button>
-                        <button
-                          onClick={() => copyUrl(w.id)}
-                          disabled={!tokenReady}
-                          className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
-                          📋 Copy URL
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
       </main>
+
+      {/* ── Customize Drawer ── */}
+      {drawerWidget && (() => {
+        const dw  = WIDGETS.find(x => x.id === drawerWidget);
+        if (!dw) return null;
+        const style  = styles[dw.id] || WIDGET_DEFAULTS[dw.id];
+        const cfg    = customConfigs[dw.id] || {};
+        const setKey = (k, v) => setCustomConfigs(prev => ({ ...prev, [dw.id]: { ...prev[dw.id], [k]: v } }));
+        return (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+              onClick={() => setDrawerWidget(null)}
+            />
+            {/* Panel */}
+            <div className={clsx(
+              'fixed right-0 top-0 bottom-0 z-50 w-full md:w-[440px] flex flex-col shadow-2xl border-l',
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            )}>
+              {/* Header */}
+              <div className={clsx('flex items-center gap-3 px-5 py-4 border-b shrink-0', isDark ? 'border-gray-800' : 'border-gray-100')}>
+                <span className="text-2xl">{dw.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <h3 className={clsx('font-bold text-sm', isDark ? 'text-white' : 'text-gray-900')}>{dw.name}</h3>
+                  <p className={clsx('text-[10px] font-mono', isDark ? 'text-gray-500' : 'text-gray-400')}>{dw.size} px</p>
+                </div>
+                <button
+                  onClick={() => setDrawerWidget(null)}
+                  className={clsx('w-8 h-8 rounded-lg flex items-center justify-center text-lg transition', isDark ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-900')}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+                {/* Standard style editor */}
+                {!dw.noStyle && (
+                  <>
+                    <WidgetStyleEditor
+                      widgetId={dw.id}
+                      style={style}
+                      onChange={newStyle => setStyles(prev => ({ ...prev, [dw.id]: newStyle }))}
+                      theme={theme}
+                    />
+                  </>
+                )}
+
+                {/* Custom config (bossbattle ฯลฯ) */}
+                {dw.configFields && (
+                  <div className="space-y-4">
+                    {dw.configFields.map(f => {
+                      if (f.type === 'group') return (
+                        <div key={f.key} className="flex items-center gap-2 pt-1">
+                          <span className={clsx('text-xs font-bold tracking-wide', isDark ? 'text-gray-300' : 'text-gray-600')}>{f.label}</span>
+                          <div className={clsx('flex-1 h-px', isDark ? 'bg-gray-700' : 'bg-gray-200')} />
+                        </div>
+                      );
+                      if (f.hideInUI) return null;
+                      if (f.type === 'bosstype') {
+                        const curType  = cfg['bosstype'] ?? f.default;
+                        const curEmoji = cfg['emoji'] ?? '🐉';
+                        return (
+                          <div key={f.key}>
+                            <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              <button onClick={() => { setKey('bosstype','emoji'); setKey('bossframes',''); setKey('bossimg',''); }}
+                                className={clsx('p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition', curType==='emoji' ? 'border-brand-500 bg-brand-500/15' : isDark ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' : 'border-gray-200 hover:border-gray-300 bg-gray-50')}>
+                                <span style={{ fontSize:32, lineHeight:1 }}>{curEmoji}</span>
+                                <span className={clsx('text-xs font-medium', isDark ? 'text-gray-300' : 'text-gray-600')}>Emoji</span>
+                              </button>
+                              {BOSS_PRESETS.map(preset => (
+                                <button key={preset.id}
+                                  onClick={() => { const abs=preset.frames.split(',').map(p=>`${baseUrl}${p}`).join(','); setKey('bosstype',preset.id); setKey('bossframes',abs); setKey('bossimg',''); }}
+                                  className={clsx('p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition', curType===preset.id ? 'border-brand-500 bg-brand-500/15' : isDark ? 'border-gray-700 hover:border-gray-500 bg-gray-800/50' : 'border-gray-200 hover:border-gray-300 bg-gray-50')}>
+                                  <img src={preset.preview} alt={preset.name} style={{ width:42, height:42, objectFit:'contain', imageRendering:'pixelated' }} />
+                                  <span className={clsx('text-xs font-medium text-center', isDark ? 'text-gray-300' : 'text-gray-600')}>{preset.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                            {curType!=='emoji' && BOSS_PRESETS.find(p=>p.id===curType) && (
+                              <p className={clsx('text-xs mt-2', isDark ? 'text-gray-500' : 'text-gray-400')}>{BOSS_PRESETS.find(p=>p.id===curType).desc}</p>
+                            )}
+                          </div>
+                        );
+                      }
+                      if (f.type === 'row') return (
+                        <div key={f.key}>
+                          <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            {f.fields.map(sf => {
+                              const sv = cfg[sf.key] ?? sf.default;
+                              return (
+                                <div key={sf.key}>
+                                  <p className={clsx('text-xs mb-1', isDark ? 'text-gray-500' : 'text-gray-400')}>{sf.label}</p>
+                                  <input type="number" min={sf.min} max={sf.max} step={sf.step||1} value={sv}
+                                    onChange={e => setKey(sf.key, Math.max(sf.min, Math.min(sf.max, Number(e.target.value))))}
+                                    className={clsx('w-full px-2 py-1.5 rounded-lg text-sm text-center font-mono border', isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900')}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                      const val = cfg[f.key] ?? f.default;
+                      return (
+                        <div key={f.key}>
+                          <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
+                          {f.type==='volume' && (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-3">
+                                <input type="range" min={0} max={100} step={5} value={val} onChange={e => setKey(f.key, Number(e.target.value))} className="flex-1 accent-orange-500" />
+                                <span className={clsx('w-16 text-right text-xs font-bold font-mono flex-shrink-0', val===0 ? (isDark?'text-gray-500':'text-gray-400') : 'text-orange-400')}>{val===0?'🔇 เงียบ':`🔊 ${val}%`}</span>
+                              </div>
+                              <div className={clsx('flex justify-between text-xs', isDark?'text-gray-600':'text-gray-400')}><span>🔇 เงียบ (0)</span><span>🔊 ดังสุด (100)</span></div>
+                            </div>
+                          )}
+                          {f.type==='number' && (
+                            <div className="flex items-center gap-3">
+                              <input type="range" min={f.min} max={f.max} step={f.step||1} value={val} onChange={e => setKey(f.key, Number(e.target.value))} className="flex-1 accent-brand-500" />
+                              <input type="number" min={f.min} max={f.max} step={f.step||1} value={val} onChange={e => setKey(f.key, Math.max(f.min, Math.min(f.max, Number(e.target.value))))}
+                                className={clsx('w-24 px-2 py-1 rounded-lg text-sm text-center font-mono border', isDark?'bg-gray-800 border-gray-700 text-white':'bg-gray-100 border-gray-200 text-gray-900')} />
+                            </div>
+                          )}
+                          {f.type==='text' && (
+                            <input type="text" value={val} maxLength={f.maxLen||40} onChange={e => setKey(f.key, e.target.value)}
+                              className={clsx('w-full px-3 py-2 rounded-lg text-sm border', isDark?'bg-gray-800 border-gray-700 text-white':'bg-gray-100 border-gray-200 text-gray-900')} />
+                          )}
+                          {f.type==='toggle' && (
+                            <button onClick={() => setKey(f.key, val ? 0 : 1)}
+                              className={clsx('w-full py-2 rounded-lg text-sm font-semibold border transition', val ? 'bg-brand-500/15 border-brand-500/50 text-brand-400' : isDark?'bg-gray-800 border-gray-700 text-gray-400':'bg-gray-100 border-gray-200 text-gray-500')}>
+                              {val ? `✅ ${f.onLabel}` : `⬜ ${f.offLabel}`}
+                            </button>
+                          )}
+                          {f.type==='select' && (
+                            <div className="flex gap-2 flex-wrap">
+                              {f.options.map(opt => (
+                                <button key={opt.value} onClick={() => setKey(f.key, opt.value)}
+                                  className={clsx('flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition', val===opt.value ? 'bg-brand-500/15 border-brand-500/50 text-brand-400' : isDark?'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500':'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200')}>
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {f.type==='element' && (
+                            <div className="space-y-1.5">
+                              {BOSS_ELEMENTS.map(el => (
+                                <button key={el.val} onClick={() => setKey(f.key, el.val)}
+                                  className={clsx('w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium border transition text-left', val===el.val ? 'bg-brand-500/15 border-brand-500/50 text-brand-300' : isDark?'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500':'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300')}>
+                                  <span className="font-bold">{el.label}</span>
+                                  <span className={clsx('text-xs ml-auto', isDark?'text-gray-500':'text-gray-400')}>{el.desc}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    <div className={clsx('rounded-lg p-3 text-xs border', isDark?'bg-blue-500/10 border-blue-500/25 text-blue-300':'bg-blue-50 border-blue-200 text-blue-700')}>
+                      💡 หลัง Copy URL แล้วกด ▶ ดูตัวอย่าง — กด <strong>R</strong> ในหน้า preview เพื่อ reset
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className={clsx('px-5 py-4 border-t shrink-0 space-y-2', isDark ? 'border-gray-800' : 'border-gray-100')}>
+                {/* Standard widget: save button */}
+                {!dw.noStyle && (
+                  <button onClick={() => saveStyleForWidget(dw.id, style)}
+                    className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition">
+                    💾 บันทึกและ Update Widget แบบ Real-time
+                  </button>
+                )}
+                {/* Custom config: reset + copy URL */}
+                {dw.configFields && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { const s=socketRef.current||getSocket(); if(s?.connected){s.emit('push_style_update',{widgetId:dw.id,style:{_reset:true}});toast.success(`🔄 Reset ${dw.name} แล้ว`);}else{toast.error('ต้อง Login และ Connect Socket ก่อน');} }}
+                      className={clsx('flex-1 py-2.5 rounded-xl text-sm font-semibold border transition', isDark?'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20':'bg-red-50 border-red-200 text-red-600 hover:bg-red-100')}>
+                      🔄 Reset
+                    </button>
+                    <button onClick={() => copyUrl(dw.id)} disabled={!tokenReady}
+                      className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
+                      📋 Copy URL
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Login Modal */}
       {showLoginModal && (
