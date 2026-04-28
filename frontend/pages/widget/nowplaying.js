@@ -113,6 +113,7 @@ export default function NowPlayingWidget() {
       case 'pulse':     return <StylePulse     track={track} />;
       case 'particles': return <StyleParticles track={track} />;
       case 'spectrum':  return <StyleSpectrum  track={track} />;
+      case 'simple':    return <StyleSimple    track={track} />;
       default:          return <StyleGlass     track={track} />;
     }
   })();
@@ -614,6 +615,84 @@ function StyleSpectrum({ track }) {
       {/* Progress bar */}
       <div style={{ height: 3, background: 'rgba(255,255,255,0.1)' }}>
         <div style={{ height: '100%', width: `${progress * 100}%`, background: '#1DB954', transition: 'width 1s linear' }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Style 11: Simple (clean card — ใกล้เคียงรูป reference) ───────────────────
+function StyleSimple({ track }) {
+  const progress = track.durationMs ? Math.min(1, track.progressMs / track.durationMs) : 0;
+  const mins = Math.floor((track.progressMs || 0) / 60000);
+  const secs = Math.floor(((track.progressMs || 0) % 60000) / 1000);
+  const minsT = Math.floor((track.durationMs || 0) / 60000);
+  const secsT = Math.floor(((track.durationMs || 0) % 60000) / 1000);
+  const fmt = (m, s) => `${m}:${String(s).padStart(2, '0')}`;
+
+  return (
+    <div style={{
+      width: 340,
+      background: 'rgba(18,18,18,0.92)',
+      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+      borderRadius: 14,
+      overflow: 'hidden',
+      fontFamily: 'system-ui,sans-serif',
+      userSelect: 'none',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      border: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      {/* Top label */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <MiniEQBars playing={track.playing} />
+          <span style={{ color: '#1DB954', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+            {track.playing ? 'Now Playing' : 'Paused'}
+          </span>
+        </div>
+        <SpotifyLogo />
+      </div>
+
+      {/* Main row: art + info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
+        {/* Album art — square */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <AlbumArt src={track.albumArt} size={64} radius={8} />
+        </div>
+        {/* Track info */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <p style={{
+            color: '#fff', fontSize: 14, fontWeight: 700, margin: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            lineHeight: 1.3,
+          }}>
+            {track.title}
+          </p>
+          <p style={{
+            color: 'rgba(255,255,255,0.55)', fontSize: 12, margin: '4px 0 0',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {track.artist}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress area */}
+      <div style={{ padding: '0 14px 12px' }}>
+        {/* Bar */}
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.12)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', width: `${progress * 100}%`,
+            background: '#1DB954', borderRadius: 2,
+            transition: 'width 1s linear',
+          }} />
+        </div>
+        {/* Time stamps */}
+        {track.durationMs > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>{fmt(mins, secs)}</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>{fmt(minsT, secsT)}</span>
+          </div>
+        )}
       </div>
     </div>
   );

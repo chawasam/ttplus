@@ -24,6 +24,7 @@ const NP_STYLES = [
   { id: 'pulse',     icon: '🔴', name: 'Pulse',     desc: 'Sonar pulse rings' },
   { id: 'particles', icon: '✨', name: 'Particles', desc: 'Floating sparkles' },
   { id: 'spectrum',  icon: '🌈', name: 'Spectrum',  desc: 'Spectrum + progress' },
+  { id: 'simple',    icon: '🎧', name: 'Simple',    desc: 'Clean card + progress bar' },
 ];
 
 // Boss presets — เพิ่ม boss ใหม่ที่นี่ (images host ใน /public/boss/)
