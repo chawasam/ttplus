@@ -39,7 +39,7 @@ export const WIDGET_DEFAULTS = {
   chat:             { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '', bw: 100, layout: 'inline', fullBubble: 0, lang: 'th', pagebg: '' },
   pinchat:          { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0, skin: '' },
   pinprofile:       { bg: '0a0a14', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 16, rx: 0, ry: 0, rz: 0, skin: '', orient: 'v', showChat: 1 },
-  leaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16 },
+  leaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, rba: 5 },
   likesLeaderboard:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16, skin: '' },
   'likes-leaderboard':  { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16, skin: '' },
   giftLeaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, skin: '' },
@@ -167,6 +167,11 @@ export function parseWidgetStyles(params, widgetId) {
     ? (/^[0-9a-f]{6}$/i.test(pagebgRaw) ? pagebgRaw : (d.pagebg || ''))
     : '';
 
+  // rba — row background alpha 0-100 (leaderboard เท่านั้น)
+  const rba = d.rba !== undefined
+    ? clamp(parseInt(params.get('rba') ?? d.rba), 0, 100)
+    : 5;
+
   // vol — ระดับเสียง 0-100 (fireworks เท่านั้น)
   const vol = d.vol !== undefined
     ? clamp(parseInt(params.get('vol') ?? d.vol), 0, 100)
@@ -187,6 +192,7 @@ export function parseWidgetStyles(params, widgetId) {
 
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
+    rowBgRgba:   hexAlphaToRgba(tc, rba),
     tc:          '#' + tc,
     ac:          '#' + ac,
     fs,
@@ -195,9 +201,9 @@ export function parseWidgetStyles(params, widgetId) {
     max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount,
+    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba },
   };
 }
 
@@ -236,6 +242,7 @@ export function styleToParams(style, widgetId) {
   if (d.fullBubble   !== undefined && style.fullBubble   !== d.fullBubble)   p.set('fullBubble',  style.fullBubble);
   if (d.lang         !== undefined && style.lang         !== d.lang)         p.set('lang',   style.lang);
   if (d.pagebg       !== undefined && style.pagebg       !== d.pagebg && style.pagebg) p.set('pagebg', style.pagebg);
+  if (d.rba          !== undefined && style.rba          !== d.rba)          p.set('rba',      style.rba);
   if (d.vol          !== undefined && style.vol          !== d.vol)          p.set('vol',      style.vol);
   if (d.patterns     !== undefined && style.patterns     !== d.patterns)     p.set('patterns', style.patterns);
   if (d.pcount       !== undefined && style.pcount       !== d.pcount)       p.set('pcount',   style.pcount);
@@ -305,6 +312,9 @@ export function rawToStyle(raw = {}, widgetId) {
   const pagebg = d.pagebg !== undefined
     ? (/^[0-9a-f]{6}$/i.test(rawPagebg) ? rawPagebg : (d.pagebg || ''))
     : '';
+  const rba = d.rba !== undefined
+    ? clamp(parseInt(raw.rba ?? d.rba), 0, 100)
+    : 5;
   const vol = d.vol !== undefined
     ? clamp(parseInt(raw.vol ?? d.vol), 0, 100)
     : 80;
@@ -319,13 +329,14 @@ export function rawToStyle(raw = {}, widgetId) {
     : 10;
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
+    rowBgRgba:   hexAlphaToRgba(tc, rba),
     tc:          '#' + tc,
     ac:          '#' + ac,
     fs, br, dir, max,
     rx, ry, rz,
     jx, mi, gs,
-    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount,
+    skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba },
   };
 }

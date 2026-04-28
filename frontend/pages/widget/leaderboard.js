@@ -69,11 +69,6 @@ export default function LeaderboardWidget() {
 
   return (
     <div style={{ background: styles.bgRgba, borderRadius: styles.br, padding: 14, minWidth: 240, fontFamily: 'sans-serif' }}>
-      {/* Header */}
-      <h3 style={{ color: styles.ac, fontWeight: 700, fontSize: styles.fs, margin: '0 0 10px', textAlign: 'center', letterSpacing: 1, textTransform: 'uppercase' }}>
-        🏆 Top Gifters
-      </h3>
-
       {leaderboard.length === 0 ? (
         <p style={{ color: styles.tc + '66', textAlign: 'center', fontSize: styles.fs - 2 }}>รอข้อมูล...</p>
       ) : (
@@ -85,7 +80,7 @@ export default function LeaderboardWidget() {
               alignItems:   'center',
               gap:          9,
               marginBottom: 7,
-              background:   styles.tc + '0d', // 5% white/black
+              background:   styles.rowBgRgba,
               borderRadius: Math.max(styles.br - 4, 4),
               padding:      '7px 10px',
             }}
