@@ -282,6 +282,14 @@ app.use('/api/actions', actionsRouter);
 const leaderboardRouter = require('./routes/leaderboard');
 app.use('/api/leaderboard', leaderboardRouter);
 
+// ===== Spotify Now Playing =====
+const spotifyRouter = require('./routes/spotify');
+app.use('/api/spotify', spotifyRouter);
+
+// ===== CoinJar (simulate gift) =====
+const coinjarRouter = require('./routes/coinjar');
+app.use('/api/coinjar', coinjarRouter);
+
 
 // ===== Overlay Route (public, no auth) =====
 const { getOverlayState } = require('./handlers/game/overlay');

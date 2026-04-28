@@ -170,6 +170,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const socketRef = useRef(null);
   const [spotifyConnected, setSpotifyConnected] = useState(null); // null=unknown, true, false
+  const [coinjarSimulating, setCoinjarSimulating] = useState(false);
 
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
   const [audioEnabled, setAudioEnabled] = useState(() => {
@@ -368,6 +369,23 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       toast.success(`✅ Copy URL ${label} แล้ว!`);
     });
   }, [user, widgetCid, baseUrl, buildCustomParams]);
+
+  // ── จำลองของขวัญ random → emit ไปยัง widget จริงของ user ──
+  const simulateCoinjar = useCallback(async () => {
+    if (!user) { setShowLoginModal(true); return; }
+    if (coinjarSimulating) return;
+    setCoinjarSimulating(true);
+    try {
+      const res = await api.post('/api/coinjar/simulate');
+      const { gift, diamonds, repeat } = res.data;
+      const plural = repeat > 1 ? ` ×${repeat}` : '';
+      toast.success(`🎁 ${gift}${plural} (${diamonds} 💎) ตกลงในขวดแล้ว!`);
+    } catch {
+      toast.error('ส่ง simulate ไม่ได้ — ตรวจสอบว่า widget เปิดอยู่');
+    } finally {
+      setCoinjarSimulating(false);
+    }
+  }, [user, coinjarSimulating]);
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
@@ -667,6 +685,24 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                                 <span>🔒</span>
                                 <span>Login ก่อน แล้วเชื่อมต่อ Spotify ใน Settings</span>
                               </div>
+                            )}
+
+                            {/* CoinJar — ปุ่มจำลองของขวัญ */}
+                            {w.id === 'coinjar' && (
+                              <button
+                                onClick={simulateCoinjar}
+                                disabled={coinjarSimulating || !tokenReady}
+                                className={clsx(
+                                  'w-full mb-2 py-2 rounded-lg text-sm font-semibold transition border',
+                                  coinjarSimulating || !tokenReady
+                                    ? 'opacity-50 cursor-not-allowed'
+                                    : isDark
+                                      ? 'bg-violet-900/30 border-violet-700/50 text-violet-300 hover:bg-violet-800/40 hover:border-violet-500/70'
+                                      : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100 hover:border-violet-300',
+                                )}
+                              >
+                                {coinjarSimulating ? '⏳ กำลังส่ง...' : '🎲 จำลองของขวัญ (random)'}
+                              </button>
                             )}
 
                             {/* Action buttons */}

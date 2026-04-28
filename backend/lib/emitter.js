@@ -22,4 +22,11 @@ function broadcastAll(event, data) {
   _io.emit(event, data);
 }
 
-module.exports = { setIO, emitToUser, broadcastAll };
+// Emit event ไปยัง widget room ของ user (widget_${uid})
+// ใช้สำหรับ simulate/test endpoints ที่ต้องการส่ง event ไปยัง widget จริงๆ
+function emitToWidgetRoom(uid, event, data) {
+  if (!_io) return;
+  _io.to(`widget_${uid}`).emit(event, data);
+}
+
+module.exports = { setIO, emitToUser, broadcastAll, emitToWidgetRoom };
