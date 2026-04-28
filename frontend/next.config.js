@@ -29,8 +29,11 @@ const widgetCSP = [
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
-  `connect-src 'self' ${BACKEND} wss: ws:`,
-  "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com",
+  // ต้องใส่ทั้ง BACKEND (Railway URL) และ api.ttsam.app (custom domain)
+  // เพราะ widget เรียก now-playing / socket ผ่าน api.ttsam.app โดยตรง
+  `connect-src 'self' ${BACKEND} https://api.ttsam.app wss://api.ttsam.app wss: ws:`,
+  // img-src: เพิ่ม Spotify CDN (i.scdn.co) สำหรับ album art
+  "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://i.scdn.co https://*.scdn.co https://mosaic.scdn.co",
   "frame-ancestors *",   // OBS / TikTok Studio ต้องการ embed
   "font-src 'self' data:",
 ].join('; ');
