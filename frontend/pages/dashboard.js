@@ -3,13 +3,24 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { connectSocket, disconnectSocket } from '../lib/socket';
+import { connectSocket, disconnectSocket, setTokenRefresher } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { showError } from '../lib/errorHandler';
 import { sanitizeEvent } from '../lib/sanitize';
 import { configureTTS, speak, clearTTSQueue, onTtsStatus, onTtsFallback } from '../lib/tts';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
+
+// ===== helpers =====
+function timeAgo(ts) {
+  const diff = Math.max(0, Date.now() - ts);
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return `${s} วิที่แล้ว`;
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m} นาทีที่แล้ว`;
+  const h = Math.floor(m / 60);
+  return `${h} ชม.ที่แล้ว`;
+}
 
 // ===== TikTok username helpers =====
 const USERNAME_HISTORY_KEY = 'tiktok_usernames';
@@ -62,22 +73,42 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   // ── sync refs ──
   useEffect(() => { tiktokUsernameRef.current = tiktokUsername; }, [tiktokUsername]);
   useEffect(() => { if (connected) wasConnectedRef.current = true; }, [connected]);
+  // NOTE: audioEnabled useEffect moved below its useState declaration (TDZ fix)
 
   const [viewers, setViewers]           = useState(0);
   const [totalLikes, setTotalLikes]     = useState(0);
   const [totalComments, setTotalComments] = useState(0);
+  const [recentMembers, setRecentMembers] = useState([]); // ผู้ชมที่เพิ่งเข้าห้อง (max 50)
+  const [allTimeMembers, setAllTimeMembers] = useState([]); // ทุกคนที่เคยเข้าห้อง
+  const [topViewers, setTopViewers]   = useState([]);        // top gifters จาก TikTok
+  const [memberTab, setMemberTab]     = useState('members'); // 'members' | 'top'
+  const [showSilentInfo, setShowSilentInfo] = useState(false); // popup สูตร "ดูเงียบ ๆ"
 
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
 
   const socketRef            = useRef(null);
   const wasConnectedRef      = useRef(false); // true = เคย connect TikTok ในรอบนี้
-  const manualDisconnectRef  = useRef(false); // true = user กด disconnect เอง
+  // manualDisconnectRef: persist ผ่าน sessionStorage เพื่อป้องกัน auto-connect ยิงหลัง refresh
+  // (sessionStorage หายเมื่อปิด tab — behavior ที่ต้องการ)
+  const manualDisconnectRef  = useRef(
+    typeof window !== 'undefined' && sessionStorage.getItem('ttplus_manual_dc') === '1'
+  );
   const tiktokUsernameRef    = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
   const autoConnectDoneRef   = useRef(false); // ป้องกัน auto-connect ซ้ำในรอบเดียวกัน
   const [autoConnect, setAutoConnect] = useState(() => {
     try { return localStorage.getItem('ttplus_ac') !== '0'; } catch { return true; }
   });
+
+  // ── Per-device audio toggle ──
+  // default: OFF → เสียงออกเฉพาะเครื่องที่ user เปิดเอง
+  // widget URL ใน OBS จะเป็นตัวเล่นเสียงหลัก ไม่ใช่ dashboard
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    try { return localStorage.getItem('ttplus_audio_device') === '1'; } catch { return false; }
+  });
+  const audioEnabledRef = useRef(false);
+  // ── TDZ-safe: sync audioEnabledRef หลัง state ถูก declare แล้ว ──
+  useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -186,13 +217,49 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     });
     socket.on('chat',     (data) => {
       const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
-      if (s.comment) speak(s.comment, 'chat');
+      // เล่นเสียง TTS เฉพาะเมื่อ user เปิดเสียงบนเครื่องนี้ไว้
+      // (default OFF — ให้ widget URL ใน OBS เป็นตัวเล่นเสียงหลัก)
+      if (s.comment && audioEnabledRef.current) speak(s.comment, 'chat');
     });
     socket.on('gift',     (data) => { addEvent(sanitizeEvent(data)); });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
     socket.on('follow',   (data) => { const s = sanitizeEvent(data); addEvent(s); });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
-    socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));
+    socket.on('roomUser', (data) => {
+      setViewers(Math.max(0, Number(data.viewerCount) || 0));
+      if (Array.isArray(data.topViewers) && data.topViewers.length > 0) {
+        setTopViewers(data.topViewers);
+      }
+    });
+    // ── Viewer list (คนที่เข้าห้อง live) ──
+    socket.on('member', (data) => {
+      const uniqueId = String(data.uniqueId || '').slice(0, 64);
+      const nickname = String(data.nickname || uniqueId).slice(0, 100);
+      const pic = String(data.profilePictureUrl || '').slice(0, 512);
+      if (!uniqueId) return;
+      const memberData = { uniqueId, nickname, profilePictureUrl: pic, joinedAt: Date.now() };
+      // recentMembers: 50 คนล่าสุด (proxy สำหรับ "ยังอยู่ในห้อง")
+      setRecentMembers(prev => {
+        const filtered = prev.filter(m => m.uniqueId !== uniqueId);
+        return [memberData, ...filtered].slice(0, 50);
+      });
+      // allTimeMembers: ทุกคนที่เคยเข้า ไม่จำกัด ไม่ซ้ำ
+      setAllTimeMembers(prev => {
+        if (prev.some(m => m.uniqueId === uniqueId)) return prev;
+        return [memberData, ...prev];
+      });
+    });
+    socket.on('recent_members', (data) => {
+      if (Array.isArray(data?.data)) {
+        setRecentMembers(data.data);
+        // seed allTimeMembers จาก batch แรก
+        setAllTimeMembers(prev => {
+          const existingIds = new Set(prev.map(m => m.uniqueId));
+          const newOnes = data.data.filter(m => !existingIds.has(m.uniqueId));
+          return newOnes.length ? [...newOnes, ...prev] : prev;
+        });
+      }
+    });
   }, [addEvent]);
 
   // ===== React to user prop (from _app.js) =====
@@ -202,6 +269,9 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     if (user) {
       // Connect socket + load settings เมื่อ login แล้ว
       user.getIdToken().then(token => {
+        // ลงทะเบียน token refresher — socket จะขอ fresh token ทุกครั้ง reconnect
+        // ป้องกัน "No active connection" เมื่อ Firebase ID token หมดอายุ (> 1 ชั่วโมง)
+        setTokenRefresher(() => user.getIdToken());
         const socket = connectSocket(token);
         socketRef.current = socket;
         setupSocketListeners(socket);
@@ -294,6 +364,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     const cleanUsername = rawUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
     if (!cleanUsername) { toast.error('Username ไม่ถูกต้อง (ใช้ได้เฉพาะ a-z, 0-9, . และ _)'); return; }
     manualDisconnectRef.current = false; // user กด connect เอง — อนุญาต auto-reconnect
+    try { sessionStorage.removeItem('ttplus_manual_dc'); } catch {}
     setConnecting(true);
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
@@ -324,12 +395,15 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   const handleDisconnect = useCallback(async () => {
     manualDisconnectRef.current = true;  // user กด disconnect เอง — ห้าม auto-reconnect
+    try { sessionStorage.setItem('ttplus_manual_dc', '1'); } catch {}
     wasConnectedRef.current = false;
     try {
       await api.post('/api/disconnect');
       setConnected(false);
       setViewers(0); setTotalLikes(0); setTotalComments(0);
       eventsRef.current = []; setEvents([]);
+      setRecentMembers([]); setAllTimeMembers([]); setTopViewers([]);
+      setMemberTab('members'); setShowSilentInfo(false);
       clearTTSQueue();
     } catch { /* ignore */ }
   }, []);
@@ -361,6 +435,24 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>Dashboard</h1>
           <div className="flex items-center gap-2">
+            {/* Per-device audio toggle — default OFF ให้ widget URL ใน OBS เล่นเสียงแทน */}
+            <button
+              onClick={() => {
+                const next = !audioEnabled;
+                setAudioEnabled(next);
+                try { localStorage.setItem('ttplus_audio_device', next ? '1' : '0'); } catch {}
+              }}
+              title={audioEnabled ? 'เสียงเปิดบนเครื่องนี้ — คลิกเพื่อปิด' : 'เสียงปิดบนเครื่องนี้ — คลิกเพื่อเปิด'}
+              className={clsx(
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
+                audioEnabled
+                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                  : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
+              )}
+            >
+              {audioEnabled ? '🔊' : '🔇'}
+              <span className="hidden sm:inline">{audioEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
+            </button>
             <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-400 hover:text-white transition text-lg" aria-label="Toggle theme">
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
@@ -465,6 +557,158 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           <StatCard label="❤️ Likes"   value={totalLikes}    theme={theme} />
           <StatCard label="💬 แชท"     value={totalComments} theme={theme} />
         </div>
+
+        {/* ── Viewer Section ── */}
+        {(allTimeMembers.length > 0 || viewers > 0) && (() => {
+          const dk = theme === 'dark';
+          const trackedCount = allTimeMembers.length;
+          const silentCount  = Math.max(0, viewers - trackedCount);
+
+          const renderMemberRow = (m, i, arr) => (
+            <div key={m.uniqueId} className={clsx(
+              'flex items-center gap-2 px-3 py-1.5 text-xs',
+              i !== arr.length - 1 && (dk ? 'border-b border-gray-800' : 'border-b border-gray-100')
+            )}>
+              {m.profilePictureUrl ? (
+                <img src={m.profilePictureUrl} alt="" referrerPolicy="no-referrer"
+                  className="w-5 h-5 rounded-full flex-shrink-0 object-cover" />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-brand-700 flex-shrink-0 flex items-center justify-center text-[9px] text-white">
+                  {(m.nickname || m.uniqueId).charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className={clsx('truncate flex-1 font-medium', dk ? 'text-gray-300' : 'text-gray-700')}>
+                {m.nickname || m.uniqueId}
+              </span>
+              <span className={clsx('text-[10px]', dk ? 'text-gray-600' : 'text-gray-400')}>
+                {m.joinedAt ? timeAgo(m.joinedAt) : ''}
+              </span>
+            </div>
+          );
+
+          const renderTopRow = (m, i, arr) => (
+            <div key={m.uniqueId} className={clsx(
+              'flex items-center gap-2 px-3 py-1.5 text-xs',
+              i !== arr.length - 1 && (dk ? 'border-b border-gray-800' : 'border-b border-gray-100')
+            )}>
+              <span className={clsx('w-5 text-center font-bold flex-shrink-0 text-[10px]', dk ? 'text-gray-500' : 'text-gray-400')}>
+                #{i + 1}
+              </span>
+              {m.profilePictureUrl ? (
+                <img src={m.profilePictureUrl} alt="" referrerPolicy="no-referrer"
+                  className="w-5 h-5 rounded-full flex-shrink-0 object-cover" />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-yellow-700 flex-shrink-0 flex items-center justify-center text-[9px] text-white">
+                  {(m.nickname || m.uniqueId).charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className={clsx('truncate flex-1 font-medium', dk ? 'text-gray-300' : 'text-gray-700')}>
+                {m.nickname || m.uniqueId}
+              </span>
+              {m.coinCount > 0 && (
+                <span className={clsx('flex-shrink-0 text-[10px] font-semibold', dk ? 'text-yellow-400' : 'text-yellow-600')}>
+                  🪙 {m.coinCount.toLocaleString()}
+                </span>
+              )}
+            </div>
+          );
+
+          return (
+            <div className="mt-4">
+              {/* ── 3 stat chips ── */}
+              <div className={clsx('rounded-xl border p-3 mb-3 grid grid-cols-3 gap-2 text-center', dk ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
+                {/* กำลังดู */}
+                <div>
+                  <p className={clsx('text-lg font-bold', dk ? 'text-white' : 'text-gray-900')}>{viewers.toLocaleString()}</p>
+                  <p className={clsx('text-[10px] mt-0.5', dk ? 'text-gray-500' : 'text-gray-400')}>👁️ กำลังดู</p>
+                </div>
+                {/* เข้าร่วมแชท */}
+                <div className={clsx('border-x', dk ? 'border-gray-800' : 'border-gray-100')}>
+                  <p className={clsx('text-lg font-bold', dk ? 'text-white' : 'text-gray-900')}>{trackedCount.toLocaleString()}</p>
+                  <p className={clsx('text-[10px] mt-0.5', dk ? 'text-gray-500' : 'text-gray-400')}>💬 เข้าร่วมแชท</p>
+                </div>
+                {/* ดูเงียบ ๆ */}
+                <div className="relative">
+                  <p className={clsx('text-lg font-bold', dk ? 'text-orange-400' : 'text-orange-500')}>{silentCount.toLocaleString()}</p>
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <p className={clsx('text-[10px]', dk ? 'text-gray-500' : 'text-gray-400')}>🔇 ดูเงียบ ๆ</p>
+                    {/* ปุ่ม i */}
+                    <button
+                      onClick={() => setShowSilentInfo(v => !v)}
+                      className={clsx(
+                        'w-3.5 h-3.5 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0 transition',
+                        showSilentInfo
+                          ? 'bg-brand-500 text-white'
+                          : dk ? 'bg-gray-700 text-gray-400 hover:bg-gray-600' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                      )}
+                    >i</button>
+                  </div>
+                  {/* Popup สูตร */}
+                  {showSilentInfo && (
+                    <div className={clsx(
+                      'absolute bottom-full right-0 mb-2 w-56 rounded-xl border p-3 text-left shadow-xl z-10',
+                      dk ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'
+                    )}>
+                      <p className={clsx('text-[10px] font-bold mb-1.5', dk ? 'text-white' : 'text-gray-800')}>🔇 สูตรคำนวณ</p>
+                      <div className={clsx('rounded-lg px-2.5 py-2 font-mono text-[10px] mb-2', dk ? 'bg-gray-900 text-green-400' : 'bg-gray-50 text-green-700')}>
+                        ดูเงียบ ๆ = 👁️ กำลังดู − 💬 เข้าร่วมแชท<br/>
+                        = {viewers.toLocaleString()} − {trackedCount.toLocaleString()} = <strong>{silentCount.toLocaleString()}</strong>
+                      </div>
+                      <p className={clsx('text-[9px] leading-relaxed', dk ? 'text-gray-500' : 'text-gray-400')}>
+                        TikTok ส่งเฉพาะตัวเลข — ไม่มีรายชื่อคนที่ดูเงียบ ๆ เพราะ API ไม่เปิดเผยข้อมูลส่วนนี้
+                      </p>
+                      {/* ลูกศรชี้ */}
+                      <div className={clsx('absolute bottom-[-5px] right-4 w-2.5 h-2.5 rotate-45 border-r border-b', dk ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Tabs ── */}
+              <div className={clsx('rounded-xl border overflow-hidden', dk ? 'border-gray-800' : 'border-gray-200')}>
+                <div className={clsx('flex border-b', dk ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-gray-50')}>
+                  <button
+                    onClick={() => setMemberTab('members')}
+                    className={clsx(
+                      'flex-1 py-2 text-xs font-semibold transition',
+                      memberTab === 'members'
+                        ? dk ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+                        : dk ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                    )}
+                  >💬 เข้าร่วมแชท ({trackedCount})</button>
+                  <button
+                    onClick={() => setMemberTab('top')}
+                    className={clsx(
+                      'flex-1 py-2 text-xs font-semibold transition border-l',
+                      dk ? 'border-gray-800' : 'border-gray-200',
+                      memberTab === 'top'
+                        ? dk ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+                        : dk ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                    )}
+                  >🏆 Top Gifters ({topViewers.length})</button>
+                </div>
+                <div className={clsx('max-h-56 overflow-y-auto', dk ? 'bg-gray-900/50' : 'bg-gray-50')}>
+                  {memberTab === 'members' ? (
+                    allTimeMembers.length === 0
+                      ? <p className={clsx('text-center py-5 text-xs', dk ? 'text-gray-600' : 'text-gray-400')}>รอผู้ชมเข้าร่วมแชท...</p>
+                      : allTimeMembers.map((m, i) => renderMemberRow(m, i, allTimeMembers))
+                  ) : (
+                    topViewers.length === 0
+                      ? <p className={clsx('text-center py-5 text-xs', dk ? 'text-gray-600' : 'text-gray-400')}>ยังไม่มีข้อมูล Top Gifters</p>
+                      : topViewers.map((m, i) => renderTopRow(m, i, topViewers))
+                  )}
+                </div>
+                {/* footer clear */}
+                <div className={clsx('flex justify-end px-3 py-1.5 border-t', dk ? 'border-gray-800' : 'border-gray-100')}>
+                  <button
+                    onClick={() => { setAllTimeMembers([]); setTopViewers([]); }}
+                    className={clsx('text-[10px] transition', dk ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600')}
+                  >ล้างรายชื่อ</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       </main>
 
