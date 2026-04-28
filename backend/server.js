@@ -290,6 +290,10 @@ app.use('/api/spotify', spotifyRouter);
 const coinjarRouter = require('./routes/coinjar');
 app.use('/api/coinjar', coinjarRouter);
 
+// ===== Gift Catalog =====
+const giftsRouter = require('./routes/gifts');
+app.use('/api/gifts', giftsRouter);
+
 
 // ===== Overlay Route (public, no auth) =====
 const { getOverlayState } = require('./handlers/game/overlay');

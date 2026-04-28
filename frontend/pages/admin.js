@@ -4435,6 +4435,7 @@ export default function AdminPage() {
     { key:'skills',    label:'⚔️ Skill Stats' },
     { key:'database',  label:'🗄️ Database' },
     { key:'balance',   label:'⚖️ Balance Sim' },
+    { key:'gifts',     label:'🎁 Gift Catalog' },
   ];
 
   return (
@@ -4505,8 +4506,102 @@ export default function AdminPage() {
           {tab === 'skills'    && <SkillStatsTab />}
           {tab === 'database'  && <DatabaseTab />}
           {tab === 'balance'   && <BalanceSimTab />}
+          {tab === 'gifts'     && <GiftCatalogTab />}
         </div>
       </div>
     </>
+  );
+}
+
+// ─── GiftCatalogTab ───────────────────────────────────────────────────────────
+function GiftCatalogTab() {
+  const [gifts, setGifts]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState('');
+  const [sortBy, setSortBy]   = useState('diamonds'); // 'diamonds' | 'name'
+
+  useEffect(() => {
+    api.get('/api/gifts')
+      .then(r => setGifts(r.data.gifts || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = gifts
+    .filter(g => !search || g.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => sortBy === 'diamonds'
+      ? a.diamondCount - b.diamondCount
+      : a.name.localeCompare(b.name));
+
+  const tierColor = (d) => {
+    if (d >= 10000) return '#f43f5e';
+    if (d >= 1000)  return '#f59e0b';
+    if (d >= 100)   return '#818cf8';
+    if (d >= 10)    return '#34d399';
+    return '#6b7280';
+  };
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:20, fontWeight:800, color:'#f59e0b' }}>🎁 Gift Catalog</div>
+          <div style={{ color:'#6b7280', fontSize:12, marginTop:2 }}>
+            ข้อมูล gift จริงที่รวบรวมจาก TikTok Live — อัพเดตอัตโนมัติเมื่อมีคนส่งของขวัญ
+          </div>
+        </div>
+        <div style={{ color:'#374151', fontSize:13 }}>{gifts.length} รายการ</div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="ค้นหาชื่อ gift..."
+          style={{ flex:1, padding:'8px 12px', borderRadius:8, border:'1px solid #374151',
+            background:'#111827', color:'#e5e7eb', fontSize:13, outline:'none' }}
+        />
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value)}
+          style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #374151',
+            background:'#111827', color:'#9ca3af', fontSize:13, cursor:'pointer' }}>
+          <option value="diamonds">เรียงตาม 💎 Coins</option>
+          <option value="name">เรียงตาม ชื่อ A-Z</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign:'center', color:'#6b7280', padding:40 }}>กำลังโหลด...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:'center', color:'#6b7280', padding:40 }}>
+          {gifts.length === 0
+            ? 'ยังไม่มีข้อมูล gift — เชื่อมต่อ TikTok Live แล้วรอให้ผู้ชมส่งของขวัญ'
+            : 'ไม่พบ gift ที่ค้นหา'}
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:10 }}>
+          {filtered.map(g => (
+            <div key={g.name} style={{ ...card, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+              {g.pictureUrl ? (
+                <img src={g.pictureUrl} alt={g.name}
+                  style={{ width:36, height:36, objectFit:'contain', borderRadius:6, flexShrink:0 }} />
+              ) : (
+                <div style={{ width:36, height:36, borderRadius:6, background:'#1f2937',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>🎁</div>
+              )}
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'#e5e7eb', whiteSpace:'nowrap',
+                  overflow:'hidden', textOverflow:'ellipsis' }}>{g.name}</div>
+                <div style={{ fontSize:12, color: tierColor(g.diamondCount), marginTop:2, fontWeight:700 }}>
+                  💎 {g.diamondCount.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

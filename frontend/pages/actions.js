@@ -30,7 +30,7 @@ const TRIGGER_LIST = [
   { id: 'likes',            label: '👍 Like ครบ X ครั้ง' },
   { id: 'chat',             label: '💬 พิมพ์ในแชท (ทุก comment)' },
   { id: 'command',          label: '⌨️ พิมพ์ keyword ในแชท' },
-  { id: 'gift_min_coins',   label: '🎁 ส่ง Gift ≥ X coins' },
+  { id: 'gift_min_coins',   label: '🎁 ส่งของขวัญ ≥ X coins' },
   { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ', popular: true },
   { id: 'subscriber_emote', label: '😄 ส่ง Subscriber Emote' },
   { id: 'fan_club_sticker', label: '🏅 ส่ง Fan Club Sticker' },
@@ -1026,73 +1026,97 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
   );
 }
 
-// ── OBS command executor (one-shot, no persistent connection) ────────────────
+// ── OBS command executor (one-shot, keeps socket open until return fires) ────
 function fireObsCommands(host, port, action) {
-  // Connect → identify → send commands → disconnect
   let ws;
   try { ws = new WebSocket(`ws://${host}:${port}`); } catch { return; }
 
+  let closeTimer = null;
+  const scheduleClose = (delayMs) => {
+    if (closeTimer) clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => { try { ws.close(); } catch {} }, delayMs);
+  };
+
+  // Track pending request types by requestId so we can route op=7 responses
+  const pending = {};
+
   const send = (requestType, requestData = {}) => {
     if (ws.readyState !== 1) return;
-    ws.send(JSON.stringify({
-      op: 6,
-      d: { requestType, requestId: String(Date.now()), requestData },
-    }));
+    const requestId = `${requestType}_${Date.now()}_${Math.random()}`;
+    pending[requestId] = requestType;
+    ws.send(JSON.stringify({ op: 6, d: { requestType, requestId, requestData } }));
+    return requestId;
   };
 
   ws.onmessage = (evt) => {
     let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+
     if (msg.op === 0) {
       // Hello → Identify
       ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
+
     } else if (msg.op === 2) {
-      // Identified — fire commands
+      // Identified — kick off initial requests
+      const hasReturn   = !!(action.obsSceneReturn || action.obsSourceReturn);
+      const returnDelay = (action.displayDuration || 5) * 1000;
 
       // Switch scene
       if (action.types?.includes('switch_obs_scene') && action.obsScene) {
-        // Save current scene name before switching (for return)
-        let prevScene = null;
         if (action.obsSceneReturn) {
-          // We'll capture the current scene from GetCurrentProgramScene response
-          // For now send the switch immediately and handle return in onmessage
+          // Need current scene first; actual switch happens in op=7 handler
           send('GetCurrentProgramScene', {});
-          // Switch will happen after we get the response
         } else {
           send('SetCurrentProgramScene', { sceneName: action.obsScene });
         }
       }
 
-      // Toggle source visible
+      // Activate source — OBS WS v5 requires sceneItemId (integer), not sceneItemName
+      // Fetch the item list first; actual enable happens in op=7 handler
       if (action.types?.includes('activate_obs_source') && action.obsSource) {
+        send('GetSceneItemList', { sceneName: action.obsScene || '' });
+      }
+
+      // Keep socket alive long enough for any return command to fire
+      scheduleClose(hasReturn ? returnDelay + 2000 : 1500);
+
+    } else if (msg.op === 7) {
+      // Route response by original requestType
+      const reqId   = msg.d?.requestId || '';
+      const reqType = pending[reqId] || '';
+      delete pending[reqId];
+
+      if (reqType === 'GetCurrentProgramScene') {
+        const current = msg.d.responseData?.currentProgramSceneName;
+        if (current && action.obsScene) {
+          send('SetCurrentProgramScene', { sceneName: action.obsScene });
+          if (action.obsSceneReturn) {
+            const dur = (action.displayDuration || 5) * 1000;
+            setTimeout(() => {
+              send('SetCurrentProgramScene', { sceneName: current });
+            }, dur);
+          }
+        }
+
+      } else if (reqType === 'GetSceneItemList') {
+        const items  = msg.d.responseData?.sceneItems || [];
+        const item   = items.find(i => i.sourceName === action.obsSource);
+        if (!item) return;
+        const sceneItemId = item.sceneItemId; // integer required by WS v5
         send('SetSceneItemEnabled', {
           sceneName: action.obsScene || '',
-          sceneItemName: action.obsSource,
+          sceneItemId,
           sceneItemEnabled: true,
         });
-
         if (action.obsSourceReturn) {
           const dur = (action.displayDuration || 5) * 1000;
           setTimeout(() => {
             send('SetSceneItemEnabled', {
               sceneName: action.obsScene || '',
-              sceneItemName: action.obsSource,
+              sceneItemId,
               sceneItemEnabled: false,
             });
           }, dur);
         }
-      }
-
-      // Close after commands sent (small delay to ensure delivery)
-      setTimeout(() => { try { ws.close(); } catch {} }, 1000);
-    } else if (msg.op === 7) {
-      // Response to GetCurrentProgramScene — switch scene then schedule return
-      const current = msg.d.responseData?.currentProgramSceneName;
-      if (current && action.types?.includes('switch_obs_scene') && action.obsScene && action.obsSceneReturn) {
-        send('SetCurrentProgramScene', { sceneName: action.obsScene });
-        const dur = (action.displayDuration || 5) * 1000;
-        setTimeout(() => {
-          send('SetCurrentProgramScene', { sceneName: current });
-        }, dur);
       }
     }
   };
@@ -1358,6 +1382,10 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   // Dynamic gift catalog (รวบรวมจาก TikTok live session จริง)
   const [dynamicGifts, setDynamicGifts] = useState([]);
 
+  // Gift simulation panel
+  const [simGiftName, setSimGiftName]   = useState('');
+  const [simulating,  setSimulating]    = useState(false);
+
   // ── ฟังเสียงทดสอบ TTS ใน Browser (default OFF) ──
   const [audioEnabled, setAudioEnabled] = useState(() => {
     try { return localStorage.getItem('ttplus_actions_audio') === '1'; } catch { return false; }
@@ -1483,6 +1511,21 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     } catch { toast.error('เกิดข้อผิดพลาด'); }
   }, []);
 
+  // ── Gift Simulation ──
+  const simulateGift = useCallback(async (giftName) => {
+    if (simulating) return;
+    setSimulating(true);
+    try {
+      const res = await api.post('/api/coinjar/simulate', giftName ? { giftName } : {});
+      const { gift, diamonds } = res.data;
+      toast.success(`🎁 จำลอง: ${gift} (💎${diamonds})`);
+    } catch {
+      toast.error('ส่ง gift จำลองไม่สำเร็จ');
+    } finally {
+      setSimulating(false);
+    }
+  }, [simulating]);
+
   // ── OBS WebSocket ──
   const connectObs = useCallback(() => {
     if (obsWsRef.current) { obsWsRef.current.close(); }
@@ -1519,7 +1562,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl font-bold text-white">🎭 ลูกเล่น TT</h1>
-            <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live</p>
+            <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-yellow-500/80">แนะนำ: ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
           </div>
           <div className="flex items-center gap-2">
             {/* ฟังเสียง TTS ทดสอบ ใน Browser */}
@@ -1681,6 +1724,40 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                   </div>
                 );
               })}
+            </div>
+
+            {/* ── Gift Simulation Panel ── */}
+            <div className="mt-4 rounded-xl border border-violet-800/40 bg-violet-950/20 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base">🎲</span>
+                <p className="text-sm font-semibold text-violet-300">จำลองของขวัญ — ทดสอบ Widget</p>
+              </div>
+              <p className="text-[11px] text-violet-400/70 mb-3">
+                ส่ง gift จำลองไปยัง widget (CoinJar/พลุ) ของบัญชีนี้โดยตรง เพื่อทดสอบโดยไม่ต้อง live จริง
+              </p>
+              <div className="flex gap-2">
+                <select
+                  value={simGiftName}
+                  onChange={e => setSimGiftName(e.target.value)}
+                  className="flex-1 bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition">
+                  <option value="">🎲 Random gift</option>
+                  {(() => {
+                    const map = new Map(TIKTOK_GIFTS.map(g => [g.name, { name: g.name, coins: g.coins }]));
+                    for (const dg of dynamicGifts) map.set(dg.name, { name: dg.name, coins: dg.diamondCount });
+                    return Array.from(map.values())
+                      .sort((a, b) => a.coins - b.coins)
+                      .map(g => (
+                        <option key={g.name} value={g.name}>{g.name} (💎{g.coins})</option>
+                      ));
+                  })()}
+                </select>
+                <button
+                  onClick={() => simulateGift(simGiftName || '')}
+                  disabled={simulating || !user}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition disabled:opacity-50 shrink-0">
+                  {simulating ? <span className="animate-spin">⏳</span> : '▶'} ส่ง
+                </button>
+              </div>
             </div>
           </div>
         )}

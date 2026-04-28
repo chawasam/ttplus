@@ -27,6 +27,7 @@ function pickRandom(arr) {
 
 // ── POST /api/coinjar/simulate — ส่ง gift จำลองไปยัง widget จริงของ user ──
 // Auth required — emit ไปยัง widget_${uid} room เท่านั้น
+// Body: { giftName?: string } — ถ้าไม่ส่ง giftName จะ random
 router.post('/simulate', verifyToken, async (req, res) => {
   const uid = req.user.uid;
 
@@ -34,9 +35,15 @@ router.post('/simulate', verifyToken, async (req, res) => {
   let catalog = [];
   try { catalog = await getGiftCatalog(); } catch { /* ใช้ fallback */ }
 
-  // เลือก gift แบบ random — ถ้า catalog มีข้อมูลให้ใช้ catalog, ไม่งั้นใช้ fallback
   const giftPool = catalog.length > 0 ? catalog : FALLBACK_GIFTS;
-  const gift     = pickRandom(giftPool);
+
+  // เลือก gift — ถ้าส่ง giftName มาให้หาจาก catalog ก่อน ไม่เจอค่อย random
+  const { giftName } = req.body || {};
+  let gift;
+  if (giftName) {
+    gift = giftPool.find(g => g.name === giftName) || FALLBACK_GIFTS.find(g => g.name === giftName);
+  }
+  if (!gift) gift = pickRandom(giftPool);
 
   // random repeat count 1–3
   const repeatCount = Math.floor(Math.random() * 3) + 1;
