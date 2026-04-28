@@ -31,14 +31,14 @@ const TRIGGER_LIST = [
   { id: 'chat',             label: '💬 พิมพ์ในแชท (ทุก comment)' },
   { id: 'command',          label: '⌨️ พิมพ์ keyword ในแชท' },
   { id: 'gift_min_coins',   label: '🎁 ส่ง Gift ≥ X coins' },
-  { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ' },
+  { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ', popular: true },
   { id: 'subscriber_emote', label: '😄 ส่ง Subscriber Emote' },
   { id: 'fan_club_sticker', label: '🏅 ส่ง Fan Club Sticker' },
   { id: 'tiktok_shop',      label: '🛒 ซื้อของจาก TikTok Shop' },
 ];
 
 const WHO_LIST = [
-  { id: 'everyone',       label: 'ทุกคน' },
+  { id: 'everyone',       label: 'ทุกคน',        popular: true  },
   { id: 'follower',       label: 'Follower' },
   { id: 'subscriber',     label: 'Subscriber' },
   { id: 'moderator',      label: 'Moderator' },
@@ -55,9 +55,9 @@ const DEFAULT_ACTION = {
   alertText: 'ขอบคุณ {username}! 🎉',
   ttsText: 'ขอบคุณ {username} ที่ส่ง {giftname}!',
   obsScene: '',
-  obsSceneDuration: 0,
+  obsSceneReturn: false,   // กลับ scene เดิมหลังจบ (ใช้ displayDuration เป็น timing)
   obsSource: '',
-  obsSourceDuration: 0,
+  obsSourceReturn: false,  // ปิด source กลับหลังจบ (ใช้ displayDuration เป็น timing)
   displayDuration: 5,
   overlayScreen: 1,
   globalCooldown: 0,
@@ -68,7 +68,7 @@ const DEFAULT_ACTION = {
 };
 
 const DEFAULT_EVENT = {
-  trigger: 'gift_min_coins',
+  trigger: 'specific_gift',
   whoCanTrigger: 'everyone',
   specificUser: '',
   teamMemberLevel: 0,
@@ -80,6 +80,50 @@ const DEFAULT_EVENT = {
   randomActionIds: [],
   enabled: true,
 };
+
+// ── TikTok Gift list (ชื่อจริงตาม TikTok + coins) ────────────────────────────
+const TIKTOK_GIFTS = [
+  // ── 1–5 coins ──
+  { name: 'Rose',            coins: 1   },
+  { name: 'TikTok',          coins: 1   },
+  { name: 'Ice Cream Cone',  coins: 1   },
+  { name: 'Finger Heart',    coins: 5   },
+  { name: 'Panda',           coins: 5   },
+  { name: 'Italian Hand',    coins: 5   },
+  { name: 'Sunglasses',      coins: 5   },
+  { name: 'GG',              coins: 5   },
+  // ── 10–99 coins ──
+  { name: 'Love Bang',       coins: 25  },
+  { name: 'Mini Speaker',    coins: 25  },
+  { name: 'Hand Heart',      coins: 10  },
+  { name: 'Sun Cream',       coins: 50  },
+  { name: 'Mic',             coins: 50  },
+  { name: 'Cap',             coins: 99  },
+  // ── 100–499 coins ──
+  { name: 'Football',        coins: 100 },
+  { name: 'Rainbow Puke',    coins: 100 },
+  { name: 'Corgi',           coins: 200 },
+  { name: 'Mirror',          coins: 299 },
+  { name: 'Rose Bouquet',    coins: 299 },
+  // ── 500–999 coins ──
+  { name: 'Galaxy',          coins: 500 },
+  { name: 'Concert',         coins: 500 },
+  { name: 'Perfume',         coins: 500 },
+  // ── 1,000–4,999 coins ──
+  { name: "I'm Very Rich",   coins: 1000 },
+  { name: 'Garland',         coins: 1000 },
+  { name: 'Rocket',          coins: 1000 },
+  { name: 'Train',           coins: 1000 },
+  { name: 'Paper Crane',     coins: 1000 },
+  { name: 'Lollipop',        coins: 1999 },
+  { name: 'Crown',           coins: 2999 },
+  // ── 5,000+ coins ──
+  { name: 'Drama Queen',     coins: 5000  },
+  { name: 'Interstellar',    coins: 6999  },
+  { name: 'TikTok Universe', coins: 10000 },
+  { name: 'Lion',            coins: 29999 },
+  { name: 'Universe',        coins: 34999 },
+];
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 function Input({ label, value, onChange, placeholder, type = 'text', min, step, className = '' }) {
@@ -223,8 +267,18 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
 
 // ── Action Form Modal ────────────────────────────────────────────────────────
 function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
-  const [form, setForm] = useState(initial || DEFAULT_ACTION);
+  const [form, setForm] = useState({
+    ...DEFAULT_ACTION,
+    ...(initial || {}),
+    types: Array.isArray(initial?.types) ? initial.types : [],
+  });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Tab ที่ active ในฝั่งขวา: null = settings, หรือ action type id
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = Array.isArray(initial?.types) ? initial.types : [];
+    return t.length > 0 ? t[0] : '__settings__';
+  });
 
   // OBS dropdown state
   const [obsScenes,  setObsScenes]  = useState([]);
@@ -237,20 +291,24 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
     setObsError('');
     fetchObsLists(obsHost || 'localhost', obsPort || 4455, ({ scenes, inputs, error }) => {
       setObsLoading(false);
-      if (error) {
-        setObsError(error);
-        return;
-      }
+      if (error) { setObsError(error); return; }
       setObsScenes(scenes);
       setObsInputs(inputs);
     });
   };
 
   const toggleType = (t) => {
-    setForm(p => ({
-      ...p,
-      types: p.types.includes(t) ? p.types.filter(x => x !== t) : [...p.types, t],
-    }));
+    setForm(p => {
+      const next = p.types.includes(t) ? p.types.filter(x => x !== t) : [...p.types, t];
+      return { ...p, types: next };
+    });
+    // ถ้าเปิด type ใหม่ → ย้ายไปแท็บนั้นทันที; ถ้าปิด type ที่ active → ย้ายไป settings
+    setActiveTab(prev => {
+      const isOn = !form.types.includes(t);
+      if (isOn) return t;
+      if (prev === t) return '__settings__';
+      return prev;
+    });
   };
 
   const testTts = () => {
@@ -259,70 +317,91 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
     speak(text);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-5 space-y-4 my-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-white font-bold text-base">{initial?.id ? 'แก้ไข Action' : 'สร้าง Action ใหม่'}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
-        </div>
-
-        <Input label="ชื่อ Action *" value={form.name} onChange={v => set('name', v)} placeholder="เช่น Rose Alert" />
-
-        {/* Action types */}
-        <div>
-          <p className="text-xs text-gray-400 mb-2">เลือกสิ่งที่เกิดขึ้น (เลือกได้หลายอย่าง)</p>
-          <div className="space-y-2">
-            {ACTION_TYPES.map(t => (
-              <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={form.types.includes(t.id)} onChange={() => toggleType(t.id)}
-                  className="accent-brand-500" />
-                <span className="text-sm text-gray-300">{t.icon} {t.label}</span>
-              </label>
-            ))}
+  // content ด้านขวาตาม activeTab
+  const renderRightPanel = () => {
+    if (activeTab === '__settings__') {
+      return (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">⚙️ ตั้งค่าการแสดงผล</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="แสดงกี่วินาที" value={form.displayDuration}
+              onChange={v => set('displayDuration', v)} type="number" min={1} />
+            <div>
+              <label className="text-xs text-gray-400">Overlay Screen</label>
+              <select value={form.overlayScreen} onChange={e => set('overlayScreen', Number(e.target.value))}
+                className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none">
+                <option value={1}>Screen 1</option>
+                <option value={2}>Screen 2</option>
+              </select>
+            </div>
+            <Input label="Global Cooldown (วิ)" value={form.globalCooldown}
+              onChange={v => set('globalCooldown', v)} type="number" min={0} />
+            <Input label="User Cooldown (วิ)" value={form.userCooldown}
+              onChange={v => set('userCooldown', v)} type="number" min={0} />
+          </div>
+          <div className="space-y-2 pt-1">
+            <Toggle label="Fade In/Out" checked={form.fadeInOut} onChange={v => set('fadeInOut', v)} />
+            <Toggle label="Repeat กับ Gift combos" checked={form.repeatWithCombos} onChange={v => set('repeatWithCombos', v)} />
           </div>
         </div>
+      );
+    }
 
-        {/* Media URLs */}
-        {form.types.includes('show_picture') && (
-          <Input label="🖼 URL รูป / GIF" value={form.pictureUrl} onChange={v => set('pictureUrl', v)}
-            placeholder="https://media.giphy.com/..." />
-        )}
-        {form.types.includes('play_video') && (
-          <Input label="🎬 URL วิดีโอ (YouTube / MP4)" value={form.videoUrl} onChange={v => set('videoUrl', v)}
-            placeholder="https://youtube.com/... หรือ https://..." />
-        )}
-        {form.types.includes('play_audio') && (
-          <Input label="🔊 URL เสียง (MP3/WAV)" value={form.audioUrl} onChange={v => set('audioUrl', v)}
-            placeholder="https://..." />
-        )}
-
-        {/* Alert text */}
-        {form.types.includes('show_alert') && (
-          <div>
-            <Input label="📢 ข้อความ Alert" value={form.alertText} onChange={v => set('alertText', v)}
+    switch (activeTab) {
+      case 'show_picture':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🖼 รูป / GIF</p>
+            <Input label="URL รูปหรือ GIF" value={form.pictureUrl} onChange={v => set('pictureUrl', v)}
+              placeholder="https://media.giphy.com/..." />
+            <p className="text-[10px] text-gray-600">รองรับ PNG, JPG, GIF, WebP — ใช้ลิงก์ตรงถึงไฟล์</p>
+          </div>
+        );
+      case 'play_video':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🎬 วิดีโอ</p>
+            <Input label="URL วิดีโอ (YouTube / MP4)" value={form.videoUrl} onChange={v => set('videoUrl', v)}
+              placeholder="https://youtube.com/... หรือ https://..." />
+          </div>
+        );
+      case 'play_audio':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🔊 เสียง</p>
+            <Input label="URL เสียง (MP3/WAV)" value={form.audioUrl} onChange={v => set('audioUrl', v)}
+              placeholder="https://..." />
+          </div>
+        );
+      case 'show_alert':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">📢 Alert</p>
+            <Input label="ข้อความ Alert" value={form.alertText} onChange={v => set('alertText', v)}
               placeholder="ขอบคุณ {username}! 🎉" />
-            <p className="text-[10px] text-gray-600 mt-1">ใช้ {'{'} username {'}'} {'{'} giftname {'}'} {'{'} coins {'}'} ได้</p>
+            <p className="text-[10px] text-gray-600">ใช้ {'{username}'} {'{giftname}'} {'{coins}'} ได้</p>
           </div>
-        )}
-
-        {/* TTS text */}
-        {form.types.includes('read_tts') && (
-          <div className="space-y-1">
-            <Input label="🗣 ข้อความ TTS" value={form.ttsText} onChange={v => set('ttsText', v)}
+        );
+      case 'read_tts':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🗣 TTS</p>
+            <Input label="ข้อความที่จะอ่าน" value={form.ttsText} onChange={v => set('ttsText', v)}
               placeholder="ขอบคุณ {username} ที่ส่ง {giftname}!" />
-            <p className="text-[10px] text-gray-600">ใช้ engine เดียวกับแถบ TTS (สิริ)</p>
-            <button onClick={testTts} className="text-xs text-brand-400 hover:text-brand-300 underline">▶ ทดสอบเสียง</button>
+            <p className="text-[10px] text-gray-600">ใช้ {'{username}'} {'{giftname}'} {'{coins}'} ได้</p>
+            <button onClick={testTts}
+              className="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-brand-400 rounded px-3 py-1.5 transition-colors">
+              ▶ ทดสอบเสียง
+            </button>
           </div>
-        )}
-
-        {/* OBS Scene */}
-        {form.types.includes('switch_obs_scene') && (
-          <div className="space-y-2 border border-gray-800 rounded p-3">
-            <p className="text-xs text-gray-400 font-medium">🎬 OBS Scene</p>
+        );
+      case 'switch_obs_scene':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🎬 OBS Scene</p>
             {obsError && <p className="text-[10px] text-red-400">{obsError}</p>}
             <ObsSelect
-              label="ชื่อ Scene ที่จะสลับไป"
+              label="Scene ที่จะสลับไป"
               value={form.obsScene}
               onChange={v => set('obsScene', v)}
               items={obsScenes}
@@ -330,23 +409,25 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
               onFetch={loadObsLists}
               placeholder="เช่น Scene ของขวัญ"
             />
-            <div className="flex items-center gap-3">
-              <Input label="กี่วินาทีแล้วกลับ (0 = เปิดตลอด)" value={form.obsSceneDuration}
-                onChange={v => set('obsSceneDuration', v)} type="number" min={0} className="flex-1" />
-            </div>
-            {form.obsSceneDuration > 0 && (
-              <p className="text-[10px] text-gray-500">สลับไป {form.obsScene || '...'} → รอ {form.obsSceneDuration} วิ → กลับ Scene เดิม</p>
+            <Toggle
+              label={`↩ กลับ Scene เดิมหลังจบ (${form.displayDuration}s)`}
+              checked={!!form.obsSceneReturn}
+              onChange={v => set('obsSceneReturn', v)}
+            />
+            {form.obsSceneReturn && (
+              <p className="text-[10px] text-gray-500">
+                สลับไป "{form.obsScene || '...'}" → รอ {form.displayDuration}s → กลับ Scene เดิม
+              </p>
             )}
           </div>
-        )}
-
-        {/* OBS Source */}
-        {form.types.includes('activate_obs_source') && (
-          <div className="space-y-2 border border-gray-800 rounded p-3">
-            <p className="text-xs text-gray-400 font-medium">👁 OBS Source</p>
+        );
+      case 'activate_obs_source':
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">👁 OBS Source</p>
             {obsError && <p className="text-[10px] text-red-400">{obsError}</p>}
             <ObsSelect
-              label="ชื่อ Source ที่จะเปิด"
+              label="Source ที่จะเปิด"
               value={form.obsSource}
               onChange={v => set('obsSource', v)}
               items={obsInputs}
@@ -354,38 +435,118 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
               onFetch={loadObsLists}
               placeholder="เช่น ภาพ Rose Animation"
             />
-            <Input label="กี่วินาทีแล้วปิด (0 = เปิดตลอด)" value={form.obsSourceDuration}
-              onChange={v => set('obsSourceDuration', v)} type="number" min={0} />
+            <Toggle
+              label={`↩ ปิด Source กลับหลังจบ (${form.displayDuration}s)`}
+              checked={!!form.obsSourceReturn}
+              onChange={v => set('obsSourceReturn', v)}
+            />
+            {form.obsSourceReturn && (
+              <p className="text-[10px] text-gray-500">
+                เปิด "{form.obsSource || '...'}" → รอ {form.displayDuration}s → ปิดกลับ
+              </p>
+            )}
           </div>
-        )}
+        );
+      default:
+        return null;
+    }
+  };
 
-        {/* Display settings */}
-        <div className="border border-gray-800 rounded p-3 space-y-3">
-          <p className="text-xs text-gray-400 font-medium">⚙️ ตั้งค่าการแสดงผล</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="แสดงกี่วินาที" value={form.displayDuration} onChange={v => set('displayDuration', v)} type="number" min={1} />
-            <div>
-              <label className="text-xs text-gray-400">Overlay Screen</label>
-              <select value={form.overlayScreen} onChange={e => set('overlayScreen', Number(e.target.value))}
-                className="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200">
-                <option value={1}>Screen 1</option>
-                <option value={2}>Screen 2</option>
-              </select>
-            </div>
-            <Input label="Global Cooldown (วิ)" value={form.globalCooldown} onChange={v => set('globalCooldown', v)} type="number" min={0} />
-            <Input label="User Cooldown (วิ)" value={form.userCooldown} onChange={v => set('userCooldown', v)} type="number" min={0} />
-          </div>
-          <Toggle label="Fade In/Out" checked={form.fadeInOut} onChange={v => set('fadeInOut', v)} />
-          <Toggle label="Repeat กับ Gift combos" checked={form.repeatWithCombos} onChange={v => set('repeatWithCombos', v)} />
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
+          <h3 className="text-white font-bold text-base">{initial?.id ? 'แก้ไข Action' : 'สร้าง Action ใหม่'}</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
         </div>
 
-        <div className="flex gap-2 pt-1">
+        {/* ชื่อ Action */}
+        <div className="px-5 py-3 border-b border-gray-800 shrink-0">
+          <Input label="ชื่อ Action *" value={form.name} onChange={v => set('name', v)} placeholder="เช่น Rose Alert" />
+        </div>
+
+        {/* Body: sidebar ซ้าย + content ขวา */}
+        <div className="flex flex-1 min-h-0">
+
+          {/* Sidebar ซ้าย — type list */}
+          <div className="w-44 shrink-0 border-r border-gray-800 flex flex-col overflow-y-auto">
+            <p className="text-[10px] text-gray-600 font-medium uppercase tracking-wide px-3 pt-3 pb-1.5">
+              เลือกสิ่งที่เกิดขึ้น
+            </p>
+            {ACTION_TYPES.map(t => {
+              const isOn = form.types.includes(t.id);
+              const isActive = activeTab === t.id;
+              return (
+                <div key={t.id}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-colors text-sm border-l-2',
+                    isActive
+                      ? 'border-brand-500 bg-brand-900/30 text-white'
+                      : 'border-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
+                  )}
+                  onClick={() => {
+                    if (!isOn) {
+                      // เปิด type + ย้ายไปแท็บนั้น
+                      setForm(p => ({ ...p, types: [...p.types, t.id] }));
+                    }
+                    setActiveTab(t.id);
+                  }}
+                >
+                  {/* checkbox mini */}
+                  <span
+                    onClick={e => { e.stopPropagation(); toggleType(t.id); }}
+                    className={clsx(
+                      'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+                      isOn ? 'bg-brand-600 border-brand-500' : 'border-gray-600 hover:border-gray-400'
+                    )}
+                  >
+                    {isOn && <span className="text-white text-[9px] leading-none">✓</span>}
+                  </span>
+                  <span className="leading-tight">{t.icon} {t.label}</span>
+                </div>
+              );
+            })}
+
+            {/* Divider + Settings tab */}
+            <div className="mt-auto border-t border-gray-800">
+              <div
+                className={clsx(
+                  'flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-colors text-sm border-l-2',
+                  activeTab === '__settings__'
+                    ? 'border-brand-500 bg-brand-900/30 text-white'
+                    : 'border-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
+                )}
+                onClick={() => setActiveTab('__settings__')}
+              >
+                <span className="text-gray-500">⚙️</span>
+                <span>ตั้งค่า</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Content panel ขวา */}
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {form.types.length === 0 && activeTab !== '__settings__' ? (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-8">
+                <p className="text-3xl">👈</p>
+                <p className="text-sm text-gray-500">เลือก type ด้านซ้ายเพื่อเริ่มตั้งค่า</p>
+              </div>
+            ) : (
+              renderRightPanel()
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-5 py-4 border-t border-gray-800 shrink-0">
           <button onClick={() => onSave(form)}
-            className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded py-2 text-sm font-medium">
+            className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded py-2 text-sm font-medium transition-colors">
             ✓ บันทึก
           </button>
           <button onClick={onClose}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded py-2 text-sm">
+            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded py-2 text-sm transition-colors">
             ยกเลิก
           </button>
         </div>
@@ -421,11 +582,18 @@ function EventModal({ initial, actions, onSave, onClose }) {
             {WHO_LIST.map(w => (
               <label key={w.id} className={clsx(
                 'flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-sm transition-colors',
-                form.whoCanTrigger === w.id ? 'border-brand-500 bg-brand-900/30 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'
+                form.whoCanTrigger === w.id
+                  ? 'border-brand-500 bg-brand-900/30 text-white'
+                  : w.popular
+                    ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
               )}>
                 <input type="radio" name="who" value={w.id} checked={form.whoCanTrigger === w.id}
                   onChange={() => set('whoCanTrigger', w.id)} className="accent-brand-500" />
-                {w.label}
+                <span className="flex-1">{w.label}</span>
+                {w.popular && form.whoCanTrigger !== w.id && (
+                  <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+                )}
               </label>
             ))}
           </div>
@@ -442,11 +610,18 @@ function EventModal({ initial, actions, onSave, onClose }) {
             {TRIGGER_LIST.map(t => (
               <label key={t.id} className={clsx(
                 'flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-sm transition-colors',
-                form.trigger === t.id ? 'border-brand-500 bg-brand-900/30 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'
+                form.trigger === t.id
+                  ? 'border-brand-500 bg-brand-900/30 text-white'
+                  : t.popular
+                    ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500'
               )}>
                 <input type="radio" name="trigger" value={t.id} checked={form.trigger === t.id}
                   onChange={() => set('trigger', t.id)} className="accent-brand-500" />
-                {t.label}
+                <span className="flex-1">{t.label}</span>
+                {t.popular && form.trigger !== t.id && (
+                  <span className="text-[9px] bg-brand-700/60 text-brand-300 px-1 py-0.5 rounded font-medium shrink-0">ใช้บ่อย</span>
+                )}
               </label>
             ))}
           </div>
@@ -461,8 +636,51 @@ function EventModal({ initial, actions, onSave, onClose }) {
               onChange={v => set('minCoins', v)} type="number" min={1} />
           )}
           {form.trigger === 'specific_gift' && (
-            <Input className="mt-2" label="ชื่อ Gift (เช่น Rose, Galaxy)" value={form.specificGiftName}
-              onChange={v => set('specificGiftName', v)} placeholder="Rose" />
+            <div className="mt-2 flex flex-col gap-1">
+              <label className="text-xs text-gray-400">เลือก Gift</label>
+              <select
+                value={form.specificGiftName}
+                onChange={e => set('specificGiftName', e.target.value)}
+                className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+              >
+                <option value="">— เลือก Gift —</option>
+                {TIKTOK_GIFTS.map(g => (
+                  <option key={g.name} value={g.name}>
+                    {g.name}  ({g.coins.toLocaleString()} coins)
+                  </option>
+                ))}
+              </select>
+              {form.specificGiftName && (
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  หรือพิมพ์ชื่อเองถ้าไม่มีในลิสต์ →{' '}
+                  <button
+                    type="button"
+                    className="text-brand-400 underline hover:text-brand-300"
+                    onClick={() => {
+                      const custom = prompt('ชื่อ Gift (พิมพ์ตรงๆ จาก TikTok):');
+                      if (custom?.trim()) set('specificGiftName', custom.trim());
+                    }}
+                  >
+                    พิมพ์เอง
+                  </button>
+                </p>
+              )}
+              {!form.specificGiftName && (
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  ไม่มีในลิสต์?{' '}
+                  <button
+                    type="button"
+                    className="text-brand-400 underline hover:text-brand-300"
+                    onClick={() => {
+                      const custom = prompt('ชื่อ Gift (พิมพ์ตรงๆ จาก TikTok):');
+                      if (custom?.trim()) set('specificGiftName', custom.trim());
+                    }}
+                  >
+                    พิมพ์เอง
+                  </button>
+                </p>
+              )}
+            </div>
           )}
           {form.trigger === 'likes' && (
             <Input className="mt-2" label="Like ครบกี่ครั้ง" value={form.likesCount}
@@ -517,16 +735,324 @@ function EventModal({ initial, actions, onSave, onClose }) {
   );
 }
 
+// ── OBS command executor (one-shot, no persistent connection) ────────────────
+function fireObsCommands(host, port, action) {
+  // Connect → identify → send commands → disconnect
+  let ws;
+  try { ws = new WebSocket(`ws://${host}:${port}`); } catch { return; }
+
+  const send = (requestType, requestData = {}) => {
+    if (ws.readyState !== 1) return;
+    ws.send(JSON.stringify({
+      op: 6,
+      d: { requestType, requestId: String(Date.now()), requestData },
+    }));
+  };
+
+  ws.onmessage = (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+    if (msg.op === 0) {
+      // Hello → Identify
+      ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
+    } else if (msg.op === 2) {
+      // Identified — fire commands
+
+      // Switch scene
+      if (action.types?.includes('switch_obs_scene') && action.obsScene) {
+        // Save current scene name before switching (for return)
+        let prevScene = null;
+        if (action.obsSceneReturn) {
+          // We'll capture the current scene from GetCurrentProgramScene response
+          // For now send the switch immediately and handle return in onmessage
+          send('GetCurrentProgramScene', {});
+          // Switch will happen after we get the response
+        } else {
+          send('SetCurrentProgramScene', { sceneName: action.obsScene });
+        }
+      }
+
+      // Toggle source visible
+      if (action.types?.includes('activate_obs_source') && action.obsSource) {
+        send('SetSceneItemEnabled', {
+          sceneName: action.obsScene || '',
+          sceneItemName: action.obsSource,
+          sceneItemEnabled: true,
+        });
+
+        if (action.obsSourceReturn) {
+          const dur = (action.displayDuration || 5) * 1000;
+          setTimeout(() => {
+            send('SetSceneItemEnabled', {
+              sceneName: action.obsScene || '',
+              sceneItemName: action.obsSource,
+              sceneItemEnabled: false,
+            });
+          }, dur);
+        }
+      }
+
+      // Close after commands sent (small delay to ensure delivery)
+      setTimeout(() => { try { ws.close(); } catch {} }, 1000);
+    } else if (msg.op === 7) {
+      // Response to GetCurrentProgramScene — switch scene then schedule return
+      const current = msg.d.responseData?.currentProgramSceneName;
+      if (current && action.types?.includes('switch_obs_scene') && action.obsScene && action.obsSceneReturn) {
+        send('SetCurrentProgramScene', { sceneName: action.obsScene });
+        const dur = (action.displayDuration || 5) * 1000;
+        setTimeout(() => {
+          send('SetCurrentProgramScene', { sceneName: current });
+        }, dur);
+      }
+    }
+  };
+
+  ws.onerror = () => {};
+}
+
+// ── Preview / Test Modal ─────────────────────────────────────────────────────
+function PreviewModal({ action, onClose, obsHost, obsPort }) {
+  const [visible, setVisible] = useState(false);
+  const [obsMsg,  setObsMsg]  = useState('');
+  const audioRef = useRef(null);
+
+  const getYtEmbed = (url) => {
+    const m = url?.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{11})/);
+    return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&controls=0&mute=0` : url;
+  };
+
+  useEffect(() => {
+    // Fade in
+    requestAnimationFrame(() => setVisible(true));
+
+    // Play audio
+    if (action.types?.includes('play_audio') && action.audioUrl) {
+      const audio = new Audio(action.audioUrl);
+      audio.volume = 0.9;
+      audio.play().catch(() => {});
+      audioRef.current = audio;
+    }
+
+    // TTS
+    if (action.types?.includes('read_tts') && action.ttsText) {
+      const text = action.ttsText
+        .replace('{username}', 'ทดสอบ')
+        .replace('{giftname}', 'Rose')
+        .replace('{coins}', '100');
+      speak(text);
+    }
+
+    // OBS commands — fire and show status
+    const hasObs = action.types?.includes('switch_obs_scene') || action.types?.includes('activate_obs_source');
+    if (hasObs) {
+      setObsMsg('🔌 กำลังส่งคำสั่ง OBS...');
+      fireObsCommands(obsHost || 'localhost', obsPort || 4455, action);
+      // Brief feedback messages
+      setTimeout(() => setObsMsg(
+        action.types?.includes('switch_obs_scene')
+          ? `✅ สลับไป "${action.obsScene}"${action.obsSceneReturn ? ` · กลับใน ${action.displayDuration}s` : ''}`
+          : `✅ เปิด Source "${action.obsSource}"${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`
+      ), 600);
+    }
+
+    // Auto-close after displayDuration
+    const dur = (action.displayDuration || 5) * 1000;
+    const timer = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onClose, 500);
+    }, dur);
+
+    return () => {
+      clearTimeout(timer);
+      window.speechSynthesis?.cancel();
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isYt = action.videoUrl?.includes('youtube') || action.videoUrl?.includes('youtu.be');
+  const hasVisual = action.types?.some(t => ['show_picture','play_video','show_alert'].includes(t));
+  const dur = action.displayDuration || 5;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-2xl"
+        style={{ aspectRatio: '16/9' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center text-base hover:bg-black/80 transition-colors"
+        >
+          ×
+        </button>
+
+        {/* Label */}
+        <div className="absolute top-3 left-3 z-20 bg-black/60 text-white text-xs px-2 py-1 rounded-full font-medium">
+          ▶ ทดสอบ: {action.name}
+        </div>
+
+        {/* Picture / GIF */}
+        {action.types?.includes('show_picture') && action.pictureUrl && (
+          <img
+            src={action.pictureUrl}
+            alt=""
+            style={{
+              transition: 'opacity 0.5s, transform 0.5s',
+              opacity: visible ? 1 : 0,
+              transform: visible ? 'scale(1)' : 'scale(0.95)',
+              position: 'absolute',
+              maxWidth: '90%', maxHeight: '80%',
+              objectFit: 'contain',
+              top: '50%', left: '50%',
+              transform: visible
+                ? 'translate(-50%,-50%) scale(1)'
+                : 'translate(-50%,-50%) scale(0.95)',
+              borderRadius: 12,
+            }}
+          />
+        )}
+
+        {/* Video */}
+        {action.types?.includes('play_video') && action.videoUrl && (
+          isYt ? (
+            <iframe
+              src={getYtEmbed(action.videoUrl)}
+              style={{
+                transition: 'opacity 0.5s',
+                opacity: visible ? 1 : 0,
+                position: 'absolute',
+                width: '80%', left: '10%',
+                aspectRatio: '16/9',
+                top: '50%', transform: 'translateY(-50%)',
+                border: 'none', borderRadius: 12,
+              }}
+              allow="autoplay"
+            />
+          ) : (
+            <video
+              src={action.videoUrl}
+              autoPlay
+              controls={false}
+              style={{
+                transition: 'opacity 0.5s',
+                opacity: visible ? 1 : 0,
+                position: 'absolute',
+                maxWidth: '80%', maxHeight: '80%',
+                top: '50%', left: '50%',
+                transform: 'translate(-50%,-50%)',
+                borderRadius: 12,
+              }}
+            />
+          )
+        )}
+
+        {/* Alert */}
+        {action.types?.includes('show_alert') && action.alertText && (
+          <div style={{
+            transition: 'opacity 0.5s, transform 0.5s',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateX(-50%) scale(1)' : 'translateX(-50%) scale(0.9)',
+            position: 'absolute',
+            bottom: 48, left: '50%',
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.95), rgba(79,70,229,0.95))',
+            color: '#fff',
+            padding: '14px 28px',
+            borderRadius: 999,
+            fontSize: 20,
+            fontWeight: 700,
+            textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(124,58,237,0.6)',
+            maxWidth: '85%',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'system-ui, sans-serif',
+            textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+            whiteSpace: 'pre-wrap',
+          }}>
+            {action.alertText
+              .replace('{username}', 'ทดสอบ')
+              .replace('{giftname}', 'Rose')
+              .replace('{coins}', '100')}
+          </div>
+        )}
+
+        {/* OBS status message */}
+        {obsMsg && (
+          <div style={{
+            position: 'absolute',
+            top: 40, left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(0,0,0,0.75)',
+            color: obsMsg.startsWith('✅') ? '#86efac' : '#fcd34d',
+            fontSize: 12,
+            padding: '5px 14px',
+            borderRadius: 999,
+            fontFamily: 'system-ui',
+            whiteSpace: 'nowrap',
+            backdropFilter: 'blur(4px)',
+            zIndex: 10,
+          }}>
+            {obsMsg}
+          </div>
+        )}
+
+        {/* Audio-only / TTS-only indicator */}
+        {!hasVisual && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <div style={{
+              fontSize: 56,
+              transition: 'opacity 0.5s',
+              opacity: visible ? 1 : 0,
+              filter: 'drop-shadow(0 0 20px rgba(167,139,250,0.6))',
+            }}>
+              {action.types?.includes('play_audio') ? '🔊' :
+               action.types?.includes('read_tts')   ? '🗣️' : '⚡'}
+            </div>
+            <p style={{
+              transition: 'opacity 0.5s',
+              opacity: visible ? 1 : 0,
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 14,
+              fontFamily: 'system-ui',
+            }}>
+              {action.types?.includes('play_audio') ? 'กำลังเล่นเสียง...' :
+               action.types?.includes('read_tts')   ? 'กำลังอ่านออกเสียง...' : 'Action กำลังทำงาน'}
+            </p>
+          </div>
+        )}
+
+        {/* Progress bar countdown */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800 overflow-hidden rounded-b-xl">
+          <div
+            className="h-full bg-brand-500"
+            style={{
+              width: visible ? '0%' : '100%',
+              transition: `width ${dur}s linear`,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function ActionsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
   const [actions,  setActions]  = useState([]);
   const [events,   setEvents]   = useState([]);
   const [loading,  setLoading]  = useState(false);
+  // Delete confirmation: { id, type:'action'|'event' } — กดครั้งแรก set, กดครั้งสองลบจริง
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const confirmTimerRef = useRef(null);
   const [tab,      setTab]      = useState('actions'); // actions | events | overlay | obs
 
   // Modals
-  const [actionModal,  setActionModal]  = useState(null); // null | { data }
-  const [eventModal,   setEventModal]   = useState(null);
+  const [actionModal,   setActionModal]  = useState(null); // null | { data }
+  const [eventModal,    setEventModal]   = useState(null);
+  const [previewAction, setPreviewAction] = useState(null); // action being previewed
 
   // OBS settings
   const [obsHost,     setObsHost]     = useState('localhost');
@@ -592,14 +1118,35 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     }
   }, [loadData]);
 
-  const deleteAction = useCallback(async (id) => {
-    if (!confirm('ลบ Action นี้?')) return;
-    try {
-      await api.delete(`/api/actions/${id}`);
-      toast.success('ลบแล้ว');
-      loadData();
-    } catch { toast.error('ลบไม่ได้'); }
-  }, [loadData]);
+  // ── Double-confirm delete (กดครั้งแรก = รอยืนยัน, กดครั้งสอง = ลบจริง) ──
+  const requestDelete = useCallback((id, type = 'action') => {
+    if (confirmDelete?.id === id && confirmDelete?.type === type) {
+      // กดครั้งที่สอง — ลบจริง
+      clearTimeout(confirmTimerRef.current);
+      setConfirmDelete(null);
+      const del = async () => {
+        try {
+          if (type === 'action') {
+            await api.delete(`/api/actions/${id}`);
+          } else {
+            await api.delete(`/api/actions/events/${id}`);
+          }
+          toast.success('ลบแล้ว');
+          loadData();
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'ลบไม่สำเร็จ');
+        }
+      };
+      del();
+    } else {
+      // กดครั้งแรก — รอ 3 วิ
+      clearTimeout(confirmTimerRef.current);
+      setConfirmDelete({ id, type });
+      confirmTimerRef.current = setTimeout(() => setConfirmDelete(null), 3000);
+    }
+  }, [confirmDelete, loadData]);
+
+  const deleteAction = useCallback((id) => requestDelete(id, 'action'), [requestDelete]);
 
   const toggleAction = useCallback(async (a) => {
     try {
@@ -626,14 +1173,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     }
   }, [loadData]);
 
-  const deleteEvent = useCallback(async (id) => {
-    if (!confirm('ลบ Event นี้?')) return;
-    try {
-      await api.delete(`/api/actions/events/${id}`);
-      toast.success('ลบแล้ว');
-      loadData();
-    } catch { toast.error('ลบไม่ได้'); }
-  }, [loadData]);
+  const deleteEvent = useCallback((id) => requestDelete(id, 'event'), [requestDelete]);
 
   const toggleEvent = useCallback(async (e) => {
     try {
@@ -723,34 +1263,57 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
               </div>
             )}
 
-            {actions.map(a => (
-              <div key={a.id} className={clsx(
-                'border rounded-lg p-3 flex items-center gap-3 transition-colors',
-                a.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-60'
-              )}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{a.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {a.types.map(t => ACTION_TYPES.find(x => x.id === t)?.icon).join(' ')} ·
-                    Screen {a.overlayScreen} · {a.displayDuration}s
-                  </p>
+            <div className="rounded-lg overflow-hidden border border-gray-800">
+              {actions.map((a, idx) => (
+                <div key={a.id} className={clsx(
+                  'flex items-center gap-2 px-3 py-1.5 transition-colors',
+                  !a.enabled && 'opacity-50',
+                  idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-900/50',
+                  idx !== actions.length - 1 && 'border-b border-gray-800'
+                )}>
+                  {/* Index */}
+                  <span className="text-[10px] text-gray-600 w-4 shrink-0 text-right select-none">{idx + 1}</span>
+
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-200 truncate leading-none">{a.name}</p>
+                    <span className="text-[10px] text-gray-600 shrink-0 leading-none">
+                      {(a.types || []).map(t => ACTION_TYPES.find(x => x.id === t)?.icon).filter(Boolean).join('')}
+                    </span>
+                    <span className="text-[10px] text-gray-700 shrink-0 leading-none hidden md:inline">
+                      S{a.overlayScreen} · {a.displayDuration}s
+                    </span>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setPreviewAction(a)}
+                      className="text-[11px] text-brand-400 hover:text-brand-300 px-1.5 py-0.5 rounded bg-brand-900/30 hover:bg-brand-900/60 border border-brand-900 transition-colors leading-none"
+                    >
+                      ▶
+                    </button>
+                    <button onClick={() => toggleAction(a)}
+                      className={clsx('text-[11px] px-1.5 py-0.5 rounded leading-none', a.enabled ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-600')}>
+                      {a.enabled ? 'เปิด' : 'ปิด'}
+                    </button>
+                    <button onClick={() => setActionModal({ data: { ...a } })}
+                      className="text-[11px] text-gray-500 hover:text-white px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 leading-none">
+                      แก้ไข
+                    </button>
+                    <button onClick={() => deleteAction(a.id)}
+                      className={clsx(
+                        'text-[11px] px-1.5 py-0.5 rounded leading-none transition-colors',
+                        confirmDelete?.id === a.id && confirmDelete?.type === 'action'
+                          ? 'bg-red-600 text-white animate-pulse'
+                          : 'text-red-600 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
+                      )}>
+                      {confirmDelete?.id === a.id && confirmDelete?.type === 'action' ? 'ยืนยัน?' : 'ลบ'}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => toggleAction(a)}
-                    className={clsx('text-xs px-2 py-0.5 rounded', a.enabled ? 'bg-green-900 text-green-400' : 'bg-gray-800 text-gray-500')}>
-                    {a.enabled ? 'เปิด' : 'ปิด'}
-                  </button>
-                  <button onClick={() => setActionModal({ data: { ...a } })}
-                    className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-gray-800">
-                    แก้ไข
-                  </button>
-                  <button onClick={() => deleteAction(a.id)}
-                    className="text-xs text-red-500 hover:text-red-400 px-2 py-0.5 rounded bg-gray-800">
-                    ลบ
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -805,8 +1368,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                       แก้ไข
                     </button>
                     <button onClick={() => deleteEvent(ev.id)}
-                      className="text-xs text-red-500 hover:text-red-400 px-2 py-0.5 rounded bg-gray-800">
-                      ลบ
+                      className={clsx(
+                        'text-xs px-2 py-0.5 rounded transition-colors',
+                        confirmDelete?.id === ev.id && confirmDelete?.type === 'event'
+                          ? 'bg-red-600 text-white animate-pulse'
+                          : 'text-red-500 hover:text-red-400 bg-gray-800'
+                      )}>
+                      {confirmDelete?.id === ev.id && confirmDelete?.type === 'event' ? 'ยืนยัน?' : 'ลบ'}
                     </button>
                   </div>
                 </div>
@@ -905,6 +1473,16 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           actions={actions}
           onSave={saveEvent}
           onClose={() => setEventModal(null)}
+        />
+      )}
+
+      {/* Preview / Test Modal */}
+      {previewAction && (
+        <PreviewModal
+          action={previewAction}
+          onClose={() => setPreviewAction(null)}
+          obsHost={obsHost}
+          obsPort={obsPort}
         />
       )}
 
