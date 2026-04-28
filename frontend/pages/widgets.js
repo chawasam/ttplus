@@ -88,8 +88,30 @@ const WIDGETS = [
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
   { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
   { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
-  { id: 'likes-leaderboard', icon: '👍', name: 'Likes Leaderboard', desc: 'Top 10 ผู้ที่ Like มากที่สุด ตอนไลฟ์', size: '300 × 520' },
-  { id: 'gift-leaderboard',  icon: '🎁', name: 'Gift Leaderboard',  desc: 'Top 10 ผู้ส่งของขวัญมากที่สุด ตอนไลฟ์', size: '300 × 520' },
+  {
+    id: 'likes-leaderboard', icon: '👍', name: 'Likes Leaderboard',
+    desc: 'Top 10 ผู้ที่ Like มากที่สุด ตอนไลฟ์', size: '300 × 520',
+    configFields: [
+      { key: 'showMedal',    label: '🥇 เหรียญ Top 3',        type: 'toggle', default: 1, onLabel: 'เปิด — แสดงเหรียญ 🥇🥈🥉', offLabel: 'ปิด — แสดงเบอร์อันดับ #' },
+      { key: 'showBg',       label: '🟦 Background แต่ละแถว', type: 'toggle', default: 1, onLabel: 'เปิด', offLabel: 'ปิด — โปร่งใส' },
+      { key: 'showAvatar',   label: '👤 รูปโปรไฟล์',           type: 'toggle', default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showProgress', label: '📊 Progress Bar',          type: 'toggle', default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showLikes',    label: '👍 จำนวนไลค์',            type: 'toggle', default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'maxRows',      label: '📋 จำนวนแถวสูงสุด',        type: 'number', default: 10, min: 1, max: 20, step: 1 },
+    ],
+  },
+  {
+    id: 'gift-leaderboard',  icon: '🎁', name: 'Gift Leaderboard',
+    desc: 'Top 10 ผู้ส่งของขวัญมากที่สุด ตอนไลฟ์', size: '300 × 520',
+    configFields: [
+      { key: 'showMedal',    label: '🥇 เหรียญ Top 3',        type: 'toggle', default: 1, onLabel: 'เปิด — แสดงเหรียญ 🥇🥈🥉', offLabel: 'ปิด — แสดงเบอร์อันดับ #' },
+      { key: 'showBg',       label: '🟦 Background แต่ละแถว', type: 'toggle', default: 1, onLabel: 'เปิด', offLabel: 'ปิด — โปร่งใส' },
+      { key: 'showAvatar',   label: '👤 รูปโปรไฟล์',           type: 'toggle', default: 0, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showProgress', label: '📊 Progress Bar',          type: 'toggle', default: 0, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showCoins',    label: '💎 จำนวน Diamond',        type: 'toggle', default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'maxRows',      label: '📋 จำนวนแถวสูงสุด',        type: 'number', default: 10, min: 1, max: 20, step: 1 },
+    ],
+  },
   { id: 'fireworks',         icon: '🎆', name: 'Gift Fireworks',    desc: 'พลุของขวัญ — Rocket = avatar ผู้ส่ง, ระเบิด = รูปของขวัญ', size: '800 × 800' },
   { id: 'myactions',         icon: '🎬', name: 'Actions Overlay',   desc: 'แสดง GIF/วิดีโอ/Alert จากระบบ ลูกเล่น TT บน OBS', size: '1920 × 1080', noStyle: true },
   {
@@ -301,7 +323,17 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     const w = WIDGETS.find(ww => ww.id === widgetId);
     // ทุก widget ใช้ ?cid= เหมือนกันหมด (leaderboard, myactions, fireworks, ฯลฯ)
     const base = `${baseUrl}/widget/${widgetId}?cid=${widgetCid}`;
-    if (w?.configFields) return `${base}&${buildCustomParams(w)}`;
+    if (w?.configFields) {
+      const configQ = buildCustomParams(w);
+      // widget ที่มีทั้ง style + configFields (เช่น leaderboard) → รวม params ทั้งคู่
+      if (!w.noStyle) {
+        const style  = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
+        const styleQ = styleToParams(style, widgetId);
+        const combined = [styleQ, configQ].filter(Boolean).join('&');
+        return combined ? `${base}&${combined}` : base;
+      }
+      return configQ ? `${base}&${configQ}` : base;
+    }
     const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
@@ -343,7 +375,16 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     // preview ใช้ ?preview=1 เสมอ — ไม่ต้องการ cid/vjId
     const base = `${baseUrl}/widget/${widgetId}?preview=1`;
 
-    if (w?.configFields) return `${base}&${buildCustomParams(w)}`;
+    if (w?.configFields) {
+      const configQ = buildCustomParams(w);
+      if (!w.noStyle) {
+        const style  = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
+        const styleQ = styleToParams(style, widgetId);
+        const combined = [styleQ, configQ].filter(Boolean).join('&');
+        return combined ? `${base}&${combined}` : base;
+      }
+      return configQ ? `${base}&${configQ}` : base;
+    }
     const style = styles[widgetId] || WIDGET_DEFAULTS[widgetId];
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
@@ -632,10 +673,13 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
               onClick={() => setDrawerWidget(null)}
             />
             {/* Panel */}
-            <div className={clsx(
-              'fixed right-0 top-0 bottom-0 z-50 w-full md:w-[440px] flex flex-col shadow-2xl border-l',
-              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
-            )}>
+            <div
+              className={clsx(
+                'fixed right-0 bottom-0 z-50 w-full md:w-[440px] flex flex-col shadow-2xl border-l',
+                isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+              )}
+              style={{ top: 26 }}
+            >
               {/* Header */}
               <div className={clsx('flex items-center gap-3 px-5 py-4 border-b shrink-0', isDark ? 'border-gray-800' : 'border-gray-100')}>
                 <span className="text-2xl">{dw.icon}</span>

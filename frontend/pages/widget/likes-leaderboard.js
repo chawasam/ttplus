@@ -1,8 +1,8 @@
 // widget/likes-leaderboard.js — Like/TapTap Leaderboard (top 10, per session, resets on new Live)
 // OBS Size: 300 x 520
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import SKINS, { SkinParticles } from '../../lib/chatSkins';
 
@@ -10,9 +10,21 @@ const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 const POLL_MS = 10000; // fallback REST poll ทุก 10s (socket เป็น primary)
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+// Default config values (ตรงกับ configFields ใน widgets.js)
+const DEFAULT_CONFIG = {
+  showMedal:    1,
+  showBg:       1,
+  showAvatar:   1,
+  showProgress: 1,
+  showLikes:    1,
+  maxRows:      10,
+};
+
 export default function LikesLeaderboardWidget() {
   const [board, setBoard] = useState([]);
   const [styles, setStyles] = useState(null);
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const stylesRef = useRef(null);
 
   // Resolve skin CSS from SKINS map
   const skinId = styles?.raw?.skin || '';
@@ -24,6 +36,18 @@ export default function LikesLeaderboardWidget() {
     const isPreview = params.get('preview') === '1';
     const s = parseWidgetStyles(params, 'likesLeaderboard');
     setStyles(s);
+    stylesRef.current = s;
+
+    // Read config toggles from URL params
+    const cfg = {
+      showMedal:    params.get('showMedal')    !== '0',
+      showBg:       params.get('showBg')        !== '0',
+      showAvatar:   params.get('showAvatar')    !== '0',
+      showProgress: params.get('showProgress')  !== '0',
+      showLikes:    params.get('showLikes')     !== '0',
+      maxRows:      Math.min(20, Math.max(1, parseInt(params.get('maxRows') || '10', 10))),
+    };
+    setConfig(cfg);
 
     if (isPreview) {
       setBoard([
@@ -44,6 +68,14 @@ export default function LikesLeaderboardWidget() {
     const socket = createWidgetSocket(vid, {
       leaderboard_update: ({ type, data }) => {
         if (type === 'likes' && Array.isArray(data)) setBoard(data);
+      },
+      // ── Real-time style update จาก Customize Drawer ──
+      style_update: ({ widgetId, style }) => {
+        if (widgetId !== 'likes-leaderboard') return;
+        if (style?._reset) return;
+        const next = rawToStyle(style, 'likes-leaderboard');
+        stylesRef.current = next;
+        setStyles(next);
       },
     });
 
@@ -70,6 +102,9 @@ export default function LikesLeaderboardWidget() {
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
+  const displayBoard = board.slice(0, config.maxRows);
+  const maxLikes = displayBoard.length > 0 ? displayBoard[0].likeCount : 1;
+
   return (
     <>
       <Head>
@@ -90,7 +125,7 @@ export default function LikesLeaderboardWidget() {
         {skinDef && <SkinParticles skinId={skinId} />}
 
         <div style={{ position: 'relative', zIndex: 1 }}>
-          {board.length === 0 ? (
+          {displayBoard.length === 0 ? (
             <p
               style={{
                 color: styles.tc + '66',
@@ -102,10 +137,10 @@ export default function LikesLeaderboardWidget() {
               รอข้อมูล...
             </p>
           ) : (
-            board.map((user, i) => {
+            displayBoard.map((user, i) => {
               const isTop3 = i < 3;
               const accentColor = styles.ac;
-              const progressPercent = board.length > 0 ? (user.likeCount / board[0].likeCount) * 100 : 0;
+              const progressPercent = maxLikes > 0 ? (user.likeCount / maxLikes) * 100 : 0;
 
               return (
                 <div
@@ -115,17 +150,18 @@ export default function LikesLeaderboardWidget() {
                     alignItems: 'center',
                     gap: 10,
                     marginBottom: 8,
-                    background: isTop3
-                      ? accentColor + '15'
-                      : styles.tc + '08',
-                    border: isTop3 ? `1px solid ${accentColor}40` : 'none',
+                    background: config.showBg
+                      ? (isTop3 ? accentColor + '15' : styles.tc + '08')
+                      : 'transparent',
+                    border: config.showBg && isTop3 ? `1px solid ${accentColor}40` : 'none',
                     borderRadius: Math.max(styles.br - 4, 4),
                     padding: '8px 12px',
                     animation: 'slideInUp 0.3s ease-out',
                     animationDelay: `${i * 50}ms`,
-                    backdropFilter: 'blur(8px)',
+                    backdropFilter: config.showBg ? 'blur(8px)' : 'none',
                   }}
                 >
+                  {/* อันดับ / เหรียญ */}
                   <span
                     style={{
                       fontSize: styles.fs + 4,
@@ -135,10 +171,11 @@ export default function LikesLeaderboardWidget() {
                       filter: isTop3 ? 'drop-shadow(0 0 6px rgba(255,215,0,0.4))' : 'none',
                     }}
                   >
-                    {MEDALS[i] || `#${i + 1}`}
+                    {config.showMedal && MEDALS[i] ? MEDALS[i] : `#${i + 1}`}
                   </span>
 
-                  {user.profilePictureUrl && (
+                  {/* รูปโปรไฟล์ */}
+                  {config.showAvatar && user.profilePictureUrl && (
                     <img
                       src={user.profilePictureUrl}
                       alt=""
@@ -154,6 +191,7 @@ export default function LikesLeaderboardWidget() {
                     />
                   )}
 
+                  {/* ชื่อ + progress bar */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
@@ -168,38 +206,43 @@ export default function LikesLeaderboardWidget() {
                     >
                       {user.nickname || user.uniqueId}
                     </p>
-                    <div
-                      style={{
-                        height: 4,
-                        background: styles.tc + '20',
-                        borderRadius: 2,
-                        marginTop: 4,
-                        overflow: 'hidden',
-                      }}
-                    >
+                    {config.showProgress && (
                       <div
                         style={{
-                          height: '100%',
-                          background: accentColor,
-                          width: `${progressPercent}%`,
-                          transition: 'width 0.4s ease',
-                          boxShadow: `0 0 6px ${accentColor}60`,
+                          height: 4,
+                          background: styles.tc + '20',
+                          borderRadius: 2,
+                          marginTop: 4,
+                          overflow: 'hidden',
                         }}
-                      />
-                    </div>
+                      >
+                        <div
+                          style={{
+                            height: '100%',
+                            background: accentColor,
+                            width: `${progressPercent}%`,
+                            transition: 'width 0.4s ease',
+                            boxShadow: `0 0 6px ${accentColor}60`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
 
-                  <span
-                    style={{
-                      color: accentColor,
-                      fontSize: styles.fs - 1,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                      textShadow: '0 0 4px rgba(0,0,0,0.3)',
-                    }}
-                  >
-                    👍 {user.likeCount?.toLocaleString()}
-                  </span>
+                  {/* จำนวน like */}
+                  {config.showLikes && (
+                    <span
+                      style={{
+                        color: accentColor,
+                        fontSize: styles.fs - 1,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        textShadow: '0 0 4px rgba(0,0,0,0.3)',
+                      }}
+                    >
+                      👍 {user.likeCount?.toLocaleString()}
+                    </span>
+                  )}
                 </div>
               );
             })

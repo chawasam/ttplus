@@ -84,6 +84,8 @@ const DEFAULT_EVENT = {
 // ── TikTok Gift list (ชื่อจริงตาม TikTok + coins) ────────────────────────────
 // หมายเหตุ: รายชื่อนี้เป็นค่า default — ระบบจะ merge กับรายชื่อจริง
 // ที่รวบรวมจาก extendedGiftInfo ระหว่าง live session โดยอัตโนมัติ
+// หมายเหตุ: รายการนี้เป็น fallback — ระหว่าง TikTok Live จริง ระบบจะดึงชื่อ+ราคาจาก
+// extendedGiftInfo โดยอัตโนมัติ แล้ว override ค่าที่นี่ (ดูการรวมใน giftList compute ด้านล่าง)
 const TIKTOK_GIFTS = [
   // ── 1 coin ──
   { name: 'Rose',              coins: 1    },
@@ -97,7 +99,12 @@ const TIKTOK_GIFTS = [
   { name: 'Like',              coins: 1    },
   { name: 'Thumbs Up',         coins: 1    },
   { name: 'Doughnut',          coins: 1    },
+  { name: 'Donut',             coins: 1    },
   { name: 'Tree',              coins: 1    },
+  { name: 'Heart',             coins: 1    },
+  { name: 'Sunflower',         coins: 1    },
+  { name: 'Flame',             coins: 1    },
+  { name: 'Paper Boat',        coins: 1    },
   // ── 5 coins ──
   { name: 'Finger Heart',      coins: 5    },
   { name: 'Panda',             coins: 5    },
@@ -106,22 +113,32 @@ const TIKTOK_GIFTS = [
   { name: 'GG',                coins: 5    },
   { name: 'Rainbow',           coins: 5    },
   { name: 'Shooting Star',     coins: 5    },
+  { name: 'Pinwheel',          coins: 5    },
+  { name: 'Perfume',           coins: 5    },
   // ── 10 coins ──
   { name: 'Hand Heart',        coins: 10   },
   { name: 'Star',              coins: 10   },
   { name: 'Birthday Cake',     coins: 10   },
+  { name: 'Dolphin',           coins: 10   },
+  // ── 15–24 coins ──
+  { name: 'Big Love',          coins: 15   },
+  { name: 'Valentine Heart',   coins: 15   },
   // ── 25 coins ──
   { name: 'Love Bang',         coins: 25   },
   { name: 'Mini Speaker',      coins: 25   },
   { name: 'Butterfly',         coins: 25   },
-  // ── 50 coins ──
+  { name: 'Baller',            coins: 25   },
+  // ── 49–50 coins ──
+  { name: 'Cap',               coins: 49   },
   { name: 'Sun Cream',         coins: 50   },
+  { name: 'Sunscreen',         coins: 50   },
   { name: 'Mic',               coins: 50   },
   { name: 'Wishing Bottle',    coins: 50   },
   { name: 'Lucky Cat',         coins: 50   },
+  { name: 'HipHop',            coins: 50   },
   // ── 99 coins ──
-  { name: 'Cap',               coins: 99   },
   { name: 'Microphone',        coins: 99   },
+  { name: 'Space Rocket',      coins: 99   },
   // ── 100–199 coins ──
   { name: 'Football',          coins: 100  },
   { name: 'Rainbow Puke',      coins: 100  },
@@ -129,8 +146,10 @@ const TIKTOK_GIFTS = [
   { name: 'Carnival',          coins: 100  },
   { name: 'Drum',              coins: 100  },
   { name: 'Gift Box',          coins: 100  },
+  { name: 'Chick',             coins: 100  },
   // ── 200–299 coins ──
   { name: 'Corgi',             coins: 200  },
+  { name: 'Jolly',             coins: 200  },
   { name: 'Mirror',            coins: 299  },
   { name: 'Rose Bouquet',      coins: 299  },
   { name: 'Flying Beauty',     coins: 299  },
@@ -139,7 +158,6 @@ const TIKTOK_GIFTS = [
   { name: 'Balloons',          coins: 399  },
   // ── 500–999 coins ──
   { name: 'Galaxy',            coins: 500  },
-  { name: 'Perfume',           coins: 500  },
   { name: 'Drama Queen',       coins: 500  },
   { name: 'Money Gun',         coins: 500  },
   { name: 'Gem',               coins: 500  },
@@ -173,7 +191,7 @@ const TIKTOK_GIFTS = [
   { name: 'Gamer Girl',        coins: 10000 },
   { name: 'Diamond Flight',    coins: 19999 },
   { name: 'Lion',              coins: 29999 },
-  { name: 'Universe',          coins: 34999 },
+  { name: 'Universe',          coins: 44999 },
   { name: 'Falcon',            coins: 44999 },
   { name: 'Power Punch',       coins: 49999 },
 ];
