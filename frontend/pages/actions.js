@@ -546,6 +546,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
         return (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🗣 TTS</p>
+            <p className="text-[10px] text-purple-400/70">🔗 ใช้เสียงและ engine เดียวกับแถบ TTS สิริ — ตั้งค่าเสียงได้ที่แถบ TTS หลัก ปิด/เปิด TTS สิริ ไม่มีผลกับ Action นี้</p>
             <Input label="ข้อความที่จะอ่าน" value={form.ttsText} onChange={v => set('ttsText', v)}
               placeholder="ขอบคุณ {username} ที่ส่ง {giftname}!" />
             <p className="text-[10px] text-gray-600">ใช้ {'{username}'} {'{giftname}'} {'{coins}'} ได้</p>
