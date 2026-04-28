@@ -297,9 +297,9 @@ export default function CoinJarWidget() {
         spawnTimers.current = spawnTimers.current.filter(id => id !== tid);
         if (!engineRef.current) return;
 
-        // สุ่ม x ภายในปากโถ (body width — ไม่มีคอขวดแล้ว)
-        const x = J.bL + itemR + 4 + Math.random() * (J.bR - J.bL - (itemR + 4) * 2);
-        const y = J.nT + 14;
+        // สุ่ม x ภายในคอขวด (neck width) — ตกลงมาผ่านคอก่อนเข้าตัวโถ
+        const x = J.nL + itemR + 4 + Math.random() * (J.nR - J.nL - (itemR + 4) * 2);
+        const y = J.nT - 144; // 144px เหนือปากขวด (off-screen) — Matter.js รองรับ off-screen
 
         const body = Bodies.circle(x, y, itemR, {
           restitution: 0.08,
@@ -549,34 +549,60 @@ export default function CoinJarWidget() {
 function buildJarWalls(Bodies, ox = 0) {
   const T  = 40; // หนา 40px — รองรับ velocity ≤96px/frame ที่ 30fps (floor = T×3 = 120px)
   const Jx = getJ(ox);
-  // center x ของ shoulder แต่ละข้าง
-  const shL = (Jx.nL + Jx.bL) / 2;
-  const shR = (Jx.nR + Jx.bR) / 2;
+
+  // ไหล่ขวด (shoulder) — ต่อจากคอไปยังตัวโถ
+  const SHOULDER_H  = 120;                               // ความสูงแนวตั้งของ shoulder
+  const dx          = Jx.nL - Jx.bL;                    // = 60px (คอแคบกว่าตัว 60px ต่อข้าง)
+  const shoulderLen = Math.sqrt(dx * dx + SHOULDER_H * SHOULDER_H); // ~134px
+  const shoulderAng = Math.atan2(dx, SHOULDER_H);        // ~0.464 rad
+
   // ก้นโถ: ขยายลงถึง floor+T เพื่อ overlap กับ body walls
-  const floorCY     = Jx.floor + T;          // center y ของ floor wall
-  const floorHeight = T * 3;                  // หนา 3× ป้องกัน tunneling
+  const floorCY     = Jx.floor + T;  // center y ของ floor wall
+  const floorHeight = T * 3;         // หนา 3× ป้องกัน tunneling
 
   return [
+    // ── คอขวดซ้าย (neck left wall) ──
+    Bodies.rectangle(
+      Jx.nL - T / 2, (Jx.nT + Jx.nB) / 2,
+      T, Jx.nB - Jx.nT,
+      { isStatic: true, friction: 0.3, label: 'wall' }
+    ),
+    // ── คอขวดขวา (neck right wall) ──
+    Bodies.rectangle(
+      Jx.nR + T / 2, (Jx.nT + Jx.nB) / 2,
+      T, Jx.nB - Jx.nT,
+      { isStatic: true, friction: 0.3, label: 'wall' }
+    ),
+    // ── ไหล่ซ้าย (left shoulder — เอียงซ้าย) ──
+    Bodies.rectangle(
+      (Jx.nL + Jx.bL) / 2, Jx.nB + SHOULDER_H / 2,
+      T, shoulderLen,
+      { isStatic: true, angle: shoulderAng, friction: 0.3, label: 'wall' }
+    ),
+    // ── ไหล่ขวา (right shoulder — เอียงขวา) ──
+    Bodies.rectangle(
+      (Jx.nR + Jx.bR) / 2, Jx.nB + SHOULDER_H / 2,
+      T, shoulderLen,
+      { isStatic: true, angle: -shoulderAng, friction: 0.3, label: 'wall' }
+    ),
     // ── ก้นโถ (หนาขึ้น + ขยับขึ้นให้ overlap กับ body walls) ──
     Bodies.rectangle(
       (Jx.bL + Jx.bR) / 2, floorCY,
       Jx.bR - Jx.bL + T * 2, floorHeight,
       { isStatic: true, friction: 0.7, restitution: 0.05, label: 'wall' }
     ),
-    // ── ผนังซ้าย body (extend ลงถึง floor+T ปิด gap) ──
+    // ── ผนังซ้าย body (จาก shoulder bottom ถึง floor) ──
     Bodies.rectangle(
-      Jx.bL - T / 2, (Jx.nB + floorCY) / 2,
-      T, floorCY - Jx.nB,
+      Jx.bL - T / 2, (Jx.nB + SHOULDER_H + floorCY) / 2,
+      T, floorCY - (Jx.nB + SHOULDER_H),
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
-    // ── ผนังขวา body (extend ลงถึง floor+T ปิด gap) ──
+    // ── ผนังขวา body (จาก shoulder bottom ถึง floor) ──
     Bodies.rectangle(
-      Jx.bR + T / 2, (Jx.nB + floorCY) / 2,
-      T, floorCY - Jx.nB,
+      Jx.bR + T / 2, (Jx.nB + SHOULDER_H + floorCY) / 2,
+      T, floorCY - (Jx.nB + SHOULDER_H),
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
-    // neck walls และ shoulders ถูกลบออกแล้ว — โถแบบปากกว้าง ไม่มีคอ
-
     // ── พื้นนอกโถ (transparent ground) — ของที่ล้นออกมากองที่นี่ ──
     Bodies.rectangle(
       W / 2, GROUND_Y + T / 2,
@@ -599,14 +625,37 @@ function buildJarWalls(Bodies, ox = 0) {
 }
 
 // ===================== Jar SVG Visual =====================
-// โถปากกว้าง — ไม่มีคอขวด/ฝา ของขวัญตกลงมาจากด้านบนโดยตรง
+// โถคลาสสิก — ฝา + คอขวด + ไหล่ + ตัวโถ + ก้นมน
 function JarSVG({ acColor, offset = 0 }) {
-  const Jv    = getJ(offset);
-  const BODY_L = Jv.bL, BODY_R = Jv.bR;
-  const BODY_B = Jv.bB;
-  const FLOOR  = Jv.floor;
-  const TOP_Y  = Jv.nT + 5; // ขอบบนของโถ (ระดับเดิมที่ neck เคยอยู่)
-  const CX     = (BODY_L + BODY_R) / 2;
+  const Jv         = getJ(offset);
+  const SHOULDER_H = 120;
+  const shoulderBotY = Jv.nB + SHOULDER_H;
+  const CX         = (Jv.bL + Jv.bR) / 2;
+
+  // lid dimensions
+  const lidH  = 26;
+  const lidY  = Jv.nT - lidH;
+  const lidX  = Jv.nL - 8;
+  const lidW  = Jv.nR - Jv.nL + 16;
+  const capH  = 7;
+  const capY  = lidY - capH;
+  const capX  = Jv.nL - 14;
+  const capW  = Jv.nR - Jv.nL + 28;
+
+  // Jar body SVG path: neck → shoulder → body → rounded bottom
+  const jarPath = [
+    `M ${Jv.nL} ${Jv.nT}`,
+    `L ${Jv.nL} ${Jv.nB}`,
+    `L ${Jv.bL} ${shoulderBotY}`,
+    `L ${Jv.bL} ${Jv.bB}`,
+    `Q ${Jv.bL} ${Jv.floor} ${Jv.bL + 18} ${Jv.floor}`,
+    `L ${Jv.bR - 18} ${Jv.floor}`,
+    `Q ${Jv.bR} ${Jv.floor} ${Jv.bR} ${Jv.bB}`,
+    `L ${Jv.bR} ${shoulderBotY}`,
+    `L ${Jv.nR} ${Jv.nB}`,
+    `L ${Jv.nR} ${Jv.nT}`,
+    'Z',
+  ].join(' ');
 
   return (
     <svg
@@ -622,6 +671,10 @@ function JarSVG({ acColor, offset = 0 }) {
           <stop offset="88%"  stopColor="#ffffff" stopOpacity="0.08" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0.04" />
         </linearGradient>
+        <linearGradient id="lidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stopColor={acColor} stopOpacity="0.95" />
+          <stop offset="100%" stopColor={acColor} stopOpacity="0.65" />
+        </linearGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="2" result="blur" />
           <feMerge>
@@ -632,85 +685,74 @@ function JarSVG({ acColor, offset = 0 }) {
       </defs>
 
       {/* ===== Jar body — shadow outline ===== */}
-      <path
-        d={`
-          M ${BODY_L} ${TOP_Y}
-          L ${BODY_L} ${BODY_B}
-          Q ${BODY_L} ${FLOOR} ${BODY_L + 18} ${FLOOR}
-          L ${BODY_R - 18} ${FLOOR}
-          Q ${BODY_R} ${FLOOR} ${BODY_R} ${BODY_B}
-          L ${BODY_R} ${TOP_Y}
-          Z
-        `}
-        fill="none"
-        stroke="rgba(0,0,0,0.25)"
-        strokeWidth="5"
-      />
+      <path d={jarPath} fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="6" />
 
       {/* ===== Jar body — glass fill ===== */}
-      <path
-        d={`
-          M ${BODY_L} ${TOP_Y}
-          L ${BODY_L} ${BODY_B}
-          Q ${BODY_L} ${FLOOR} ${BODY_L + 18} ${FLOOR}
-          L ${BODY_R - 18} ${FLOOR}
-          Q ${BODY_R} ${FLOOR} ${BODY_R} ${BODY_B}
-          L ${BODY_R} ${TOP_Y}
-          Z
-        `}
-        fill="url(#jarGlass)"
-        stroke="rgba(255,255,255,0.72)"
-        strokeWidth="2.5"
-      />
+      <path d={jarPath} fill="url(#jarGlass)" stroke="rgba(255,255,255,0.72)" strokeWidth="2.5" />
 
-      {/* ===== ขอบปากโถ (rim ellipse — open top) ===== */}
-      <ellipse
-        cx={CX} cy={TOP_Y}
-        rx={(BODY_R - BODY_L) / 2} ry={9}
-        fill="rgba(180,210,255,0.06)"
-        stroke="rgba(200,225,255,0.35)"
-        strokeWidth="2.5"
-      />
-      {/* inner rim */}
-      <ellipse
-        cx={CX} cy={TOP_Y}
-        rx={(BODY_R - BODY_L) / 2 - 6} ry={6}
-        fill="none"
-        stroke="rgba(255,255,255,0.12)"
-        strokeWidth="1"
-      />
-
-      {/* ===== Glass reflections ===== */}
+      {/* ===== Glass reflections (inside body) ===== */}
       <line
-        x1={BODY_L + 14} y1={TOP_Y + 30}
-        x2={BODY_L + 14} y2={BODY_B - 50}
-        stroke="rgba(255,255,255,0.14)"
-        strokeWidth="4"
-        strokeLinecap="round"
-        filter="url(#glow)"
+        x1={Jv.bL + 16} y1={shoulderBotY + 16}
+        x2={Jv.bL + 16} y2={Jv.bB - 40}
+        stroke="rgba(255,255,255,0.16)" strokeWidth="5"
+        strokeLinecap="round" filter="url(#glow)"
       />
       <line
-        x1={BODY_L + 26} y1={TOP_Y + 80}
-        x2={BODY_L + 26} y2={TOP_Y + 200}
-        stroke="rgba(255,255,255,0.08)"
-        strokeWidth="2"
+        x1={Jv.bL + 28} y1={shoulderBotY + 60}
+        x2={Jv.bL + 28} y2={shoulderBotY + 190}
+        stroke="rgba(255,255,255,0.08)" strokeWidth="2"
         strokeLinecap="round"
       />
       <line
-        x1={BODY_R - 16} y1={TOP_Y + 40}
-        x2={BODY_R - 16} y2={TOP_Y + 120}
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth="2"
+        x1={Jv.bR - 18} y1={shoulderBotY + 30}
+        x2={Jv.bR - 18} y2={shoulderBotY + 110}
+        stroke="rgba(255,255,255,0.06)" strokeWidth="2"
         strokeLinecap="round"
       />
 
       {/* ===== ก้นโถ ===== */}
       <ellipse
-        cx={CX} cy={FLOOR - 2}
-        rx={(BODY_R - BODY_L) / 2 - 12} ry={6}
+        cx={CX} cy={Jv.floor - 2}
+        rx={(Jv.bR - Jv.bL) / 2 - 12} ry={6}
         fill="rgba(255,255,255,0.04)"
-        stroke="rgba(255,255,255,0.12)"
-        strokeWidth="1"
+        stroke="rgba(255,255,255,0.12)" strokeWidth="1"
+      />
+
+      {/* ===== ฝาขวด (Lid) ===== */}
+      {/* Cap rim — ขอบบนของฝา (กว้างกว่าฝาเล็กน้อย) */}
+      <rect
+        x={capX} y={capY} width={capW} height={capH}
+        rx={3}
+        fill={acColor} opacity={0.88}
+        stroke="rgba(255,255,255,0.28)" strokeWidth="1"
+      />
+      {/* Lid body */}
+      <rect
+        x={lidX} y={lidY} width={lidW} height={lidH}
+        rx={2}
+        fill="url(#lidGrad)"
+        stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"
+      />
+      {/* Thread lines on lid */}
+      <line x1={lidX} y1={lidY + lidH * 0.28} x2={lidX + lidW} y2={lidY + lidH * 0.28} stroke="rgba(0,0,0,0.14)" strokeWidth="1.2" />
+      <line x1={lidX} y1={lidY + lidH * 0.56} x2={lidX + lidW} y2={lidY + lidH * 0.56} stroke="rgba(0,0,0,0.14)" strokeWidth="1.2" />
+      <line x1={lidX} y1={lidY + lidH * 0.80} x2={lidX + lidW} y2={lidY + lidH * 0.80} stroke="rgba(0,0,0,0.10)" strokeWidth="1" />
+      {/* Lid shine strip */}
+      <rect
+        x={lidX + 5} y={lidY + 4} width={lidW - 10} height={6}
+        rx={3} fill="rgba(255,255,255,0.22)"
+      />
+
+      {/* ===== คอขวด — เน้นขอบล่าง (neck-body junction) ===== */}
+      <line
+        x1={Jv.nL} y1={Jv.nT}
+        x2={Jv.nL} y2={Jv.nB}
+        stroke="rgba(255,255,255,0.10)" strokeWidth="1"
+      />
+      <line
+        x1={Jv.nR} y1={Jv.nT}
+        x2={Jv.nR} y2={Jv.nB}
+        stroke="rgba(255,255,255,0.10)" strokeWidth="1"
       />
     </svg>
   );

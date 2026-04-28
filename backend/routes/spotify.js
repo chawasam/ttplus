@@ -10,6 +10,8 @@ const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI  = 'https://api.ttsam.app/api/spotify/callback';
 const SCOPES        = 'user-read-currently-playing user-read-playback-state';
 
+const { getUidForCid } = require('../utils/widgetToken');
+
 function db() { return admin.firestore(); }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -95,12 +97,27 @@ router.delete('/disconnect', verifyToken, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── GET /api/spotify/now-playing?uid=xxx — widget เรียก (public) ─────────────
+// ── GET /api/spotify/now-playing?uid=xxx OR ?cid=xxx — widget เรียก (public) ──
 router.get('/now-playing', async (req, res) => {
-  const { uid } = req.query;
-  if (!uid) return res.status(400).json({ error: 'uid required' });
+  const { uid, cid } = req.query;
+
+  // resolve uid จาก cid (รองรับ widget URL แบบ cid เหมือน widget อื่น)
+  let resolvedUid = uid || null;
+  if (!resolvedUid && cid) {
+    // 1. in-memory cache (เร็ว)
+    resolvedUid = getUidForCid(String(cid)) || null;
+    // 2. Firestore fallback (กรณี server restart)
+    if (!resolvedUid) {
+      try {
+        const doc = await db().collection('widget_cids').doc(String(cid)).get();
+        if (doc.exists) resolvedUid = doc.data().uid || null;
+      } catch { /* ignore */ }
+    }
+  }
+
+  if (!resolvedUid) return res.status(400).json({ error: 'uid or cid required' });
   try {
-    const token   = await getValidToken(uid);
+    const token   = await getValidToken(resolvedUid);
     const spRes   = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', {
       headers: { Authorization: `Bearer ${token}` },
     });

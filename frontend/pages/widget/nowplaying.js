@@ -1,6 +1,7 @@
 // widget/nowplaying.js — Spotify Now Playing Overlay สำหรับ OBS
-// URL params: ?uid=xxx &style=glass|eq|notes|vinyl|aurora|neon|cassette|pulse|particles|spectrum &fade=0|1
+// URL params: ?cid=xxx &style=glass|eq|notes|vinyl|aurora|neon|cassette|pulse|particles|spectrum &fade=0|1
 import { useEffect, useState, useRef } from 'react';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 const POLL_MS = 10_000;
@@ -46,7 +47,7 @@ export default function NowPlayingWidget() {
   useEffect(() => {
     setMounted(true);
     const p     = new URLSearchParams(window.location.search);
-    const uid   = p.get('uid');
+    const cid   = p.get('cid') || p.get('uid'); // รองรับ cid (ใหม่) และ uid (เก่า)
     const style = p.get('style') || 'glass';
     const fade  = p.get('fade') !== '0';
     setCfg({ style, fade });
@@ -56,12 +57,15 @@ export default function NowPlayingWidget() {
       setTimeout(() => setVisible(true), 100);
       return;
     }
-    if (!uid) return;
+    if (!cid) return;
 
+    // ── REST poll (primary data source) ──
     const poll = async () => {
       try {
-        const res  = await fetch(`${BACKEND}/api/spotify/now-playing?uid=${uid}`);
-        const data = await res.json();
+        const isCid = /^\d{4,8}$/.test(cid);
+        const qs    = isCid ? `cid=${cid}` : `uid=${cid}`;
+        const res   = await fetch(`${BACKEND}/api/spotify/now-playing?${qs}`);
+        const data  = await res.json();
         if (!data.playing) {
           setVisible(false);
           timerRef.current = setTimeout(() => setTrack(null), 600);
@@ -84,7 +88,28 @@ export default function NowPlayingWidget() {
 
     poll();
     const interval = setInterval(poll, POLL_MS);
-    return () => { clearInterval(interval); clearTimeout(timerRef.current); };
+
+    // ── Socket (style_update เมื่อ customize จาก Widgets page) ──
+    let socket = null;
+    if (/^\d{4,8}$/.test(cid)) {
+      socket = createWidgetSocket(cid, {
+        style_update: ({ widgetId, style: newStyle }) => {
+          if (widgetId !== 'nowplaying') return;
+          const s = newStyle?.style;
+          const f = newStyle?.fade;
+          setCfg(prev => ({
+            style: s || prev.style,
+            fade:  f !== undefined ? f !== '0' && f !== 0 : prev.fade,
+          }));
+        },
+      });
+    }
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timerRef.current);
+      socket?.disconnect();
+    };
   }, []);
 
   if (!mounted || !track) return <><style>{BASE_CSS}</style><div style={{ background: 'transparent' }} /></>;

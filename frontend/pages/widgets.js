@@ -117,7 +117,7 @@ const WIDGETS = [
   {
     id: 'nowplaying', icon: '🎶', name: 'Now Playing',
     desc: 'แสดงเพลงที่กำลังฟังจาก Spotify — 10 สไตล์ให้เลือก เชื่อมต่อ Spotify ได้ที่ Settings',
-    size: 'ขึ้นอยู่กับ Style', noStyle: true, noToken: true,
+    size: 'ขึ้นอยู่กับ Style', noStyle: true,
     configFields: [
       { key: 'style', label: '🎨 เลือก Style', type: 'nowplaying_style', default: 'glass' },
       { key: 'fade',  label: '🌫️ Fade รอบขอบ Widget', type: 'toggle', default: 1,
@@ -169,6 +169,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   );
 
   const socketRef = useRef(null);
+  const [spotifyConnected, setSpotifyConnected] = useState(null); // null=unknown, true, false
 
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
   const [audioEnabled, setAudioEnabled] = useState(() => {
@@ -246,6 +247,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
           if (process.env.NODE_ENV !== 'production') console.error('[Widgets] settings load failed:', err?.message);
         }
         if (mounted) await fetchWidgetToken(user);
+
+        // ── ตรวจสอบ Spotify connection status ──
+        try {
+          const spRes = await api.get('/api/spotify/status');
+          if (mounted) setSpotifyConnected(!!spRes.data?.connected);
+        } catch { if (mounted) setSpotifyConnected(false); }
       })();
     } else {
       // Not logged in — no socket needed on widgets page
@@ -311,13 +318,13 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   }, [customConfigs]);
 
   const getWidgetUrl = useCallback((widgetId) => {
-    // nowplaying ใช้ ?uid= แทน ?cid=
+    // nowplaying ใช้ ?cid= เหมือน widget อื่น (ต้องการ widgetCid)
     if (widgetId === 'nowplaying') {
-      if (!baseUrl || !user?.uid) return '';
+      if (!baseUrl || !widgetCid) return '';
       const cfg   = customConfigs['nowplaying'] || {};
       const style = cfg.style || 'glass';
       const fade  = cfg.fade ?? 1;
-      return `${baseUrl}/widget/nowplaying?uid=${user.uid}&style=${style}&fade=${fade}`;
+      return `${baseUrl}/widget/nowplaying?cid=${widgetCid}&style=${style}&fade=${fade}`;
     }
     if (!baseUrl || !widgetCid) return '';
     const w = WIDGETS.find(ww => ww.id === widgetId);
@@ -560,7 +567,6 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                     {groupWidgets.map((w) => {
                       const url          = getWidgetUrl(w.id);
                       const isDrawerOpen = drawerWidget === w.id;
-                      // nowplaying ไม่ต้องรอ widgetCid — ใช้ uid แทน
                       const widgetReady  = w.noToken ? !!user?.uid : tokenReady;
                       return (
                         <div key={w.id} className={clsx('rounded-xl border overflow-hidden', card)}>
@@ -618,6 +624,48 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                                     {label}
                                   </button>
                                 ))}
+                              </div>
+                            )}
+
+                            {/* Now Playing — Spotify banner */}
+                            {w.id === 'nowplaying' && user && spotifyConnected === false && (
+                              <div className={clsx(
+                                'flex items-center gap-3 mb-3 px-3 py-2.5 rounded-lg border',
+                                isDark
+                                  ? 'bg-green-950/40 border-green-800/50 text-green-300'
+                                  : 'bg-green-50 border-green-200 text-green-800'
+                              )}>
+                                <span className="text-2xl flex-shrink-0">🎵</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold">ยังไม่ได้เชื่อมต่อ Spotify</p>
+                                  <p className={clsx('text-xs mt-0.5', isDark ? 'text-green-400/70' : 'text-green-600/80')}>
+                                    ต้องเชื่อมต่อก่อน widget จึงจะแสดงเพลงได้
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => setActivePage?.('settings')}
+                                  className="shrink-0 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-bold transition"
+                                >
+                                  ⚙️ Settings
+                                </button>
+                              </div>
+                            )}
+                            {w.id === 'nowplaying' && user && spotifyConnected === true && (
+                              <div className={clsx(
+                                'flex items-center gap-2 mb-3 px-3 py-2 rounded-lg text-xs',
+                                isDark ? 'bg-green-900/20 text-green-400' : 'bg-green-50 text-green-700'
+                              )}>
+                                <span>✅</span>
+                                <span>เชื่อมต่อ Spotify แล้ว — Widget พร้อมใช้งาน</span>
+                              </div>
+                            )}
+                            {w.id === 'nowplaying' && !user && (
+                              <div className={clsx(
+                                'flex items-center gap-2 mb-3 px-3 py-2 rounded-lg text-xs border',
+                                isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'
+                              )}>
+                                <span>🔒</span>
+                                <span>Login ก่อน แล้วเชื่อมต่อ Spotify ใน Settings</span>
                               </div>
                             )}
 
