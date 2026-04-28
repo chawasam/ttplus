@@ -159,6 +159,19 @@ async function processEvent(vjUid, eventType, data) {
 
     if (!matching.length) return;
 
+    // ── gift_min_coins priority: ยิงเฉพาะ threshold สูงสุดที่ match ──
+    // ถ้ามีหลาย event เช่น ≥1, ≥10, ≥100 และ gift=150 → ยิงแค่ ≥100
+    const giftCoinEvents = matching.filter(ev => ev.trigger === 'gift_min_coins');
+    const otherEvents    = matching.filter(ev => ev.trigger !== 'gift_min_coins');
+    const prioritized = [
+      ...otherEvents,
+      ...(giftCoinEvents.length > 0
+        ? [giftCoinEvents.reduce((best, ev) =>
+            (ev.minCoins || 0) > (best.minCoins || 0) ? ev : best
+          )]
+        : []),
+    ];
+
     const context = {
       username:  data.uniqueId || data.nickname || '',
       giftname:  data.giftName || '',
@@ -166,7 +179,7 @@ async function processEvent(vjUid, eventType, data) {
       likeCount: data.likeCount || 0,
     };
 
-    for (const ev of matching) {
+    for (const ev of prioritized) {
       const actionsMap = ev._actions || {};
 
       // Trigger all actions

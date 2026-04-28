@@ -13,19 +13,95 @@ import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂','🐺','🦊','🐲','🦅'];
 
-const NP_STYLES = [
-  { id: 'glass',     icon: '🔲', name: 'Glass',     desc: 'Frosted glass card' },
-  { id: 'eq',        icon: '📊', name: 'EQ Bars',   desc: 'Animated equalizer BG' },
-  { id: 'notes',     icon: '🎵', name: 'Notes',     desc: 'Falling music notes' },
-  { id: 'vinyl',     icon: '💿', name: 'Vinyl',     desc: 'Spinning vinyl record' },
-  { id: 'aurora',    icon: '🌌', name: 'Aurora',    desc: 'Northern lights BG' },
-  { id: 'neon',      icon: '💡', name: 'Neon',      desc: 'Neon club glow' },
-  { id: 'cassette',  icon: '📼', name: 'Cassette',  desc: 'Retro cassette tape' },
-  { id: 'pulse',     icon: '🔴', name: 'Pulse',     desc: 'Sonar pulse rings' },
-  { id: 'particles', icon: '✨', name: 'Particles', desc: 'Floating sparkles' },
-  { id: 'spectrum',  icon: '🌈', name: 'Spectrum',  desc: 'Spectrum + progress' },
-  { id: 'simple',    icon: '🎧', name: 'Simple',    desc: 'Clean card + progress bar' },
+const NP_STYLE_CATEGORIES = [
+  {
+    id: 'classic', label: '⭐ Classic', styles: [
+      { id: 'glass',     icon: '🔲', name: 'Glass',     desc: 'Frosted glass card' },
+      { id: 'eq',        icon: '📊', name: 'EQ Bars',   desc: 'Animated equalizer BG' },
+      { id: 'notes',     icon: '🎵', name: 'Notes',     desc: 'Falling music notes' },
+      { id: 'vinyl',     icon: '💿', name: 'Vinyl',     desc: 'Spinning vinyl record' },
+      { id: 'aurora',    icon: '🌌', name: 'Aurora',    desc: 'Northern lights BG' },
+      { id: 'neon',      icon: '💡', name: 'Neon',      desc: 'Neon club glow' },
+      { id: 'cassette',  icon: '📼', name: 'Cassette',  desc: 'Retro cassette tape' },
+      { id: 'pulse',     icon: '🔴', name: 'Pulse',     desc: 'Sonar pulse rings' },
+      { id: 'particles', icon: '✨', name: 'Particles', desc: 'Floating sparkles' },
+      { id: 'spectrum',  icon: '🌈', name: 'Spectrum',  desc: 'Spectrum + progress' },
+      { id: 'simple',    icon: '🎧', name: 'Simple',    desc: 'Clean card + progress bar' },
+    ],
+  },
+  {
+    id: 'minimal', label: '🪶 Minimal', styles: [
+      { id: 'pill',         icon: '💊', name: 'Pill',         desc: 'Compact pill badge' },
+      { id: 'banner',       icon: '📰', name: 'Banner',       desc: 'Bottom banner strip' },
+      { id: 'ghost',        icon: '👻', name: 'Ghost',        desc: 'Semi-transparent float' },
+      { id: 'ticker',       icon: '📡', name: 'Ticker',       desc: 'Scrolling ticker tape' },
+      { id: 'badge',        icon: '🏷️', name: 'Badge',        desc: 'Small corner badge' },
+      { id: 'corner',       icon: '📐', name: 'Corner',       desc: 'Slim corner tag' },
+      { id: 'minimal_dark', icon: '⬛', name: 'Dark Minimal', desc: 'Dark flat minimal' },
+      { id: 'outline',      icon: '🔳', name: 'Outline',      desc: 'Outlined border card' },
+      { id: 'frosted',      icon: '🧊', name: 'Frosted',      desc: 'Deep frosted blur card' },
+      { id: 'card_white',   icon: '🃏', name: 'White Card',   desc: 'Clean white card' },
+    ],
+  },
+  {
+    id: 'animated', label: '🎬 Animated', styles: [
+      { id: 'wave',       icon: '🌊', name: 'Wave',       desc: 'Animated wave BG' },
+      { id: 'fire',       icon: '🔥', name: 'Fire',       desc: 'Rising fire particles' },
+      { id: 'rain',       icon: '🌧️', name: 'Rain',       desc: 'Falling rain drops' },
+      { id: 'plasma',     icon: '🔮', name: 'Plasma',     desc: 'Hue-shifting plasma' },
+      { id: 'starfield',  icon: '🌠', name: 'Starfield',  desc: 'Flying through stars' },
+      { id: 'fireflies',  icon: '🫧', name: 'Fireflies',  desc: 'Floating firefly dots' },
+      { id: 'glitch',     icon: '📺', name: 'Glitch',     desc: 'Cyberpunk glitch fx' },
+      { id: 'matrix',     icon: '🟩', name: 'Matrix',     desc: 'Green falling chars' },
+      { id: 'ripple',     icon: '💧', name: 'Ripple',     desc: 'Water ripple rings' },
+      { id: 'smoke',      icon: '🌫️', name: 'Smoke',      desc: 'Drifting smoke wisps' },
+    ],
+  },
+  {
+    id: 'musical', label: '🎵 Musical', styles: [
+      { id: 'turntable',    icon: '🎚️', name: 'Turntable',    desc: 'DJ turntable spinner' },
+      { id: 'piano',        icon: '🎹', name: 'Piano',        desc: 'Glowing piano keys' },
+      { id: 'waveform',     icon: '〰️', name: 'Waveform',     desc: 'Audio waveform bars' },
+      { id: 'oscilloscope', icon: '📈', name: 'Oscilloscope', desc: 'SVG sine wave line' },
+      { id: 'vinyl_color',  icon: '🌀', name: 'Vinyl Color',  desc: 'Colorful spinning vinyl' },
+      { id: 'spectrum_ring',icon: '⭕', name: 'Spectrum Ring',desc: 'Circular EQ ring' },
+      { id: 'metronome',    icon: '🕐', name: 'Metronome',    desc: 'Swinging pendulum' },
+      { id: 'cassette_mini',icon: '📼', name: 'Cassette Mini',desc: 'Tiny cassette player' },
+      { id: 'boom_box',     icon: '📻', name: 'Boom Box',     desc: 'Retro boom box' },
+      { id: 'headphones',   icon: '🎧', name: 'Headphones',   desc: 'Headphone silhouette' },
+    ],
+  },
+  {
+    id: 'themed', label: '🎭 Themed', styles: [
+      { id: 'retro_80s',  icon: '🕹️', name: 'Retro 80s',   desc: 'Synthwave neon grid' },
+      { id: 'vhs',        icon: '📼', name: 'VHS',         desc: 'VHS scanline flicker' },
+      { id: 'terminal',   icon: '💻', name: 'Terminal',    desc: 'Green terminal code' },
+      { id: 'hologram',   icon: '🔷', name: 'Hologram',   desc: 'Sci-fi hologram blue' },
+      { id: 'newspaper',  icon: '🗞️', name: 'Newspaper',  desc: 'Black & white newsprint' },
+      { id: 'polaroid',   icon: '📷', name: 'Polaroid',   desc: 'Polaroid photo border' },
+      { id: 'cyberpunk',  icon: '⚡', name: 'Cyberpunk',  desc: 'Neon yellow + dark' },
+      { id: 'lofi',       icon: '🍵', name: 'Lo-Fi',      desc: 'Cozy lo-fi aesthetic' },
+      { id: 'anime',      icon: '🌸', name: 'Anime',      desc: 'Sakura pink soft style' },
+      { id: 'nature',     icon: '🌿', name: 'Nature',     desc: 'Earthy green forest' },
+    ],
+  },
+  {
+    id: 'color', label: '🎨 Color', styles: [
+      { id: 'sunset',   icon: '🌅', name: 'Sunset',   desc: 'Warm orange-pink gradient' },
+      { id: 'midnight', icon: '🌙', name: 'Midnight', desc: 'Deep blue-purple night' },
+      { id: 'cherry',   icon: '🍒', name: 'Cherry',   desc: 'Deep red-rose gradient' },
+      { id: 'ocean',    icon: '🌊', name: 'Ocean',    desc: 'Teal-cyan ocean depths' },
+      { id: 'forest',   icon: '🌲', name: 'Forest',   desc: 'Green woodland gradient' },
+      { id: 'gold',     icon: '✨', name: 'Gold',     desc: 'Shimmering gold shimmer' },
+      { id: 'cosmic',   icon: '🌌', name: 'Cosmic',   desc: 'Star-field dark purple' },
+      { id: 'candy',    icon: '🍬', name: 'Candy',    desc: 'Pastel candy rainbow' },
+      { id: 'lava',     icon: '🌋', name: 'Lava',     desc: 'Morphing lava blob' },
+      { id: 'ice',      icon: '❄️', name: 'Ice',      desc: 'Icy cool blue-white' },
+    ],
+  },
 ];
+// Flat list for backwards compat / default lookup
+const NP_STYLES = NP_STYLE_CATEGORIES.flatMap(c => c.styles);
 
 // Boss presets — เพิ่ม boss ใหม่ที่นี่ (images host ใน /public/boss/)
 // frames: relative path 6 ไฟล์ คั่นด้วย comma (idle1,idle2,idle3,enrage1,enrage2,death)
@@ -51,7 +127,7 @@ const BOSS_ELEMENTS  = [
 const CREATURE_EMOJIS = ['🐉','🦋','🦄','🐣','🔥','🌟','👑','🐺'];
 
 const WIDGETS = [
-  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ',                        size: '1200 × 600' },
+  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ — jar อยู่ด้านล่าง gifts ร่วงจากด้านบน',  size: '1200 × 1200' },
   {
     id: 'bossbattle', icon: '👾', name: 'Boss Battle',
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
@@ -810,21 +886,28 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                         return (
                           <div key={f.key}>
                             <p className={clsx('text-xs font-medium mb-2', isDark ? 'text-gray-400' : 'text-gray-500')}>{f.label}</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {NP_STYLES.map(s => (
-                                <button key={s.id} onClick={() => setKey('style', s.id)}
-                                  className={clsx(
-                                    'flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-left transition',
-                                    cur === s.id
-                                      ? 'border-brand-500 bg-brand-500/15'
-                                      : isDark ? 'border-gray-700 bg-gray-800/50 hover:border-gray-500' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                                  )}>
-                                  <span className="text-lg flex-shrink-0">{s.icon}</span>
-                                  <div className="min-w-0">
-                                    <p className={clsx('text-xs font-semibold leading-tight', isDark ? 'text-gray-200' : 'text-gray-800')}>{s.name}</p>
-                                    <p className={clsx('text-[10px] leading-tight', isDark ? 'text-gray-500' : 'text-gray-400')}>{s.desc}</p>
+                            <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+                              {NP_STYLE_CATEGORIES.map(cat => (
+                                <div key={cat.id}>
+                                  <p className={clsx('text-[10px] font-bold uppercase tracking-widest mb-1.5', isDark ? 'text-gray-500' : 'text-gray-400')}>{cat.label}</p>
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    {cat.styles.map(s => (
+                                      <button key={s.id} onClick={() => setKey('style', s.id)}
+                                        className={clsx(
+                                          'flex items-center gap-2 px-2.5 py-1.5 rounded-xl border-2 text-left transition',
+                                          cur === s.id
+                                            ? 'border-brand-500 bg-brand-500/15'
+                                            : isDark ? 'border-gray-700 bg-gray-800/50 hover:border-gray-500' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                                        )}>
+                                        <span className="text-base flex-shrink-0">{s.icon}</span>
+                                        <div className="min-w-0">
+                                          <p className={clsx('text-[11px] font-semibold leading-tight truncate', isDark ? 'text-gray-200' : 'text-gray-800')}>{s.name}</p>
+                                          <p className={clsx('text-[9px] leading-tight truncate', isDark ? 'text-gray-500' : 'text-gray-400')}>{s.desc}</p>
+                                        </div>
+                                      </button>
+                                    ))}
                                   </div>
-                                </button>
+                                </div>
                               ))}
                             </div>
                             {/* Spotify connect hint */}

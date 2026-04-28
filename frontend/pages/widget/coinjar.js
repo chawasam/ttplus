@@ -1,51 +1,41 @@
 // widget/coinjar.js — Gift Jar Physics Widget สำหรับ OBS / TikTok Studio
-// OBS Size แนะนำ: 1200 × 600  (กว้างขึ้น → ของขวัญล้นออกกองสองข้างสวยงาม)
+// OBS Size แนะนำ: 1200 × 1200  (jar อยู่ด้านล่าง ส่วนบนเป็นพื้นที่ gifts ร่วง)
 // เมื่อมีคนส่ง gift ใน TikTok Live → รูป gift ตกลงมาในโถพร้อม physics จริง
 // ของขวัญล้นออกนอกโถได้ — กองบนพื้นข้างขวดโหล
-// URL params: ?wt=TOKEN&jx=OFFSET(-200~200)&preview=1
+// URL params: ?cid=CID&jx=OFFSET(-200~200)&preview=1
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 
-// ขนาด canvas — W=1200 ให้พื้นที่ 468px ทั้งสองข้างของโถ ของล้นออกกองสวย
+// ขนาด canvas — W=1200, H=1200 (jar อยู่ด้านล่าง ส่วนบนเป็นพื้นที่ gifts ร่วงลงมา)
 const W = 1200;
-const H = 600;
-
-// รัศมี gift item base (px) — ปรับได้ผ่าน gs param (50-200%)
-// ITEM_R=24 → tier 1 (×0.50) = 12px radius → เต็มขวดที่ ~100 ชิ้น
-const ITEM_R = 24;
+const H = 1200;
 
 /**
- * คำนวณ radius ตาม diamond tier + base scale (5 ระดับ)
- * Tier 1  1–9:      ×0.50 → 12px   (~100 ชิ้นเต็มขวด)
- * Tier 2  10–99:    ×0.67 → 16px
- * Tier 3  100–999:  ×0.88 → 21px
- * Tier 4  1k–9.9k:  ×1.21 → 29px
- * Tier 5  10k+:     ×1.67 → 40px
+ * คำนวณ radius แบบ log-scale: 1 diamond → 12px, 34999 diamonds → 33px
+ * ใช้ log เพื่อให้ของที่ราคาต่างกันมากๆ ยังเห็นความแตกต่างได้ชัด
+ * กลาง: ~100 diamonds ≈ 18px, ~1000 diamonds ≈ 23px, ~10000 diamonds ≈ 29px
  */
 function getItemR(diamonds = 0, giftScale = 100) {
-  const base = Math.round(ITEM_R * (giftScale / 100));
-  if (diamonds >= 10000) return Math.round(base * 1.67);
-  if (diamonds >= 1000)  return Math.round(base * 1.21);
-  if (diamonds >= 100)   return Math.round(base * 0.88);
-  if (diamonds >= 10)    return Math.round(base * 0.67);
-  return Math.round(base * 0.50); // 1–9 coins → 12px
+  const MIN_R = 12, MAX_R = 33;
+  const d = Math.max(1, diamonds || 1);
+  const t = Math.min(1, Math.log(d) / Math.log(34999)); // 0→1 on log scale
+  const r = Math.round(MIN_R + t * (MAX_R - MIN_R));
+  return Math.round(r * (giftScale / 100));
 }
-
-// จำนวน item สูงสุด default (อ่านจาก ?mi= ที่ runtime)
 
 // พื้น ground สำหรับ overflow — ของที่ล้นออกมากองที่นี่
 const GROUND_Y = H - 30;
 
-// พิกัดโถ base (offset = 0 → กลาง canvas W=1200, center=600)
-// ปรับ jarOffset จาก URL param ?jx=... (-400 ถึง +400)
+// พิกัดโถ base — jar อยู่ด้านล่างของ canvas 1200×1200
+// offset = 0 → center=600, jar เริ่มที่ y≈660 (ส่วนบน 660px เป็นพื้นที่ gifts ร่วง)
 const JAR_BASE = {
-  nL: 514, nR: 686,   // neck กว้าง 172px (+20%), center=600
-  nT: 62,  nB: 158,
-  bL: 442, bR: 758,   // body กว้าง 316px (+20%), center=600
-  bB: 516,
-  floor: 522,
+  nL: 514, nR: 686,   // neck กว้าง 172px, center=600
+  nT: 662, nB: 758,   // เลื่อนลงมา 600px จากเดิม
+  bL: 442, bR: 758,   // body กว้าง 316px
+  bB: 1116,
+  floor: 1122,
 };
 
 // คำนวณพิกัดโถพร้อม horizontal offset
@@ -176,7 +166,7 @@ function runPreviewMode(spawnItem) {
 }
 
 /** Live mode: สร้าง socket + set up gift handler */
-function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, showGiftImageRef, engineRef, mRef, setJarOffset }) {
+function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, showGiftImageRef, engineRef, mRef, setJarOffset, catalogRef }) {
   // รองรับ cid ตัวเลข (ใหม่) และ wt token (เก่า)
   const isCid   = /^\d{4,8}$/.test(cidOrWt);
   const isToken = /^[a-zA-Z0-9_-]{20,66}$/.test(cidOrWt);
@@ -203,7 +193,11 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
 
     const safe     = sanitizeEvent(data);
     const emoji    = getEmoji(safe.giftName || '');
-    const imgUrl   = safeTikTokImageUrl(safe.giftPictureUrl) || null;
+    // ใช้รูปจาก event ก่อน ถ้าไม่มีให้ fallback จาก catalog ที่ poll มา
+    const catalogEntry = catalogRef?.current?.[safe.giftName?.toLowerCase()] || null;
+    const imgUrl   = safeTikTokImageUrl(safe.giftPictureUrl)
+                  || safeTikTokImageUrl(catalogEntry?.pictureUrl)
+                  || null;
     const repeat   = safe.repeatCount || 1;
     const diamonds = Math.max(0, Number(safe.diamondCount) || 0);
 
@@ -290,6 +284,27 @@ export default function CoinJarWidget() {
   const spawnTimers = useRef([]);
   const maxItemsRef   = useRef(150); // อ่านจาก ?mi= ใน useEffect
   const giftScaleRef  = useRef(100); // อ่านจาก ?gs= ใน useEffect (50-200%)
+  const catalogRef    = useRef({});  // giftName.toLowerCase() → { pictureUrl }
+
+  // ── Gift catalog polling ทุก 30 วินาที ──────────────────────────────────────
+  useEffect(() => {
+    const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    const fetchCatalog = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/gifts/public`);
+        if (!res.ok) return;
+        const gifts = await res.json();
+        const map = {};
+        if (Array.isArray(gifts)) {
+          gifts.forEach(g => { if (g?.name) map[g.name.toLowerCase()] = g; });
+          catalogRef.current = map;
+        }
+      } catch { /* silent fail */ }
+    };
+    fetchCatalog();
+    const iv = setInterval(fetchCatalog, 30_000);
+    return () => clearInterval(iv);
+  }, []);
 
   // ===== spawn gift item =====
   const spawnItem = useCallback((imgUrl, emoji, count = 1, diamonds = 0) => {
@@ -309,12 +324,13 @@ export default function CoinJarWidget() {
         const y = J.nT - 144; // 144px เหนือปากขวด (off-screen) — Matter.js รองรับ off-screen
 
         const body = Bodies.circle(x, y, itemR, {
-          restitution: 0.08,
-          friction:    0.9,
-          frictionAir: 0.06,
-          density:     0.002,
-          label:       'gift',
-          sleepThreshold: 30,
+          restitution:   0.05,   // แทบไม่กระเด้ง
+          friction:      0.35,   // ลดลงจาก 0.9 → ของขวัญไหลทับกันสมจริงขึ้น
+          frictionStatic: 0.45,  // static friction ต่ำพอให้ถล่มได้เมื่อมีน้ำหนักกด
+          frictionAir:   0.04,
+          density:       0.002,
+          label:         'gift',
+          sleepThreshold: 20,    // ลดลง → หยุดนิ่งเร็วขึ้น ไม่ค้างลอย
         });
         body._img      = imgUrl;
         body._emoji    = emoji;
@@ -417,7 +433,7 @@ export default function CoinJarWidget() {
           return;
         }
 
-        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, showGiftImageRef, engineRef, mRef, setJarOffset });
+        socket = setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef, giftScaleRef, showSenderRef, showGiftNameRef, showGiftImageRef, engineRef, mRef, setJarOffset, catalogRef });
       };
 
       // โหลด Matter.js จาก CDN (ถ้าโหลดไปแล้ว ใช้ window.Matter ที่มีอยู่เลย)
@@ -458,6 +474,7 @@ export default function CoinJarWidget() {
       overflow: 'hidden',
       background: bgStyle,
       fontFamily: 'Inter, system-ui, sans-serif',
+      // canvas ใหญ่ขึ้น → ส่วนบน 660px โปร่งใส gifts ร่วงลงมาสวยงาม
     }}>
 
       {/* ===== Gift notification popup ===== */}
