@@ -1489,7 +1489,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     <div className={clsx('min-h-screen flex', theme === 'dark' ? 'bg-gray-950 text-gray-200' : 'bg-white text-gray-900')}>
       <Sidebar theme={theme} setTheme={setTheme} activePage={activePage} setActivePage={setActivePage} />
 
-      <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto pb-24 md:pb-6">
+      <main className="flex-1 ml-16 md:ml-56 p-4 md:p-6 max-w-4xl mx-auto pb-24 md:pb-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
