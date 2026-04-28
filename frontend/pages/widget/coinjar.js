@@ -41,9 +41,9 @@ const GROUND_Y = H - 30;
 // พิกัดโถ base (offset = 0 → กลาง canvas W=1200, center=600)
 // ปรับ jarOffset จาก URL param ?jx=... (-400 ถึง +400)
 const JAR_BASE = {
-  nL: 528, nR: 672,   // neck กว้าง 144px, center=600
+  nL: 514, nR: 686,   // neck กว้าง 172px (+20%), center=600
   nT: 62,  nB: 158,
-  bL: 468, bR: 732,   // body กว้าง 264px, center=600
+  bL: 442, bR: 758,   // body กว้าง 316px (+20%), center=600
   bB: 516,
   floor: 522,
 };
@@ -625,34 +625,33 @@ function buildJarWalls(Bodies, ox = 0) {
 }
 
 // ===================== Jar SVG Visual =====================
-// โถคลาสสิก — ฝา + คอขวด + ไหล่ + ตัวโถ + ก้นมน
+// โหลแก้วเปิดปาก (mason jar) — ไม่มีฝา, ปากเปิด, ไหล่โค้ง Q-curve, ก้นมน
+// ความใสสูงมาก — ออกแบบสำหรับ OBS overlay วางทับหน้า VTuber
 function JarSVG({ acColor, offset = 0 }) {
-  const Jv         = getJ(offset);
-  const SHOULDER_H = 120;
-  const shoulderBotY = Jv.nB + SHOULDER_H;
-  const CX         = (Jv.bL + Jv.bR) / 2;
+  const Jv           = getJ(offset);
+  const SHOULDER_H   = 120;
+  const shoulderBotY = Jv.nB + SHOULDER_H;              // 278 — ด้านล่างไหล่
+  const CX           = (Jv.nL + Jv.nR) / 2;             // 600 — center x
+  const neckRx       = (Jv.nR - Jv.nL) / 2;             // 86 — half-width คอขวด
+  const rimRy        = Math.round(neckRx * 0.128);       // 11 — ความสูง ellipse ปากขวด
 
-  // lid dimensions
-  const lidH  = 26;
-  const lidY  = Jv.nT - lidH;
-  const lidX  = Jv.nL - 8;
-  const lidW  = Jv.nR - Jv.nL + 16;
-  const capH  = 7;
-  const capY  = lidY - capH;
-  const capX  = Jv.nL - 14;
-  const capW  = Jv.nR - Jv.nL + 28;
+  // Q-curve shoulder: control point อยู่ห่างจาก nL เข้าหา bL 53% ของ dx, ต่ำกว่า nB 20px
+  // dx=72 → qOfsX=38 → left ctrl=(514−38,158+20)=(476,178), right ctrl=(686+38,178)=(724,178)
+  const dx     = Jv.nL - Jv.bL;                         // 72
+  const qOfsX  = Math.round(dx * 0.53);                  // 38
+  const qCtrlY = Jv.nB + 20;                             // 178
 
-  // Jar body SVG path: neck → shoulder → body → rounded bottom
+  // Path: คอขวดซ้าย → Q-curve ไหล่ซ้าย → ลำตัวซ้าย → ก้นมน → ลำตัวขวา → Q-curve ไหล่ขวา → คอขวดขวา
   const jarPath = [
     `M ${Jv.nL} ${Jv.nT}`,
     `L ${Jv.nL} ${Jv.nB}`,
-    `L ${Jv.bL} ${shoulderBotY}`,
+    `Q ${Jv.nL - qOfsX} ${qCtrlY} ${Jv.bL} ${shoulderBotY}`,
     `L ${Jv.bL} ${Jv.bB}`,
     `Q ${Jv.bL} ${Jv.floor} ${Jv.bL + 18} ${Jv.floor}`,
     `L ${Jv.bR - 18} ${Jv.floor}`,
     `Q ${Jv.bR} ${Jv.floor} ${Jv.bR} ${Jv.bB}`,
     `L ${Jv.bR} ${shoulderBotY}`,
-    `L ${Jv.nR} ${Jv.nB}`,
+    `Q ${Jv.nR + qOfsX} ${qCtrlY} ${Jv.nR} ${Jv.nB}`,
     `L ${Jv.nR} ${Jv.nT}`,
     'Z',
   ].join(' ');
@@ -664,16 +663,13 @@ function JarSVG({ acColor, offset = 0 }) {
       style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}
     >
       <defs>
+        {/* แสงสะท้อนแก้ว — ความเข้มต่ำมากสำหรับ OBS overlay */}
         <linearGradient id="jarGlass" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.06" />
-          <stop offset="12%"  stopColor="#ffffff" stopOpacity="0.10" />
-          <stop offset="45%"  stopColor="#ffffff" stopOpacity="0.02" />
-          <stop offset="88%"  stopColor="#ffffff" stopOpacity="0.08" />
-          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.04" />
-        </linearGradient>
-        <linearGradient id="lidGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stopColor={acColor} stopOpacity="0.95" />
-          <stop offset="100%" stopColor={acColor} stopOpacity="0.65" />
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.07" />
+          <stop offset="12%"  stopColor="#ffffff" stopOpacity="0.04" />
+          <stop offset="45%"  stopColor="#ffffff" stopOpacity="0.01" />
+          <stop offset="88%"  stopColor="#ffffff" stopOpacity="0.04" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.06" />
         </linearGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="2" result="blur" />
@@ -684,75 +680,79 @@ function JarSVG({ acColor, offset = 0 }) {
         </filter>
       </defs>
 
-      {/* ===== Jar body — shadow outline ===== */}
-      <path d={jarPath} fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="6" />
+      {/* ===== Shadow outline — ทำให้ขอบมีความลึก ===== */}
+      <path d={jarPath} fill="none" stroke="rgba(0,0,0,0.22)" strokeWidth="6" />
 
-      {/* ===== Jar body — glass fill ===== */}
-      <path d={jarPath} fill="url(#jarGlass)" stroke="rgba(255,255,255,0.72)" strokeWidth="2.5" />
+      {/* ===== Glass fill — โปร่งใสมาก ===== */}
+      <path d={jarPath} fill="url(#jarGlass)" stroke="rgba(255,255,255,0.68)" strokeWidth="2" />
 
-      {/* ===== Glass reflections (inside body) ===== */}
+      {/* ===== ไหล่ซ้าย — highlight curve เล็กน้อย ===== */}
+      <path
+        d={`M ${Jv.nL + 2} ${Jv.nB} Q ${Jv.nL - qOfsX + 2} ${qCtrlY} ${Jv.bL + 4} ${shoulderBotY}`}
+        fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" strokeLinecap="round"
+      />
+      {/* ===== ไหล่ขวา — subtle sheen ===== */}
+      <path
+        d={`M ${Jv.nR - 2} ${Jv.nB} Q ${Jv.nR + qOfsX - 2} ${qCtrlY} ${Jv.bR - 4} ${shoulderBotY}`}
+        fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2" strokeLinecap="round"
+      />
+
+      {/* ===== Glass reflections inside body ===== */}
+      {/* ซ้ายหนา — แสงหลัก */}
       <line
         x1={Jv.bL + 16} y1={shoulderBotY + 16}
         x2={Jv.bL + 16} y2={Jv.bB - 40}
-        stroke="rgba(255,255,255,0.16)" strokeWidth="5"
+        stroke="rgba(255,255,255,0.14)" strokeWidth="5"
         strokeLinecap="round" filter="url(#glow)"
       />
+      {/* ซ้ายบาง */}
       <line
-        x1={Jv.bL + 28} y1={shoulderBotY + 60}
-        x2={Jv.bL + 28} y2={shoulderBotY + 190}
-        stroke="rgba(255,255,255,0.08)" strokeWidth="2"
+        x1={Jv.bL + 30} y1={shoulderBotY + 60}
+        x2={Jv.bL + 30} y2={shoulderBotY + 190}
+        stroke="rgba(255,255,255,0.07)" strokeWidth="2"
         strokeLinecap="round"
       />
+      {/* ขวาบาง */}
       <line
-        x1={Jv.bR - 18} y1={shoulderBotY + 30}
-        x2={Jv.bR - 18} y2={shoulderBotY + 110}
-        stroke="rgba(255,255,255,0.06)" strokeWidth="2"
+        x1={Jv.bR - 20} y1={shoulderBotY + 30}
+        x2={Jv.bR - 20} y2={shoulderBotY + 110}
+        stroke="rgba(255,255,255,0.05)" strokeWidth="2"
         strokeLinecap="round"
       />
 
-      {/* ===== ก้นโถ ===== */}
+      {/* ===== ก้นโถ — subtle ellipse ===== */}
       <ellipse
         cx={CX} cy={Jv.floor - 2}
-        rx={(Jv.bR - Jv.bL) / 2 - 12} ry={6}
-        fill="rgba(255,255,255,0.04)"
-        stroke="rgba(255,255,255,0.12)" strokeWidth="1"
+        rx={(Jv.bR - Jv.bL) / 2 - 14} ry={6}
+        fill="rgba(255,255,255,0.03)"
+        stroke="rgba(255,255,255,0.10)" strokeWidth="1"
       />
 
-      {/* ===== ฝาขวด (Lid) ===== */}
-      {/* Cap rim — ขอบบนของฝา (กว้างกว่าฝาเล็กน้อย) */}
-      <rect
-        x={capX} y={capY} width={capW} height={capH}
-        rx={3}
-        fill={acColor} opacity={0.88}
-        stroke="rgba(255,255,255,0.28)" strokeWidth="1"
+      {/* ===== ปากขวดเปิด (open rim) — ellipse บนสุด ===== */}
+      <ellipse
+        cx={CX} cy={Jv.nT}
+        rx={neckRx} ry={rimRy}
+        fill="rgba(255,255,255,0.08)"
+        stroke="rgba(255,255,255,0.75)" strokeWidth="2"
       />
-      {/* Lid body */}
-      <rect
-        x={lidX} y={lidY} width={lidW} height={lidH}
-        rx={2}
-        fill="url(#lidGrad)"
+      {/* ขอบใน rim — แสดงความหนาของแก้ว */}
+      <ellipse
+        cx={CX} cy={Jv.nT + 12}
+        rx={neckRx - 3} ry={rimRy - 1}
+        fill="none"
         stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"
       />
-      {/* Thread lines on lid */}
-      <line x1={lidX} y1={lidY + lidH * 0.28} x2={lidX + lidW} y2={lidY + lidH * 0.28} stroke="rgba(0,0,0,0.14)" strokeWidth="1.2" />
-      <line x1={lidX} y1={lidY + lidH * 0.56} x2={lidX + lidW} y2={lidY + lidH * 0.56} stroke="rgba(0,0,0,0.14)" strokeWidth="1.2" />
-      <line x1={lidX} y1={lidY + lidH * 0.80} x2={lidX + lidW} y2={lidY + lidH * 0.80} stroke="rgba(0,0,0,0.10)" strokeWidth="1" />
-      {/* Lid shine strip */}
-      <rect
-        x={lidX + 5} y={lidY + 4} width={lidW - 10} height={6}
-        rx={3} fill="rgba(255,255,255,0.22)"
-      />
 
-      {/* ===== คอขวด — เน้นขอบล่าง (neck-body junction) ===== */}
+      {/* ===== คอขวด — inner edge lines ===== */}
       <line
         x1={Jv.nL} y1={Jv.nT}
         x2={Jv.nL} y2={Jv.nB}
-        stroke="rgba(255,255,255,0.10)" strokeWidth="1"
+        stroke="rgba(255,255,255,0.08)" strokeWidth="1"
       />
       <line
         x1={Jv.nR} y1={Jv.nT}
         x2={Jv.nR} y2={Jv.nB}
-        stroke="rgba(255,255,255,0.10)" strokeWidth="1"
+        stroke="rgba(255,255,255,0.08)" strokeWidth="1"
       />
     </svg>
   );
