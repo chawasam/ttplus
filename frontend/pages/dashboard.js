@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { connectSocket, disconnectSocket, setTokenRefresher } from '../lib/socket';
+import { connectSocket, disconnectSocket } from '../lib/socket';
 import api, { getCachedSettings, setCachedSettings } from '../lib/api';
 import { showError } from '../lib/errorHandler';
 import { sanitizeEvent } from '../lib/sanitize';
@@ -62,36 +62,22 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   // ── sync refs ──
   useEffect(() => { tiktokUsernameRef.current = tiktokUsername; }, [tiktokUsername]);
   useEffect(() => { if (connected) wasConnectedRef.current = true; }, [connected]);
-  useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
   const [viewers, setViewers]           = useState(0);
   const [totalLikes, setTotalLikes]     = useState(0);
   const [totalComments, setTotalComments] = useState(0);
-  const [recentMembers, setRecentMembers] = useState([]); // ผู้ชมที่เพิ่งเข้าห้อง (max 50)
 
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
 
   const socketRef            = useRef(null);
   const wasConnectedRef      = useRef(false); // true = เคย connect TikTok ในรอบนี้
-  // manualDisconnectRef: persist ผ่าน sessionStorage เพื่อป้องกัน auto-connect ยิงหลัง refresh
-  // (sessionStorage หายเมื่อปิด tab — behavior ที่ต้องการ)
-  const manualDisconnectRef  = useRef(
-    typeof window !== 'undefined' && sessionStorage.getItem('ttplus_manual_dc') === '1'
-  );
+  const manualDisconnectRef  = useRef(false); // true = user กด disconnect เอง
   const tiktokUsernameRef    = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
   const autoConnectDoneRef   = useRef(false); // ป้องกัน auto-connect ซ้ำในรอบเดียวกัน
   const [autoConnect, setAutoConnect] = useState(() => {
     try { return localStorage.getItem('ttplus_ac') !== '0'; } catch { return true; }
   });
-
-  // ── Per-device audio toggle ──
-  // default: OFF → เสียงออกเฉพาะเครื่องที่ user เปิดเอง
-  // widget URL ใน OBS จะเป็นตัวเล่นเสียงหลัก ไม่ใช่ dashboard
-  const [audioEnabled, setAudioEnabled] = useState(() => {
-    try { return localStorage.getItem('ttplus_audio_device') === '1'; } catch { return false; }
-  });
-  const audioEnabledRef = useRef(false);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -200,29 +186,13 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     });
     socket.on('chat',     (data) => {
       const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
-      // เล่นเสียง TTS เฉพาะเมื่อ user เปิดเสียงบนเครื่องนี้ไว้
-      // (default OFF — ให้ widget URL ใน OBS เป็นตัวเล่นเสียงหลัก)
-      if (s.comment && audioEnabledRef.current) speak(s.comment, 'chat');
+      if (s.comment) speak(s.comment, 'chat');
     });
     socket.on('gift',     (data) => { addEvent(sanitizeEvent(data)); });
     socket.on('like',     (data) => { const s = sanitizeEvent(data); addEvent(s); if (s.totalLikeCount) setTotalLikes(s.totalLikeCount); });
     socket.on('follow',   (data) => { const s = sanitizeEvent(data); addEvent(s); });
     socket.on('share',    (data) => addEvent(sanitizeEvent(data)));
     socket.on('roomUser', (data) => setViewers(Math.max(0, Number(data.viewerCount) || 0)));
-    // ── Viewer list (คนที่เข้าห้อง live) ──
-    socket.on('member', (data) => {
-      const uniqueId = String(data.uniqueId || '').slice(0, 64);
-      const nickname = String(data.nickname || uniqueId).slice(0, 100);
-      const pic = String(data.profilePictureUrl || '').slice(0, 512);
-      if (!uniqueId) return;
-      setRecentMembers(prev => {
-        const filtered = prev.filter(m => m.uniqueId !== uniqueId);
-        return [{ uniqueId, nickname, profilePictureUrl: pic, joinedAt: Date.now() }, ...filtered].slice(0, 50);
-      });
-    });
-    socket.on('recent_members', (data) => {
-      if (Array.isArray(data?.data)) setRecentMembers(data.data);
-    });
   }, [addEvent]);
 
   // ===== React to user prop (from _app.js) =====
@@ -232,9 +202,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     if (user) {
       // Connect socket + load settings เมื่อ login แล้ว
       user.getIdToken().then(token => {
-        // ลงทะเบียน token refresher — socket จะขอ fresh token ทุกครั้ง reconnect
-        // ป้องกัน "No active connection" เมื่อ Firebase ID token หมดอายุ (> 1 ชั่วโมง)
-        setTokenRefresher(() => user.getIdToken());
         const socket = connectSocket(token);
         socketRef.current = socket;
         setupSocketListeners(socket);
@@ -327,7 +294,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     const cleanUsername = rawUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
     if (!cleanUsername) { toast.error('Username ไม่ถูกต้อง (ใช้ได้เฉพาะ a-z, 0-9, . และ _)'); return; }
     manualDisconnectRef.current = false; // user กด connect เอง — อนุญาต auto-reconnect
-    try { sessionStorage.removeItem('ttplus_manual_dc'); } catch {}
     setConnecting(true);
     try {
       await api.post('/api/connect', { tiktokUsername: cleanUsername });
@@ -358,7 +324,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   const handleDisconnect = useCallback(async () => {
     manualDisconnectRef.current = true;  // user กด disconnect เอง — ห้าม auto-reconnect
-    try { sessionStorage.setItem('ttplus_manual_dc', '1'); } catch {}
     wasConnectedRef.current = false;
     try {
       await api.post('/api/disconnect');
@@ -396,24 +361,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>Dashboard</h1>
           <div className="flex items-center gap-2">
-            {/* Per-device audio toggle — default OFF ให้ widget URL ใน OBS เล่นเสียงแทน */}
-            <button
-              onClick={() => {
-                const next = !audioEnabled;
-                setAudioEnabled(next);
-                try { localStorage.setItem('ttplus_audio_device', next ? '1' : '0'); } catch {}
-              }}
-              title={audioEnabled ? 'เสียงเปิดบนเครื่องนี้ — คลิกเพื่อปิด' : 'เสียงปิดบนเครื่องนี้ — คลิกเพื่อเปิด'}
-              className={clsx(
-                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
-                audioEnabled
-                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                  : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
-              )}
-            >
-              {audioEnabled ? '🔊' : '🔇'}
-              <span className="hidden sm:inline">{audioEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
-            </button>
             <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-400 hover:text-white transition text-lg" aria-label="Toggle theme">
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
@@ -518,53 +465,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           <StatCard label="❤️ Likes"   value={totalLikes}    theme={theme} />
           <StatCard label="💬 แชท"     value={totalComments} theme={theme} />
         </div>
-
-        {/* ── Viewer List (คนที่เข้าดู live) ── */}
-        {recentMembers.length > 0 && (
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className={clsx('text-xs font-medium', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                🚪 ผู้ชมในห้อง ({recentMembers.length})
-              </p>
-              <button
-                onClick={() => setRecentMembers([])}
-                className="text-[10px] text-gray-600 hover:text-gray-400"
-              >
-                ล้าง
-              </button>
-            </div>
-            <div className={clsx(
-              'rounded-xl border overflow-hidden',
-              theme === 'dark' ? 'border-gray-800 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
-            )}>
-              <div className="max-h-48 overflow-y-auto">
-                {recentMembers.map((m, i) => (
-                  <div key={m.uniqueId} className={clsx(
-                    'flex items-center gap-2 px-3 py-1.5 text-xs',
-                    i !== recentMembers.length - 1 && (theme === 'dark' ? 'border-b border-gray-800' : 'border-b border-gray-100')
-                  )}>
-                    {m.profilePictureUrl ? (
-                      <img
-                        src={m.profilePictureUrl}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="w-5 h-5 rounded-full flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-brand-700 flex-shrink-0 flex items-center justify-center text-[9px] text-white">
-                        {(m.nickname || m.uniqueId).charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <span className={clsx('truncate flex-1', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>
-                      {m.nickname || m.uniqueId}
-                    </span>
-                    <span className="text-gray-600 flex-shrink-0">@{m.uniqueId}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
       </main>
 

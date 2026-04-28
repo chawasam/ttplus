@@ -1,5 +1,5 @@
 // widget/coinjar.js — Gift Jar Physics Widget สำหรับ OBS / TikTok Studio
-// OBS Size แนะนำ: 800 × 600  (กว้างขึ้น → ของขวัญล้นออกกองสองข้างสวยงาม)
+// OBS Size แนะนำ: 1200 × 600  (กว้างขึ้น → ของขวัญล้นออกกองสองข้างสวยงาม)
 // เมื่อมีคนส่ง gift ใน TikTok Live → รูป gift ตกลงมาในโถพร้อม physics จริง
 // ของขวัญล้นออกนอกโถได้ — กองบนพื้นข้างขวดโหล
 // URL params: ?wt=TOKEN&jx=OFFSET(-200~200)&preview=1
@@ -8,8 +8,8 @@ import { io } from 'socket.io-client';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 
-// ขนาด canvas — W=800 ให้พื้นที่ 268px ทั้งสองข้างของโถ ของล้นออกกองสวย
-const W = 800;
+// ขนาด canvas — W=1200 ให้พื้นที่ 468px ทั้งสองข้างของโถ ของล้นออกกองสวย
+const W = 1200;
 const H = 600;
 
 // รัศมี gift item base (px) — ปรับได้ผ่าน gs param (50-200%)
@@ -38,12 +38,12 @@ function getItemR(diamonds = 0, giftScale = 100) {
 // พื้น ground สำหรับ overflow — ของที่ล้นออกมากองที่นี่
 const GROUND_Y = H - 30;
 
-// พิกัดโถ base (offset = 0 → กลาง canvas W=800, center=400)
-// ปรับ jarOffset จาก URL param ?jx=... (-200 ถึง +200)
+// พิกัดโถ base (offset = 0 → กลาง canvas W=1200, center=600)
+// ปรับ jarOffset จาก URL param ?jx=... (-400 ถึง +400)
 const JAR_BASE = {
-  nL: 328, nR: 472,   // neck กว้าง 144px, center=400
+  nL: 528, nR: 672,   // neck กว้าง 144px, center=600
   nT: 62,  nB: 158,
-  bL: 268, bR: 532,   // body กว้าง 264px, center=400
+  bL: 468, bR: 732,   // body กว้าง 264px, center=600
   bB: 516,
   floor: 522,
 };
@@ -575,16 +575,17 @@ function buildJarWalls(Bodies, ox = 0) {
       T, floorCY - Jx.nB,
       { isStatic: true, friction: 0.3, label: 'wall' }
     ),
-    // ── ผนังซ้าย neck ──
+    // ── ผนังซ้าย neck (ส่วนล่างเท่านั้น: nT+58 → nB) ──
+    // เปิดช่องบน 58px ของ neck (y=62-120) → ของล้นเด้งออกด้านข้างได้เมื่อขวดเต็ม
     Bodies.rectangle(
-      Jx.nL - T / 2, (Jx.nT + Jx.nB) / 2,
-      T, Jx.nB - Jx.nT,
+      Jx.nL - T / 2, (Jx.nT + 58 + Jx.nB) / 2,
+      T, Jx.nB - (Jx.nT + 58),
       { isStatic: true, label: 'wall' }
     ),
-    // ── ผนังขวา neck ──
+    // ── ผนังขวา neck (ส่วนล่างเท่านั้น: nT+58 → nB) ──
     Bodies.rectangle(
-      Jx.nR + T / 2, (Jx.nT + Jx.nB) / 2,
-      T, Jx.nB - Jx.nT,
+      Jx.nR + T / 2, (Jx.nT + 58 + Jx.nB) / 2,
+      T, Jx.nB - (Jx.nT + 58),
       { isStatic: true, label: 'wall' }
     ),
     // ── shoulder ซ้าย (เฉียง: neck → body) ──

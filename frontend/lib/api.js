@@ -152,21 +152,6 @@ api.interceptors.response.use(
       }
     }
 
-    // Auto-retry ครั้งเดียวถ้า 403 จาก CSRF หมดอายุ / ไม่ valid
-    // backend ส่ง { error: 'Invalid CSRF token...' } หรือ 'CSRF token expired...'
-    if (
-      error.response?.status === 403 &&
-      !original._csrfRetry &&
-      typeof error.response?.data?.error === 'string' &&
-      error.response.data.error.toLowerCase().includes('csrf')
-    ) {
-      original._csrfRetry = true;
-      // ล้าง CSRF cache เก่า → interceptor จะ fetch token ใหม่อัตโนมัติ
-      _csrfReady = null;
-      _csrfLoad  = null;
-      return api(original);
-    }
-
     if (process.env.NODE_ENV !== 'production') {
       console.error('[API]', error.response?.status, original?.url);
     }

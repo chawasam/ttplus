@@ -17,13 +17,6 @@ async function getVjEvents(vjUid) {
   const cached = eventsCache.get(vjUid);
   if (cached && Date.now() - cached.loadedAt < CACHE_TTL) return cached.events;
 
-  // Lazy cleanup: ลบ entry ที่เก่า >10 นาที ป้องกัน Map โตขึ้นเรื่อยๆ สำหรับ VJ ที่หยุด stream แล้ว
-  const STALE_TTL = CACHE_TTL * 10; // 10 นาที
-  const now = Date.now();
-  for (const [key, val] of eventsCache) {
-    if (now - val.loadedAt >= STALE_TTL) eventsCache.delete(key);
-  }
-
   const [evSnap, acSnap] = await Promise.all([
     db().collection('tt_events').where('uid', '==', vjUid).where('enabled', '==', true).get(),
     db().collection('tt_actions').where('uid', '==', vjUid).where('enabled', '==', true).get(),
