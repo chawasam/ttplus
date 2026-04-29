@@ -1,7 +1,7 @@
 // widget/coinjar.js — Gift Jar Physics Widget สำหรับ OBS / TikTok Studio
 // OBS Size: 800 × 600  (container อยู่ด้านล่าง ส่วนบนเป็นพื้นที่ gifts ร่วง)
 // URL params: ?cid=CID&ct=CONTAINER&jx=OFFSET(-100~100)&gs=SCALE&preview=1
-// ct = jar | fishbowl | beermug | trophy | cauldron | chest | bucket | popcorn | skull | wineglass | flowerpot
+// ct = jar | fatjar | fishbowl | beermug | trophy | cauldron | chest | bucket | popcorn | skull | wineglass | flowerpot
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
@@ -55,7 +55,8 @@ let currentSpawnZone = { openL: JAR_BASE.nL, openR: JAR_BASE.nR };
 // ── Container registry ───────────────────────────────────────────────────────
 // Note: buildXxx functions are function declarations → hoisted, safe to ref here
 const CONTAINERS = {
-  jar:       { label: 'ขวดโหล',     openL: 287, openR: 513, buildWalls: buildJarWalls       },
+  jar:       { label: 'โถแก้ว',     openL: 357, openR: 443, buildWalls: buildJarWalls       },
+  fatjar:    { label: 'ขวดโหล',     openL: 287, openR: 513, buildWalls: buildFatJarWalls    },
   fishbowl:  { label: 'โถปลา',     openL: 370, openR: 430, buildWalls: buildFishbowlWalls   },
   beermug:   { label: 'แก้วเบียร์',  openL: 325, openR: 475, buildWalls: buildBeerMugWalls   },
   trophy:    { label: 'ถ้วยรางวัล', openL: 295, openR: 505, buildWalls: buildTrophyWalls     },
@@ -547,9 +548,35 @@ export default function CoinJarWidget() {
   );
 }
 
-// ===================== Physics Walls — JAR (original) =====================
+// ===================== Physics Walls — JAR (original โถแก้วมีคอ) =====================
 function buildJarWalls(Bodies, ox = 0) {
-  // ขวดโหลทรงกระบอกอ้วน — ปากกว้างเท่าตัว ตรง ไม่มีคอ
+  const T          = 22;
+  const Jx         = getJ(ox);
+  const SHOULDER_H = 60;
+
+  const dx          = Jx.nL - Jx.bL;
+  const shoulderLen = Math.sqrt(dx * dx + SHOULDER_H * SHOULDER_H);
+  const shoulderAng = Math.atan2(dx, SHOULDER_H);
+
+  const floorCY     = Jx.floor + T;
+  const floorHeight = T * 3;
+
+  return [
+    Bodies.rectangle(Jx.nL - T/2, (Jx.nT+Jx.nB)/2, T, Jx.nB-Jx.nT, { isStatic:true, friction:0.3, label:'wall' }),
+    Bodies.rectangle(Jx.nR + T/2, (Jx.nT+Jx.nB)/2, T, Jx.nB-Jx.nT, { isStatic:true, friction:0.3, label:'wall' }),
+    Bodies.rectangle((Jx.nL+Jx.bL)/2, Jx.nB+SHOULDER_H/2, T, shoulderLen, { isStatic:true, angle:shoulderAng,  friction:0.3, label:'wall' }),
+    Bodies.rectangle((Jx.nR+Jx.bR)/2, Jx.nB+SHOULDER_H/2, T, shoulderLen, { isStatic:true, angle:-shoulderAng, friction:0.3, label:'wall' }),
+    Bodies.rectangle((Jx.bL+Jx.bR)/2, floorCY, Jx.bR-Jx.bL+T*2, floorHeight, { isStatic:true, friction:0.7, restitution:0.05, label:'wall' }),
+    Bodies.rectangle(Jx.bL - T/2, (Jx.nB+SHOULDER_H+floorCY)/2, T, floorCY-(Jx.nB+SHOULDER_H), { isStatic:true, friction:0.3, label:'wall' }),
+    Bodies.rectangle(Jx.bR + T/2, (Jx.nB+SHOULDER_H+floorCY)/2, T, floorCY-(Jx.nB+SHOULDER_H), { isStatic:true, friction:0.3, label:'wall' }),
+    Bodies.rectangle(W/2, GROUND_Y+T/2, W+T*2, T, { isStatic:true, friction:0.8, label:'ground' }),
+    Bodies.rectangle(-T/2, H/2, T, H*2, { isStatic:true, friction:0.3, label:'wall' }),
+    Bodies.rectangle(W+T/2, H/2, T, H*2, { isStatic:true, friction:0.3, label:'wall' }),
+  ];
+}
+
+// ===================== Physics Walls — FATJAR (ขวดโหลทรงกระบอกอ้วน ปากกว้าง) =====================
+function buildFatJarWalls(Bodies, ox = 0) {
   const o = ox;
   const L = 287+o, R = 513+o;
   const topY = 288, botY = 558;
@@ -780,6 +807,7 @@ function ContainerSVG({ type, acColor, offset = 0 }) {
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={SVG_STYLE}>
       {(type === 'jar'       || !type) && <JarInner       acColor={acColor} ox={offset} />}
+      {type === 'fatjar'               && <FatJarInner    acColor={acColor} ox={offset} />}
       {type === 'fishbowl'             && <FishbowlInner   acColor={acColor} ox={offset} />}
       {type === 'beermug'              && <BeerMugInner    acColor={acColor} ox={offset} />}
       {type === 'trophy'               && <TrophyInner     acColor={acColor} ox={offset} />}
@@ -794,8 +822,87 @@ function ContainerSVG({ type, acColor, offset = 0 }) {
   );
 }
 
-// ===================== JarInner — ขวดโหลทรงกระบอกอ้วน (สมจริง) =====================
+// ===================== JarInner (original โถแก้วมีคอ) =====================
 function JarInner({ ox = 0 }) {
+  const Jv           = getJ(ox);
+  const SHOULDER_H   = 60;
+  const shoulderBotY = Jv.nB + SHOULDER_H;
+  const CX           = (Jv.nL + Jv.nR) / 2;
+  const neckRx       = (Jv.nR - Jv.nL) / 2;
+  const rimRy        = Math.round(neckRx * 0.128);
+  const dx    = Jv.nL - Jv.bL;
+  const qOfsX = Math.round(dx * 0.53);
+  const qCtrlY = Jv.nB + 10;
+
+  const fillPath = [
+    `M ${Jv.nL} ${Jv.nT}`,
+    `L ${Jv.nL} ${Jv.nB}`,
+    `Q ${Jv.nL-qOfsX} ${qCtrlY} ${Jv.bL} ${shoulderBotY}`,
+    `L ${Jv.bL} ${Jv.bB}`,
+    `Q ${Jv.bL} ${Jv.floor} ${Jv.bL+9} ${Jv.floor}`,
+    `L ${Jv.bR-9} ${Jv.floor}`,
+    `Q ${Jv.bR} ${Jv.floor} ${Jv.bR} ${Jv.bB}`,
+    `L ${Jv.bR} ${shoulderBotY}`,
+    `Q ${Jv.nR+qOfsX} ${qCtrlY} ${Jv.nR} ${Jv.nB}`,
+    `L ${Jv.nR} ${Jv.nT}`,
+    'Z',
+  ].join(' ');
+
+  const strokePath = [
+    `M ${Jv.nR} ${Jv.nT}`,
+    `L ${Jv.nR} ${Jv.nB}`,
+    `Q ${Jv.nR+qOfsX} ${qCtrlY} ${Jv.bR} ${shoulderBotY}`,
+    `L ${Jv.bR} ${Jv.bB}`,
+    `Q ${Jv.bR} ${Jv.floor} ${Jv.bR-9} ${Jv.floor}`,
+    `L ${Jv.bL+9} ${Jv.floor}`,
+    `Q ${Jv.bL} ${Jv.floor} ${Jv.bL} ${Jv.bB}`,
+    `L ${Jv.bL} ${shoulderBotY}`,
+    `Q ${Jv.nL-qOfsX} ${qCtrlY} ${Jv.nL} ${Jv.nB}`,
+    `L ${Jv.nL} ${Jv.nT}`,
+  ].join(' ');
+
+  return (
+    <>
+      <defs>
+        <linearGradient id="jarGlass" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.10" />
+          <stop offset="12%"  stopColor="#ffffff" stopOpacity="0.06" />
+          <stop offset="45%"  stopColor="#ffffff" stopOpacity="0.02" />
+          <stop offset="88%"  stopColor="#ffffff" stopOpacity="0.06" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.08" />
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="1.5" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      <path d={fillPath}   fill="url(#jarGlass)" stroke="none" />
+      <path d={strokePath} fill="none" stroke="rgba(0,0,0,0.28)"       strokeWidth="5"   strokeLinejoin="round" />
+      <path d={strokePath} fill="none" stroke="rgba(255,255,255,0.72)" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d={`M ${Jv.nL+2} ${Jv.nB} Q ${Jv.nL-qOfsX+2} ${qCtrlY} ${Jv.bL+3} ${shoulderBotY}`}
+        fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="2" strokeLinecap="round" />
+      <path d={`M ${Jv.nR-2} ${Jv.nB} Q ${Jv.nR+qOfsX-2} ${qCtrlY} ${Jv.bR-3} ${shoulderBotY}`}
+        fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1={Jv.bL+8} y1={shoulderBotY+8}  x2={Jv.bL+8}  y2={Jv.bB-20}
+        stroke="rgba(255,255,255,0.16)" strokeWidth="3" strokeLinecap="round" filter="url(#glow)" />
+      <line x1={Jv.bL+15} y1={shoulderBotY+30} x2={Jv.bL+15} y2={shoulderBotY+95}
+        stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1={Jv.bR-10} y1={shoulderBotY+15} x2={Jv.bR-10} y2={shoulderBotY+55}
+        stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" strokeLinecap="round" />
+      <ellipse cx={CX} cy={Jv.floor-1} rx={(Jv.bR-Jv.bL)/2-7} ry={3}
+        fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+      <ellipse cx={CX} cy={Jv.nT} rx={neckRx} ry={rimRy}
+        fill="rgba(255,255,255,0.09)" stroke="rgba(255,255,255,0.78)" strokeWidth="1.5" />
+      <ellipse cx={CX} cy={Jv.nT+6} rx={neckRx-2} ry={Math.max(1,rimRy-1)}
+        fill="none" stroke="rgba(255,255,255,0.24)" strokeWidth="1" />
+      <line x1={Jv.nL} y1={Jv.nT} x2={Jv.nL} y2={Jv.nB} stroke="rgba(255,255,255,0.09)" strokeWidth="1" />
+      <line x1={Jv.nR} y1={Jv.nT} x2={Jv.nR} y2={Jv.nB} stroke="rgba(255,255,255,0.09)" strokeWidth="1" />
+    </>
+  );
+}
+
+// ===================== FatJarInner — ขวดโหลทรงกระบอกอ้วน (สมจริง) =====================
+function FatJarInner({ ox = 0 }) {
   const o   = ox;
   const L   = 287+o, R = 513+o, CX = 400+o;
   const tY  = 288;           // ขอบบน (ปากขวด)
