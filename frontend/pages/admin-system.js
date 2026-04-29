@@ -6,7 +6,8 @@ import Head from 'next/head';
 import api from '../lib/api';
 import clsx from 'clsx';
 
-const REFRESH_SEC = 60;
+const REFRESH_SEC  = 60;
+const OWNER_EMAIL  = process.env.NEXT_PUBLIC_OWNER_EMAIL || 'cksamg@gmail.com';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function fmtTime(ts) {
@@ -277,7 +278,7 @@ export default function AdminSystemPage({ user, authLoading }) {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) { router.replace('/'); return; }
+    if (!user || user.email !== OWNER_EMAIL) { router.replace('/'); return; }
     fetchAll();
     const iv = setInterval(fetchAll, REFRESH_SEC * 1000);
     return () => clearInterval(iv);
