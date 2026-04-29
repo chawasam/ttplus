@@ -201,13 +201,19 @@ export default function NowPlayingWidget() {
       socket = createWidgetSocket(cid, {
         style_update: ({ widgetId, style: newStyle }) => {
           if (widgetId !== 'nowplaying') return;
-          const s = newStyle?.style;
-          const f = newStyle?.fade;
-          setCfg(prev => ({
-            ...prev,  // preserve fontSize, titleColor, marquee etc. from URL
-            style: s || prev.style,
-            fade:  f !== undefined ? f !== '0' && f !== 0 : prev.fade,
-          }));
+          if (!newStyle || newStyle._reset) return;
+          setCfg(prev => {
+            const next = { ...prev };
+            if (newStyle.style       != null) next.style        = newStyle.style       || prev.style;
+            if (newStyle.fade        != null) next.fade         = newStyle.fade !== 0 && newStyle.fade !== '0' && newStyle.fade !== false;
+            if (newStyle.fontSize    != null) next.fontSize     = Math.max(8, Math.min(36, parseInt(newStyle.fontSize)    || prev.fontSize));
+            if (newStyle.titleColor  != null) next.titleColor   = parseColor(String(newStyle.titleColor),  prev.titleColor);
+            if (newStyle.artistColor != null) next.artistColor  = parseColor(String(newStyle.artistColor), prev.artistColor);
+            if (newStyle.marquee     != null) next.marquee      = newStyle.marquee === 1 || newStyle.marquee === '1' || newStyle.marquee === true;
+            if (newStyle.marqueeDir  != null) next.marqueeDir   = newStyle.marqueeDir  || prev.marqueeDir;
+            if (newStyle.marqueeSpeed != null) next.marqueeSpeed = Math.max(2, parseFloat(newStyle.marqueeSpeed) || prev.marqueeSpeed);
+            return next;
+          });
         },
       });
     }

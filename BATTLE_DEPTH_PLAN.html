@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battle Depth Development Plan — Ashenveil</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --bg2: #131720;
+    --bg3: #1a1f2e;
+    --border: #252a3a;
+    --accent: #7c4dff;
+    --accent2: #00bcd4;
+    --red: #ef4444;
+    --orange: #f97316;
+    --yellow: #eab308;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --pink: #ec4899;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  /* Header */
+  .hero {
+    background: linear-gradient(135deg, #0d0f14 0%, #1a0a2e 50%, #0d0f14 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 40px 32px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '⚔️';
+    position: absolute; right: 60px; top: 20px;
+    font-size: 120px; opacity: 0.05;
+  }
+  .hero h1 { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 6px; }
+  .hero .sub { color: var(--text2); font-size: 14px; }
+  .hero .tags { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .tag {
+    font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+    border: 1px solid; letter-spacing: 0.04em;
+  }
+  .tag-purple { color: #a78bfa; border-color: rgba(167,139,250,0.4); background: rgba(124,77,255,0.1); }
+  .tag-blue   { color: #60a5fa; border-color: rgba(96,165,250,0.4); background: rgba(59,130,246,0.1); }
+  .tag-green  { color: #4ade80; border-color: rgba(74,222,128,0.4); background: rgba(34,197,94,0.1); }
+  .tag-orange { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(249,115,22,0.1); }
+
+  /* Layout */
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* Section */
+  .section { margin-bottom: 36px; }
+  .section-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.1em;
+    color: var(--text3); text-transform: uppercase;
+    margin-bottom: 14px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title span { font-size: 16px; }
+
+  /* Cards */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+  }
+  .card-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 10px; gap: 12px;
+  }
+  .card-title { font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .card-desc { color: var(--text2); font-size: 13px; margin-bottom: 10px; }
+
+  /* Phase badges */
+  .phase-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px;
+    white-space: nowrap; flex-shrink: 0; letter-spacing: 0.05em;
+  }
+  .p1 { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+  .p2 { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+  .p3 { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.3); }
+  .done { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+
+  /* Effort badges */
+  .effort {
+    font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    letter-spacing: 0.04em;
+  }
+  .e-s { background: rgba(34,197,94,0.1); color: #86efac; }
+  .e-m { background: rgba(234,179,8,0.1); color: #fde047; }
+  .e-l { background: rgba(239,68,68,0.1); color: #fca5a5; }
+
+  /* Code block */
+  .code {
+    background: #0a0c10; border: 1px solid #1e2535;
+    border-radius: 8px; padding: 14px 16px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px; line-height: 1.7;
+    overflow-x: auto; margin-top: 10px;
+    white-space: pre;
+  }
+  .cm { color: #4a5568; }   /* comment */
+  .ck { color: #c084fc; }   /* keyword */
+  .cs { color: #4ade80; }   /* string */
+  .cn { color: #60a5fa; }   /* number */
+  .cf { color: #fb923c; }   /* function */
+  .co { color: #94a3b8; }   /* operator */
+  .cv { color: #e2e8f0; }   /* variable */
+
+  /* Grid */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  /* Status / feature list */
+  .feat-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .feat-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 13px; color: var(--text2);
+  }
+  .feat-icon { flex-shrink: 0; font-size: 13px; }
+
+  /* Current state table */
+  .state-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .state-table th {
+    text-align: left; padding: 8px 12px;
+    color: var(--text3); font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .state-table td {
+    padding: 9px 12px; border-bottom: 1px solid rgba(37,42,58,0.6);
+    color: var(--text2); vertical-align: top;
+  }
+  .state-table tr:last-child td { border-bottom: none; }
+  .state-table td:first-child { color: var(--text); font-weight: 600; }
+  .ok  { color: #4ade80 !important; }
+  .warn{ color: #fbbf24 !important; }
+  .no  { color: #f87171 !important; }
+
+  /* Phase header strip */
+  .phase-header {
+    border-radius: 10px; padding: 14px 20px;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 14px;
+  }
+  .ph1 { background: linear-gradient(90deg, rgba(34,197,94,0.12), transparent); border: 1px solid rgba(34,197,94,0.2); }
+  .ph2 { background: linear-gradient(90deg, rgba(59,130,246,0.12), transparent); border: 1px solid rgba(59,130,246,0.2); }
+  .ph3 { background: linear-gradient(90deg, rgba(168,85,247,0.12), transparent); border: 1px solid rgba(168,85,247,0.2); }
+  .phase-num { font-size: 28px; font-weight: 900; opacity: 0.8; }
+  .ph1 .phase-num { color: #4ade80; }
+  .ph2 .phase-num { color: #60a5fa; }
+  .ph3 .phase-num { color: #c084fc; }
+  .phase-info h3 { font-size: 16px; font-weight: 700; color: #fff; }
+  .phase-info p  { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* Timeline */
+  .timeline { display: flex; gap: 0; margin-bottom: 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .tl-item { flex: 1; padding: 12px 16px; text-align: center; border-right: 1px solid var(--border); }
+  .tl-item:last-child { border-right: none; }
+  .tl-phase { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .tl-time  { font-size: 15px; font-weight: 800; }
+  .tl-desc  { font-size: 11px; color: var(--text3); margin-top: 3px; }
+  .tl-g { background: rgba(34,197,94,0.06); }
+  .tl-b { background: rgba(59,130,246,0.06); }
+  .tl-p { background: rgba(168,85,247,0.06); }
+  .tl-g .tl-phase { color: #4ade80; }
+  .tl-b .tl-phase { color: #60a5fa; }
+  .tl-p .tl-phase { color: #c084fc; }
+  .tl-g .tl-time  { color: #86efac; }
+  .tl-b .tl-time  { color: #93c5fd; }
+  .tl-p .tl-time  { color: #d8b4fe; }
+
+  /* Mini chip */
+  .chip {
+    display: inline-block; font-size: 10px; font-weight: 600;
+    padding: 1px 7px; border-radius: 4px; margin: 2px;
+  }
+  .chip-red    { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .chip-blue   { background: rgba(59,130,246,0.15); color: #93c5fd; }
+  .chip-green  { background: rgba(34,197,94,0.15); color: #86efac; }
+  .chip-purple { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+  .chip-yellow { background: rgba(234,179,8,0.15); color: #fde047; }
+  .chip-orange { background: rgba(249,115,22,0.15); color: #fdba74; }
+
+  /* Separator */
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  /* Footer */
+  .footer { text-align: center; padding: 20px; color: var(--text3); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>⚔️ Battle Depth Development Plan</h1>
+  <div class="sub">Ashenveil: The Shattered Age — ระบบต่อสู้เชิงลึก</div>
+  <div class="tags">
+    <span class="tag tag-purple">v2.0 Combat Overhaul</span>
+    <span class="tag tag-blue">3 Phases</span>
+    <span class="tag tag-green">Phase 1 Quick Wins</span>
+    <span class="tag tag-orange">Updated: Apr 2026</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Timeline -->
+  <div class="timeline">
+    <div class="tl-item tl-g">
+      <div class="tl-phase">Phase 1 — Quick</div>
+      <div class="tl-time">1–2 สัปดาห์</div>
+      <div class="tl-desc">depth ทันที, code น้อย</div>
+    </div>
+    <div class="tl-item tl-b">
+      <div class="tl-phase">Phase 2 — Medium</div>
+      <div class="tl-time">3–4 สัปดาห์</div>
+      <div class="tl-desc">ระบบใหม่, ต้องออกแบบ</div>
+    </div>
+    <div class="tl-item tl-p">
+      <div class="tl-phase">Phase 3 — Major</div>
+      <div class="tl-time">1–2 เดือน</div>
+      <div class="tl-desc">class mechanics ลึก</div>
+    </div>
+  </div>
+
+  <!-- ===== CURRENT STATE ===== -->
+  <div class="section">
+    <div class="section-title"><span>📊</span> สถานะระบบ Battle ปัจจุบัน</div>
+    <div class="card">
+      <table class="state-table">
+        <thead>
+          <tr>
+            <th>ระบบ</th>
+            <th>สถานะ</th>
+            <th>รายละเอียด</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Actions</td>
+            <td class="warn">พื้นฐาน</td>
+            <td>Attack / Skill / Item / Flee — ขาด Guard, Combo, reaction</td>
+          </tr>
+          <tr>
+            <td>Skills (63 skills)</td>
+            <td class="ok">ดี</td>
+            <td>21 class × 3 skills, มี damage/buff/debuff/heal ครบ แต่ขาด synergy</td>
+          </tr>
+          <tr>
+            <td>Status Effects</td>
+            <td class="warn">พื้นฐาน</td>
+            <td>STUN/SLOW/BURN/BLEED/CURSE/POISON/MARKED — 7 types, แต่ผลต่างกันน้อย</td>
+          </tr>
+          <tr>
+            <td>Crit System</td>
+            <td class="warn">ธรรมดา</td>
+            <td>Base 10–20%, ขาด crit multiplier ที่ปรับได้, ไม่มี visual weight</td>
+          </tr>
+          <tr>
+            <td>Class Passives</td>
+            <td class="ok">มี</td>
+            <td>Warrior DEF+10%, Ranger crit 15%, Mage MP regen — applied at battle start</td>
+          </tr>
+          <tr>
+            <td>bonusVsCC</td>
+            <td class="ok">มี</td>
+            <td>Rogue Backstab 4× vs STUN/SLOW — ต้นแบบ synergy ที่ขยายได้</td>
+          </tr>
+          <tr>
+            <td>Enemy Patterns</td>
+            <td class="no">ขาด</td>
+            <td>ศัตรูแค่ auto-attack หรือ statusAttack สุ่ม ไม่มี named moves, phase patterns</td>
+          </tr>
+          <tr>
+            <td>Monster Types</td>
+            <td class="no">ขาด</td>
+            <td>ไม่มี typing (Undead/Beast/Void) — skills บางตัวจึงไม่มี "จุด"</td>
+          </tr>
+          <tr>
+            <td>Guard/Block</td>
+            <td class="no">ขาด</td>
+            <td>ไม่มี action เชิงรับ — ผู้เล่นรับ damage passive ตลอด</td>
+          </tr>
+          <tr>
+            <td>Combo/Momentum</td>
+            <td class="no">ขาด</td>
+            <td>ไม่มี carry-over reward จากการเล่นดี</td>
+          </tr>
+          <tr>
+            <td>Class Mechanics</td>
+            <td class="no">ขาด</td>
+            <td>Berserker rage stacks, Necromancer minion, Rifter void charge — ยังไม่มี</td>
+          </tr>
+          <tr>
+            <td>Boss Phase 2</td>
+            <td class="ok">มี</td>
+            <td>HP 50% triggers phase2 flag — แต่ phase2 effects ยังไม่ robust</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== PHASE 1 ===== -->
+  <div class="section">
+    <div class="phase-header ph1">
+      <div class="phase-num">1</div>
+      <div class="phase-info">
+        <h3>Quick Depth Wins — เพิ่ม depth ทันที</h3>
+        <p>ไม่ต้องสร้างระบบใหม่ — แค่ขยาย combat.js และ skills.js ที่มีอยู่แล้ว</p>
+      </div>
+    </div>
+
+    <!-- 1.1 Guard Action -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🛡️ Guard / Block Action</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-s">S</span>
+          <span class="phase-badge p1">Phase 1</span>
+        </div>
+      </div>
+      <div class="card-desc">เพิ่ม action ที่ 5 ให้ผู้เล่นเลือก "ตั้งรับ" แทน "โจมตี" — ลด damage รับ 40–50% + รับ MP เล็กน้อย</div>
+      <div class="feat-list">
+        <div class="feat-item"><span class="feat-icon">⚙️</span> เพิ่ม action type <code>guard</code> ใน processAction() — ตั้ง flag <code>isGuarding:true</code> บน playerState</div>
+        <div class="feat-item"><span class="feat-icon">⚙️</span> ตอนคำนวณ enemy attack: ถ้า <code>isGuarding</code> ลด damage 45%, +5 MP restore, reset flag</div>
+        <div class="feat-item"><span class="feat-icon">🎮</span> Frontend: button "🛡️ ตั้งรับ" ใน battle action bar, แสดง "GUARDED! -45%" บน damage log</div>
+        <div class="feat-item"><span class="feat-icon">💡</span> Warrior passive: Guard ลด damage 60% (แทน 45%) เพื่อทำให้ class ต่างกัน</div>
+      </div>
+      <div class="code"><span class="cm">// combat.js — processAction() guard branch</span>
+<span class="ck">case</span> <span class="cs">'guard'</span>: {
+  <span class="cv">playerState</span>.<span class="cv">isGuarding</span> = <span class="ck">true</span>;
+  <span class="cv">playerState</span>.<span class="cv">mp</span> = <span class="cf">Math</span>.<span class="cf">min</span>(<span class="cv">playerState</span>.<span class="cv">mp</span> + <span class="cn">5</span>, <span class="cv">playerState</span>.<span class="cv">mpMax</span>);
+  <span class="ck">return</span> { log: [<span class="cs">'🛡️ ตั้งท่ารับ — ลด damage 45% รอบนี้, +5 MP'</span>], playerState, enemyState };
+}
+
+<span class="cm">// ตอน enemy attack ถูก player</span>
+<span class="ck">const</span> <span class="cv">guardMult</span> = <span class="cv">playerState</span>.<span class="cv">isGuarding</span>
+  ? (<span class="cv">charClass</span> === <span class="cs">'warrior'</span> ? <span class="cn">0.4</span> : <span class="cn">0.55</span>)   <span class="cm">// warrior = 60% reduction</span>
+  : <span class="cn">1.0</span>;
+<span class="ck">const</span> <span class="cv">dmgTaken</span> = <span class="cf">Math</span>.<span class="cf">max</span>(<span class="cn">1</span>, <span class="cf">Math</span>.<span class="cf">floor</span>(<span class="cv">rawDmg</span> * <span class="cv">guardMult</span>));
+<span class="cv">playerState</span>.<span class="cv">isGuarding</span> = <span class="ck">false</span>;</div>
+    </div>
+
+    <!-- 1.2 Crit System Upgrade -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">💥 Crit System Upgrade</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-s">S</span>
+          <span class="phase-badge p1">Phase 1</span>
+        </div>
+      </div>
+      <div class="card-desc">เพิ่ม crit multiplier ที่ปรับได้ (ตอนนี้ hardcode ×1.5), เพิ่ม "Super Crit" mechanic และ crit impact บน frontend</div>
+      <div class="feat-list">
+        <div class="feat-item"><span class="feat-icon">⚙️</span> เพิ่ม <code>critMult</code> field บน playerState (default 1.5, เพิ่มจาก gear/buffs)</div>
+        <div class="feat-item"><span class="feat-icon">⚙️</span> "Super Crit" — ถ้า roll ≤ critChance/3: ×2.2 damage + log ต่างจาก normal crit</div>
+        <div class="feat-item"><span class="feat-icon">⚙️</span> Assassin passive: critMult 1.9 (แทน 1.5), Soulseer: เพิ่ม MP ทุก crit</div>
+        <div class="feat-item"><span class="feat-icon">🎮</span> Frontend: "CRITICAL!!" สีแดง size ใหญ่, "SUPER CRIT!!" pulse animation</div>
+      </div>
+      <div class="code"><span class="cm">// combat.js — crit calculation upgrade</span>
+<span class="ck">const</span> <span class="cv">critRoll</span> = <span class="cf">Math</span>.<span class="cf">random</span>() * <span class="cn">100</span>;
+<span class="ck">let</span> <span class="cv">isCrit</span> = <span class="ck">false</span>, <span class="cv">isSuperCrit</span> = <span class="ck">false</span>;
+<span class="ck">let</span> <span class="cv">critMult</span> = <span class="cv">playerState</span>.<span class="cv">critMult</span> || <span class="cn">1.5</span>;
+
+<span class="ck">if</span> (<span class="cv">critRoll</span> &lt;= <span class="cv">playerState</span>.<span class="cv">critChance</span> / <span class="cn">3</span>) {
+  <span class="cv">isSuperCrit</span> = <span class="ck">true</span>; <span class="cv">critMult</span> = <span class="cn">2.2</span>;
+} <span class="ck">else if</span> (<span class="cv">critRoll</span> &lt;= <span class="cv">playerState</span>.<span class="cv">critChance</span>) {
+  <span class="cv">isCrit</span> = <span class="ck">true</span>;
+}
+<span class="ck">const</span> <span class="cv">finalDmg</span> = <span class="cf">Math</span>.<span class="cf">floor</span>(<span class="cv">baseDmg</span> * (<span class="cv">isCrit</span> || <span class="cv">isSuperCrit</span> ? <span class="cv">critMult</span> : <span class="cn">1</span>));
+
+<span class="cm">// Soulseer passive: +8 MP on crit</span>
+<span class="ck">if</span> ((<span class="cv">isCrit</span> || <span class="cv">isSuperCrit</span>) &amp;&amp; <span class="cv">charClass</span> === <span class="cs">'soulseer'</span>) {
+  <span class="cv">playerState</span>.<span class="cv">mp</span> = <span class="cf">Math</span>.<span class="cf">min</span>(<span class="cv">playerState</span>.<span class="cv">mp</span> + <span class="cn">8</span>, <span class="cv">playerState</span>.<span class="cv">mpMax</span>);
+}</div>
+    </div>
+
+    <!-- 1.3 Named Enemy Moves -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🐉 Named Enemy Moves</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-m">M</span>
+          <span class="phase-badge p1">Phase 1</span>
+        </div>
+      </div>
+      <div class="card-desc">ศัตรูมี "ชื่อ skill" แทนแค่ "โจมตี" — บาง move มีผลพิเศษ เพิ่ม personality และ readability</div>
+      <div class="feat-list">
+        <div class="feat-item"><span class="feat-icon">📁</span> เพิ่ม <code>moves[]</code> array ใน monsters.js แต่ละ move มี: name, emoji, msgTemplate, dmgMult, effect?, telegraphed?</div>
+        <div class="feat-item"><span class="feat-icon">⚙️</span> combat.js: ก่อน enemy turn สุ่ม move จาก <code>monster.moves</code> — ถ้า move มี <code>telegraphed:true</code> broadcast "⚠️ [name] กำลังจะ [move]!" round ก่อน</div>
+        <div class="feat-item"><span class="feat-icon">💡</span> Telegraphed move: Guard ใน round นั้น ลด damage เพิ่มพิเศษ 70% (สร้าง read-and-react gameplay)</div>
+      </div>
+      <div class="code"><span class="cm">// monsters.js — example named moves</span>
+{
+  monsterId: <span class="cs">'giant_spider'</span>,
+  moves: [
+    { name: <span class="cs">'ฉีกด้วยเขี้ยว'</span>, emoji: <span class="cs">'🕷️'</span>, dmgMult: <span class="cn">1.0</span>, weight: <span class="cn">50</span> },
+    { name: <span class="cs">'Web Wrap'</span>, emoji: <span class="cs">'🕸️'</span>, dmgMult: <span class="cn">0.6</span>, weight: <span class="cn">30</span>,
+      effect: { type: <span class="cs">'SLOW'</span>, duration: <span class="cn">2</span> } },
+    { name: <span class="cs">'Venom Strike'</span>, emoji: <span class="cs">'☠️'</span>, dmgMult: <span class="cn">0.8</span>, weight: <span class="cn">20</span>,
+      telegraphed: <span class="ck">true</span>, effect: { type: <span class="cs">'POISON'</span>, duration: <span class="cn">3</span>, dmgPerTurn: <span class="cn">8</span> } },
+  ]
+},
+
+<span class="cm">// combat.js — weighted random move selector</span>
+<span class="ck">function</span> <span class="cf">pickMove</span>(monster) {
+  <span class="ck">if</span> (!monster.moves?.length) <span class="ck">return null</span>;
+  <span class="ck">const</span> <span class="cv">total</span> = monster.moves.<span class="cf">reduce</span>((<span class="cv">s</span>, <span class="cv">m</span>) => <span class="cv">s</span> + (<span class="cv">m</span>.<span class="cv">weight</span> || <span class="cn">1</span>), <span class="cn">0</span>);
+  <span class="ck">let</span> <span class="cv">r</span> = <span class="cf">Math</span>.<span class="cf">random</span>() * <span class="cv">total</span>;
+  <span class="ck">for</span> (<span class="ck">const</span> <span class="cv">m</span> <span class="ck">of</span> monster.moves) { <span class="cv">r</span> -= <span class="cv">m</span>.<span class="cv">weight</span> || <span class="cn">1</span>; <span class="ck">if</span> (<span class="cv">r</span> &lt;= <span class="cn">0</span>) <span class="ck">return</span> <span class="cv">m</span>; }
+  <span class="ck">return</span> monster.moves[<span class="cn">0</span>];
+}</div>
+    </div>
+
+    <!-- 1.4 Combo Counter -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔥 Combo Counter</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-s">S</span>
+          <span class="phase-badge p1">Phase 1</span>
+        </div>
+      </div>
+      <div class="card-desc">โจมตีติดต่อกันโดยไม่ถูก miss/block → สะสม combo → bonus damage + special effect ที่ combo 5/10</div>
+      <div class="feat-list">
+        <div class="feat-item"><span class="feat-icon">⚙️</span> เพิ่ม <code>comboCount: 0</code> บน battleState, เพิ่มทุก hit, reset เมื่อ flee/miss/guard</div>
+        <div class="feat-item"><span class="feat-icon">⚙️</span> Combo 3+: +5% damage, Combo 5: +15% + special log, Combo 10: +25% + "RAMPAGE!" effect</div>
+        <div class="feat-item"><span class="feat-icon">🎮</span> Frontend: แสดง "🔥 x5 COMBO" badge ใน battle log, สีเพิ่มขึ้นตาม stack</div>
+      </div>
+    </div>
+
+    <!-- 1.5 Better Status Effects -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🌀 Status Effects ที่มีความต่างกันชัด</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-s">S</span>
+          <span class="phase-badge p1">Phase 1</span>
+        </div>
+      </div>
+      <div class="card-desc">ปัจจุบัน BURN/BLEED/POISON overlap กัน — ทำให้แต่ละ status ต่างกันจริงๆ</div>
+      <div class="feat-list">
+        <div class="feat-item"><span class="feat-icon">🔥</span> <strong>BURN</strong> — DoT ทุก turn, ลด DEF 10%, ถ้า apply ซ้ำ: extend duration</div>
+        <div class="feat-item"><span class="feat-icon">🩸</span> <strong>BLEED</strong> — DoT เพิ่มขึ้นทุก turn (1→2→3→...), หายเมื่อ heal</div>
+        <div class="feat-item"><span class="feat-icon">☠️</span> <strong>POISON</strong> — DoT คงที่ แต่ลด healing ที่รับ 30%</div>
+        <div class="feat-item"><span class="feat-icon">⚡</span> <strong>STUN</strong> — skip turn + เพิ่ม damage รับ 15% (ต่างจาก SLOW)</div>
+        <div class="feat-item"><span class="feat-icon">🐢</span> <strong>SLOW</strong> — ATK -25%, ไม่ skip turn แต่ลด speed สำหรับอนาคต</div>
+        <div class="feat-item"><span class="feat-icon">🎯</span> <strong>MARKED</strong> — เพิ่ม crit chance ของ attacker ต่อ target นี้ +15% (ขยาย mechanic เดิม)</div>
+        <div class="feat-item"><span class="feat-icon">👁️</span> <strong>CURSE</strong> — ลด stat random 1 ค่า (ลบ ATK หรือ DEF หรือ SPD 20%)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PHASE 2 ===== -->
+  <div class="section">
+    <div class="phase-header ph2">
+      <div class="phase-num">2</div>
+      <div class="phase-info">
+        <h3>Medium Systems — ระบบใหม่ที่ต้องออกแบบ</h3>
+        <p>สร้างรากฐานสำหรับ Phase 3 — ต้องเพิ่ม data fields ใหม่ใน Firestore</p>
+      </div>
+    </div>
+
+    <!-- 2.1 Monster Type System -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🏷️ Monster Type System</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-m">M</span>
+          <span class="phase-badge p2">Phase 2</span>
+        </div>
+      </div>
+      <div class="card-desc">ศัตรูมี type (Undead/Beast/Void/Demon/Human/Construct) — skills บางตัว bonus vs type นั้น</div>
+      <div class="grid2">
+        <div>
+          <div class="feat-list">
+            <div class="feat-item"><span class="feat-icon">📁</span> เพิ่ม <code>type</code> field ใน monsters.js ทุก entry</div>
+            <div class="feat-item"><span class="feat-icon">📁</span> เพิ่ม <code>bonusVsType</code> array ใน skills.js: <code>['undead', 'demon']</code></div>
+            <div class="feat-item"><span class="feat-icon">⚙️</span> combat.js: ถ้า skill มี bonusVsType และ enemy.type match → ×1.5 damage + "SMITE!" log</div>
+          </div>
+          <div class="code" style="margin-top:10px"><span class="cm">// skills.js example</span>
+{ id: <span class="cs">'holy_strike'</span>, name: <span class="cs">'Holy Strike'</span>,
+  damage: <span class="cn">1.6</span>, mpCost: <span class="cn">10</span>,
+  bonusVsType: [<span class="cs">'undead'</span>, <span class="cs">'demon'</span>],
+  bonusMult: <span class="cn">1.5</span> }
+
+<span class="cm">// monsters.js</span>
+{ monsterId: <span class="cs">'skeleton'</span>, type: <span class="cs">'undead'</span>, ... }
+{ monsterId: <span class="cs">'void_wraith'</span>, type: <span class="cs">'void'</span>, ... }</div>
+        </div>
+        <div>
+          <div style="margin-bottom:8px;font-size:13px;color:var(--text2)">Monster Types:</div>
+          <div>
+            <span class="chip chip-purple">💀 Undead</span>
+            <span class="chip chip-red">👹 Demon</span>
+            <span class="chip chip-green">🐾 Beast</span>
+            <span class="chip chip-blue">🌌 Void</span>
+            <span class="chip chip-yellow">👤 Human</span>
+            <span class="chip chip-orange">⚙️ Construct</span>
+          </div>
+          <div style="margin-top:12px;font-size:13px;color:var(--text2)">Skills ที่จะใช้:</div>
+          <div class="feat-list" style="margin-top:6px">
+            <div class="feat-item"><span class="feat-icon">✨</span> Cleric: Holy Strike vs Undead/Demon</div>
+            <div class="feat-item"><span class="feat-icon">🌿</span> Shaman: Nature Wrath vs Construct</div>
+            <div class="feat-item"><span class="feat-icon">🌌</span> Voidwalker: Void Rend vs Human/Beast</div>
+            <div class="feat-item"><span class="feat-icon">🦴</span> Necromancer: bonus xp from Undead</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.2 Skill Synergy Combos -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">✨ Skill Synergy Combos</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-m">M</span>
+          <span class="phase-badge p2">Phase 2</span>
+        </div>
+      </div>
+      <div class="card-desc">บาง skill เมื่อใช้ต่อจาก condition บางอย่าง → trigger "SYNERGY!" ที่ให้ผลพิเศษ ขยายจาก bonusVsCC ของ Rogue</div>
+      <div class="grid2">
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Synergy Combos ที่วางแผน</div>
+          <table class="state-table">
+            <thead><tr><th>Setup</th><th>Trigger</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td>MARKED</td><td>Heavy Strike</td><td>EXECUTION: ×2 damage</td></tr>
+              <tr><td>STUN</td><td>Any Rogue</td><td>Backstab: ×4 (มีอยู่แล้ว)</td></tr>
+              <tr><td>BURN</td><td>Mage Fireball</td><td>Ignite: ×1.8 + extend</td></tr>
+              <tr><td>BLEED</td><td>Berserker Rage</td><td>Blood Frenzy: +20% ATK</td></tr>
+              <tr><td>Guard (prev)</td><td>Counter Strike</td><td>+50% ATK this turn</td></tr>
+              <tr><td>SLOW</td><td>Ranger Volley</td><td>Pinned: extra STUN 1 turn</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="code"><span class="cm">// combat.js — synergy check</span>
+<span class="ck">function</span> <span class="cf">checkSynergy</span>(skillId, enemyStatus, battleState) {
+  <span class="ck">const</span> <span class="cv">synergyMap</span> = {
+    <span class="cs">'heavy_strike'</span>: {
+      requires: <span class="cs">'MARKED'</span>,
+      effect: <span class="cs">'EXECUTION'</span>,
+      dmgMult: <span class="cn">2.0</span>,
+      log: <span class="cs">'⚡ EXECUTION! ×2 damage!'</span>
+    },
+    <span class="cs">'fireball'</span>: {
+      requires: <span class="cs">'BURN'</span>,
+      effect: <span class="cs">'IGNITE'</span>,
+      dmgMult: <span class="cn">1.8</span>,
+      log: <span class="cs">'🔥 IGNITE! เผาไหม้รุนแรง!'</span>
+    },
+  };
+  <span class="ck">const</span> <span class="cv">syn</span> = <span class="cv">synergyMap</span>[<span class="cv">skillId</span>];
+  <span class="ck">if</span> (!<span class="cv">syn</span>) <span class="ck">return null</span>;
+  <span class="ck">const</span> <span class="cv">hasStatus</span> = <span class="cv">enemyStatus</span>.<span class="cf">some</span>(<span class="cv">s</span> => <span class="cv">s</span>.<span class="cv">type</span> === <span class="cv">syn</span>.<span class="cv">requires</span>);
+  <span class="ck">return</span> <span class="cv">hasStatus</span> ? <span class="cv">syn</span> : <span class="ck">null</span>;
+}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.3 Battle Momentum -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">⚡ Battle Momentum System</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-m">M</span>
+          <span class="phase-badge p2">Phase 2</span>
+        </div>
+      </div>
+      <div class="card-desc">Resource ที่ build จากการโจมตี/ถูกโจมตี — ใช้ unlock special actions ชั่วคราว สร้างความตึงเครียด</div>
+      <div class="grid2">
+        <div>
+          <div class="feat-list">
+            <div class="feat-item"><span class="feat-icon">⚙️</span> <code>momentum: 0</code> บน battleState (0–100)</div>
+            <div class="feat-item"><span class="feat-icon">⚙️</span> ทุก attack ที่ hit: +10 momentum, ทุก crit: +20, ถูก damage: +5</div>
+            <div class="feat-item"><span class="feat-icon">⚙️</span> Momentum 50: unlock "Power Attack" (free skill ไม่เสีย MP, ×1.5)</div>
+            <div class="feat-item"><span class="feat-icon">⚙️</span> Momentum 100: unlock "Limit Break" (class-specific super move)</div>
+            <div class="feat-item"><span class="feat-icon">🎮</span> Frontend: momentum bar สีส้มใต้ HP bar, button "⚡ Limit Break" light up</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Limit Break แต่ละ class</div>
+          <div class="feat-list">
+            <div class="feat-item"><span class="feat-icon">🗡️</span> Warrior: "Warcry" — ATK+50%, สร้าง Bleed บน enemy 3 turns</div>
+            <div class="feat-item"><span class="feat-icon">🔮</span> Mage: "Arcane Surge" — ×3 magic damage, consume all MP</div>
+            <div class="feat-item"><span class="feat-icon">🥷</span> Assassin: "Death Mark" — MARK + ×3 next attack</div>
+            <div class="feat-item"><span class="feat-icon">✨</span> Cleric: "Divine Aegis" — heal 60% HP + Guard 2 turns</div>
+            <div class="feat-item"><span class="feat-icon">🪓</span> Berserker: "Blood Rage" — attack 3 ครั้งติดกัน</div>
+            <div class="feat-item"><span class="feat-icon">🌌</span> Rifter: "Void Collapse" — damage × void charges สะสม</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.4 Enemy Counter System -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔄 Enemy Counter / Reaction System</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-l">L</span>
+          <span class="phase-badge p2">Phase 2</span>
+        </div>
+      </div>
+      <div class="card-desc">ศัตรูบางตัว react ต่อ player action บางอย่าง — สร้าง read-and-adapt gameplay</div>
+      <div class="feat-list">
+        <div class="feat-item"><span class="feat-icon">⚔️</span> <strong>Counter Attack</strong> — ถ้า player โจมตี normal attack 3 turns ติดกัน, บาง monster counter: +50% damage</div>
+        <div class="feat-item"><span class="feat-icon">🛡️</span> <strong>Shield Phase</strong> — monster ระดับ boss/elite: HP 30% → "ร่ายเกราะ" → damage reduction 70% เป็น 2 turns (ต้อง break)</div>
+        <div class="feat-item"><span class="feat-icon">⚡</span> <strong>Enrage</strong> — ถ้าใช้ status effect บน monster บางตัวตอน HP ต่ำ → enrage: ATK+30%, DEF-20%</div>
+        <div class="feat-item"><span class="feat-icon">💨</span> <strong>Evade Phase</strong> — boss บางตัว: HP 50% → dodge rate +40% เป็น 1 turn (ต้อง read pattern)</div>
+      </div>
+      <div class="code"><span class="cm">// monsters.js — counter definitions</span>
+{ monsterId: <span class="cs">'iron_golem'</span>, type: <span class="cs">'construct'</span>,
+  counters: [
+    { trigger: <span class="cs">'consecutiveAttack'</span>, count: <span class="cn">3</span>,
+      response: { type: <span class="cs">'counterAttack'</span>, dmgMult: <span class="cn">1.5</span>, log: <span class="cs">'⚙️ Iron Golem ตอบโต้!'</span> } },
+    { trigger: <span class="cs">'hpBelow'</span>, threshold: <span class="cn">0.3</span>,
+      response: { type: <span class="cs">'shieldPhase'</span>, defMult: <span class="cn">0.3</span>, duration: <span class="cn">2</span>,
+                  log: <span class="cs">'🛡️ Iron Golem เปิดเกราะฉุกเฉิน!'</span> } },
+  ]
+}</div>
+    </div>
+  </div>
+
+  <!-- ===== PHASE 3 ===== -->
+  <div class="section">
+    <div class="phase-header ph3">
+      <div class="phase-num">3</div>
+      <div class="phase-info">
+        <h3>Major Class Mechanics — แต่ละ class เล่นต่างกันจริงๆ</h3>
+        <p>Unique resource และ mechanic ต่อ class — เปลี่ยน experience การเล่น</p>
+      </div>
+    </div>
+
+    <!-- Class mechanics grid -->
+    <div class="grid2">
+      <!-- Berserker -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">🪓 Berserker — Rage Stacks</div>
+        <div class="card-desc">แทน MP ธรรมดา Berserker สะสม Rage จาก damage รับ</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Rage resource (0–10 stacks) แทน MP</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> รับ damage → +1 Rage, ทุก Rage stack → +5% ATK</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skills ใช้ Rage แทน MP: Rage Smash (3 stacks), Blood Frenzy (5 stacks)</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> 10 stacks = FRENZY: attack 2× ครั้ง/turn เป็น 2 turns, reset Rage</div>
+          <div class="feat-item"><span class="feat-icon">💡</span> Low HP → more damage → more rage → stronger — comeback mechanic</div>
+        </div>
+      </div>
+
+      <!-- Necromancer -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">☠️ Necromancer — Minion System</div>
+        <div class="card-desc">kill ศัตรู → soul shard → summon minion ที่โจมตีทุก turn</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Kill monster → +1 Soul Shard (max 3)</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skill "Raise Dead" (2 shards): summon skeleton, โจมตี 5–10 damage ทุก turn</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> minion[] array บน battleState, process หลัง player turn</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Minion อยู่ได้ 5 turns หรือจน battle จบ</div>
+          <div class="feat-item"><span class="feat-icon">💡</span> สร้าง board state — ผู้เล่นจัดการ resource ข้ามเทิร์น</div>
+        </div>
+      </div>
+
+      <!-- Engineer -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">⚙️ Engineer — Turret Deploy</div>
+        <div class="card-desc">วาง Turret ที่ยิงซ้ำทุก round — ต้องจัดการ MP vs ผลตอบแทน</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skill "Deploy Turret" (15 MP): วาง turret ชาร์จ 1 turn</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Turret ยิงอัตโนมัติ: 8–15 damage ทุก turn, lasts 4 turns</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> max 1 turret ต่อ battle — upgrade ด้วย "Overclock" (10 MP: +50% dmg, -2 turns)</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> turretState บน battleState: { active, turnsLeft, dmg }</div>
+        </div>
+      </div>
+
+      <!-- Rifter -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">⚡ Rifter — Void Charges</div>
+        <div class="card-desc">สะสม Void Charge จาก special actions → release เป็น burst damage</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Void Charge (0–5) สะสมจาก certain skills</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skill "Void Pulse" (ไม่เสีย MP): สะสม +1 charge, 70% damage ปกติ</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skill "Rift Collapse" (20 MP): release ทุก charge × 25 damage → reset</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> 5 charges: passive +25% all damage ชั่วคราว</div>
+          <div class="feat-item"><span class="feat-icon">💡</span> Wind-up → payoff pattern — patience-reward gameplay</div>
+        </div>
+      </div>
+
+      <!-- Bard -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">🎵 Bard — Song Stacking</div>
+        <div class="card-desc">เล่น Song ที่ stack effect ขึ้นทุก turn — ยิ่งอยู่นาน ยิ่งแรง</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Active song: "Battle Hymn" (8 MP) — บน turn เริ่มต้น, ทุก turn: +3% ATK stack</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Max stack = 10 turns (30% bonus ATK) — หายเมื่อ switch song</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Song 2: "Mending Melody" — heal 5% HP/turn</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Song 3: "Requiem" — ลด enemy ATK 15%, stack ทุก turn</div>
+          <div class="feat-item"><span class="feat-icon">💡</span> ต้องเลือก song เร็ว และ commit — strategic pacing</div>
+        </div>
+      </div>
+
+      <!-- Phantom -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">👻 Phantom — Phase System</div>
+        <div class="card-desc">สลับระหว่าง Material/Ethereal plane — ต่างกัน damage รับ/ให้</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">⚙️</span> State: <code>material</code> (default) vs <code>ethereal</code></div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skill "Phase Shift" (10 MP): สลับ state เป็น ethereal 2 turns</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Ethereal: damage รับ -50%, แต่ physical attack ให้ damage -30%</div>
+          <div class="feat-item"><span class="feat-icon">⚙️</span> Skill "Soul Strike" (ethereal only): magic damage ×1.8 — ignore DEF</div>
+          <div class="feat-item"><span class="feat-icon">💡</span> Timing เป็นกุญแจ — phase in/out ตาม enemy pattern</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Elemental System -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🌈 Elemental Damage System</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="effort e-l">L</span>
+          <span class="phase-badge p3">Phase 3</span>
+        </div>
+      </div>
+      <div class="card-desc">เพิ่ม element type บน damage — ศัตรูบางตัว resist/weak ต่อ element ต่างๆ</div>
+      <div class="grid3">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em">Elements</div>
+          <div class="feat-list">
+            <div class="feat-item"><span class="feat-icon">🔥</span> Fire — vs Beast weak, vs Void resist</div>
+            <div class="feat-item"><span class="feat-icon">❄️</span> Ice — vs Demon weak, vs Undead resist</div>
+            <div class="feat-item"><span class="feat-icon">⚡</span> Lightning — vs Construct weak</div>
+            <div class="feat-item"><span class="feat-icon">🌌</span> Void — vs Human weak</div>
+            <div class="feat-item"><span class="feat-icon">✨</span> Holy — vs Undead/Demon ×2</div>
+            <div class="feat-item"><span class="feat-icon">⚙️</span> Physical — ไม่มี weakness ทั่วไป</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em">Implementation</div>
+          <div class="feat-list">
+            <div class="feat-item"><span class="feat-icon">📁</span> skills.js: เพิ่ม <code>element</code> field บน skill</div>
+            <div class="feat-item"><span class="feat-icon">📁</span> monsters.js: เพิ่ม <code>resistances: {fire:0.5, holy:2.0}</code></div>
+            <div class="feat-item"><span class="feat-icon">⚙️</span> combat.js: lookup resistance, apply multiplier</div>
+            <div class="feat-item"><span class="feat-icon">🎮</span> Log: "🔥 WEAKNESS! ×1.5" หรือ "❄️ RESIST! ×0.5"</div>
+          </div>
+        </div>
+        <div>
+          <div class="code" style="font-size:11px"><span class="cm">// combat.js</span>
+<span class="ck">const</span> <span class="cv">elemMult</span> = (
+  monster.resistances?.[skill.element]
+  ?? <span class="cn">1.0</span>
+);
+<span class="ck">const</span> <span class="cv">dmg</span> = <span class="cf">Math</span>.<span class="cf">floor</span>(
+  <span class="cv">baseDmg</span> * <span class="cv">elemMult</span>
+);
+<span class="ck">if</span> (<span class="cv">elemMult</span> >= <span class="cn">1.5</span>)
+  log.<span class="cf">push</span>(<span class="cs">'⚡ WEAKNESS!'</span>);
+<span class="ck">else if</span> (<span class="cv">elemMult</span> &lt;= <span class="cn">0.5</span>)
+  log.<span class="cf">push</span>(<span class="cs">'🛡️ RESIST!'</span>);</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ===== IMPLEMENTATION ORDER ===== -->
+  <div class="section">
+    <div class="section-title"><span>📋</span> Implementation Order — แนะนำลำดับทำ</div>
+    <div class="card">
+      <table class="state-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Feature</th>
+            <th>Phase</th>
+            <th>Effort</th>
+            <th>Impact</th>
+            <th>Files ที่แก้</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>Status Effects ต่างกัน (BURN/BLEED/POISON)</td>
+            <td><span class="phase-badge p1">P1</span></td>
+            <td><span class="effort e-s">S</span></td>
+            <td class="ok">★★★★★</td>
+            <td>combat.js</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Guard/Block Action</td>
+            <td><span class="phase-badge p1">P1</span></td>
+            <td><span class="effort e-s">S</span></td>
+            <td class="ok">★★★★☆</td>
+            <td>combat.js, world.js</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Crit System Upgrade + Super Crit</td>
+            <td><span class="phase-badge p1">P1</span></td>
+            <td><span class="effort e-s">S</span></td>
+            <td class="ok">★★★★☆</td>
+            <td>combat.js</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Named Enemy Moves</td>
+            <td><span class="phase-badge p1">P1</span></td>
+            <td><span class="effort e-m">M</span></td>
+            <td class="ok">★★★★☆</td>
+            <td>monsters.js, combat.js</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>Combo Counter</td>
+            <td><span class="phase-badge p1">P1</span></td>
+            <td><span class="effort e-s">S</span></td>
+            <td class="warn">★★★☆☆</td>
+            <td>combat.js, world.js</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td>Monster Type System</td>
+            <td><span class="phase-badge p2">P2</span></td>
+            <td><span class="effort e-m">M</span></td>
+            <td class="ok">★★★★★</td>
+            <td>monsters.js, skills.js, combat.js</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td>Skill Synergy Combos</td>
+            <td><span class="phase-badge p2">P2</span></td>
+            <td><span class="effort e-m">M</span></td>
+            <td class="ok">★★★★★</td>
+            <td>combat.js, skills.js</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td>Battle Momentum + Limit Break</td>
+            <td><span class="phase-badge p2">P2</span></td>
+            <td><span class="effort e-m">M</span></td>
+            <td class="ok">★★★★★</td>
+            <td>combat.js, world.js</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td>Enemy Counter / Reaction</td>
+            <td><span class="phase-badge p2">P2</span></td>
+            <td><span class="effort e-l">L</span></td>
+            <td class="warn">★★★★☆</td>
+            <td>monsters.js, combat.js</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td>Berserker Rage Stacks</td>
+            <td><span class="phase-badge p3">P3</span></td>
+            <td><span class="effort e-m">M</span></td>
+            <td class="ok">★★★★★</td>
+            <td>combat.js, skills.js</td>
+          </tr>
+          <tr>
+            <td>11</td>
+            <td>Necromancer Minion</td>
+            <td><span class="phase-badge p3">P3</span></td>
+            <td><span class="effort e-l">L</span></td>
+            <td class="ok">★★★★★</td>
+            <td>combat.js, skills.js</td>
+          </tr>
+          <tr>
+            <td>12</td>
+            <td>Rifter Void Charges</td>
+            <td><span class="phase-badge p3">P3</span></td>
+            <td><span class="effort e-m">M</span></td>
+            <td class="ok">★★★★☆</td>
+            <td>combat.js, skills.js</td>
+          </tr>
+          <tr>
+            <td>13</td>
+            <td>Elemental Damage System</td>
+            <td><span class="phase-badge p3">P3</span></td>
+            <td><span class="effort e-l">L</span></td>
+            <td class="ok">★★★★★</td>
+            <td>monsters.js, skills.js, combat.js</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== DATA MODEL ===== -->
+  <div class="section">
+    <div class="section-title"><span>🗄️</span> Battle State Data Model — สิ่งที่ต้องเพิ่ม</div>
+    <div class="card">
+      <div class="code"><span class="cm">// game_battles/{battleId} — fields ใหม่ที่ต้องเพิ่ม</span>
+playerState: {
+  <span class="cm">// เดิม: hp, mp, atk, def, spd, mag, crit, status[], buffs[]</span>
+  isGuarding:   <span class="ck">false</span>,          <span class="cm">// Phase 1: Guard action</span>
+  critMult:     <span class="cn">1.5</span>,            <span class="cm">// Phase 1: upgradeable crit multiplier</span>
+  comboCount:   <span class="cn">0</span>,              <span class="cm">// Phase 1: combo counter</span>
+  momentum:     <span class="cn">0</span>,              <span class="cm">// Phase 2: 0–100 momentum resource</span>
+  limitReady:   <span class="ck">false</span>,          <span class="cm">// Phase 2: momentum 100</span>
+  <span class="cm">// Phase 3 class-specific:</span>
+  rageStacks:   <span class="cn">0</span>,              <span class="cm">// Berserker only</span>
+  voidCharges:  <span class="cn">0</span>,              <span class="cm">// Rifter only</span>
+  activeSong:   <span class="ck">null</span>,           <span class="cm">// Bard: { id, stacks, turnsActive }</span>
+  phantomState: <span class="cs">'material'</span>,     <span class="cm">// Phantom: 'material' | 'ethereal'</span>
+  soulShards:   <span class="cn">0</span>,              <span class="cm">// Necromancer</span>
+  minions:      [],               <span class="cm">// Necromancer: [{ type, hp, dmg, turnsLeft }]</span>
+  turretState:  <span class="ck">null</span>,           <span class="cm">// Engineer: { dmg, turnsLeft }</span>
+},
+
+enemyState: {
+  <span class="cm">// เดิม: monsterId, name, hp, atk, def, spd, status[], ...</span>
+  type:         <span class="cs">'beast'</span>,        <span class="cm">// Phase 2: monster type</span>
+  moveHistory:  [],               <span class="cm">// Phase 1: tracked for counter trigger</span>
+  consecutiveHits: <span class="cn">0</span>,          <span class="cm">// Phase 1: for counter attack trigger</span>
+  shieldPhase:  <span class="ck">false</span>,          <span class="cm">// Phase 2: damage reduction phase</span>
+  resistances:  {},               <span class="cm">// Phase 3: { fire:0.5, holy:2.0 }</span>
+  telegraphMove: <span class="ck">null</span>,          <span class="cm">// Phase 1: next turn preview</span>
+},
+
+battleMeta: {
+  <span class="cm">// เดิม: turn, battleId, uid, monsterId</span>
+  comboCount:   <span class="cn">0</span>,              <span class="cm">// Phase 1</span>
+  momentum:     <span class="cn">0</span>,              <span class="cm">// Phase 2 (ซ้ำกับ playerState — เลือก 1 ที่)</span>
+  synergyLog:   [],               <span class="cm">// Phase 2: synergy triggers บน turn นี้</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div class="section">
+    <div class="section-title"><span>💡</span> Notes & Design Principles</div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">✅ หลักการออกแบบ</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">1️⃣</span> <strong>Additive</strong> — ทุก feature เพิ่มบน existing code, ไม่ rewrite</div>
+          <div class="feat-item"><span class="feat-icon">2️⃣</span> <strong>Backward compatible</strong> — battle state เก่า load ได้ (field ใหม่ optional)</div>
+          <div class="feat-item"><span class="feat-icon">3️⃣</span> <strong>Class identity</strong> — Phase 3 ทำให้ class เลือก playstyle ต่างกันจริงๆ</div>
+          <div class="feat-item"><span class="feat-icon">4️⃣</span> <strong>Read-and-react</strong> — telegraphed moves, shield phase สร้าง skill expression</div>
+          <div class="feat-item"><span class="feat-icon">5️⃣</span> <strong>Visual feedback</strong> — ทุก mechanic ต้องมี log + frontend indicator</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">⚠️ ระวัง</div>
+        <div class="feat-list">
+          <div class="feat-item"><span class="feat-icon">🔴</span> Firestore read/write ต่อ turn แพง — batch update ใน 1 write เสมอ</div>
+          <div class="feat-item"><span class="feat-icon">🔴</span> battle state grow ใหญ่ขึ้น — cleanup stale battles ยังสำคัญ</div>
+          <div class="feat-item"><span class="feat-icon">🔴</span> Class-specific state (rageStacks) ต้อง initialize ตาม charClass ใน startBattle</div>
+          <div class="feat-item"><span class="feat-icon">🔴</span> Frontend ต้องแสดง resource ใหม่ (momentum bar, rage stacks) ไม่งั้น player ไม่รู้</div>
+          <div class="feat-item"><span class="feat-icon">🟡</span> Test balance — Limit Break ×3 อาจแรงเกินไปสำหรับ early game</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Ashenveil: The Shattered Age — Battle Depth Plan · ttsam.app · 2026
+</div>
+
+</body>
+</html>

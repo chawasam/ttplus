@@ -213,7 +213,7 @@ const WIDGETS = [
   {
     id: 'nowplaying', icon: '🎶', name: 'Now Playing',
     desc: 'แสดงเพลงที่กำลังฟังจาก Spotify — 10 สไตล์ให้เลือก เชื่อมต่อ Spotify ได้ที่ Settings',
-    size: 'ขึ้นอยู่กับ Style', noStyle: true,
+    size: 'ขึ้นอยู่กับ Style', noStyle: true, liveConfig: true,
     configFields: [
       { key: 'style',        label: '🎨 เลือก Style',                     type: 'nowplaying_style', default: 'glass' },
       { key: 'fade',         label: '🌫️ Fade รอบขอบ Widget',              type: 'toggle', default: 1,
@@ -560,6 +560,15 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       showError(err, 'บันทึก Widget ไม่สำเร็จ');
     }
   }, [user, styles]);
+
+  // Push configFields ไปยัง widget แบบ Real-time (สำหรับ widget ที่มี liveConfig: true)
+  const applyLiveConfig = useCallback((widgetId) => {
+    const socket = socketRef.current || getSocket();
+    if (!socket?.connected) { toast.error('ต้อง Connect Socket ก่อน'); return; }
+    const config = customConfigs[widgetId] || {};
+    socket.emit('push_style_update', { widgetId, style: config });
+    toast.success(`✅ Apply ${WIDGETS.find(w => w.id === widgetId)?.name} แล้ว`);
+  }, [customConfigs]);
 
   const toggleHowto = () => setHowtoOpen(prev => {
     const next = !prev;
@@ -1087,6 +1096,13 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                     💾 บันทึกและ Update Widget แบบ Real-time
                   </button>
                 )}
+                {/* liveConfig widget (เช่น nowplaying): Apply Real-time button */}
+                {dw.liveConfig && (
+                  <button onClick={() => applyLiveConfig(dw.id)}
+                    className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition">
+                    💾 Apply Real-time
+                  </button>
+                )}
                 {/* Custom config: reset + copy URL */}
                 {dw.configFields && (() => {
                   const dwReady = dw.noToken ? !!user?.uid : tokenReady;
@@ -1100,7 +1116,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                         </button>
                       )}
                       <button onClick={() => copyUrl(dw.id)} disabled={!dwReady}
-                        className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold transition disabled:opacity-50">
+                        className="flex-1 py-2.5 rounded-xl bg-brand-500/20 hover:bg-brand-500/30 border border-brand-500/40 text-brand-400 text-sm font-semibold transition disabled:opacity-50">
                         📋 Copy URL
                       </button>
                     </div>

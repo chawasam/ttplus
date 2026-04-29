@@ -69,12 +69,13 @@ const _battleCache = new Map();  // battleId → state (in-request cache only)
 // ── In-memory cooldown per uid สำหรับ battle action (1 วินาที) ──────────────
 const _actionCooldown = new Map(); // uid → lastActionMs
 const ACTION_COOLDOWN_MS = 1000;
+// ล้าง entry ที่หมด cooldown นานแล้ว — ทำทุก 10 วิ (เดิม 60 วิ) ป้องกัน Map โต
 setInterval(() => {
-  const cutoff = Date.now() - ACTION_COOLDOWN_MS * 10;
+  const cutoff = Date.now() - ACTION_COOLDOWN_MS * 3; // หมดอายุ 3x cooldown = 3 วิ
   for (const [k, v] of _actionCooldown.entries()) {
     if (v < cutoff) _actionCooldown.delete(k);
   }
-}, 60 * 1000);
+}, 10 * 1000);
 
 async function saveBattle(db, battleId, state) {
   await db.collection('game_battles').doc(battleId).set({

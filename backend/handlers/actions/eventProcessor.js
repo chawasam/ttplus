@@ -115,10 +115,10 @@ async function queueAction(vjUid, action, context) {
       // TTS
       ttsText:    fillTemplate(action.ttsText   || '', context),
       // OBS
-      obsScene:         action.obsScene         || '',
-      obsSceneDuration: action.obsSceneDuration ?? 0,
-      obsSource:        action.obsSource        || '',
-      obsSourceDuration: action.obsSourceDuration ?? 0,
+      obsScene:        action.obsScene        || '',
+      obsSceneReturn:  action.obsSceneReturn  ?? false,
+      obsSource:       action.obsSource       || '',
+      obsSourceReturn: action.obsSourceReturn ?? false,
       // Display
       displayDuration: action.displayDuration ?? 5,
       fadeInOut:       action.fadeInOut        ?? true,

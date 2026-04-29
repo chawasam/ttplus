@@ -6,6 +6,25 @@ const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
 const { emitToUser } = require('../../lib/emitter');
 
+// ─── Quest Trigger Index (built once at module load) ─────────────
+// ทำให้ trackStoryStep loop เฉพาะ quests ที่มี step ตรงกับ eventType
+// แทนที่จะวน ALL quests ทุกครั้ง (ประหยัด CPU เมื่อ event เข้าถี่)
+function buildTriggerIndex(quests) {
+  const idx = {};
+  for (const q of quests) {
+    for (const step of (q.steps || [])) {
+      if (!step.type) continue;
+      if (!idx[step.type]) idx[step.type] = [];
+      if (!idx[step.type].includes(q)) idx[step.type].push(q);
+    }
+  }
+  return idx;
+}
+
+// สร้าง index ทันทีที่ module โหลด (ทำครั้งเดียวต่อ process)
+const STORY_BY_TYPE = buildTriggerIndex(STORY_QUESTS);
+const SIDE_BY_TYPE  = buildTriggerIndex(SIDE_QUESTS);
+
 // ─── Firestore Collection ─────────────────────────────────────────
 // game_quest_state/{uid}  →
 // {
@@ -263,8 +282,9 @@ async function trackStoryStep(uid, eventType, eventData = {}) {
       sideCompleted:  [...(data.sideCompleted || [])],
     };
 
-    // Process story quests
-    for (const quest of STORY_QUESTS) {
+    // Process story quests — ใช้ trigger index วนเฉพาะ quests ที่มี step ตรง eventType
+    const storyToCheck = STORY_BY_TYPE[eventType] || [];
+    for (const quest of storyToCheck) {
       const active = newState.storyActive[quest.id];
       if (!active) continue;
       if (newState.storyCompleted.includes(quest.id)) continue;
@@ -338,8 +358,9 @@ async function trackStoryStep(uid, eventType, eventData = {}) {
       }
     }
 
-    // Process side quests
-    for (const quest of SIDE_QUESTS) {
+    // Process side quests — ใช้ trigger index เช่นกัน
+    const sideToCheck = SIDE_BY_TYPE[eventType] || [];
+    for (const quest of sideToCheck) {
       const active = newState.sideActive[quest.id];
       if (!active) continue;
       if (newState.sideCompleted.includes(quest.id)) continue;

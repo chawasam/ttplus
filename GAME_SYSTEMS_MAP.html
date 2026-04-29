@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ashenveil: The Shattered Age — Game Systems Map</title>
+<style>
+  :root {
+    --bg: #0d0f1a;
+    --bg2: #141727;
+    --bg3: #1c2035;
+    --border: #2a2f4a;
+    --text: #e8eaf6;
+    --muted: #7986cb;
+    --done: #4caf50;
+    --done-bg: #0a1f0d;
+    --done-border: #2e7d32;
+    --partial: #ff9800;
+    --partial-bg: #1a1200;
+    --partial-border: #e65100;
+    --missing: #f44336;
+    --missing-bg: #1a0505;
+    --missing-border: #b71c1c;
+    --bug: #e91e63;
+    --bug-bg: #1a0010;
+    --bug-border: #880e4f;
+    --na: #546e7a;
+    --na-bg: #0d1215;
+    --na-border: #37474f;
+    --accent: #7c4dff;
+    --gold: #ffd700;
+    --col-w: 340px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  .hero {
+    background: linear-gradient(135deg, #0d0f1a 0%, #1a1040 40%, #0d1a30 100%);
+    border-bottom: 2px solid var(--accent);
+    padding: 18px 28px 14px;
+    position: sticky; top: 0; z-index: 200;
+  }
+  .hero-title {
+    font-size: 22px; font-weight: 800;
+    background: linear-gradient(90deg, #7c4dff, #00bcd4, #ffd700);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 2px;
+  }
+  .hero-sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .hero-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .search-box {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 12px; border-radius: 20px;
+    font-size: 12px; outline: none; width: 220px;
+    transition: border-color 0.2s;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .filter-btn {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 4px 12px; border-radius: 14px;
+    cursor: pointer; font-size: 11px; transition: all 0.2s;
+  }
+  .filter-btn:hover, .filter-btn.active { background: var(--accent); border-color: var(--accent); }
+
+  /* ── Summary bar ── */
+  .summary-bar {
+    background: var(--bg2); padding: 8px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 20px; align-items: center;
+    flex-wrap: wrap;
+  }
+  .stat-pill { text-align: center; }
+  .stat-pill .num { font-size: 18px; font-weight: 800; line-height: 1; }
+  .stat-pill .lbl { font-size: 10px; color: var(--muted); }
+  .stat-pill.done .num { color: var(--done); }
+  .stat-pill.partial .num { color: var(--partial); }
+  .stat-pill.missing .num { color: var(--missing); }
+  .stat-pill.bug .num { color: var(--bug); }
+  .progress-wrap { flex: 1; min-width: 180px; max-width: 320px; }
+  .progress-bar-outer { background: var(--bg3); border-radius: 6px; height: 8px; overflow: hidden; }
+  .progress-bar-inner { height: 100%; border-radius: 6px;
+    background: linear-gradient(90deg, var(--done), #00c853);
+    transition: width 0.5s ease; }
+  .progress-label { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── Legend (inline) ── */
+  .legend {
+    display: flex; gap: 14px; margin-left: auto;
+    font-size: 11px; align-items: center; flex-wrap: wrap;
+  }
+  .badge { display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    white-space: nowrap; }
+  .badge-done    { background: var(--done-bg);    border: 1px solid var(--done-border);    color: var(--done);    }
+  .badge-partial { background: var(--partial-bg); border: 1px solid var(--partial-border); color: var(--partial); }
+  .badge-missing { background: var(--missing-bg); border: 1px solid var(--missing-border); color: var(--missing); }
+  .badge-bug     { background: var(--bug-bg);     border: 1px solid var(--bug-border);     color: var(--bug);     }
+  .badge-na      { background: var(--na-bg);      border: 1px solid var(--na-border);      color: var(--na);      }
+
+  /* ── Horizontal board ── */
+  .board-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 20px 24px 30px;
+    min-height: calc(100vh - 130px);
+  }
+  .board {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    align-items: flex-start;
+    width: max-content;
+    padding-bottom: 16px;
+  }
+
+  /* ── Column (section) ── */
+  .col {
+    width: var(--col-w);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+  }
+  .col:hover { box-shadow: 0 0 0 1px var(--accent)33; }
+
+  .col-header {
+    padding: 12px 14px 10px;
+    background: linear-gradient(180deg, var(--bg3) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .col-icon-title {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  }
+  .col-icon { font-size: 18px; }
+  .col-title { font-size: 13px; font-weight: 700; }
+  .col-meta { font-size: 10px; color: var(--muted); margin-bottom: 6px; }
+
+  /* Color accent per column */
+  .col[data-cat="concept"]    { border-top: 3px solid #7c4dff; }
+  .col[data-cat="account"]    { border-top: 3px solid #00bcd4; }
+  .col[data-cat="combat"]     { border-top: 3px solid #f44336; }
+  .col[data-cat="dungeon"]    { border-top: 3px solid #ff9800; }
+  .col[data-cat="worldboss"]  { border-top: 3px solid #e91e63; }
+  .col[data-cat="quest"]      { border-top: 3px solid #4caf50; }
+  .col[data-cat="explore"]    { border-top: 3px solid #26c6da; }
+  .col[data-cat="inventory"]  { border-top: 3px solid #8d6e63; }
+  .col[data-cat="crafting"]   { border-top: 3px solid #ffd54f; }
+  .col[data-cat="npc"]        { border-top: 3px solid #ab47bc; }
+  .col[data-cat="rpshop"]     { border-top: 3px solid #ce93d8; }
+  .col[data-cat="tiktok"]     { border-top: 3px solid #ff6d00; }
+  .col[data-cat="achieve"]    { border-top: 3px solid #ffd700; }
+  .col[data-cat="admin"]      { border-top: 3px solid #546e7a; }
+  .col[data-cat="frontend"]   { border-top: 3px solid #29b6f6; }
+  .col[data-cat="backlog"]    { border-top: 3px solid #ef5350; }
+
+  /* mini progress bar inside column header */
+  .col-progress { height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+  .col-progress-inner { height: 100%; border-radius: 2px; background: var(--done); transition: width 0.4s; }
+
+  .col-body { padding: 10px 10px 14px; overflow-y: auto; max-height: calc(100vh - 200px); }
+  .col-body::-webkit-scrollbar { width: 4px; }
+  .col-body::-webkit-scrollbar-track { background: transparent; }
+  .col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ── Group title ── */
+  .group-title {
+    font-size: 10px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.7px;
+    margin: 10px 0 4px; padding-bottom: 3px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Item card ── */
+  .item-card {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px;
+    margin-bottom: 5px; transition: border-color 0.15s;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+  .item-card:hover { border-color: var(--accent)55; }
+  .item-card.hidden-search { display: none !important; }
+  .item-status { flex-shrink: 0; margin-top: 1px; }
+  .item-content { flex: 1; min-width: 0; }
+  .item-title { font-weight: 600; font-size: 12px; line-height: 1.3; }
+  .item-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .item-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .tag {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--muted); font-size: 9px; padding: 1px 6px;
+    border-radius: 7px;
+  }
+  .tag.hi { color: var(--gold); border-color: #5a4000; background: #1a1000; }
+
+  /* status border-left accent on cards */
+  .item-card[data-status="done"]    { border-left: 2px solid var(--done-border); }
+  .item-card[data-status="partial"] { border-left: 2px solid var(--partial-border); }
+  .item-card[data-status="missing"] { border-left: 2px solid var(--missing-border); }
+  .item-card[data-status="bug"]     { border-left: 2px solid var(--bug-border); }
+  .item-card[data-status="na"]      { border-left: 2px solid var(--na-border); opacity: 0.6; }
+
+  /* ── Note box ── */
+  .note-box {
+    background: var(--bg); border-left: 3px solid var(--accent);
+    padding: 7px 10px; border-radius: 0 6px 6px 0;
+    margin-bottom: 8px; font-size: 11px; color: var(--muted); line-height: 1.4;
+  }
+  .note-box.ok   { border-color: var(--done); }
+  .note-box.info { border-color: #00bcd4; color: #80deea; }
+  .note-box.warn { border-color: var(--bug); }
+
+  /* ── Data cells ── */
+  .data-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .data-cell {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; flex: 1; min-width: 60px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .data-cell-num { font-size: 16px; font-weight: 800; color: var(--gold); line-height: 1; }
+  .data-cell-lbl { font-size: 10px; color: var(--muted); text-align: center; margin-top: 2px; }
+
+  /* ── Concept card (in concept col) ── */
+  .concept-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 6px;
+  }
+  .concept-card-title {
+    font-weight: 700; font-size: 12px; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .concept-card-body { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ── Race table ── */
+  .race-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 8px; }
+  .race-table th, .race-table td {
+    border: 1px solid var(--border); padding: 4px 6px; text-align: left;
+  }
+  .race-table th { background: var(--bg); color: var(--muted); font-weight: 600; }
+  .race-table tr:hover td { background: var(--bg); }
+  .class-list { display: flex; gap: 3px; flex-wrap: wrap; }
+  .class-chip {
+    background: #1a1040; border: 1px solid #3d2fa0;
+    color: #9e8fff; font-size: 9px; padding: 0 5px;
+    border-radius: 8px;
+  }
+
+  /* ── Scroll shadow indicators ── */
+  .board-wrap::before, .board-wrap::after {
+    content: ''; position: fixed; top: 130px; bottom: 0; width: 40px; z-index: 100;
+    pointer-events: none;
+  }
+  .board-wrap::before {
+    left: 0;
+    background: linear-gradient(90deg, var(--bg) 0%, transparent 100%);
+  }
+  .board-wrap::after {
+    right: 0;
+    background: linear-gradient(270deg, var(--bg) 0%, transparent 100%);
+  }
+
+  /* ── Scroll hint ── */
+  .scroll-hint {
+    position: fixed; bottom: 20px; right: 20px; z-index: 300;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--muted); padding: 6px 14px; border-radius: 20px;
+    font-size: 11px; pointer-events: none;
+    animation: fadeHint 3s ease forwards;
+  }
+  @keyframes fadeHint {
+    0% { opacity: 0; transform: translateY(10px); }
+    20% { opacity: 1; transform: translateY(0); }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* ── Column count badge ── */
+  .col-count {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .count-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .count-done    { background: var(--done); }
+  .count-partial { background: var(--partial); }
+  .count-missing { background: var(--missing); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════ HEADER ══ -->
+<div class="hero">
+  <div class="hero-title">⚔️ Ashenveil: The Shattered Age — Game Systems Map</div>
+  <div class="hero-sub">Implementation Board — เมษา 2026 | เลื่อนซ้าย-ขวาเพื่อดูทุกระบบ →</div>
+  <div class="hero-controls">
+    <input class="search-box" type="text" id="searchBox" placeholder="🔍 ค้นหาระบบ...">
+    <button class="filter-btn active" data-filter="all">ทั้งหมด</button>
+    <button class="filter-btn" data-filter="done">✅ Done</button>
+    <button class="filter-btn" data-filter="partial">⚠️ Partial</button>
+    <button class="filter-btn" data-filter="missing">❌ Missing</button>
+    <button class="filter-btn" data-filter="bug">🐛 Bug</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ SUMMARY ══ -->
+<div class="summary-bar">
+  <div class="stat-pill done"><div class="num" id="cnt-done">—</div><div class="lbl">Done</div></div>
+  <div class="stat-pill partial"><div class="num" id="cnt-partial">—</div><div class="lbl">Partial</div></div>
+  <div class="stat-pill missing"><div class="num" id="cnt-missing">—</div><div class="lbl">Missing</div></div>
+  <div class="stat-pill bug"><div class="num" id="cnt-bug">—</div><div class="lbl">Bug</div></div>
+  <div class="progress-wrap">
+    <div class="progress-bar-outer"><div class="progress-bar-inner" id="progressBar" style="width:0%"></div></div>
+    <div class="progress-label" id="progressLabel">กำลังคำนวณ...</div>
+  </div>
+  <div class="legend">
+    <span class="badge badge-done">✅ Done</span>
+    <span class="badge badge-partial">⚠️ Partial</span>
+    <span class="badge badge-missing">❌ Missing</span>
+    <span class="badge badge-bug">🐛 Bug</span>
+    <span class="badge badge-na">🚫 N/A</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ BOARD ══ -->
+<div class="board-wrap" id="boardWrap">
+<div class="board" id="board">
+
+<!-- ══ COL 0: CONCEPT ══ -->
+<div class="col" data-cat="concept">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🌍</div><div class="col-title">Game Concept</div></div>
+    <div class="col-meta">Setting & Core Design</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="note-box info">
+      ℹ️ ผู้เล่นเล่นผ่านเว็บ <strong>ttsam.app</strong> โดยตรง<br>
+      TikTok = Gift → Gold/RP เท่านั้น ไม่มีระบบ comment command
+    </div>
+    <div class="concept-card">
+      <div class="concept-card-title">🏰 Platform</div>
+      <div class="concept-card-body">เล่นผ่านเว็บ ttsam.app (Firebase login)<br>
+      Host: VJ ควบคุม World Boss / Admin<br>
+      Players: Viewer login เว็บ → เล่นเอง<br>
+      <span style="color:#546e7a;font-size:10px">TikTok = ดู stream + ส่ง Gift เท่านั้น</span></div>
+    </div>
+    <div class="concept-card">
+      <div class="concept-card-title">⚔️ Genre</div>
+      <div class="concept-card-body">Text-based RPG + Community MMO<br>Turn-based combat, dungeon crawling<br>Persistent progression (Firebase)</div>
+    </div>
+    <div class="concept-card">
+      <div class="concept-card-title">🌌 Setting</div>
+      <div class="concept-card-body">Ashenveil — ดินแดนถูกทำลายด้วย Shard<br>7 เผ่าพันธุ์, 21 อาชีพ<br>Main villain: Lord Vorath + The Void</div>
+    </div>
+    <div class="concept-card">
+      <div class="concept-card-title">💎 Monetization</div>
+      <div class="concept-card-body">TikTok Gift → Diamond → Gold / RP<br>RP Shop: race unlock, title, boost, class change</div>
+    </div>
+    <div class="concept-card">
+      <div class="concept-card-title">📖 Story Acts</div>
+      <div class="concept-card-body">
+        Act 0: Prologue — The Resonance<br>
+        Act 1: The Shattered Lands<br>
+        Act 2: Shadows Rising<br>
+        Act 3: The Void War<br>
+        Act 4: Shattered Age Ends
+      </div>
+    </div>
+    <div class="concept-card">
+      <div class="concept-card-title">🎯 Core Loop</div>
+      <div class="concept-card-body">
+        <strong style="color:#e8eaf6">Web UI</strong> → Explore / Battle / Dungeon<br>
+        → XP + Gold + Items → Upgrade<br>
+        → Guild / World Boss / Events<br>
+        <span style="color:#546e7a;font-size:10px">TikTok Gift → Gold/RP + spawn World Boss</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ COL 1: ACCOUNT & CHARACTER ══ -->
+<div class="col" data-cat="account">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">👤</div><div class="col-title">Account & Character</div></div>
+    <div class="col-meta">account.js, character.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:86%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">7</div><div class="data-cell-lbl">Races</div></div>
+      <div class="data-cell"><div class="data-cell-num">21</div><div class="data-cell-lbl">Classes</div></div>
+      <div class="data-cell"><div class="data-cell-num">99</div><div class="data-cell-lbl">Lv Max</div></div>
+    </div>
+    <table class="race-table">
+      <tr><th>เผ่า</th><th>Classes</th><th>Bonus</th></tr>
+      <tr><td>⚔️ Human</td><td><div class="class-list"><span class="class-chip">warrior</span><span class="class-chip">rogue</span><span class="class-chip">cleric</span></div></td><td>Balanced</td></tr>
+      <tr><td>🌿 Elven</td><td><div class="class-list"><span class="class-chip">ranger</span><span class="class-chip">mage</span><span class="class-chip">bard</span></div></td><td>AGI/MAG</td></tr>
+      <tr><td>⛏️ Dwarf</td><td><div class="class-list"><span class="class-chip">berserker</span><span class="class-chip">engineer</span><span class="class-chip">runesmith</span></div></td><td>DEF/ATK</td></tr>
+      <tr><td>🌑 Shade</td><td><div class="class-list"><span class="class-chip">assassin</span><span class="class-chip">hexblade</span><span class="class-chip">phantom</span></div></td><td>AGI/Crit</td></tr>
+      <tr><td>💀 Revenant</td><td><div class="class-list"><span class="class-chip">deathknight</span><span class="class-chip">necromancer</span><span class="class-chip">gravecaller</span></div></td><td>HP/Undead</td></tr>
+      <tr><td>👁️ Voidborn</td><td><div class="class-list"><span class="class-chip">voidwalker</span><span class="class-chip">rifter</span><span class="class-chip">soulseer</span></div></td><td>MAG/Void</td></tr>
+      <tr><td>🐾 Beastkin</td><td><div class="class-list"><span class="class-chip">wildguard</span><span class="class-chip">tracker</span><span class="class-chip">shaman</span></div></td><td>STR/Nature</td></tr>
+    </table>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Character Create / Load / Delete</div><div class="item-desc">เลือก race + class, กำหนดชื่อ, unique check</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">TikTok Account Sync</div><div class="item-desc">Sync Firebase UID กับ TikTok username + verify code</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Stat Allocation (Manual)</div><div class="item-desc">ใช้ statPoints เพิ่ม HP/ATK/DEF/MAG/AGI/LUK</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Character Profile API</div><div class="item-desc">ดึงโปรไฟล์รวม equip, title, race, class, stats</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Race Unlock System</div><div class="item-desc">เริ่ม human, unlock เผ่าอื่นผ่าน RP Shop</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">XP Formula ✔ แก้แล้ว</div><div class="item-desc">Math.floor(200 × lv^1.9) — lv50 ≈ 9 เดือน, lv99 ≈ 2 ปี</div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Guild / Party System</div><div class="item-desc">กลุ่มผู้เล่น, shared goals, guild boss<div class="item-tags"><span class="tag">Future</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 2: COMBAT ══ -->
+<div class="col" data-cat="combat">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">⚔️</div><div class="col-title">Combat System</div></div>
+    <div class="col-meta">combat.js, skills.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:82%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">21</div><div class="data-cell-lbl">Skill Trees</div></div>
+      <div class="data-cell"><div class="data-cell-num">63</div><div class="data-cell-lbl">Active Skills</div></div>
+      <div class="data-cell"><div class="data-cell-num">57</div><div class="data-cell-lbl">Monsters</div></div>
+    </div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Turn-Based Battle Engine</div><div class="item-desc">startBattle → processAction(attack/skill/flee/item) → rest — state ใน Firestore</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Skill System — ทุก 21 Classes</div><div class="item-desc">forceCrit, armorPierce, lifeSteal, multiHit, executeBonus, bonusVsCC, goFirst, selfCost</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Passive Class Effects</div><div class="item-desc">Cleric +8HP/turn, DeathKnight +15HP/turn, Shaman +5HP+5MP/turn, Berserker bloodthirst, Rogue flee=90%</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Battle State Persistence</div><div class="item-desc">activeBattles เก็บใน Firestore game_battles — ไม่หายถ้า server restart</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Skill Unlock (Gold)</div><div class="item-desc">unlockSkill API → เก็บใน unlockedSkills[]</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Boss Phase 2 Transitions</div><div class="item-desc">trigger: 50% HP → atkMult+, defMult+, phaseMsg dramatic</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">36 Zone + 21 Dungeon Monsters</div><div class="item-desc">monsters.js: 36 | dungeons.js DUNGEON_MONSTERS: 21 dungeon-exclusive</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Anti-Cheat Reward Logging</div><div class="item-desc">logReward() hook ใน grantRewards — detect anomaly XP/Gold สูงผิดปกติ</div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">Status Effects (SLOW/STUN/BURN)</div><div class="item-desc">มี definition แต่ apply-effect logic ต้องตรวจ<div class="item-tags"><span class="tag">ตรวจ combat.js</span></div></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">PvP Arena</div><div class="item-desc">ยังไม่มี<div class="item-tags"><span class="tag">Future</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 3: DUNGEON ══ -->
+<div class="col" data-cat="dungeon">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🏚️</div><div class="col-title">Dungeon System</div></div>
+    <div class="col-meta">dungeon.js, dungeons.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">8</div><div class="data-cell-lbl">Dungeons</div></div>
+      <div class="data-cell"><div class="data-cell-num">88</div><div class="data-cell-lbl">Rooms</div></div>
+      <div class="data-cell"><div class="data-cell-num">8</div><div class="data-cell-lbl">Bosses</div></div>
+    </div>
+    <div class="group-title">Dungeon List</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🌿 Darkroot Hollow (Lv1+, 6 rooms)</div><div class="item-desc">Boss: Rootwarden Ancient 🌿 HP:250 | Phase 2: Root Frenzy</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">⚰️ Sunken Crypts (Lv5+, 8 rooms)</div><div class="item-desc">Boss: Crypt Overlord 💀 HP:480 | Phase 2: Undead Rampage</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">👁️ Voidspire Ruins (Lv10+, 10 rooms)</div><div class="item-desc">Boss: Void Colossus 👁️ HP:740 | Phase 2: Void Rupture</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🏙️ City Ruins (Lv10+, 10 rooms)</div><div class="item-desc">Boss: Undead Mayor 👑 HP:820 | Phase 2: Ghastly Authority</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🌿 Cursed Marshlands (Lv18+, 12 rooms)</div><div class="item-desc">Boss: Swamp Hydra 🐉 HP:1400 regen:25/turn | Phase 2: Hydra Rebirth</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🌀 Void Frontier (Lv28+, 12 rooms)</div><div class="item-desc">Boss: Rift Sovereign 👁️ HP:2200 | Phase 2: Sovereign's Wrath</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🌑 Shadowfell Depths (Lv38+, 14 rooms)</div><div class="item-desc">Boss: Shadow King 👑 HP:3800 | Phase 2: Shadow Dominion</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🏰 Vorath Citadel (Lv50+, 15 rooms)</div><div class="item-desc">Boss: Lord Vorath 🏰 HP:7500 no-flee | Phase 2: Final Form</div></div></div>
+    <div class="group-title">Mechanics</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Room Types: combat/trap/treasure/rest/boss</div><div class="item-desc">แต่ละ type มี action ต่างกัน</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Active Run Persistence</div><div class="item-desc">state ใน Firestore — กลับมาต่อได้</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Stamina Cost + Level Gate</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Frontend Dungeon + Minimap ✔</div><div class="item-desc">Room tiles ⚔️💰💚💀⚡, highlight, boss HP bar</div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 4: WORLD BOSS ══ -->
+<div class="col" data-cat="worldboss">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🐲</div><div class="col-title">World Boss Event</div></div>
+    <div class="col-meta">worldBoss.js, tiktokCurrency.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:80%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">2</div><div class="data-cell-lbl">Bosses</div></div>
+      <div class="data-cell"><div class="data-cell-num">500💎</div><div class="data-cell-lbl">Gift Threshold</div></div>
+      <div class="data-cell"><div class="data-cell-num">5min</div><div class="data-cell-lbl">Atk Cooldown</div></div>
+    </div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">👹 Malachar the Reborn (HP: 50,000)</div><div class="item-desc">World Boss ตัวแรก — trigger จาก gift</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">🌌 Void Leviathan (HP: 80,000)</div><div class="item-desc">Rare spawn, rewards ดีกว่า</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Auto-Spawn from TikTok Gifts</div><div class="item-desc">ทุก 500💎 cumulative → spawn อัตโนมัติ (Firestore transaction)</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Manual Spawn (VJ)</div><div class="item-desc">POST /world-boss/spawn, bossId หรือ random</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Real-time Damage Events</div><div class="item-desc">game_global_events: world_boss_damage / killed / spawn</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Reward Tiers: 1st / Top3 / Participation</div><div class="item-desc">Sort by damage → Gold + XP + Title (1st)</div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">Frontend Boss Widget Real-time</div><div class="item-desc">widget/bossbattle.js มี — ยังต้องตรวจว่า HP bar อัปเดตสดทุก attack<div class="item-tags"><span class="tag">ตรวจ bossbattle.js</span></div></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Boss 3+ (Seasonal/Event)</div><div class="item-tags"><span class="tag">Future</span></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 5: QUEST ══ -->
+<div class="col" data-cat="quest">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">📜</div><div class="col-title">Quest System</div></div>
+    <div class="col-meta">quests.js, quest_engine.js, weeklyQuests.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">5</div><div class="data-cell-lbl">Story Acts</div></div>
+      <div class="data-cell"><div class="data-cell-num">19</div><div class="data-cell-lbl">Side Quests</div></div>
+      <div class="data-cell"><div class="data-cell-num">5+</div><div class="data-cell-lbl">Daily/Weekly</div></div>
+    </div>
+    <div class="group-title">Daily & Weekly</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Daily Quest System</div><div class="item-desc">5 categories, reset รายวัน, claim reward</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Weekly Quest System</div><div class="item-desc">Reset รายสัปดาห์, ของรางวัลดีกว่า</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Stamina System</div><div class="item-desc">Max 100, รีเจน + daily refill</div></div></div>
+    <div class="group-title">Story Quest Engine</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Quest Engine Framework</div><div class="item-desc">trackStoryStep(), acceptSideQuest(), getQuestLog() — ครบ</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Step Tracking Hooks</div><div class="item-desc">explore.js, combat.js, dungeon.js, npc.js — ทุกตัวครบ</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">story_quests.js ✔ แก้ Syntax Error</div><div class="item-desc">Quest engine โหลดได้ปกติ</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">19 Side Quests</div><div class="item-desc">npc_affection, hunting, exploration, crafting ฯลฯ</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Frontend Quest Log Screen ✔</div><div class="item-desc">Story แยก Act, side quest list, auto-refresh socket</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Frontend Daily/Weekly Quest UI ✔</div><div class="item-desc">หน้า quest รายวัน/สัปดาห์, progress + ปุ่ม claim</div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 6: EXPLORATION ══ -->
+<div class="col" data-cat="explore">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🗺️</div><div class="col-title">Exploration & World</div></div>
+    <div class="col-meta">explore.js, maps.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:70%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Zone Exploration</div><div class="item-desc">random events: monster, item, gold, story, NPC — cooldown 3s</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Travel System</div><div class="item-desc">เดินทางระหว่าง zone ที่ adjacent</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Zone-Based Boss Drops</div><div class="item-desc">boss monsters → unique zone_boss_drops</div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">World Map Frontend</div><div class="item-desc">มีหน้า world แต่ยังไม่แน่ใจว่า interactive map ครบ<div class="item-tags"><span class="tag">ตรวจ game/world.js</span></div></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Zone / Seasonal Events</div><div class="item-desc">Void Eclipse, Harvest Festival ฯลฯ<div class="item-tags"><span class="tag">Future</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 7: INVENTORY ══ -->
+<div class="col" data-cat="inventory">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🎒</div><div class="col-title">Inventory & Items</div></div>
+    <div class="col-meta">inventory.js, items.js, enhance.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:83%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">65</div><div class="data-cell-lbl">Items</div></div>
+      <div class="data-cell"><div class="data-cell-num">+10</div><div class="data-cell-lbl">Enhance Max</div></div>
+    </div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">65 Items (weapon/armor/acc/consumable/material)</div><div class="item-desc">rollItem() → instance มี stats + rarity + enhancement</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Equip / Unequip / Sell</div><div class="item-desc">6 slots: weapon, offhand, armor, helmet, boots, accessory</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Inventory Slot System</div><div class="item-desc">default 30 slots, ขยายผ่าน RP Shop (max +30)</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Item Enhancement (+1 ~ +10)</div><div class="item-desc">Gold + stone, success rate ลดตาม +level, fail = -1 หรือ break</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">NPC Shop</div><div class="item-desc">ซื้อ standard items ด้วย Gold</div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Item Rarity Color Highlight</div><div class="item-desc">Backend มี common/uncommon/rare/epic/legendary แต่ frontend ยังไม่ highlight<div class="item-tags"><span class="tag">MEDIUM</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 8: CRAFTING ══ -->
+<div class="col" data-cat="crafting">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">⚒️</div><div class="col-title">Crafting System</div></div>
+    <div class="col-meta">crafting.js, data/crafting.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:67%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">14</div><div class="data-cell-lbl">Recipes</div></div>
+      <div class="data-cell"><div class="data-cell-num">30+</div><div class="data-cell-lbl">Goal</div></div>
+    </div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Crafting Backend</div><div class="item-desc">GET recipes / POST craft → ตรวจ materials → craft → consume</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Frontend Crafting UI ✔</div><div class="item-desc">Recipe list, วัตถุดิบ, ปุ่ม craft — ใน world.js CRAFTING screen</div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">More Recipes (ควรมี 30+)</div><div class="item-desc">14 น้อยมาก — ต้องเพิ่ม tier สูง lv30-99<div class="item-tags"><span class="tag">Future</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 9: NPC & AFFECTION ══ -->
+<div class="col" data-cat="npc">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🧙</div><div class="col-title">NPC & Affection</div></div>
+    <div class="col-meta">npc.js, npcs.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:80%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">7</div><div class="data-cell-lbl">NPCs</div></div>
+    </div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Talk to NPC (Dialogue)</div><div class="item-desc">GET /npc/:id → dialogue, affection info, quests</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Gift to NPC (Affection Up)</div><div class="item-desc">POST /npc/gift → affection score ตาม item likes</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">NPC Gallery Frontend ✔</div><div class="item-desc">Card layout, progress bar, tier badge (ไม่รู้จัก→ผูกพัน), likes/hates hints</div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">Affection → Quest Unlock Trigger</div><div class="item-desc">Data structure มี แต่ต้องตรวจ quest unlock เมื่อถึง threshold<div class="item-tags"><span class="tag">ตรวจ quest_engine.js</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 10: RP SHOP ══ -->
+<div class="col" data-cat="rpshop">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">💜</div><div class="col-title">RP Shop</div></div>
+    <div class="col-meta">rpShop.js, rp_shop.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="data-row">
+      <div class="data-cell"><div class="data-cell-num">20</div><div class="data-cell-lbl">Items</div></div>
+      <div class="data-cell"><div class="data-cell-num">6</div><div class="data-cell-lbl">Categories</div></div>
+    </div>
+    <div class="note-box ok" style="font-size:10px">consumable · premium_box · upgrade · service · race_unlock · cosmetic</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Catalog + Buy</div><div class="item-desc">GET catalog → POST buy → deduct RP, grant effect/unlock</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Race Unlock (RP)</div><div class="item-desc">ซื้อ → unlock เผ่าใหม่</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Class Change Token</div><div class="item-desc">executeClassChange → เปลี่ยน class (21 class)</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Name Change Token</div><div class="item-desc">executeNameChange → validate + unique check</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Boost Items (XP/Gold Timed)</div><div class="item-desc">activeBoosts ใน Firestore พร้อม expiresAt</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Inventory Expand (+10 slots × 3)</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Frontend RP Shop Screen ✔</div><div class="item-desc">Items แยก category, RP balance, confirm modal</div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 11: TIKTOK INTEGRATION ══ -->
+<div class="col" data-cat="tiktok">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">📱</div><div class="col-title">TikTok Integration</div></div>
+    <div class="col-meta">tiktokCurrency.js, tiktok handlers</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="note-box info" style="font-size:10px">ขอบเขต: Gift → Gold/RP เท่านั้น ไม่มีระบบ comment command</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Gift → Diamond → Gold / RP</div><div class="item-desc">Convert rate → Gold / RP pool เพิ่มทันที</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Gift → World Boss Auto-Spawn</div><div class="item-desc">ทุก 500💎 → triggerBossFromGift() Firestore tx</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Gift Leaderboard Widget</div><div class="item-desc">widget/leaderboard.js — top gifters ranking สด</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Real-time Global Events Stream</div><div class="item-desc">game_global_events → Firestore listener → แสดงสด</div></div></div>
+    <div class="item-card" data-status="na"><div class="item-status"><span class="badge badge-na">🚫</span></div><div class="item-content"><div class="item-title">Comment → Game Command (ยกเลิก)</div><div class="item-desc">ไม่ต้องการ — เล่นผ่านเว็บเท่านั้น</div></div></div>
+    <div class="item-card" data-status="na"><div class="item-status"><span class="badge badge-na">🚫</span></div><div class="item-content"><div class="item-title">Comment → RP Shop Buy (ยกเลิก)</div><div class="item-desc">ใช้ผ่าน frontend web เท่านั้น</div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 12: ACHIEVEMENTS ══ -->
+<div class="col" data-cat="achieve">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🏆</div><div class="col-title">Achievements & Progression</div></div>
+    <div class="col-meta">achievements.js, loginBonus.js, leaderboard.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Achievement System</div><div class="item-desc">checkAchievements() hook ใน combat + explore</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Daily Login Bonus</div><div class="item-desc">Streak-based, ของรางวัลดีขึ้นตาม streak</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Game Leaderboard</div><div class="item-desc">Rank by level / gold / damage</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Achievement Gallery Frontend ✔</div><div class="item-desc">Progress bar per achievement, แยก category, badge unlocked</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Title System (Full Stack) ✔</div><div class="item-desc">unlockedTitles[] + equipTitle API + frontend Title Collection + HUD display</div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 13: ADMIN & SECURITY ══ -->
+<div class="col" data-cat="admin">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🛡️</div><div class="col-title">Admin & Anti-Cheat</div></div>
+    <div class="col-meta">audit.js, anticheat.js</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:100%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Audit Summary / Flags / Player History</div><div class="item-desc">/audit/summary, /audit/flags, /audit/player/:uid, /audit/activity</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Manual Flag / Resolve Flag</div><div class="item-desc">Admin flag player น่าสงสัย + resolve</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Rate Limiting (per UID)</div><div class="item-desc">gameLimiter:20/10s, battleLimiter:6/5s, exploreLimiter:3/5s</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Anti-Cheat Log Rewards</div><div class="item-desc">logReward() → detect XP/Gold anomaly → flagPlayer()</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Admin Dashboard Frontend ✔</div><div class="item-desc">ttsam.app/admin — Overview, Flags, Players, Activity tabs</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">CSRF Protection + Auth Guard</div><div class="item-desc">CSRF token ทุก POST, verifyToken middleware ทุก game route</div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 14: FRONTEND SCREENS ══ -->
+<div class="col" data-cat="frontend">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🖥️</div><div class="col-title">Frontend Screens</div></div>
+    <div class="col-meta">pages/, widgets/</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:85%"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="group-title">Main Game Screens</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Login Page</div><div class="item-desc">Firebase Auth, TikTok username link</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Dashboard (VJ)</div><div class="item-desc">Overview, LiveFeed, GoalBar, gift tracking</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">ASHENVEIL Game World Page</div><div class="item-desc">ASHENVEIL/index.js + world.js — Phase 4, full game UI</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Dungeon Map Screen ✔</div><div class="item-desc">Room tiles, current highlight, boss HP bar</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">Quest Log Screen ✔</div><div class="item-desc">Story by Act, side quests, socket auto-refresh</div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">Game Main Screen (game/index.js)</div><div class="item-desc">มีอยู่แต่ยังไม่แน่ใจทุก tab ครบ<div class="item-tags"><span class="tag">ตรวจ game/index.js</span></div></div></div></div>
+    <div class="group-title">OBS Widgets</div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">bossbattle.js, leaderboard.js, alert.js</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">goal.js, coinjar.js, viewers.js, chat.js</div></div></div>
+    <div class="item-card" data-status="done"><div class="item-status"><span class="badge badge-done">✅</span></div><div class="item-content"><div class="item-title">overlay/[vjId].js — Live Overlay</div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">widget/dungeon.js — Dungeon Status Widget</div><div class="item-desc">OBS widget แสดง dungeon run สด<div class="item-tags"><span class="tag">Future</span></div></div></div></div>
+  </div>
+</div>
+
+<!-- ══ COL 15: PRIORITY BACKLOG ══ -->
+<div class="col" data-cat="backlog">
+  <div class="col-header">
+    <div class="col-icon-title"><div class="col-icon">🚨</div><div class="col-title">Priority Backlog</div></div>
+    <div class="col-meta">สิ่งที่ต้องทำต่อ เรียงตาม impact</div>
+    <div class="col-progress"><div class="col-progress-inner" style="width:0%;background:var(--missing)"></div></div>
+  </div>
+  <div class="col-body">
+    <div class="note-box ok">✅ Bugs หลักทุกตัวแก้แล้ว — XP Formula, story_quests syntax, Quest Log, Dungeon Map, NPC Affection, Title System, anticheat.js, rpShop exports</div>
+
+    <div class="group-title">🟡 Deploy Fix — กำลังแก้</div>
+    <div class="item-card" data-status="bug"><div class="item-status"><span class="badge badge-bug">🐛</span></div><div class="item-content"><div class="item-title">Backend Modified Files ยังไม่ commit</div><div class="item-desc">rpShop.js, account.js, explore.js, worldBoss.js, server.js, rateLimiter.js, data/*.js — ต้อง git add + push<div class="item-tags"><span class="tag">กำลังทำ</span><span class="tag">HIGH</span></div></div></div></div>
+
+    <div class="group-title">🟡 ตรวจสอบ</div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">World Boss Widget Real-time</div><div class="item-desc">ตรวจ bossbattle.js subscribe game_global_events ได้จริง — HP bar สด<div class="item-tags"><span class="tag">MEDIUM</span></div></div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">Status Effects (SLOW/STUN/BURN)</div><div class="item-desc">ตรวจ combat.js apply-effect logic ครบทุก case<div class="item-tags"><span class="tag">MEDIUM</span></div></div></div></div>
+    <div class="item-card" data-status="partial"><div class="item-status"><span class="badge badge-partial">⚠️</span></div><div class="item-content"><div class="item-title">Affection Quest Unlock Trigger</div><div class="item-desc">ตรวจ quest_engine.js unlock เมื่อ affection ถึง threshold<div class="item-tags"><span class="tag">MEDIUM</span></div></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Item Rarity Color (Frontend)</div><div class="item-desc">Highlight common/rare/epic/legendary ในหน้า inventory<div class="item-tags"><span class="tag">MEDIUM</span></div></div></div></div>
+
+    <div class="group-title">🟢 Future / Nice-to-Have</div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">30+ Crafting Recipes</div><div class="item-desc">เพิ่ม tier สูง lv30-99<div class="item-tags"><span class="tag">Future</span></div></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">widget/dungeon.js — OBS Dungeon Widget</div><div class="item-tags"><span class="tag">Future</span></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Guild / Party System</div><div class="item-tags"><span class="tag">Future</span></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">Seasonal Events + Seasonal Boss</div><div class="item-tags"><span class="tag">Future</span></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">PvP Arena</div><div class="item-tags"><span class="tag">Future</span></div></div></div>
+    <div class="item-card" data-status="missing"><div class="item-status"><span class="badge badge-missing">❌</span></div><div class="item-content"><div class="item-title">World Boss 3+ (Seasonal)</div><div class="item-tags"><span class="tag">Future</span></div></div></div>
+  </div>
+</div>
+
+</div><!-- /board -->
+</div><!-- /board-wrap -->
+
+<div class="scroll-hint" id="scrollHint">← เลื่อนซ้าย-ขวาเพื่อดูทุก 16 ระบบ →</div>
+
+<script>
+// ── Count & progress ──
+function updateCounts() {
+  const rows = document.querySelectorAll('.item-card[data-status]');
+  const counts = { done: 0, partial: 0, missing: 0, bug: 0, na: 0 };
+  rows.forEach(r => {
+    const s = r.getAttribute('data-status');
+    if (s in counts) counts[s]++;
+  });
+  document.getElementById('cnt-done').textContent    = counts.done;
+  document.getElementById('cnt-partial').textContent = counts.partial;
+  document.getElementById('cnt-missing').textContent = counts.missing;
+  document.getElementById('cnt-bug').textContent     = counts.bug;
+  const active = counts.done + counts.partial + counts.missing + counts.bug;
+  const pct = active ? Math.round((counts.done / active) * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent =
+    `${counts.done} / ${active} features พร้อมใช้งาน (${pct}%)`;
+}
+
+// ── Filter ──
+let activeFilter = 'all';
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.getAttribute('data-filter');
+    applyFilters();
+  });
+});
+
+// ── Search ──
+const searchBox = document.getElementById('searchBox');
+searchBox.addEventListener('input', applyFilters);
+
+function applyFilters() {
+  const q = searchBox.value.toLowerCase().trim();
+  document.querySelectorAll('.item-card[data-status]').forEach(card => {
+    const status = card.getAttribute('data-status');
+    const text = card.textContent.toLowerCase();
+    const matchFilter = activeFilter === 'all' || status === activeFilter;
+    const matchSearch = !q || text.includes(q);
+    card.classList.toggle('hidden-search', !(matchFilter && matchSearch));
+  });
+}
+
+// ── Horizontal scroll with mouse wheel ──
+const boardWrap = document.getElementById('boardWrap');
+boardWrap.addEventListener('wheel', (e) => {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+    e.preventDefault();
+    boardWrap.scrollLeft += e.deltaY * 1.5;
+  }
+}, { passive: false });
+
+// ── Remove scroll hint after 3s ──
+setTimeout(() => {
+  const hint = document.getElementById('scrollHint');
+  if (hint) hint.remove();
+}, 3500);
+
+updateCounts();
+</script>
+</body>
+</html>
