@@ -226,21 +226,22 @@ function Toggle({ label, checked, onChange }) {
 
 // ── GiftPicker — inline chip grid with price filter (แบบ C) ─────────────────
 const PRICE_FILTERS = [
-  { id: 'all',  label: 'ทั้งหมด',   min: 0,    max: Infinity },
-  { id: 'f1',   label: '1–9 🪙',    min: 1,    max: 9        },
-  { id: 'f2',   label: '10–99 🪙',  min: 10,   max: 99       },
-  { id: 'f3',   label: '100–999 🪙',min: 100,  max: 999      },
-  { id: 'f4',   label: '1k+ 🪙',    min: 1000, max: Infinity },
+  { id: 'f1',   label: '1 🪙',          min: 1,    max: 1        },
+  { id: 'f2',   label: '2–10 🪙',       min: 2,    max: 10       },
+  { id: 'f3',   label: '11–100 🪙',     min: 11,   max: 100      },
+  { id: 'f4',   label: '101–1,000 🪙',  min: 101,  max: 1000     },
+  { id: 'f5',   label: '1,001–5,000 🪙',min: 1001, max: 5000     },
+  { id: 'f6',   label: '5,000+ 🪙',     min: 5001, max: Infinity },
 ];
 
 function GiftPicker({ value, onChange, giftList }) {
-  const [priceFilter, setPriceFilter] = useState('all');
+  const [priceFilter, setPriceFilter] = useState('');
   const [search,      setSearch]      = useState('');
 
-  const pf = PRICE_FILTERS.find(f => f.id === priceFilter) || PRICE_FILTERS[0];
+  const pf = PRICE_FILTERS.find(f => f.id === priceFilter) || null;
 
   const visible = giftList.filter(g => {
-    const inPrice  = g.coins >= pf.min && g.coins <= pf.max;
+    const inPrice  = !pf || (g.coins >= pf.min && g.coins <= pf.max);
     const inSearch = !search.trim() || g.name.toLowerCase().includes(search.toLowerCase());
     return inPrice && inSearch;
   });
@@ -274,7 +275,7 @@ function GiftPicker({ value, onChange, giftList }) {
       <div className="flex gap-1.5 flex-wrap">
         {PRICE_FILTERS.map(f => (
           <button type="button" key={f.id}
-            onClick={() => setPriceFilter(f.id)}
+            onClick={() => setPriceFilter(prev => prev === f.id ? '' : f.id)}
             className={clsx(
               'text-[11px] px-2.5 py-0.5 rounded-full border transition-colors',
               priceFilter === f.id
