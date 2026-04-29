@@ -852,13 +852,13 @@ function StyleBanner({ track, cfg }) {
 function StyleGhost({ track, cfg }) {
   return (
     <div style={{ display:'inline-flex', alignItems:'center', gap:10,
-      padding:'8px 14px', borderRadius:10,
-      animation:'ghostPulse 3s ease-in-out infinite',
+      padding:'8px 14px', borderRadius:10, maxWidth:380,
+      animation: track.playing ? 'ghostPulse 3s ease-in-out infinite' : 'none',
       fontFamily:'system-ui,sans-serif', userSelect:'none',
     }}>
       <AlbumArt src={track.albumArt} size={44} radius={6}
-        extra={{ opacity:.7, filter:'saturate(0.6)' }} />
-      <div style={{ overflow:'hidden' }}>
+        extra={{ opacity:.7, filter:'saturate(0.6)', flexShrink:0 }} />
+      <div style={{ overflow:'hidden', minWidth:0, flex:1 }}>
         <TitleText text={track.title}  cfg={cfg} extra={{ fontWeight:700, textShadow:'0 2px 12px rgba(0,0,0,.9)' }} />
         <ArtistText text={track.artist} cfg={cfg} extra={{ textShadow:'0 1px 8px rgba(0,0,0,.8)' }} />
       </div>
@@ -1702,8 +1702,8 @@ function StyleVHS({ track, cfg }) {
             extra={{ filter:'contrast(1.2) saturate(0.7) sepia(0.2)' }} />
         </div>
         <div style={{ flex:1, overflow:'hidden' }}>
-          <div style={{ display:'flex', align:'center', gap:6, marginBottom:3 }}>
-            <span style={{ color:'#ff4444', fontSize:9, fontWeight:700, letterSpacing:1 }}>▶REC</span>
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3, overflow:'hidden' }}>
+            <span style={{ color:'#ff4444', fontSize:9, fontWeight:700, letterSpacing:1, flexShrink:0 }}>▶REC</span>
             <TitleText text={track.title} cfg={cfg} extra={{ fontWeight:700, letterSpacing:0.5 }} />
           </div>
           <ArtistText text={track.artist} cfg={cfg} extra={{ color:'rgba(180,180,180,0.7)', letterSpacing:0.5 }} />
@@ -1720,20 +1720,20 @@ function StyleTerminal({ track, cfg }) {
   return (
     <div style={{ display:'inline-flex', flexDirection:'column',
       background:'rgba(0,8,0,0.94)', borderRadius:8, padding:'10px 14px',
-      border:'1px solid rgba(0,200,0,0.3)', minWidth:280,
+      border:'1px solid rgba(0,200,0,0.3)', minWidth:280, maxWidth:400,
       fontFamily:'"Courier New",monospace', userSelect:'none',
       boxShadow:'0 4px 20px rgba(0,0,0,.7), 0 0 0 1px rgba(0,200,0,.08)',
     }}>
       <span style={{ color:'rgba(0,200,0,0.5)', fontSize:9, marginBottom:4 }}>
         $ spotify-now-playing [{time}]
       </span>
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
-        <span style={{ color:'#00c800', fontSize:9 }}>TRACK:</span>
-        <TitleText text={track.title} cfg={cfg} extra={{ fontWeight:700, color:'#00ff00', fontFamily:'"Courier New",monospace' }} />
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2, overflow:'hidden' }}>
+        <span style={{ color:'#00c800', fontSize:9, flexShrink:0 }}>TRACK:</span>
+        <TitleText text={track.title} cfg={{ ...cfg, titleColor: cfg.titleColor !== '#fff' ? cfg.titleColor : '#00ff00' }} extra={{ fontWeight:700, fontFamily:'"Courier New",monospace' }} />
       </div>
-      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-        <span style={{ color:'#00c800', fontSize:9 }}>ARTIST:</span>
-        <ArtistText text={track.artist} cfg={cfg} extra={{ color:'rgba(0,200,0,0.7)', fontFamily:'"Courier New",monospace', margin:0 }} />
+      <div style={{ display:'flex', alignItems:'center', gap:8, overflow:'hidden' }}>
+        <span style={{ color:'#00c800', fontSize:9, flexShrink:0 }}>ARTIST:</span>
+        <ArtistText text={track.artist} cfg={{ ...cfg, artistColor: cfg.artistColor !== 'rgba(255,255,255,0.6)' ? cfg.artistColor : 'rgba(0,200,0,0.7)' }} extra={{ fontFamily:'"Courier New",monospace', margin:0 }} />
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:6 }}>
         <span style={{ color:'rgba(0,255,0,0.4)', fontSize:9 }}>{track.playing ? '▶ playing' : '■ paused'}</span>
