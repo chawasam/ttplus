@@ -112,10 +112,10 @@ async function queueAction(vjUid, action, context) {
 
 function fillTemplate(text, ctx) {
   return text
-    .replace(/\{username\}/gi,  ctx.username  || '')
-    .replace(/\{giftname\}/gi,  ctx.giftname  || '')
-    .replace(/\{coins\}/gi,     String(ctx.coins    || ''))
-    .replace(/\{likecount\}/gi, String(ctx.likeCount || ''));
+    .replace(/\{username\}/gi,  ctx.username  ?? '')
+    .replace(/\{giftname\}/gi,  ctx.giftname  ?? '')
+    .replace(/\{coins\}/gi,     String(ctx.coins    ?? ''))
+    .replace(/\{likecount\}/gi, String(ctx.likeCount ?? ''));
 }
 
 // ── Main: process TikTok event → fire matching actions ─────────────────────

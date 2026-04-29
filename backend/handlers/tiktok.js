@@ -255,6 +255,11 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         comment:           safe.comment,
         bio:               sanitizeStr(String(data.userDetails?.bioDescription || data.bioDescription || ''), 150),
         followRole:        Number(data.followRole) || 0,
+        isSubscriber:      !!(data.isSubscriber   ?? data.userBadges?.some?.(b => b.type === 'sub')),
+        isModerator:       !!(data.isModerator    ?? data.userDetails?.isModerator),
+        isTopGifter:       !!(data.isTopGifter),
+        isSubscriberEmote: !!(data.isSubscriberEmote),
+        isFanClubSticker:  !!(data.isFanClubSticker),
         timestamp:         Date.now(),
       };
       emitAll('chat', chatPayload);
@@ -285,6 +290,10 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         repeatCount,
         isStreakable,   // widget ใช้ตัดสินใจจำนวน rocket
         isRepeatEnd,    // widget ใช้ตัดสินใจจำนวน rocket
+        followRole:    Number(data.followRole) || 0,
+        isSubscriber:  !!(data.isSubscriber  ?? data.userBadges?.some?.(b => b.type === 'sub')),
+        isModerator:   !!(data.isModerator   ?? data.userDetails?.isModerator),
+        isTopGifter:   !!(data.isTopGifter),
         timestamp:      Date.now(),
       };
       emitAll('gift', giftPayload);
@@ -350,6 +359,10 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         nickname:       safe.nickname,
         likeCount:      likeCount,
         totalLikeCount: Math.max(0, Number(data.totalLikeCount) || 0),
+        followRole:    Number(data.followRole) || 0,
+        isSubscriber:  !!(data.isSubscriber  ?? data.userBadges?.some?.(b => b.type === 'sub')),
+        isModerator:   !!(data.isModerator   ?? data.userDetails?.isModerator),
+        isTopGifter:   !!(data.isTopGifter),
         timestamp:      Date.now(),
       };
       emitAll('like', likePayload);
@@ -372,6 +385,10 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         uniqueId:          safe.uniqueId,
         nickname:          safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
+        followRole:    Number(data.followRole) || 0,
+        isSubscriber:  !!(data.isSubscriber  ?? data.userBadges?.some?.(b => b.type === 'sub')),
+        isModerator:   !!(data.isModerator   ?? data.userDetails?.isModerator),
+        isTopGifter:   !!(data.isTopGifter),
         timestamp:         Date.now(),
       };
       emitAll('follow', followPayload);
@@ -385,6 +402,10 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         type: 'share',
         uniqueId:  safe.uniqueId,
         nickname:  safe.nickname,
+        followRole:    Number(data.followRole) || 0,
+        isSubscriber:  !!(data.isSubscriber  ?? data.userBadges?.some?.(b => b.type === 'sub')),
+        isModerator:   !!(data.isModerator   ?? data.userDetails?.isModerator),
+        isTopGifter:   !!(data.isTopGifter),
         timestamp: Date.now(),
       };
       emitAll('share', sharePayload);
@@ -415,7 +436,12 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       // ลูกเล่น TT — fire join events
       processEvent(userId, 'join', {
         type: 'join', uniqueId: safe.uniqueId, nickname: safe.nickname,
-        profilePictureUrl: safe.profilePictureUrl, timestamp: Date.now(),
+        profilePictureUrl: safe.profilePictureUrl,
+        followRole:   Number(data.followRole) || 0,
+        isSubscriber: !!(data.isSubscriber  ?? data.userBadges?.some?.(b => b.type === 'sub')),
+        isModerator:  !!(data.isModerator   ?? data.userDetails?.isModerator),
+        isTopGifter:  !!(data.isTopGifter),
+        timestamp: Date.now(),
       }).catch(() => {});
     });
 
