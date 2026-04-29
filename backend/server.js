@@ -3,8 +3,16 @@ require('dotenv').config();
 
 // ===== Error Handlers ต้อง register ก่อนทุกอย่าง =====
 // (ป้องกัน crash ตอน Firebase init หรือ module load)
-process.on('unhandledRejection', (r) => console.error('[Server] UnhandledRejection:', r));
-process.on('uncaughtException',  (e) => { console.error('[Server] UncaughtException:', e.message); process.exit(1); });
+process.on('unhandledRejection', (r) => {
+  console.error('[Server] UnhandledRejection:', r);
+  // storeBackendError ยังไม่ ready ตอน module load — guard ด้วย try
+  try { require('./handlers/admin/errorLog').storeBackendError(String(r?.message || r), r?.stack || ''); } catch {}
+});
+process.on('uncaughtException',  (e) => {
+  console.error('[Server] UncaughtException:', e.message);
+  try { require('./handlers/admin/errorLog').storeBackendError(e.message, e.stack || ''); } catch {}
+  process.exit(1);
+});
 
 const { checkEnv } = require('./utils/envCheck');
 checkEnv();
@@ -19,6 +27,8 @@ const { generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLim
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers, getConnectionByUsername, getConnectionInfo } = require('./handlers/tiktok');
+const { setOnlineGetter, recordHeartbeat } = require('./handlers/admin/metrics');
+const { storeBackendError }                = require('./handlers/admin/errorLog');
 const { cleanupStaleBattles } = require('./handlers/game/combat');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
@@ -78,6 +88,12 @@ const userSockets = new Map();
 // ── Shared socket emitter (ให้ handlers emit ถึง user โดยไม่ต้องรับ io ตรงๆ) ──
 const { setIO } = require('./lib/emitter');
 setIO(io, userSockets);
+
+// ── Admin metrics: ส่ง getter สำหรับ online user count ──
+setOnlineGetter(() => userSockets.size);
+
+// ── Admin heartbeat: บันทึกทุก 5 นาที เพื่อแสดง uptime history ──
+setInterval(recordHeartbeat, 5 * 60 * 1000);
 
 // ===== Health check — ต้องมาก่อนทุก middleware =====
 app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
@@ -361,9 +377,14 @@ app.use('/api/gifts', giftsRouter);
 const { getOverlayState } = require('./handlers/game/overlay');
 app.get('/api/overlay/:tiktokId', getOverlayState);
 
+// ===== Admin Routes =====
+const adminRouter = require('./routes/admin');
+app.use('/api/admin', adminRouter);
+
 // ===== Error Handlers =====
 app.use((err, _req, res, _next) => {
   console.error('[Server] Unhandled:', err.message);
+  storeBackendError(err.message, err.stack).catch(() => {});
   res.status(500).json({ error: 'Internal server error' });
 });
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

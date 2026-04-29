@@ -4467,6 +4467,12 @@ export default function AdminPage() {
                 background:'transparent', cursor:'pointer', fontSize:13 }}>
               ↻ Refresh
             </button>
+            <a href="/admin-system"
+              style={{ padding:'7px 16px', borderRadius:8, border:'1px solid #4f46e5', color:'#818cf8',
+                background:'transparent', cursor:'pointer', fontSize:13, textDecoration:'none',
+                display:'inline-flex', alignItems:'center', gap:4 }}>
+              🖥️ System
+            </a>
             <button onClick={() => router.push('/ashenveil')}
               style={{ padding:'7px 16px', borderRadius:8, border:'1px solid #374151', color:'#6b7280',
                 background:'transparent', cursor:'pointer', fontSize:13 }}>

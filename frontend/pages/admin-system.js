@@ -1,0 +1,494 @@
+// pages/admin-system.js — System & Infrastructure Monitoring Dashboard
+// เข้าได้เฉพาะ owner เท่านั้น | auto-refresh ทุก 60 วินาที | responsive (mobile + desktop)
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/router';
+import Head from 'next/head';
+import api from '../lib/api';
+import clsx from 'clsx';
+
+const REFRESH_SEC = 60;
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function fmtTime(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60)    return `${s}วิที่แล้ว`;
+  if (s < 3600)  return `${Math.floor(s / 60)}นาทีที่แล้ว`;
+  if (s < 86400) return `${Math.floor(s / 3600)}ชม.ที่แล้ว`;
+  return `${Math.floor(s / 86400)}วันที่แล้ว`;
+}
+function fmtDuration(sec) {
+  if (sec === undefined || sec === null) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const D = {
+  bg:        'bg-[#0a0f1a]',
+  card:      'bg-[#0e1629] border border-[#1e293b]',
+  cardHov:   'hover:border-[#334155] transition-colors',
+  text:      'text-slate-100',
+  muted:     'text-slate-500',
+  accent:    'text-indigo-400',
+  sep:       'border-[#1e293b]',
+};
+
+// ─── Components ───────────────────────────────────────────────────────────────
+function Card({ children, className }) {
+  return (
+    <div className={clsx('rounded-2xl p-4 md:p-5', D.card, className)}>
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <p className={clsx('text-xs font-semibold uppercase tracking-widest mb-3', D.muted)}>
+      {children}
+    </p>
+  );
+}
+
+function Badge({ children, color = 'gray' }) {
+  const cls = {
+    green:  'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+    red:    'bg-red-500/15 text-red-400 border border-red-500/30',
+    yellow: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+    blue:   'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+    purple: 'bg-purple-500/15 text-purple-400 border border-purple-500/30',
+    gray:   'bg-slate-500/15 text-slate-400 border border-slate-500/30',
+  };
+  return (
+    <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold', cls[color])}>
+      {children}
+    </span>
+  );
+}
+
+// Metric stat card
+function StatCard({ label, value, sub, accent, icon }) {
+  return (
+    <Card className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <p className={clsx('text-xs font-medium uppercase tracking-wider', D.muted)}>{label}</p>
+        {icon && <span className="text-lg">{icon}</span>}
+      </div>
+      <p className={clsx('text-2xl md:text-3xl font-bold', accent || D.text)}>{value ?? '—'}</p>
+      {sub && <p className={clsx('text-xs', D.muted)}>{sub}</p>}
+    </Card>
+  );
+}
+
+// Progress bar
+function ProgressBar({ value, max, colorClass = 'bg-indigo-500' }) {
+  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  const col = pct > 85 ? 'bg-red-500' : pct > 65 ? 'bg-amber-500' : colorClass;
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className={D.muted}>{value} / {max} MB</span>
+        <span className={clsx('font-semibold', pct > 85 ? 'text-red-400' : pct > 65 ? 'text-amber-400' : 'text-slate-300')}>{pct}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+        <div className={clsx('h-full rounded-full transition-all duration-500', col)} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// CPU gauge ring
+function CpuRing({ pct = 0 }) {
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const dash = circ * (1 - pct / 100);
+  const col = pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#6366f1';
+  return (
+    <svg width="72" height="72" viewBox="0 0 72 72" className="flex-shrink-0">
+      <circle cx="36" cy="36" r={r} fill="none" stroke="#1e293b" strokeWidth="7" />
+      <circle cx="36" cy="36" r={r} fill="none" stroke={col} strokeWidth="7"
+        strokeDasharray={circ} strokeDashoffset={dash}
+        strokeLinecap="round" transform="rotate(-90 36 36)"
+        style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
+      <text x="36" y="41" textAnchor="middle" fill={col} fontSize="13" fontWeight="700">{pct}%</text>
+    </svg>
+  );
+}
+
+// Uptime history — colored bars
+function UptimeHistory({ heartbeats }) {
+  if (!heartbeats || heartbeats.length === 0) {
+    return <p className={clsx('text-xs', D.muted)}>ยังไม่มีข้อมูล heartbeat (บันทึกทุก 5 นาที หลัง server restart ครั้งแรก)</p>;
+  }
+  const now    = Date.now();
+  const N      = 144; // 12h × 12 entries/hr
+  const BKT_MS = 5 * 60 * 1000;
+  const dots   = Array.from({ length: N }, (_, i) => {
+    const mid = now - (N - 1 - i) * BKT_MS;
+    return heartbeats.some(h => Math.abs(h.ts - mid) < BKT_MS * 0.6);
+  });
+  const upCount = dots.filter(Boolean).length;
+  const uptimePct = Math.round((upCount / N) * 100);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <Badge color={uptimePct >= 99 ? 'green' : uptimePct >= 95 ? 'yellow' : 'red'}>
+          {uptimePct}% uptime (12h)
+        </Badge>
+        <span className={clsx('text-xs', D.muted)}>{upCount}/{N} buckets</span>
+      </div>
+      <div className="flex gap-[2px] flex-wrap">
+        {dots.map((up, i) => (
+          <div
+            key={i}
+            title={fmtTime(now - (N - 1 - i) * BKT_MS)}
+            className={clsx('w-[5px] h-5 rounded-sm flex-shrink-0 transition-colors',
+              up ? 'bg-emerald-500' : 'bg-slate-800')}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className={clsx('text-[10px]', D.muted)}>12 ชม.ที่แล้ว</span>
+        <span className={clsx('text-[10px]', D.muted)}>ตอนนี้</span>
+      </div>
+    </div>
+  );
+}
+
+// Admin page navigation (switch between system / game dashboards)
+function AdminNav({ current }) {
+  return (
+    <div className="flex items-center gap-1 rounded-xl bg-slate-800/60 p-1">
+      {[
+        { href: '/admin-system', label: '🖥️ ระบบ' },
+        { href: '/admin',        label: '⚔️ เกม'  },
+      ].map(({ href, label }) => (
+        <a
+          key={href}
+          href={href}
+          className={clsx(
+            'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+            current === href
+              ? 'bg-indigo-600 text-white shadow'
+              : 'text-slate-400 hover:text-slate-200',
+          )}
+        >
+          {label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ─── Error Log section ────────────────────────────────────────────────────────
+function ErrorLog({ errors, onResolve }) {
+  const [expanded, setExpanded] = useState(null);
+
+  if (errors.length === 0) {
+    return (
+      <div className="flex items-center gap-2 py-4">
+        <span className="text-emerald-400 text-lg">✅</span>
+        <p className={clsx('text-sm', D.muted)}>ไม่มี error ที่ยังไม่ได้แก้ไข</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {errors.map(err => (
+        <div key={err.id} className="rounded-xl border border-slate-700/50 overflow-hidden">
+          {/* Header row */}
+          <div
+            className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-slate-800/50 transition-colors"
+            onClick={() => setExpanded(expanded === err.id ? null : err.id)}
+          >
+            <Badge color={err.source === 'backend' ? 'red' : err.source === 'unhandled_rejection' ? 'yellow' : 'blue'}>
+              {err.source || 'frontend'}
+            </Badge>
+            <p className="text-sm text-red-300 font-mono flex-1 truncate min-w-0">
+              {err.message?.slice(0, 100)}
+            </p>
+            <span className={clsx('text-xs flex-shrink-0', D.muted)}>{timeAgo(err.ts)}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onResolve(err.id); }}
+              className="flex-shrink-0 text-xs px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition font-medium"
+            >
+              ✓
+            </button>
+          </div>
+          {/* Expanded detail */}
+          {expanded === err.id && (
+            <div className="px-3 pb-3 border-t border-slate-700/50 bg-slate-900/40 space-y-2">
+              <div className="flex gap-2 flex-wrap pt-2">
+                {err.tiktokUsername && <Badge color="purple">@{err.tiktokUsername}</Badge>}
+                {err.url && <span className={clsx('text-xs truncate max-w-xs', D.muted)}>{err.url}</span>}
+              </div>
+              {err.stack && (
+                <pre className="text-xs font-mono text-slate-400 whitespace-pre-wrap break-all bg-slate-900 rounded-lg p-3 overflow-auto max-h-48">
+                  {err.stack}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function AdminSystemPage({ user, authLoading }) {
+  const router = useRouter();
+  const [data,    setData]    = useState(null);
+  const [errors,  setErrors]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lastTs,  setLastTs]  = useState(null);
+  const [cd,      setCd]      = useState(REFRESH_SEC);
+  const cdRef = useRef(REFRESH_SEC);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [sysRes, errRes] = await Promise.all([
+        api.get('/api/admin/metrics'),
+        api.get('/api/admin/errors?limit=50'),
+      ]);
+      setData(sysRes.data);
+      setErrors(errRes.data?.errors || []);
+      setLastTs(Date.now());
+    } catch (err) {
+      if (err?.response?.status === 403) { router.replace('/'); return; }
+    } finally {
+      setLoading(false);
+      cdRef.current = REFRESH_SEC;
+      setCd(REFRESH_SEC);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.replace('/'); return; }
+    fetchAll();
+    const iv = setInterval(fetchAll, REFRESH_SEC * 1000);
+    return () => clearInterval(iv);
+  }, [user, authLoading, fetchAll, router]);
+
+  // Countdown
+  useEffect(() => {
+    const iv = setInterval(() => {
+      cdRef.current = Math.max(0, cdRef.current - 1);
+      setCd(cdRef.current);
+    }, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const handleKick = useCallback(async (userId) => {
+    if (!confirm(`Force disconnect TikTok session นี้?`)) return;
+    try {
+      await api.post(`/api/admin/connections/${userId}/kick`);
+      fetchAll();
+    } catch { alert('Kick ไม่สำเร็จ'); }
+  }, [fetchAll]);
+
+  const handleResolve = useCallback(async (id) => {
+    try {
+      await api.patch(`/api/admin/errors/${id}/resolve`);
+      setErrors(prev => prev.filter(e => e.id !== id));
+    } catch { alert('Resolve ไม่สำเร็จ'); }
+  }, []);
+
+  // Shorthand
+  const s   = data?.server;
+  const c   = data?.connections;
+  const q   = data?.queue;
+  const ev  = data?.events;
+  const hb  = data?.heartbeats;
+
+  if (authLoading) return (
+    <div className={clsx('min-h-screen flex items-center justify-center', D.bg)}>
+      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  return (
+    <>
+      <Head><title>System Admin | TTplus</title></Head>
+      <div className={clsx('min-h-screen', D.bg, D.text)}>
+
+        {/* ── Sticky Header ── */}
+        <header className="sticky top-0 z-40 border-b border-[#1e293b] bg-[#0a0f1a]/90 backdrop-blur-md">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+            {/* Left: title */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h1 className="font-bold text-sm md:text-base">System Monitor</h1>
+                {lastTs && <p className={clsx('text-xs truncate', D.muted)}>อัปเดต {fmtTime(lastTs)}</p>}
+              </div>
+            </div>
+
+            {/* Right: nav + refresh */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <AdminNav current="/admin-system" />
+              <button
+                onClick={fetchAll}
+                disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-sm font-medium transition"
+              >
+                <svg className={clsx('w-4 h-4', loading && 'animate-spin')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="hidden sm:inline text-slate-300">
+                  {loading ? 'กำลังโหลด...' : `${cd}s`}
+                </span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* ── Content ── */}
+        <main className="max-w-7xl mx-auto px-4 py-5 space-y-5">
+
+          {/* Loading state */}
+          {loading && !data && (
+            <div className="flex flex-col items-center justify-center py-24 gap-3">
+              <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <p className={clsx('text-sm', D.muted)}>กำลังโหลดข้อมูล...</p>
+            </div>
+          )}
+
+          {data && (
+            <>
+              {/* ── Row 1: Key stats ── */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard icon="⏱️" label="Uptime"        value={s?.uptimeStr}   sub={`Node ${s?.nodeVersion}`} />
+                <StatCard icon="📡" label="TikTok Live"   value={c?.tiktok ?? 0} sub="connections" accent="text-pink-400" />
+                <StatCard icon="👥" label="Online Users"  value={c?.sockets ?? 0} sub="browser tabs" accent="text-indigo-400" />
+                <StatCard icon="📋" label="Queue Backlog" value={q?.backlog ?? 0} sub="actions รอ play"
+                  accent={(q?.backlog ?? 0) > 20 ? 'text-amber-400' : 'text-emerald-400'} />
+              </div>
+
+              {/* ── Row 2: Memory + CPU + Events ── */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Memory */}
+                <Card>
+                  <SectionTitle>Memory Usage</SectionTitle>
+                  <div className="space-y-4">
+                    <div>
+                      <p className={clsx('text-xs mb-2', D.muted)}>Heap Used / Total</p>
+                      <ProgressBar value={s?.memory?.heapUsed} max={s?.memory?.heapTotal} />
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className={D.muted}>RSS (process total)</span>
+                      <span className="font-semibold">{s?.memory?.rss ?? '—'} MB</span>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* CPU */}
+                <Card className="flex flex-col items-center justify-center gap-2">
+                  <SectionTitle>CPU Delta</SectionTitle>
+                  <CpuRing pct={s?.cpu ?? 0} />
+                  <p className={clsx('text-xs', D.muted)}>ตั้งแต่ request ที่แล้ว</p>
+                </Card>
+
+                {/* Events per minute */}
+                <Card>
+                  <SectionTitle>Events / นาที</SectionTitle>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: '🎁 Gift',    v: ev?.gift   ?? 0 },
+                      { label: '💬 Chat',    v: ev?.chat   ?? 0 },
+                      { label: '❤️ Like',   v: ev?.like   ?? 0 },
+                      { label: '➕ Follow', v: ev?.follow ?? 0 },
+                      { label: '👤 Join',   v: ev?.join   ?? 0 },
+                      { label: '🔗 Share',  v: ev?.share  ?? 0 },
+                    ].map(({ label, v }) => (
+                      <div key={label} className="flex justify-between text-sm">
+                        <span className={D.muted}>{label}</span>
+                        <span className="font-bold">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+
+              {/* ── Row 3: Active connections table ── */}
+              <Card>
+                <SectionTitle>TikTok Live Connections ({c?.tiktok ?? 0})</SectionTitle>
+                {(!c?.list?.length) ? (
+                  <p className={clsx('text-sm py-2', D.muted)}>ไม่มีการเชื่อมต่อในขณะนี้</p>
+                ) : (
+                  <div className="overflow-x-auto -mx-1">
+                    <table className="w-full text-sm min-w-[400px]">
+                      <thead>
+                        <tr className={clsx('text-xs border-b', D.muted, D.sep)}>
+                          <th className="text-left pb-2 font-medium">TikTok</th>
+                          <th className="text-left pb-2 font-medium">เชื่อมต่อเมื่อ</th>
+                          <th className="text-left pb-2 font-medium">Duration</th>
+                          <th className="text-right pb-2 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {c.list.map(conn => (
+                          <tr key={conn.userId} className={clsx('border-b', D.sep)}>
+                            <td className="py-2.5 font-semibold text-pink-400">
+                              @{conn.tiktokUsername}
+                            </td>
+                            <td className={clsx('py-2.5 text-xs', D.muted)}>{fmtTime(conn.connectedAt)}</td>
+                            <td className={clsx('py-2.5 text-xs', D.muted)}>{fmtDuration(conn.durationSec)}</td>
+                            <td className="py-2.5 text-right">
+                              <button
+                                onClick={() => handleKick(conn.userId)}
+                                className="text-xs px-2.5 py-1 rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition font-medium"
+                              >
+                                Kick
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+
+              {/* ── Row 4: Uptime history ── */}
+              <Card>
+                <SectionTitle>Uptime History (12 ชม.)</SectionTitle>
+                <UptimeHistory heartbeats={hb} />
+              </Card>
+
+              {/* ── Row 5: Error log ── */}
+              <Card>
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>Error Log</SectionTitle>
+                  {errors.length > 0 && (
+                    <Badge color="red">{errors.length} unresolved</Badge>
+                  )}
+                </div>
+                <ErrorLog errors={errors} onResolve={handleResolve} />
+              </Card>
+            </>
+          )}
+        </main>
+      </div>
+    </>
+  );
+}

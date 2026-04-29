@@ -27,6 +27,26 @@ const MAX_MEMBERS_TRACK = 50;
 // First-activity tracking: vjUid → Set<uniqueId> (reset ทุก manual connect)
 const firstActivityUsers = new Map();
 
+// ── Event rate tracking — นับ events ต่อ 60 วินาที สำหรับ admin dashboard ──
+const _eCounts = { gift: 0, chat: 0, like: 0, follow: 0, join: 0, share: 0 };
+const _eRates  = { gift: 0, chat: 0, like: 0, follow: 0, join: 0, share: 0 };
+setInterval(() => {
+  Object.assign(_eRates, _eCounts);
+  Object.keys(_eCounts).forEach(k => { _eCounts[k] = 0; });
+}, 60_000);
+function bumpEvent(type) { if (type in _eCounts) _eCounts[type]++; }
+function getEventRates() { return { ..._eRates }; }
+
+// รายการ connections ทั้งหมด (สำหรับ admin dashboard)
+function getAllConnections() {
+  return Array.from(activeConnections.entries()).map(([userId, conn]) => ({
+    userId,
+    tiktokUsername: conn.tiktokUsername,
+    connectedAt:    conn.connectedAt,
+    durationSec:    Math.round((Date.now() - conn.connectedAt) / 1000),
+  }));
+}
+
 // ตรวจและ mark first activity — return true ถ้าเป็นครั้งแรกของ user นี้ใน session
 function checkFirstActivity(vjUid, uniqueId) {
   if (!uniqueId) return false;
@@ -294,6 +314,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         timestamp:         Date.now(),
       };
       emitAll('chat', chatPayload);
+      bumpEvent('chat');
       checkChatVerify(safe.uniqueId, safe.comment || '').catch(() => {});
       // ลูกเล่น TT — fire chat/command events + first_activity
       const chatEvPayload = { ...chatPayload, comment: safe.comment || '' };
@@ -332,6 +353,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         timestamp:      Date.now(),
       };
       emitAll('gift', giftPayload);
+      if (isRepeatEnd) bumpEvent('gift'); // นับเฉพาะ final event ไม่นับ intermediate combo
 
       // ── รวบรวม gift catalog จาก extendedGiftInfo (global) ──
       const extInfo = data.extendedGiftInfo;
@@ -430,6 +452,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         timestamp:         Date.now(),
       };
       emitAll('follow', followPayload);
+      bumpEvent('follow');
       // ลูกเล่น TT — fire follow events + first_activity
       processEvent(userId, 'follow', followPayload).catch(() => {});
       if (checkFirstActivity(userId, safe.uniqueId)) {
@@ -450,6 +473,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         timestamp: Date.now(),
       };
       emitAll('share', sharePayload);
+      bumpEvent('share');
       // ลูกเล่น TT — fire share events + first_activity
       processEvent(userId, 'share', sharePayload).catch(() => {});
       if (checkFirstActivity(userId, safe.uniqueId)) {
@@ -487,6 +511,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         isTopGifter:  !!(data.isTopGifter),
         timestamp: Date.now(),
       };
+      bumpEvent('join');
       processEvent(userId, 'join', joinEvPayload).catch(() => {});
       if (checkFirstActivity(userId, safe.uniqueId)) {
         processEvent(userId, 'first_activity', joinEvPayload).catch(() => {});
@@ -629,4 +654,5 @@ module.exports = {
   startConnection, stopConnection, hasConnection, getActiveConnectionCount,
   getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers, getGiftCatalog,
   getConnectionByUsername, getConnectionInfo,
+  getAllConnections, getEventRates,
 };
