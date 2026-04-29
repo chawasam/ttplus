@@ -433,17 +433,6 @@ export default function CoinJarWidget() {
       fontFamily: 'Inter, system-ui, sans-serif',
     }}>
 
-      {/* ── Vignette: พื้นหลังรองโหล ─────────────────────────────────────────
-          ทำให้ glass effect ของโหลเห็นชัดทั้งใน browser ปกติ และ OBS transparent
-          radial gradient สีเข้มที่ด้านล่าง — มองดูเป็นพื้นรองแก้วสวยงาม
-          ไม่รบกวน stream ด้านหลังเพราะ opacity ต่ำ (45%) ────────────────── */}
-      <div style={{
-        position:   'absolute',
-        inset:      0,
-        zIndex:     1,
-        background: 'radial-gradient(ellipse 90% 65% at 50% 95%, rgba(5,5,20,0.48) 0%, rgba(5,5,20,0.18) 45%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
 
       {/* ── Gift notification popup ───────────────────────────────────────── */}
       {popup && (
