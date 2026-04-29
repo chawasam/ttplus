@@ -278,6 +278,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const [spotifyConnected, setSpotifyConnected] = useState(null); // null=unknown, true, false
   const [coinjarSimulating, setCoinjarSimulating] = useState(false);
 
+
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
   const [audioEnabled, setAudioEnabled] = useState(() => {
     try { return localStorage.getItem('ttplus_widgets_audio') === '1'; } catch { return false; }
@@ -285,15 +286,27 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const audioEnabledRef = useRef(false);
   useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
-  // Web Audio API — เล่น chime เล็กๆ เมื่อมี event
+  // Web Audio API — ใช้ AudioContext ตัวเดียว (ต้อง resume หลัง user gesture)
+  const audioCtxRef = useRef(null);
+  const unlockAudio = useCallback(() => {
+    // เรียกจาก click event เพื่อ unlock AudioContext
+    if (!audioCtxRef.current) {
+      try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume().catch(() => {});
+    }
+  }, []);
+
   const playDing = useCallback((type = 'gift') => {
+    const ctx = audioCtxRef.current;
+    if (!ctx || ctx.state === 'suspended') return; // AudioContext ยังไม่ถูก unlock
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
       // gift → C5-E5-G5 (สดใส), follow → A4-C5 (อบอุ่น), like → E5 สั้นๆ
       const freqs = type === 'gift'   ? [523, 659, 784]
                   : type === 'follow' ? [440, 523]
                   : [659];
-      let t = ctx.currentTime;
+      const t = ctx.currentTime;
       freqs.forEach((freq, i) => {
         const osc  = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -304,7 +317,6 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         gain.gain.linearRampToValueAtTime(0, t + i * 0.13 + 0.38);
         osc.start(t + i * 0.13); osc.stop(t + i * 0.13 + 0.42);
       });
-      setTimeout(() => ctx.close(), 2000);
     } catch {}
   }, []);
 
@@ -317,6 +329,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
     if (user) {
       // Connect socket for real-time style push + audio alerts
+      let cleanupListeners = () => {};
       user.getIdToken().then(token => {
         if (!mounted) return;
         const socket = connectSocket(token);
@@ -329,6 +342,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         socket.on('gift',   onGift);
         socket.on('follow', onFollow);
         socket.on('like',   onLike);
+        // เก็บ cleanup ไว้ใช้ตอน unmount
+        cleanupListeners = () => {
+          socket.off('gift',   onGift);
+          socket.off('follow', onFollow);
+          socket.off('like',   onLike);
+        };
       });
 
       // Load settings + fetch widget token
@@ -368,6 +387,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
     return () => {
       mounted = false;
+      cleanupListeners(); // ลบ audio alert listeners เพื่อป้องกัน duplicate events
       // ไม่ disconnect socket ที่นี่ เพราะ dashboard อาจยังใช้อยู่
     };
   }, [user, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -580,10 +600,11 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
             {user && (
               <button
                 onClick={() => {
+                  unlockAudio(); // unlock AudioContext ด้วย user gesture ก่อนเสมอ
                   const next = !audioEnabled;
                   setAudioEnabled(next);
                   try { localStorage.setItem('ttplus_widgets_audio', next ? '1' : '0'); } catch {}
-                  if (next) playDing('gift'); // ทดสอบเสียงเมื่อเปิด
+                  if (next) setTimeout(() => playDing('gift'), 50); // ทดสอบเสียงหลัง unlock
                 }}
                 title={audioEnabled ? 'ปิดเสียง Alert บนเบราว์เซอร์นี้' : 'เปิดเสียง Alert บนเบราว์เซอร์นี้'}
                 className={clsx(
