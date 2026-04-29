@@ -855,7 +855,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-bold">🎹 Soundboard</h1>
 
-            {/* ON/OFF */}
+            {/* ON/OFF — สถานะหลัก */}
             <button
               onClick={() => patch({ enabled: !store.enabled })}
               className={clsx(
@@ -869,7 +869,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               {store.enabled ? 'เปิด' : 'ปิด'}
             </button>
 
-            {/* Stop All + active sounds counter */}
+            {/* Stop All — action ด่วน */}
             <button
               onClick={handleStopAll}
               className={clsx(
@@ -890,6 +890,19 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               </span>
             </button>
 
+            {/* Edit mode — จัดการปุ่ม */}
+            <button
+              onClick={() => setEditMode(m => !m)}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-sm transition-all',
+                editMode
+                  ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                  : isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+              )}
+            >
+              ✏️ {editMode ? 'กำลังแก้ไข...' : 'แก้ไข'}
+            </button>
+
             {/* Layout — cycle h → v → pad → h */}
             <button
               onClick={() => patch({ layout: LAYOUT_CYCLE[curLayout] || 'v' })}
@@ -904,27 +917,14 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               {LAYOUT_LABEL[curLayout] || '↔ แนวนอน'}
             </button>
 
-            {/* Edit mode */}
-            <button
-              onClick={() => setEditMode(m => !m)}
-              className={clsx(
-                'flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-sm transition-all',
-                editMode
-                  ? 'bg-yellow-500 text-white hover:bg-yellow-600'
-                  : isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-              )}
-            >
-              ✏️ {editMode ? 'กำลังแก้ไข...' : 'แก้ไข'}
-            </button>
-
-            {/* Export */}
+            {/* Export Backup */}
             <button
               onClick={handleExport}
               className={clsx(
                 'flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-sm transition-all',
                 isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
               )}
-              title="Export การตั้งค่าทั้งหมด + ชื่อปุ่ม"
+              title="Export การตั้งค่า Soundboard เป็นไฟล์ Backup"
             >
               ⬇ Export
             </button>
@@ -941,7 +941,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
               ⬆ Import
             </button>
 
-            {/* Reset page */}
+            {/* Reset page — destructive: แสดงสุดท้าย */}
             {customCount > 0 && (
               <button
                 onClick={handleResetAll}

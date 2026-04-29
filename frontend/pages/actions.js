@@ -1546,6 +1546,25 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     } catch { toast.error('บันทึกไม่ได้'); }
   }, [obsHost, obsPort, obsPassword]);
 
+  // ── Export Backup (Actions & Events) ──
+  const handleExport = useCallback(() => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tab: 'actions',
+      actions,
+      events,
+    };
+    const json     = JSON.stringify(data, null, 2);
+    const filename = `ttplus-actions-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const uri      = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+    const a        = document.createElement('a');
+    a.href = uri; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    toast.success(`⬇ Export Actions เรียบร้อย (${actions.length} actions, ${events.length} events)`);
+  }, [actions, events]);
+
   // ── Overlay URLs ──
   const vjId = user?.uid || '';
   const overlayUrls = [1, 2].map(s => `${BACKEND.replace('api.', '')}/widget/myactions?vjId=${vjId}&screen=${s}`);
@@ -1561,10 +1580,20 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold text-white">🎭 ลูกเล่น TT</h1>
-            <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-yellow-500/80">แนะนำ: ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
+            <h1 className="text-xl font-bold text-white">⚡ Actions and Events</h1>
+            <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-yellow-500/80">ข้อมูลของขวัญยังไม่ครบในช่วงแรก — ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Export Backup */}
+            {user && (
+              <button
+                onClick={handleExport}
+                title="Export Actions & Events เป็นไฟล์ Backup"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80"
+              >
+                ⬇ Export
+              </button>
+            )}
             {/* ฟังเสียง TTS ทดสอบ ใน Browser */}
             <button
               onClick={() => {

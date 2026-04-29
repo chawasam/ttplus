@@ -279,6 +279,24 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     setSimpleMode(toSimple);
   }, []);
 
+  // ── Export Backup (TTS Settings) ──
+  const handleExport = useCallback(() => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tab: 'tts',
+      tts,
+    };
+    const json     = JSON.stringify(data, null, 2);
+    const filename = `ttplus-tts-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const uri      = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+    const a        = document.createElement('a');
+    a.href = uri; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    toast.success('⬇ Export TTS เรียบร้อย');
+  }, [tts]);
+
   const isDark   = theme === 'dark';
   const card     = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
   // การ์ด paid engine (Gemini 3.1 / 2.5 / Google Cloud) — ไฮไลสีชมพูจางๆ
@@ -304,6 +322,16 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
           <div className="flex items-center gap-2">
             {saving && <span className="text-xs text-gray-500">💾 กำลังบันทึก...</span>}
+            {user && (
+              <button
+                onClick={handleExport}
+                title="Export TTS Settings เป็นไฟล์ Backup"
+                className={clsx('flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
+                  isDark ? 'bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
+              >
+                ⬇ Export
+              </button>
+            )}
             <button onClick={() => setTheme(isDark ? 'light' : 'dark')}
               className="p-2 rounded-lg text-gray-400 text-lg">{isDark ? '☀️' : '🌙'}</button>
           </div>

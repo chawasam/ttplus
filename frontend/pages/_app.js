@@ -208,8 +208,10 @@ export default function App({ Component, pageProps }) {
   const isMainPage = !!PATH_TO_ID[router.pathname];
 
   // ── Single-tab enforcement (เฉพาะ main app เท่านั้น) ──────────────────────
-  const [duplicateTab, setDuplicateTab] = useState(false);
+  // tabRole: null = ปกติ | 'new_asks' = แถบใหม่เพิ่งเปิดและมีแถบเก่าอยู่แล้ว | 'taken_over' = แถบนี้ถูกแทนที่
+  const [tabRole, setTabRole] = useState(null);
   const tabIdRef = useRef(null);
+  const chRef    = useRef(null);
   if (tabIdRef.current === null && typeof window !== 'undefined') {
     tabIdRef.current = sessionStorage.getItem('ttplus_tabid') || (() => {
       const id = Math.random().toString(36).slice(2);
@@ -222,13 +224,25 @@ export default function App({ Component, pageProps }) {
     if (!isMainPage) return;
     if (typeof window === 'undefined' || !window.BroadcastChannel) return;
     const ch = new BroadcastChannel('ttplus_main_tab');
+    chRef.current = ch;
+    // ประกาศว่าเพิ่งเปิด
     ch.postMessage({ type: 'TAB_OPEN', id: tabIdRef.current });
     ch.onmessage = (e) => {
       if (!e.data || e.data.id === tabIdRef.current) return;
-      if (e.data.type === 'TAB_OPEN')      setDuplicateTab(true);
-      if (e.data.type === 'TAB_TAKE_OVER') setDuplicateTab(true);
+      if (e.data.type === 'TAB_OPEN') {
+        // มีแถบใหม่เพิ่งเปิด — เราเป็นแถบที่ active อยู่แล้ว ตอบกลับเงียบๆ ไม่แสดง overlay
+        ch.postMessage({ type: 'TAB_ALREADY_OPEN', id: tabIdRef.current });
+      }
+      if (e.data.type === 'TAB_ALREADY_OPEN') {
+        // เราเป็นแถบใหม่ มีแถบเก่าอยู่แล้ว — ถามผู้ใช้ว่าจะใช้แถบนี้แทนไหม
+        setTabRole('new_asks');
+      }
+      if (e.data.type === 'TAB_TAKE_OVER') {
+        // แถบอื่นตัดสินใจใช้แทนเรา — แจ้งให้ทราบ
+        setTabRole('taken_over');
+      }
     };
-    return () => { ch.close(); };
+    return () => { ch.close(); chRef.current = null; };
   }, [isMainPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isMainPage) {
@@ -253,9 +267,16 @@ export default function App({ Component, pageProps }) {
   // Main app — render ทุกหน้าพร้อมกัน ซ่อน/แสดงด้วย display
   const sharedProps = { theme, setTheme, user, authLoading, activePage, setActivePage };
 
-  // ── Duplicate tab overlay ───────────────────────────────────────────────────
-  if (duplicateTab) {
-    const isDark = theme === 'dark';
+  // ── Single-tab overlay (แสดงเฉพาะเมื่อ tabRole !== null) ──────────────────
+  if (tabRole) {
+    const isDark    = theme === 'dark';
+    const isNew     = tabRole === 'new_asks';
+    const cardBg    = isDark ? '#111827' : '#ffffff';
+    const cardBorder = isDark ? '#374151' : '#e5e7eb';
+    const textMain  = isDark ? '#f9fafb' : '#111827';
+    const textMuted = isDark ? '#9ca3af' : '#6b7280';
+    const btnBorder = isDark ? '#374151' : '#d1d5db';
+
     return (
       <div style={{
         position:'fixed', inset:0, zIndex:9999,
@@ -265,40 +286,37 @@ export default function App({ Component, pageProps }) {
       }}>
         <div style={{
           textAlign:'center', padding:'40px 36px', borderRadius:20,
-          background: isDark ? '#111827' : '#ffffff',
-          border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`,
-          maxWidth:380, margin:'0 16px', boxShadow:'0 25px 60px rgba(0,0,0,0.5)',
+          background: cardBg, border: `1px solid ${cardBorder}`,
+          maxWidth:400, margin:'0 16px', boxShadow:'0 25px 60px rgba(0,0,0,0.5)',
         }}>
-          <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
-          <h2 style={{ color: isDark ? '#f9fafb' : '#111827', fontSize:20, fontWeight:800, margin:'0 0 10px' }}>
-            เปิดอยู่แล้วในแถบอื่น
+          <div style={{ fontSize:48, marginBottom:16 }}>{isNew ? '🪟' : '📦'}</div>
+          <h2 style={{ color: textMain, fontSize:20, fontWeight:800, margin:'0 0 10px' }}>
+            {isNew ? 'แอปเปิดอยู่ที่แถบอื่นแล้ว' : 'แถบนี้ถูกย้ายออกแล้ว'}
           </h2>
-          <p style={{ color: isDark ? '#9ca3af' : '#6b7280', fontSize:14, lineHeight:1.6, margin:'0 0 24px' }}>
-            ttsam.app เปิดอยู่ใน Browser แถบอื่นแล้ว<br />
-            การเปิดหลายแถบพร้อมกันทำให้ connection TikTok ซ้อนกันได้
+          <p style={{ color: textMuted, fontSize:14, lineHeight:1.6, margin:'0 0 24px' }}>
+            {isNew
+              ? <>ttsam.app กำลังทำงานที่แถบอื่นอยู่<br />ต้องการย้ายมาใช้แถบนี้แทนไหม?</>
+              : <>แถบอื่นเข้ามาใช้งานแทนแล้ว<br />กด <strong>"ใช้แถบนี้ต่อ"</strong> ถ้าต้องการกลับมาที่แถบนี้</>
+            }
           </p>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             <button
               onClick={() => {
-                if (window.BroadcastChannel) {
-                  const ch = new BroadcastChannel('ttplus_main_tab');
-                  ch.postMessage({ type: 'TAB_TAKE_OVER', id: tabIdRef.current });
-                  ch.close();
-                }
-                setDuplicateTab(false);
+                chRef.current?.postMessage({ type: 'TAB_TAKE_OVER', id: tabIdRef.current });
+                setTabRole(null);
               }}
               style={{
                 padding:'12px', borderRadius:12, border:'none', cursor:'pointer',
                 background:'#f59e0b', color:'#000', fontWeight:700, fontSize:14,
               }}>
-              ✅ ใช้แถบนี้แทน
+              {isNew ? '✅ ใช้แถบนี้แทน' : '🔄 ใช้แถบนี้ต่อ'}
             </button>
             <button
               onClick={() => window.close()}
               style={{
                 padding:'12px', borderRadius:12, cursor:'pointer', fontSize:14,
-                background:'transparent', border:`1px solid ${isDark ? '#374151' : '#d1d5db'}`,
-                color: isDark ? '#9ca3af' : '#6b7280', fontWeight:500,
+                background:'transparent', border:`1px solid ${btnBorder}`,
+                color: textMuted, fontWeight:500,
               }}>
               ✕ ปิดแถบนี้
             </button>

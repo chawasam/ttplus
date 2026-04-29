@@ -605,6 +605,32 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Export Backup */}
+            {user && (
+              <button
+                onClick={() => {
+                  const data = {
+                    version: 1,
+                    exportedAt: new Date().toISOString(),
+                    tab: 'widgets',
+                    widgetStyles:  styles,
+                    customConfigs,
+                  };
+                  const json     = JSON.stringify(data, null, 2);
+                  const filename = `ttplus-widgets-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                  const uri      = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+                  const a        = document.createElement('a');
+                  a.href = uri; a.download = filename;
+                  document.body.appendChild(a); a.click();
+                  document.body.removeChild(a);
+                  toast.success('⬇ Export Widgets เรียบร้อย');
+                }}
+                title="Export Widget Settings เป็นไฟล์ Backup"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80"
+              >
+                ⬇ Export
+              </button>
+            )}
             {/* ฟังเสียง Alert ใน Browser — default OFF */}
             {user && (
               <button
