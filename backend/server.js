@@ -18,7 +18,7 @@ const admin = require('firebase-admin');
 const { generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
-const { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers } = require('./handlers/tiktok');
+const { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers, getConnectionByUsername, getConnectionInfo } = require('./handlers/tiktok');
 const { cleanupStaleBattles } = require('./handlers/game/combat');
 const { validateSettings } = require('./utils/validate');
 const { logSession, logAudit, flushAll } = require('./utils/logger');
@@ -186,6 +186,19 @@ app.post('/api/connect', verifyToken, connectLimiter, async (req, res) => {
   const clean = tiktokUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
   if (!clean) return res.status(400).json({ error: 'Invalid username format' });
 
+  // ตรวจว่า user คนเดียวกันมี TikTok connection อยู่แล้วจาก tab อื่น
+  // (same Google account, หลาย browser tab — ต้อง takeover เพื่อไม่ให้ connection ทับซ้อน)
+  const myConn = getConnectionInfo(req.user.uid);
+  if (myConn) {
+    return res.json({ alreadyInUse: true, tiktokUsername: myConn.tiktokUsername });
+  }
+
+  // ตรวจว่า username นี้มีคนอื่น (คนละ account) ใช้อยู่ไหม
+  const existing = getConnectionByUsername(clean);
+  if (existing && existing.userId !== req.user.uid) {
+    return res.json({ alreadyInUse: true, tiktokUsername: clean });
+  }
+
   // ถ้าหา socketId ไม่เจอ ให้รอ 1.5 วิ แล้วลองใหม่ครั้งเดียว
   // ป้องกัน race condition: socket reconnect → firebase verifyIdToken ยังไม่เสร็จ
   let socketId = userSockets.get(req.user.uid);
@@ -201,6 +214,55 @@ app.post('/api/connect', verifyToken, connectLimiter, async (req, res) => {
   } catch (err) {
     const msg = err?.message || 'Could not connect. Please try again.';
     console.error('[API] /api/connect failed:', msg);
+    res.status(400).json({ error: msg });
+  }
+});
+
+// ===== TikTok status (ใช้ restore UI state หลัง refresh) =====
+app.get('/api/tiktok/status', verifyToken, async (req, res) => {
+  const info = getConnectionInfo(req.user.uid);
+  if (!info) return res.json({ connected: false });
+  return res.json({ connected: true, tiktokUsername: info.tiktokUsername, connectedAt: info.connectedAt });
+});
+
+// ===== Takeover: เด้ง Person 1 ออก แล้วเชื่อมต่อ Person 2 =====
+app.post('/api/takeover', verifyToken, connectLimiter, async (req, res) => {
+  const { tiktokUsername } = req.body;
+  if (!tiktokUsername || typeof tiktokUsername !== 'string') return res.status(400).json({ error: 'Invalid username' });
+
+  const clean = tiktokUsername.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 50);
+  if (!clean) return res.status(400).json({ error: 'Invalid username format' });
+
+  let socketId = userSockets.get(req.user.uid);
+  if (!socketId) {
+    await new Promise(r => setTimeout(r, 1500));
+    socketId = userSockets.get(req.user.uid);
+  }
+  if (!socketId) return res.status(400).json({ error: 'No active connection. Please refresh.' });
+
+  // หาว่าใครถือ connection อยู่ — ดูทั้ง same-user (tab อื่น) และ different user
+  // ใช้ socketId ที่เก็บไว้ใน activeConnections (ไม่ใช่ userSockets ซึ่งถูก overwrite แล้ว)
+  const myConn     = getConnectionInfo(req.user.uid);          // same uid, tab อื่น
+  const otherConn  = getConnectionByUsername(clean);            // different uid, same username
+  const kickTarget = myConn
+    ? { userId: req.user.uid, socketId: myConn.socketId }      // กรณี same user หลาย tab
+    : (otherConn && otherConn.userId !== req.user.uid)
+      ? { userId: otherConn.userId, socketId: getConnectionInfo(otherConn.userId)?.socketId }
+      : null;
+
+  if (kickTarget) {
+    if (kickTarget.socketId) {
+      io.to(kickTarget.socketId).emit('kicked', { tiktokUsername: clean, reason: 'taken_over' });
+    }
+    await stopConnection(kickTarget.userId);
+  }
+
+  try {
+    await startConnection(req.user.uid, clean, io, socketId);
+    res.json({ success: true, tiktokUsername: clean });
+  } catch (err) {
+    const msg = err?.message || 'Could not connect. Please try again.';
+    console.error('[API] /api/takeover failed:', msg);
     res.status(400).json({ error: msg });
   }
 });

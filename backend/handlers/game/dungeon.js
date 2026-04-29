@@ -17,14 +17,11 @@ function resolveMonster(monsterId) {
 }
 
 // ===== Helper: get current dungeon run =====
-// single-field query + limit(100) — ไม่ต้องสร้าง composite index
-// user ปกติมี completed run ไม่เกิน 100 docs; active run เป็น doc ล่าสุดที่สร้างได้เสมอ
-// (enforcement ใน enterDungeon ไม่ให้มี active run พร้อมกัน >1)
+// Note: single-field query only (no composite index needed)
 async function getCurrentRun(uid) {
   const db = admin.firestore();
   const snap = await db.collection('game_dungeons')
     .where('uid', '==', uid)
-    .limit(100)
     .get();
   const active = snap.docs.find(d => d.data().status === 'active');
   if (!active) return null;

@@ -11,21 +11,12 @@ const BOSS_SPAWN_THRESHOLD = 500;
 const DIAMONDS_PER_RP = 10;
 
 // Idempotency cache (in-memory, ครอบ reconnect window)
-// txId → timestamp (เก็บ 1 ชั่วโมง)
+// txId → true (เก็บ 1 ชั่วโมง)
 const processedTx = new Map();
-
-// tiktokUniqueId → uid cache (ป้องกัน Firestore query ซ้ำสำหรับ viewer คนเดิม)
-// key: lowercase uniqueId → { uid, loadedAt }  TTL: 1 ชั่วโมง
-const tiktokIdCache = new Map();
-
 setInterval(() => {
   const cutoff = Date.now() - 3600_000;
   for (const [k, v] of processedTx.entries()) {
     if (v < cutoff) processedTx.delete(k);
-  }
-  // ล้าง tiktokId cache entry ที่หมดอายุ
-  for (const [k, v] of tiktokIdCache.entries()) {
-    if (v.loadedAt < cutoff) tiktokIdCache.delete(k);
   }
 }, 10 * 60 * 1000);
 
@@ -47,29 +38,22 @@ async function processGift({ vjUid, tiktokUniqueId, giftName, diamondCount, repe
   }
   processedTx.set(txId, Date.now());
 
-  // หา viewer's game account จาก tiktokUniqueId (ใช้ cache ป้องกัน Firestore query ซ้ำ)
+  // หา viewer's game account จาก tiktokUniqueId
   let viewerUid = null;
-  const cacheKey = tiktokUniqueId.toLowerCase();
-  const cached = tiktokIdCache.get(cacheKey);
-  if (cached) {
-    viewerUid = cached.uid; // อาจเป็น null (not verified) ก็ cache ไว้เช่นกัน
-  } else {
-    try {
-      const snap = await db.collection('game_accounts')
-        .where('tiktokUniqueId', '==', cacheKey)
-        .where('tiktokVerified', '==', true)
-        .limit(1).get();
-      viewerUid = snap.empty ? null : snap.docs[0].id;
-      tiktokIdCache.set(cacheKey, { uid: viewerUid, loadedAt: Date.now() });
-    } catch (err) {
-      console.error('[TikTokCurrency] Firestore lookup error:', err.message);
+  try {
+    const snap = await db.collection('game_accounts')
+      .where('tiktokUniqueId', '==', tiktokUniqueId.toLowerCase())
+      .where('tiktokVerified', '==', true)
+      .limit(1).get();
+
+    if (snap.empty) {
+      // ผู้ส่งยังไม่ได้ verify → ไม่ให้ gold แต่ record ไว้
+      console.log(`[TikTokCurrency] @${tiktokUniqueId} not verified, gift skipped`);
       return;
     }
-  }
-
-  if (!viewerUid) {
-    // ผู้ส่งยังไม่ได้ verify → ไม่ให้ gold
-    console.log(`[TikTokCurrency] @${tiktokUniqueId} not verified, gift skipped`);
+    viewerUid = snap.docs[0].id;
+  } catch (err) {
+    console.error('[TikTokCurrency] Firestore lookup error:', err.message);
     return;
   }
 

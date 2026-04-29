@@ -18,7 +18,7 @@ const H = 600;
  *   100-999 → 18px (1.8×)  ผ่านคอขวดสบาย
  *  1000-9999→ 28px (2.8×)  ผ่านคอขวดได้ (neck=86px, max r=43)
  *  10000+  → 38px (3.8×)   เกือบเต็มคอพอดี — เห็นความต่างชัด
- * giftScale: URL param gs= ให้ VJ ปรับ % ได้ (50–200)
+ * giftScale: URL param gs= ให้ VJ ปรับ % ได้ (10–200)
  */
 function getItemR(diamonds = 0, giftScale = 100) {
   const d = Math.max(1, diamonds || 1);
@@ -27,7 +27,7 @@ function getItemR(diamonds = 0, giftScale = 100) {
   else if (d >=  1000) r = 28;
   else if (d >=   100) r = 18;
   else                 r = 10;
-  return Math.max(10, Math.round(r * (giftScale / 100)));
+  return Math.max(3, Math.round(r * (giftScale / 100)));
 }
 
 // พื้น ground สำหรับ overflow
@@ -228,7 +228,7 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
     }
 
     if (style?.gs !== undefined) {
-      giftScaleRef.current = Math.max(50, Math.min(200, parseInt(style.gs) || 100));
+      giftScaleRef.current = Math.max(10, Math.min(200, parseInt(style.gs) || 100));
     }
     if (style?.showSender    !== undefined) showSenderRef.current    = parseInt(style.showSender)    === 0 ? 0 : 1;
     if (style?.showGiftName  !== undefined) showGiftNameRef.current  = parseInt(style.showGiftName)  === 0 ? 0 : 1;

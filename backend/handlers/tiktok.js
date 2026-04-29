@@ -228,6 +228,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       tiktokUsername,
       connectedAt:      Date.now(),
       manualDisconnect: false,
+      socketId,          // เก็บ socketId ไว้เพื่อ emit kicked ไปยัง tab ที่ถูก takeover
     });
 
     // Invalidate event/action cache ทุกครั้ง — ให้ VJ เห็นการแก้ไขล่าสุดทันที
@@ -604,7 +605,28 @@ async function getGiftCatalog() {
   return Array.from(globalGiftCatalog.values()).sort((a, b) => a.diamondCount - b.diamondCount);
 }
 
+// Reverse lookup: หา userId จาก tiktokUsername (case-insensitive)
+// คืน { userId, tiktokUsername, connectedAt } หรือ null
+function getConnectionByUsername(tiktokUsername) {
+  const lower = (tiktokUsername || '').toLowerCase();
+  for (const [userId, conn] of activeConnections.entries()) {
+    if ((conn.tiktokUsername || '').toLowerCase() === lower) {
+      return { userId, tiktokUsername: conn.tiktokUsername, connectedAt: conn.connectedAt };
+    }
+  }
+  return null;
+}
+
+// ข้อมูล connection ของ user คนนี้ (สำหรับ status restore หลัง refresh + takeover)
+// socketId = socketId ของ tab ที่กำลัง connect อยู่ (สำหรับ emit kicked ไปถูก tab)
+function getConnectionInfo(userId) {
+  const conn = activeConnections.get(userId);
+  if (!conn) return null;
+  return { tiktokUsername: conn.tiktokUsername, connectedAt: conn.connectedAt, socketId: conn.socketId };
+}
+
 module.exports = {
   startConnection, stopConnection, hasConnection, getActiveConnectionCount,
   getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers, getGiftCatalog,
+  getConnectionByUsername, getConnectionInfo,
 };

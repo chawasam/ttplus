@@ -13,7 +13,7 @@ const CACHE_TTL   = 60_000;
 const globalCooldowns = new Map(); // `${vjUid}_${actionId}` → lastFiredAt
 const userCooldowns   = new Map(); // `${vjUid}_${actionId}_${tiktokId}` → lastFiredAt
 
-// ล้าง cooldowns ของ VJ ที่หยุด stream แล้ว (เรียกจาก tiktok.js เมื่อ manual disconnect)
+// ล้าง cooldowns ของ VJ ที่หยุด stream แล้ว (ป้องกัน memory leak)
 function clearVjCooldowns(vjUid) {
   const prefix = `${vjUid}_`;
   for (const k of globalCooldowns.keys()) {
@@ -23,19 +23,6 @@ function clearVjCooldowns(vjUid) {
     if (k.startsWith(prefix)) userCooldowns.delete(k);
   }
 }
-
-// Time-based cleanup: ล้าง cooldown entries ที่หมดอายุแน่ ๆ แล้ว
-// max cooldown ที่รองรับคือ 600 วิ → entries เก่ากว่า 600 วิ safe to delete
-const MAX_COOLDOWN_SEC = 600;
-setInterval(() => {
-  const cutoff = Date.now() - MAX_COOLDOWN_SEC * 1000;
-  for (const [k, v] of globalCooldowns.entries()) {
-    if (v < cutoff) globalCooldowns.delete(k);
-  }
-  for (const [k, v] of userCooldowns.entries()) {
-    if (v < cutoff) userCooldowns.delete(k);
-  }
-}, 5 * 60 * 1000); // ทำทุก 5 นาที
 
 async function getVjEvents(vjUid) {
   const cached = eventsCache.get(vjUid);

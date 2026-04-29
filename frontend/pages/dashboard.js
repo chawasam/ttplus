@@ -62,6 +62,11 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   const [connected, setConnected]           = useState(false);
   const [connecting, setConnecting]         = useState(false);
 
+  // ── Takeover dialog — เมื่อมีการ connect อยู่แล้ว (tab อื่น หรือ account อื่น) ──
+  // existingUsername = username ที่กำลัง connect อยู่ปัจจุบัน
+  // targetUsername   = username ที่ผู้ใช้อยากจะ connect (ใช้ส่ง /api/takeover)
+  const [takeoverDialog, setTakeoverDialog] = useState({ open: false, existingUsername: '', targetUsername: '' });
+
   // ── broadcast connection status → StatusBar ──
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -206,6 +211,20 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         toast.error(data.message);
       }
     });
+
+    // ── ถูก takeover (tab อื่นของ account เดียวกัน หรือ account อื่นยึด username) ──
+    socket.on('kicked', (data) => {
+      setConnected(false);
+      setConnecting(false);
+      wasConnectedRef.current = false;
+      manualDisconnectRef.current = true;
+      try { sessionStorage.setItem('ttplus_manual_dc', '1'); } catch {}
+      const username = data?.tiktokUsername ? `@${data.tiktokUsername}` : '';
+      toast.error(
+        `⚠️ การเชื่อมต่อ${username ? ` ${username}` : ''}ถูกย้ายไปยัง tab/หน้าต่างอื่นแล้ว`,
+        { duration: 8000 }
+      );
+    });
     socket.on('chat',     (data) => {
       const s = sanitizeEvent(data); addEvent(s); setTotalComments(c => c + 1);
       // เล่นเสียง TTS เฉพาะเมื่อ user เปิดเสียงบนเครื่องนี้ไว้
@@ -320,6 +339,22 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           };
           configureTTS(ttsCfg); // โหลดค่า TTS เข้า lib เพื่อให้ speak() ทำงานถูกต้อง
         } catch { /* ignore */ }
+
+        // ── Restore connection state หลัง page refresh ──────────────────────
+        // ถ้า server ยังมี connection อยู่ (backend ไม่ restart) → restore UI ทันที
+        // ไม่ต้องรอ socket auto-connect (ซึ่งต้องรอ ~0.7-1s + API call)
+        try {
+          const statusRes = await api.get('/api/tiktok/status');
+          if (statusRes.data?.connected) {
+            setConnected(true);
+            setConnecting(false);
+            // อัปเดต username ถ้า server รู้จักแต่ local ยังไม่มี
+            if (statusRes.data.tiktokUsername && !tiktokUsernameRef.current) {
+              setTiktokUsername(statusRes.data.tiktokUsername);
+            }
+            autoConnectDoneRef.current = true; // ไม่ต้อง auto-connect ซ้ำ
+          }
+        } catch { /* ignore — server อาจ restart แล้ว, socket จะ handle auto-reconnect เอง */ }
       })();
     } else {
       // User logged out — disconnect socket
@@ -358,7 +393,17 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     try { sessionStorage.removeItem('ttplus_manual_dc'); } catch {}
     setConnecting(true);
     try {
-      await api.post('/api/connect', { tiktokUsername: cleanUsername });
+      const res = await api.post('/api/connect', { tiktokUsername: cleanUsername });
+      // มี connection อยู่แล้ว (tab อื่น หรือ account อื่น) — แสดง takeover dialog
+      if (res.data?.alreadyInUse) {
+        setConnecting(false);
+        setTakeoverDialog({
+          open: true,
+          existingUsername: res.data.tiktokUsername || cleanUsername, // username ที่กำลัง active อยู่
+          targetUsername:   cleanUsername,                             // username ที่ต้องการ connect
+        });
+        return;
+      }
     } catch (err) {
       const errMsg = err?.response?.data?.error || '';
       // ข้ามถ้าเป็น error ที่ retry ไม่มีประโยชน์
@@ -372,8 +417,17 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       toast.loading('เชื่อมต่อไม่สำเร็จ — กำลัง retry...', { id: 'retry', duration: 2000 });
       await new Promise(r => setTimeout(r, 2000));
       try {
-        await api.post('/api/connect', { tiktokUsername: cleanUsername });
+        const retryRes = await api.post('/api/connect', { tiktokUsername: cleanUsername });
         toast.dismiss('retry');
+        if (retryRes.data?.alreadyInUse) {
+          setConnecting(false);
+          setTakeoverDialog({
+            open: true,
+            existingUsername: retryRes.data.tiktokUsername || cleanUsername,
+            targetUsername:   cleanUsername,
+          });
+          return;
+        }
         return; // retry สำเร็จ — รอ connection_status จาก socket
       } catch (retryErr) {
         toast.dismiss('retry');
@@ -383,6 +437,23 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       setConnecting(false);
     }
   }, [user, tiktokUsername]);
+
+  // ── Takeover: ยืนยัน → เด้งการเชื่อมต่อเดิมออกแล้ว connect tab นี้ ──
+  const handleTakeover = useCallback(async () => {
+    const { targetUsername } = takeoverDialog;
+    setTakeoverDialog({ open: false, existingUsername: '', targetUsername: '' });
+    manualDisconnectRef.current = false;
+    try { sessionStorage.removeItem('ttplus_manual_dc'); } catch {}
+    setConnecting(true);
+    try {
+      await api.post('/api/takeover', { tiktokUsername: targetUsername });
+      // รอ connection_status: connected จาก socket
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Takeover ไม่สำเร็จ กรุณาลองใหม่';
+      toast.error(msg);
+      setConnecting(false);
+    }
+  }, [takeoverDialog]);
 
   const handleDisconnect = useCallback(async () => {
     manualDisconnectRef.current = true;  // user กด disconnect เอง — ห้าม auto-reconnect
@@ -711,6 +782,55 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           </div>
         </div>
       )}
+
+      {/* ── Takeover Confirmation Dialog ── */}
+      {takeoverDialog.open && (() => {
+        const { existingUsername, targetUsername } = takeoverDialog;
+        const isSameUsername = existingUsername.toLowerCase() === targetUsername.toLowerCase();
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={e => e.target === e.currentTarget && setTakeoverDialog({ open: false, existingUsername: '', targetUsername: '' })}>
+            <div className={clsx('w-full max-w-sm mx-4 rounded-2xl p-7 shadow-2xl', theme === 'dark' ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200')}>
+              <div className="flex items-start gap-4 mb-5">
+                <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-bold text-base mb-1">มีการเชื่อมต่ออยู่แล้ว</h3>
+                  <p className={clsx('text-sm leading-relaxed', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                    {isSameUsername ? (
+                      <>
+                        บัญชีของคุณกำลังเชื่อมต่อ <span className="font-semibold text-amber-400">@{existingUsername}</span> อยู่ใน tab/หน้าต่างอื่น
+                        ต้องการย้ายการเชื่อมต่อมายัง tab นี้ไหม?
+                      </>
+                    ) : (
+                      <>
+                        บัญชีของคุณกำลังเชื่อมต่อ <span className="font-semibold text-amber-400">@{existingUsername}</span> อยู่ใน tab/หน้าต่างอื่น
+                        ต้องการปิด connection นั้นแล้วเชื่อมต่อ <span className="font-semibold text-amber-400">@{targetUsername}</span> ที่นี่แทนไหม?
+                      </>
+                    )}
+                    <span className="text-xs opacity-60 mt-1.5 block">การเชื่อมต่อใน tab/หน้าต่างอื่นจะถูกยกเลิกอัตโนมัติ</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setTakeoverDialog({ open: false, existingUsername: '', targetUsername: '' })}
+                  className={clsx('flex-1 py-2.5 rounded-xl text-sm font-medium transition', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600')}>
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleTakeover}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-white transition">
+                  ย้ายการเชื่อมต่อ
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

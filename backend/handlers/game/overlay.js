@@ -35,17 +35,8 @@ async function getOverlayState(req, res) {
       return res.json({ found: true, hasChar: false, tiktokId });
     }
 
-    // ดึง character + dungeon + achievement พร้อมกันทั้งหมด
-    const [charDoc, dungeonSnap, achDoc] = await Promise.all([
-      db.collection('game_characters').doc(charId).get(),
-      db.collection('game_dungeons')
-        .where('uid', '==', uid)
-        .where('status', '==', 'active')
-        .limit(1)
-        .get(),
-      db.collection('game_achievements').doc(uid).get(),
-    ]);
-
+    // Get character
+    const charDoc = await db.collection('game_characters').doc(charId).get();
     if (!charDoc.exists) {
       return res.json({ found: true, hasChar: false, tiktokId });
     }
@@ -54,12 +45,20 @@ async function getOverlayState(req, res) {
     // Get recent events (last 10)
     const recentEvents = (acct.recentEvents || []).slice(0, 10);
 
+    // Get active dungeon run (if any)
+    const dungeonSnap = await db.collection('game_dungeons')
+      .where('uid', '==', uid)
+      .where('status', '==', 'active')
+      .limit(1)
+      .get();
     const inDungeon = !dungeonSnap.empty ? {
       dungeonId: dungeonSnap.docs[0].data().dungeonId,
       room:      dungeonSnap.docs[0].data().currentRoom,
       total:     dungeonSnap.docs[0].data().totalRooms,
     } : null;
 
+    // Get achievement count
+    const achDoc = await db.collection('game_achievements').doc(uid).get();
     const achCount = achDoc.exists ? (achDoc.data().unlockedIds || []).length : 0;
 
     return res.json({
