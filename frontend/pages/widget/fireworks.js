@@ -207,15 +207,74 @@ function tickRocket(ctx, r, now) {
     r.trail.push({ x: r.x, y: r.y });
     if (r.trail.length > TRAIL_LEN) r.trail.shift();
 
-    // Draw smoke trail
-    for (let i = 0; i < r.trail.length; i++) {
-      const f   = i / r.trail.length;
-      const pt  = r.trail[i];
-      const rad = 2 + f * (AVATAR_R * 0.55);
+    // ── Rocket exhaust flame (หางจรวดพุ่งออกด้านหลัง) ──────────────────────
+    if (r.trail.length >= 2) {
+      // คำนวณทิศทางการเคลื่อนที่จาก trail จุดเก่า → ปัจจุบัน
+      const refIdx = Math.max(0, r.trail.length - 4);
+      const ref    = r.trail[refIdx];
+      const dx     = r.x - ref.x;
+      const dy     = r.y - ref.y;
+      const len    = Math.sqrt(dx * dx + dy * dy) || 1;
+      // ทิศทางไฟพ่นออก = ตรงข้ามทิศทางบิน (backward)
+      const ex     = -dx / len;
+      const ey     = -dy / len;
+      // ตั้งฉากกับ exhaust (ความกว้างเปลว)
+      const px     = -ey;
+      const py     =  ex;
+
+      const flameLen  = 48 + AVATAR_R * 1.4;  // ความยาวเปลวไฟ
+      const baseW     = AVATAR_R * 0.6;        // ความกว้างที่โคน
+      const tipX      = r.x + ex * flameLen;
+      const tipY      = r.y + ey * flameLen;
+
+      // Gradient: ขาวร้อนที่โคน → เหลือง → ส้ม → แดง → โปร่งใส
+      const grad = ctx.createLinearGradient(r.x, r.y, tipX, tipY);
+      grad.addColorStop(0,    'rgba(255,255,240,0.98)');
+      grad.addColorStop(0.12, 'rgba(255,245,80,0.92)');
+      grad.addColorStop(0.38, 'rgba(255,130,15,0.80)');
+      grad.addColorStop(0.68, 'rgba(200,35,0,0.50)');
+      grad.addColorStop(1,    'rgba(80,0,0,0)');
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,150,20,0.85)';
+      ctx.shadowBlur  = 14;
+      // รูปทรงกรวย: กว้างที่โคน แคบไปที่ปลาย
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, rad, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,200,80,${f * 0.55})`;
+      ctx.moveTo(r.x + px * baseW,  r.y + py * baseW);
+      ctx.lineTo(r.x - px * baseW,  r.y - py * baseW);
+      ctx.lineTo(tipX, tipY);
+      ctx.closePath();
+      ctx.fillStyle = grad;
       ctx.fill();
+
+      // Inner bright core — เปลวใจกลางสว่างกว่า
+      const coreLen = flameLen * 0.42;
+      const coreW   = baseW * 0.38;
+      const coreTipX = r.x + ex * coreLen;
+      const coreTipY = r.y + ey * coreLen;
+      const coreGrad = ctx.createLinearGradient(r.x, r.y, coreTipX, coreTipY);
+      coreGrad.addColorStop(0,   'rgba(255,255,255,0.95)');
+      coreGrad.addColorStop(0.5, 'rgba(255,255,180,0.70)');
+      coreGrad.addColorStop(1,   'rgba(255,200,60,0)');
+      ctx.beginPath();
+      ctx.moveTo(r.x + px * coreW,  r.y + py * coreW);
+      ctx.lineTo(r.x - px * coreW,  r.y - py * coreW);
+      ctx.lineTo(coreTipX, coreTipY);
+      ctx.closePath();
+      ctx.fillStyle = coreGrad;
+      ctx.fill();
+      ctx.restore();
+
+      // Sparks — ประกายไฟกระเด็นออกตามแนว exhaust
+      for (let i = 0; i < r.trail.length; i++) {
+        const f  = i / r.trail.length;
+        const pt = r.trail[i];
+        const sparkR = 1.2 + f * 2.2;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, sparkR, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,${Math.floor(200 + f * 55)},${Math.floor(f * 60)},${f * 0.75})`;
+        ctx.fill();
+      }
     }
 
     // Draw rocket avatar
