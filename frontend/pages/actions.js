@@ -1028,15 +1028,25 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
 }
 
 // ── OBS command executor (one-shot, keeps socket open until return fires) ────
-function fireObsCommands(host, port, action) {
+// onStatus(msg) — callback ส่ง feedback กลับไป UI (optional)
+function fireObsCommands(host, port, action, onStatus) {
+  const notify = (msg) => { if (onStatus) onStatus(msg); };
+
   let ws;
-  try { ws = new WebSocket(`ws://${host}:${port}`); } catch { return; }
+  try { ws = new WebSocket(`ws://${host}:${port}`); }
+  catch { notify('❌ เชื่อมต่อ OBS ไม่ได้ (WebSocket error)'); return; }
 
   let closeTimer = null;
   const scheduleClose = (delayMs) => {
     if (closeTimer) clearTimeout(closeTimer);
     closeTimer = setTimeout(() => { try { ws.close(); } catch {} }, delayMs);
   };
+
+  // Timeout กรณี OBS ไม่ตอบ
+  const connectTimeout = setTimeout(() => {
+    notify('❌ OBS ไม่ตอบสนอง — ตรวจสอบว่า OBS เปิดอยู่และ WebSocket Server เปิดใช้งาน');
+    try { ws.close(); } catch {}
+  }, 5000);
 
   // Track pending request types by requestId so we can route op=7 responses
   const pending = {};
@@ -1054,31 +1064,38 @@ function fireObsCommands(host, port, action) {
 
     if (msg.op === 0) {
       // Hello → Identify
+      clearTimeout(connectTimeout);
       ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
 
     } else if (msg.op === 2) {
       // Identified — kick off initial requests
+      notify('🔌 เชื่อมต่อ OBS สำเร็จ กำลังส่งคำสั่ง...');
       const hasReturn   = !!(action.obsSceneReturn || action.obsSourceReturn);
       const returnDelay = (action.displayDuration || 5) * 1000;
 
       // Switch scene
       if (action.types?.includes('switch_obs_scene') && action.obsScene) {
         if (action.obsSceneReturn) {
-          // Need current scene first; actual switch happens in op=7 handler
           send('GetCurrentProgramScene', {});
         } else {
           send('SetCurrentProgramScene', { sceneName: action.obsScene });
+          notify(`✅ สลับไป Scene "${action.obsScene}"`);
         }
       }
 
       // Activate source — OBS WS v5 requires sceneItemId (integer), not sceneItemName
-      // Fetch the item list first; actual enable happens in op=7 handler
+      // ถ้าไม่มี obsScene ให้ดึง current scene ก่อน แล้วค่อย GetSceneItemList
       if (action.types?.includes('activate_obs_source') && action.obsSource) {
-        send('GetSceneItemList', { sceneName: action.obsScene || '' });
+        if (action.obsScene) {
+          send('GetSceneItemList', { sceneName: action.obsScene });
+        } else {
+          // ไม่ได้ระบุ scene → ดึง current scene ก่อน
+          send('GetCurrentProgramScene', {});
+        }
       }
 
       // Keep socket alive long enough for any return command to fire
-      scheduleClose(hasReturn ? returnDelay + 2000 : 1500);
+      scheduleClose(hasReturn ? returnDelay + 3000 : 4000);
 
     } else if (msg.op === 7) {
       // Route response by original requestType
@@ -1086,43 +1103,61 @@ function fireObsCommands(host, port, action) {
       const reqType = pending[reqId] || '';
       delete pending[reqId];
 
+      // ตรวจสอบ status OBS — ถ้า request ล้มเหลวให้แจ้ง
+      const status = msg.d?.requestStatus;
+      if (status && !status.result) {
+        notify(`❌ OBS ตอบกลับ error: ${status.comment || 'unknown error'} (code ${status.code})`);
+        return;
+      }
+
       if (reqType === 'GetCurrentProgramScene') {
         const current = msg.d.responseData?.currentProgramSceneName;
-        if (current && action.obsScene) {
+
+        // กรณี switch scene with return
+        if (action.types?.includes('switch_obs_scene') && action.obsScene && action.obsSceneReturn && current) {
           send('SetCurrentProgramScene', { sceneName: action.obsScene });
-          if (action.obsSceneReturn) {
-            const dur = (action.displayDuration || 5) * 1000;
-            setTimeout(() => {
-              send('SetCurrentProgramScene', { sceneName: current });
-            }, dur);
-          }
+          notify(`✅ สลับไป "${action.obsScene}" · กลับ "${current}" ใน ${action.displayDuration}s`);
+          const dur = (action.displayDuration || 5) * 1000;
+          setTimeout(() => send('SetCurrentProgramScene', { sceneName: current }), dur);
+        }
+
+        // กรณี activate source ไม่มี scene → ใช้ current scene แทน
+        if (action.types?.includes('activate_obs_source') && action.obsSource && current) {
+          send('GetSceneItemList', { sceneName: current });
         }
 
       } else if (reqType === 'GetSceneItemList') {
-        const items  = msg.d.responseData?.sceneItems || [];
-        const item   = items.find(i => i.sourceName === action.obsSource);
-        if (!item) return;
-        const sceneItemId = item.sceneItemId; // integer required by WS v5
-        send('SetSceneItemEnabled', {
-          sceneName: action.obsScene || '',
-          sceneItemId,
-          sceneItemEnabled: true,
-        });
+        const items = msg.d.responseData?.sceneItems || [];
+        // ค้นหาแบบ case-insensitive เพื่อลด user error
+        const srcLower = action.obsSource.toLowerCase();
+        const item = items.find(i =>
+          i.sourceName === action.obsSource ||
+          i.sourceName?.toLowerCase() === srcLower
+        );
+        if (!item) {
+          const names = items.map(i => `"${i.sourceName}"`).join(', ');
+          notify(`❌ ไม่พบ Source "${action.obsSource}" ใน scene นี้\nมี source: ${names || '(ว่าง)'}`);
+          return;
+        }
+        const sceneItemId  = item.sceneItemId; // integer required by WS v5
+        const sceneName    = action.obsScene || msg.d.responseData?.sceneName || '';
+        send('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true });
+        notify(`✅ เปิด Source "${item.sourceName}"${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`);
+
         if (action.obsSourceReturn) {
           const dur = (action.displayDuration || 5) * 1000;
           setTimeout(() => {
-            send('SetSceneItemEnabled', {
-              sceneName: action.obsScene || '',
-              sceneItemId,
-              sceneItemEnabled: false,
-            });
+            send('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: false });
           }, dur);
         }
       }
     }
   };
 
-  ws.onerror = () => {};
+  ws.onerror = () => {
+    clearTimeout(connectTimeout);
+    notify('❌ เชื่อมต่อ OBS ไม่ได้ — ตรวจสอบ host/port และ OBS WebSocket Server');
+  };
 }
 
 // ── Preview / Test Modal ─────────────────────────────────────────────────────
@@ -1157,17 +1192,11 @@ function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled }) {
       speak(text);
     }
 
-    // OBS commands — fire and show status
+    // OBS commands — fire and show real status via onStatus callback
     const hasObs = action.types?.includes('switch_obs_scene') || action.types?.includes('activate_obs_source');
     if (hasObs) {
       setObsMsg('🔌 กำลังส่งคำสั่ง OBS...');
-      fireObsCommands(obsHost || 'localhost', obsPort || 4455, action);
-      // Brief feedback messages
-      setTimeout(() => setObsMsg(
-        action.types?.includes('switch_obs_scene')
-          ? `✅ สลับไป "${action.obsScene}"${action.obsSceneReturn ? ` · กลับใน ${action.displayDuration}s` : ''}`
-          : `✅ เปิด Source "${action.obsSource}"${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`
-      ), 600);
+      fireObsCommands(obsHost || 'localhost', obsPort || 4455, action, (msg) => setObsMsg(msg));
     }
 
     // Auto-close after displayDuration

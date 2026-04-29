@@ -625,7 +625,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
               OBS / TikTok Studio Widgets
             </h1>
             <p className={clsx('text-sm mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>
-              Copy URL แล้ววางใน TikTok Studio หรือ OBS — ปรับแต่งสีแล้วบันทึก Widget จะ update ทันที ✨
+              Copy URL แล้ววางใน TikTok Studio หรือ OBS — ปรับแต่งสีแล้วบันทึก
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -727,7 +727,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
               {[
                 { n: '1', t: 'Login ด้วย Google',    d: 'กดปุ่ม Login มุมขวาบน — URL ของคุณจะถูกสร้างอัตโนมัติและไม่เปลี่ยนแปลง' },
                 { n: '2', t: 'Copy URL ของ Widget',   d: 'กด 📋 Copy URL → วางใน OBS หรือ TikTok Studio ครั้งเดียวพอ' },
-                { n: '3', t: 'Customize ได้ตลอด',    d: 'กด ⚙️ Customize → ปรับสี → กด บันทึก → Widget update ทันที ไม่ต้อง copy URL ใหม่!' },
+                { n: '3', t: 'Customize ได้ตลอด',    d: 'กด ⚙️ Customize → ปรับสี → กด บันทึก — URL เดิมใช้ได้ตลอด ไม่ต้อง copy ใหม่' },
                 { n: '4', t: 'TikTok Studio',          d: 'Copy Link ในเว็บ → Add Sources → Link → วาง URL (Ctrl+V)' },
               ].map(s => (
                 <div key={s.n} className="flex items-start gap-3">
