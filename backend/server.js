@@ -349,6 +349,21 @@ app.get('/api/stats', verifyToken, async (req, res) => {
   }
 });
 
+// ===== PK Panel static files (วิดีโอที่ user อัพโหลด) =====
+// NOTE: Railway มี ephemeral filesystem — ถ้า deploy บน Railway ให้ใช้ Firebase Storage หรือ persistent volume แทน
+const _path = require('path');
+app.use('/uploads/pk', express.static(_path.join(__dirname, 'uploads', 'pk'), {
+  maxAge: '1d',
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL);
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+}));
+
+// ===== PK Panel Routes =====
+const pkRouter = require('./routes/pk');
+app.use('/api/pk', pkRouter);
+
 // ===== Game Routes =====
 const gameRouter = require('./routes/game');
 app.use('/api/game', gameRouter);
@@ -436,6 +451,17 @@ io.on('connection', (socket) => {
       text:         String(data?.text         || '').slice(0, 300),
     };
     io.to(`widget_${socket.userId}`).emit('tts_status', safe);
+  });
+
+  // ===== PK Panel trigger (authenticated user → widget pk overlay) =====
+  socket.on('pk_trigger', (data) => {
+    if (!socket.userId) return;
+    if (!socketRateLimit(socket.id, 30, 5000)) return;
+    const { videoUrl, videoType, category } = data || {};
+    if (typeof videoUrl !== 'string' || videoUrl.length > 600) return;
+    if (!['webm', 'mp4'].includes(String(videoType || ''))) return;
+    const safeCategory = typeof category === 'string' ? category.slice(0, 30) : '';
+    io.to(`widget_${socket.userId}`).emit('pk_play', { videoUrl, videoType, category: safeCategory });
   });
 
   // ===== Real-time style update (authenticated user → widget room) =====

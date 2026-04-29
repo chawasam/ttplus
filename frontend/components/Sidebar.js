@@ -6,6 +6,7 @@ const navItems = [
   { id: 'tts',        icon: '🔊',  label: 'TTS (สิริ)'  },
   { id: 'actions',    icon: '🎁',  label: 'Actions & Events' },
   { id: 'widgets',    icon: '🎛️', label: 'Widgets'     },
+  { id: 'pk',         icon: '⚔️',  label: 'PK Panel'    },
   { id: 'soundboard', icon: '🎹',  label: 'Soundboard'  },
   { id: 'settings',   icon: '⚙️', label: 'Settings'    },
   { id: 'donate',     icon: '❤️', label: 'Donate'      },

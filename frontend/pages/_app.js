@@ -11,6 +11,7 @@ import Dashboard      from './dashboard';
 import TtsPage        from './tts';
 import ActionsPage    from './actions';
 import WidgetsPage    from './widgets';
+import PKPage         from './pk';
 import SoundboardPage from './soundboard';
 import SettingsPage   from './settings';
 import DonatePage     from './donate';
@@ -122,6 +123,7 @@ const PAGES = [
   { id: 'tts',        Component: TtsPage        },
   { id: 'actions',    Component: ActionsPage    },
   { id: 'widgets',    Component: WidgetsPage    },
+  { id: 'pk',         Component: PKPage         },
   { id: 'soundboard', Component: SoundboardPage },
   { id: 'settings',   Component: SettingsPage   },
   { id: 'donate',     Component: DonatePage     },
@@ -134,6 +136,7 @@ const PATH_TO_ID = {
   '/tts':        'tts',
   '/actions':    'actions',
   '/widgets':    'widgets',
+  '/pk':         'pk',
   '/soundboard': 'soundboard',
   '/settings':   'settings',
   '/donate':     'donate',
