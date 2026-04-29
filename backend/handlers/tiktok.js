@@ -5,6 +5,7 @@ const { sanitizeTikTokEvent, sanitizeStr } = require('../utils/validate');
 const { processGift }  = require('./game/tiktokCurrency');
 const { checkChatVerify } = require('./game/account');
 const { processEvent, invalidateCache, clearVjCooldowns } = require('./actions/eventProcessor');
+const { emitToWidgetRoom } = require('../lib/emitter');
 const crypto = require('crypto');
 const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 
@@ -603,6 +604,12 @@ async function stopConnection(userId) {
   try { conn.connection.disconnect(); } catch (e) { console.warn('[TikTok] disconnect error:', e?.message); }
   activeConnections.delete(userId);
   await logSession({ userId, tiktokUsername: conn.tiktokUsername, action: 'manual_disconnect' });
+
+  // แจ้ง widget ทุกตัวที่อยู่ใน room ให้หยุดอัปเดต
+  emitToWidgetRoom(userId, 'connection_status', {
+    status: 'disconnected',
+    tiktokUsername: conn.tiktokUsername,
+  });
 }
 
 function hasConnection(userId) {

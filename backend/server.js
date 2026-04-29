@@ -83,7 +83,8 @@ const io = new Server(server, {
   },
 });
 
-const userSockets = new Map();
+const userSockets      = new Map();
+const disconnectTimers = new Map(); // userId -> timer — ตัดการเชื่อมต่อ TikTok หลังปิด browser 1 นาที
 
 // ── Shared socket emitter (ให้ handlers emit ถึง user โดยไม่ต้องรับ io ตรงๆ) ──
 const { setIO } = require('./lib/emitter');
@@ -408,6 +409,11 @@ io.on('connection', (socket) => {
     }
     try {
       const decoded = await admin.auth().verifyIdToken(data.token, true);
+      // ยกเลิก pending auto-disconnect timer (กรณี reconnect ภายใน 1 นาที)
+      if (disconnectTimers.has(decoded.uid)) {
+        clearTimeout(disconnectTimers.get(decoded.uid));
+        disconnectTimers.delete(decoded.uid);
+      }
       userSockets.set(decoded.uid, socket.id);
       socket.userId = decoded.uid;
       socket.emit('authenticated', { success: true });
@@ -580,6 +586,21 @@ io.on('connection', (socket) => {
     if (socket.userId) {
       userSockets.delete(socket.userId);
       clearUserLimit(socket.userId);
+
+      // เริ่ม 1-minute timer — ถ้าไม่ reconnect ใน 60 วินาที ให้ตัด TikTok connection ด้วย
+      // (ป้องกัน connection ค้างเมื่อปิด browser tab)
+      if (!disconnectTimers.has(socket.userId)) {
+        const uid = socket.userId;
+        const timer = setTimeout(async () => {
+          disconnectTimers.delete(uid);
+          // ตรวจว่ายังไม่มีใคร reconnect มา
+          if (!userSockets.has(uid)) {
+            await stopConnection(uid);
+            console.log(`[Server] Auto-disconnected TikTok for uid=${uid} (browser closed 60s)`);
+          }
+        }, 60_000);
+        disconnectTimers.set(socket.userId, timer);
+      }
     }
     clearSocketLimit(socket.id);
   });
