@@ -13,6 +13,17 @@ const CACHE_TTL   = 60_000;
 const globalCooldowns = new Map(); // `${vjUid}_${actionId}` → lastFiredAt
 const userCooldowns   = new Map(); // `${vjUid}_${actionId}_${tiktokId}` → lastFiredAt
 
+// ล้าง cooldowns ของ VJ ที่หยุด stream แล้ว (ป้องกัน memory leak)
+function clearVjCooldowns(vjUid) {
+  const prefix = `${vjUid}_`;
+  for (const k of globalCooldowns.keys()) {
+    if (k.startsWith(prefix)) globalCooldowns.delete(k);
+  }
+  for (const k of userCooldowns.keys()) {
+    if (k.startsWith(prefix)) userCooldowns.delete(k);
+  }
+}
+
 async function getVjEvents(vjUid) {
   const cached = eventsCache.get(vjUid);
   if (cached && Date.now() - cached.loadedAt < CACHE_TTL) return cached.events;
@@ -207,4 +218,4 @@ async function processEvent(vjUid, eventType, data) {
   }
 }
 
-module.exports = { processEvent, invalidateCache };
+module.exports = { processEvent, invalidateCache, clearVjCooldowns };

@@ -112,7 +112,7 @@ async function updateAction(req, res) {
     const updates = {};
     const allowed = [
       'name','types','pictureUrl','videoUrl','audioUrl','alertText','ttsText',
-      'obsScene','obsSceneReturn','obsSource','obsSourceReturn',
+      'obsScene','obsSceneDuration','obsSource','obsSourceDuration',
       'displayDuration','overlayScreen','globalCooldown','userCooldown',
       'fadeInOut','repeatWithCombos','enabled',
     ];
@@ -327,8 +327,8 @@ async function getOverlayQueue(req, res) {
     const doc = snap.docs[0];
     const item = { id: doc.id, ...doc.data() };
 
-    // Mark as played
-    await doc.ref.update({ played: true, playedAt: Date.now() });
+    // Delete immediately — keeps Firestore clean (no need for played/cleanup jobs)
+    await doc.ref.delete();
 
     return res.json({ item });
   } catch (err) {

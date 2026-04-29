@@ -4,7 +4,7 @@ const { logSession, logError } = require('../utils/logger');
 const { sanitizeTikTokEvent, sanitizeStr } = require('../utils/validate');
 const { processGift }  = require('./game/tiktokCurrency');
 const { checkChatVerify } = require('./game/account');
-const { processEvent } = require('./actions/eventProcessor');
+const { processEvent, invalidateCache, clearVjCooldowns } = require('./actions/eventProcessor');
 const crypto = require('crypto');
 const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 
@@ -23,6 +23,19 @@ const globalGiftCatalog = new Map(); // name -> { name, diamondCount, pictureUrl
 let   giftCatalogLoaded = false;     // โหลดจาก Firestore ครั้งแรกแล้วหรือยัง
 
 const MAX_MEMBERS_TRACK = 50;
+
+// First-activity tracking: vjUid → Set<uniqueId> (reset ทุก manual connect)
+const firstActivityUsers = new Map();
+
+// ตรวจและ mark first activity — return true ถ้าเป็นครั้งแรกของ user นี้ใน session
+function checkFirstActivity(vjUid, uniqueId) {
+  if (!uniqueId) return false;
+  const seen = firstActivityUsers.get(vjUid) || new Set();
+  if (seen.has(uniqueId)) return false;
+  seen.add(uniqueId);
+  firstActivityUsers.set(vjUid, seen);
+  return true;
+}
 
 // จำกัด connections สูงสุดต่อ server (ป้องกัน resource exhaustion)
 const MAX_CONNECTIONS        = 100;
@@ -217,14 +230,31 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       manualDisconnect: false,
     });
 
+    // Invalidate event/action cache ทุกครั้ง — ให้ VJ เห็นการแก้ไขล่าสุดทันที
+    invalidateCache(userId);
+
     // Reset leaderboards เฉพาะ manual connect ใหม่ (ไม่รีเซ็ตตอน auto-reconnect)
     // → ชื่อคนส่งของขวัญยังอยู่บน leaderboard แม้ VJ หลุดแล้วเชื่อมต่อใหม่
     if (!isReconnect) {
       likesLeaderboard.set(userId, new Map());
       giftsLeaderboard.set(userId, new Map());
       recentMembers.set(userId, []);
+      firstActivityUsers.set(userId, new Set()); // reset first-activity tracking
       // ลบ Firestore state ของ session เก่า — session ใหม่เริ่มนับใหม่
       admin.firestore().collection('leaderboard_state').doc(userId).delete().catch(() => {});
+      // ลบ stale queue items ที่ค้างจาก session เก่า (> 10 นาที)
+      const staleCutoff = Date.now() - 10 * 60 * 1000;
+      admin.firestore().collection('tt_action_queue')
+        .where('vjUid', '==', userId)
+        .where('queuedAt', '<', staleCutoff)
+        .get()
+        .then(snap => {
+          if (snap.empty) return;
+          const batch = admin.firestore().batch();
+          snap.docs.forEach(d => batch.delete(d.ref));
+          return batch.commit();
+        })
+        .catch(() => {});
     }
 
     await logSession({ userId, tiktokUsername, action: 'connect', roomId: state.roomId });
@@ -264,8 +294,12 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       };
       emitAll('chat', chatPayload);
       checkChatVerify(safe.uniqueId, safe.comment || '').catch(() => {});
-      // ลูกเล่น TT — fire chat/command events
-      processEvent(userId, 'chat', { ...chatPayload, comment: safe.comment || '' }).catch(() => {});
+      // ลูกเล่น TT — fire chat/command events + first_activity
+      const chatEvPayload = { ...chatPayload, comment: safe.comment || '' };
+      processEvent(userId, 'chat', chatEvPayload).catch(() => {});
+      if (checkFirstActivity(userId, safe.uniqueId)) {
+        processEvent(userId, 'first_activity', chatEvPayload).catch(() => {});
+      }
     });
 
     connection.on('gift', (data) => {
@@ -346,8 +380,11 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
           ipHash,
         }).catch(err => console.error('[TikTok] processGift error:', err?.message));
       }
-      // ลูกเล่น TT — fire gift events (เฉพาะ final)
+      // ลูกเล่น TT — fire gift events (เฉพาะ final) + first_activity
       processEvent(userId, 'gift', giftPayload).catch(() => {});
+      if (checkFirstActivity(userId, safe.uniqueId)) {
+        processEvent(userId, 'first_activity', giftPayload).catch(() => {});
+      }
     });
 
     connection.on('like', (data) => {
@@ -392,8 +429,11 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         timestamp:         Date.now(),
       };
       emitAll('follow', followPayload);
-      // ลูกเล่น TT — fire follow events
+      // ลูกเล่น TT — fire follow events + first_activity
       processEvent(userId, 'follow', followPayload).catch(() => {});
+      if (checkFirstActivity(userId, safe.uniqueId)) {
+        processEvent(userId, 'first_activity', followPayload).catch(() => {});
+      }
     });
 
     connection.on('share', (data) => {
@@ -409,8 +449,11 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         timestamp: Date.now(),
       };
       emitAll('share', sharePayload);
-      // ลูกเล่น TT — fire share events
+      // ลูกเล่น TT — fire share events + first_activity
       processEvent(userId, 'share', sharePayload).catch(() => {});
+      if (checkFirstActivity(userId, safe.uniqueId)) {
+        processEvent(userId, 'first_activity', sharePayload).catch(() => {});
+      }
     });
 
     // ── Member join (คนกดเข้าดู live) ──
@@ -433,8 +476,8 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         profilePictureUrl: safe.profilePictureUrl,
         timestamp:         Date.now(),
       });
-      // ลูกเล่น TT — fire join events
-      processEvent(userId, 'join', {
+      // ลูกเล่น TT — fire join + first_activity events
+      const joinEvPayload = {
         type: 'join', uniqueId: safe.uniqueId, nickname: safe.nickname,
         profilePictureUrl: safe.profilePictureUrl,
         followRole:   Number(data.followRole) || 0,
@@ -442,7 +485,11 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
         isModerator:  !!(data.isModerator   ?? data.userDetails?.isModerator),
         isTopGifter:  !!(data.isTopGifter),
         timestamp: Date.now(),
-      }).catch(() => {});
+      };
+      processEvent(userId, 'join', joinEvPayload).catch(() => {});
+      if (checkFirstActivity(userId, safe.uniqueId)) {
+        processEvent(userId, 'first_activity', joinEvPayload).catch(() => {});
+      }
     });
 
     connection.on('roomUser', (data) => {
@@ -467,6 +514,9 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
 
       activeConnections.delete(userId);
       await logSession({ userId, tiktokUsername, action: 'disconnect' });
+
+      // ล้าง cooldowns เมื่อ disconnect — ป้องกัน memory leak สำหรับ VJ ที่หยุด stream
+      if (wasManual) clearVjCooldowns(userId);
 
       if (wasManual) {
         // Manual stop — แจ้ง disconnected ทันที ไม่ reconnect
