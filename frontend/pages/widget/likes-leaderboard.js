@@ -240,7 +240,7 @@ export default function LikesLeaderboardWidget() {
                         textShadow: '0 0 4px rgba(0,0,0,0.3)',
                       }}
                     >
-                      👍 {user.likeCount?.toLocaleString()}
+                      ❤️ {user.likeCount?.toLocaleString()}
                     </span>
                   )}
                 </div>
