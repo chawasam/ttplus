@@ -1010,9 +1010,6 @@ function FatJarInner({ ox = 0 }) {
       <ellipse cx={CX} cy={tY+5} rx={rimRx-5} ry={Math.max(2, rimRy-2)}
         fill="none"
         stroke="rgba(255,255,255,0.28)" strokeWidth="1.2" />
-      {/* ด้านในปากขวด — shadow arc (depth ของความหนาแก้ว) */}
-      <path d={`M${L+6} ${tY} A${rimRx-6} ${rimRy-1} 0 0 1 ${R-6} ${tY}`}
-        fill="rgba(0,0,0,0.18)" stroke="none" />
     </>
   );
 }

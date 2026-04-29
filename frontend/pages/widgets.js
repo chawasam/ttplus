@@ -228,8 +228,8 @@ const WIDGETS = [
         onLabel: 'เปิด — ขอบ Widget จะ Fade โปร่งใส (แนะนำสำหรับ OBS)', offLabel: 'ปิด — ขอบทึบ' },
       { key: '_g1',          label: '✏️ ข้อความ & สี',                    type: 'group' },
       { key: 'fontSize',     label: '📏 ขนาดตัวอักษร Title (px)',         type: 'number', default: 13, min: 8, max: 36, step: 1 },
-      { key: 'titleColor',   label: '🎨 สี Title (hex ไม่ต้องใส่ #)',      type: 'text',   default: 'ffffff',   maxLen: 8 },
-      { key: 'artistColor',  label: '🎨 สี Artist (hex หรือ hex+alpha)',   type: 'text',   default: 'ffffff99', maxLen: 10 },
+      { key: 'titleColor',   label: '🎨 สี Title',                         type: 'colorhex', default: 'ffffff' },
+      { key: 'artistColor',  label: '🎨 สี Artist',                        type: 'colorhex', default: 'ffffff99' },
       { key: '_g2',          label: '📜 การเลื่อนข้อความ (Marquee)',       type: 'group' },
       { key: 'marquee',      label: '📜 เลื่อนข้อความ',                    type: 'toggle', default: 0,
         onLabel: 'เปิด — ข้อความเลื่อนแบบ Marquee', offLabel: 'ปิด — ตัดข้อความเมื่อยาวเกิน' },
@@ -586,11 +586,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const setWidgetVol = useCallback((widgetId, vol) => {
     const v = Math.max(0, Math.min(100, Number(vol)));
     setCustomConfigs(prev => ({ ...prev, [widgetId]: { ...prev[widgetId], vol: v } }));
-    // Push real-time ถ้า socket connected
+    // Push real-time ถ้า socket connected — URL ก็อัปเดตอัตโนมัติ (copy URL ใหม่ได้เสมอ)
     const socket = socketRef.current || getSocket();
     if (socket?.connected) {
       socket.emit('push_style_update', { widgetId, style: { vol: v } });
     }
+    // ไม่ toast ทุก slide — เพราะ URL บน card อัปเดต real-time แล้ว ผู้ใช้ copy URL ใหม่ได้เลย
   }, []);
 
   const toggleHowto = () => setHowtoOpen(prev => {
@@ -1125,6 +1126,50 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                             <input type="text" value={val} maxLength={f.maxLen||40} onChange={e => setKey(f.key, e.target.value)}
                               className={clsx('w-full px-3 py-2 rounded-lg text-sm border', isDark?'bg-gray-800 border-gray-700 text-white':'bg-gray-100 border-gray-200 text-gray-900')} />
                           )}
+                          {f.type==='colorhex' && (() => {
+                            // รองรับ hex 6 หลัก (fffff) หรือ hex+alpha 8 หลัก (ffffff99)
+                            const hex6 = '#' + (val.slice(0,6) || 'ffffff');
+                            const alpha = val.length === 8 ? val.slice(6,8) : '';
+                            const alphaNum = alpha ? Math.round(parseInt(alpha,16)/255*100) : 100;
+                            return (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-3">
+                                  {/* Color wheel */}
+                                  <input
+                                    type="color"
+                                    value={hex6}
+                                    onChange={e => {
+                                      const h = e.target.value.slice(1); // ตัด #
+                                      setKey(f.key, alpha ? h + alpha : h);
+                                    }}
+                                    className="w-10 h-10 rounded-lg border-2 cursor-pointer flex-shrink-0 p-0.5"
+                                    style={{ borderColor: isDark ? '#374151' : '#d1d5db', background: 'transparent' }}
+                                  />
+                                  {/* Hex value display */}
+                                  <div className={clsx('flex-1 px-3 py-2 rounded-lg text-sm font-mono border', isDark?'bg-gray-800 border-gray-700 text-gray-300':'bg-gray-100 border-gray-200 text-gray-700')}>
+                                    #{val || 'ffffff'}
+                                  </div>
+                                </div>
+                                {/* Alpha slider (เฉพาะ field ที่รองรับ alpha) */}
+                                {val.length >= 7 || alpha ? (
+                                  <div className="flex items-center gap-3">
+                                    <span className={clsx('text-xs flex-shrink-0 w-12', isDark?'text-gray-500':'text-gray-400')}>ความทึบ</span>
+                                    <input
+                                      type="range" min={0} max={100} step={5}
+                                      value={alphaNum}
+                                      onChange={e => {
+                                        const a = Math.round(Number(e.target.value)/100*255);
+                                        const hex = a.toString(16).padStart(2,'0');
+                                        setKey(f.key, val.slice(0,6) + hex);
+                                      }}
+                                      className="flex-1 h-1.5 accent-brand-500 cursor-pointer"
+                                    />
+                                    <span className={clsx('text-xs font-mono w-10 text-right flex-shrink-0', isDark?'text-gray-400':'text-gray-500')}>{alphaNum}%</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                           {f.type==='toggle' && (
                             <button onClick={() => setKey(f.key, val ? 0 : 1)}
                               className={clsx('w-full py-2 rounded-lg text-sm font-semibold border transition', val ? 'bg-brand-500/15 border-brand-500/50 text-brand-400' : isDark?'bg-gray-800 border-gray-700 text-gray-400':'bg-gray-100 border-gray-200 text-gray-500')}>

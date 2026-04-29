@@ -112,7 +112,7 @@ async function updateAction(req, res) {
     const updates = {};
     const allowed = [
       'name','types','pictureUrl','videoUrl','audioUrl','alertText','ttsText',
-      'obsScene','obsSceneDuration','obsSource','obsSourceDuration',
+      'obsScene','obsSceneReturn','obsSceneDuration','obsSource','obsSourceReturn','obsSourceDuration',
       'displayDuration','overlayScreen','globalCooldown','userCooldown',
       'fadeInOut','repeatWithCombos','enabled',
     ];
