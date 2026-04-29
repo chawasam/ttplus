@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { Toaster } from 'react-hot-toast';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -206,6 +206,31 @@ export default function App({ Component, pageProps }) {
 
   // Widget pages และหน้าอื่นที่ไม่ใช่ main app — render ตามปกติ
   const isMainPage = !!PATH_TO_ID[router.pathname];
+
+  // ── Single-tab enforcement (เฉพาะ main app เท่านั้น) ──────────────────────
+  const [duplicateTab, setDuplicateTab] = useState(false);
+  const tabIdRef = useRef(null);
+  if (tabIdRef.current === null && typeof window !== 'undefined') {
+    tabIdRef.current = sessionStorage.getItem('ttplus_tabid') || (() => {
+      const id = Math.random().toString(36).slice(2);
+      sessionStorage.setItem('ttplus_tabid', id);
+      return id;
+    })();
+  }
+
+  useEffect(() => {
+    if (!isMainPage) return;
+    if (typeof window === 'undefined' || !window.BroadcastChannel) return;
+    const ch = new BroadcastChannel('ttplus_main_tab');
+    ch.postMessage({ type: 'TAB_OPEN', id: tabIdRef.current });
+    ch.onmessage = (e) => {
+      if (!e.data || e.data.id === tabIdRef.current) return;
+      if (e.data.type === 'TAB_OPEN')      setDuplicateTab(true);
+      if (e.data.type === 'TAB_TAKE_OVER') setDuplicateTab(true);
+    };
+    return () => { ch.close(); };
+  }, [isMainPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!isMainPage) {
     return (
       <>
@@ -227,6 +252,61 @@ export default function App({ Component, pageProps }) {
 
   // Main app — render ทุกหน้าพร้อมกัน ซ่อน/แสดงด้วย display
   const sharedProps = { theme, setTheme, user, authLoading, activePage, setActivePage };
+
+  // ── Duplicate tab overlay ───────────────────────────────────────────────────
+  if (duplicateTab) {
+    const isDark = theme === 'dark';
+    return (
+      <div style={{
+        position:'fixed', inset:0, zIndex:9999,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        background: isDark ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.75)',
+        backdropFilter:'blur(8px)',
+      }}>
+        <div style={{
+          textAlign:'center', padding:'40px 36px', borderRadius:20,
+          background: isDark ? '#111827' : '#ffffff',
+          border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`,
+          maxWidth:380, margin:'0 16px', boxShadow:'0 25px 60px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
+          <h2 style={{ color: isDark ? '#f9fafb' : '#111827', fontSize:20, fontWeight:800, margin:'0 0 10px' }}>
+            เปิดอยู่แล้วในแถบอื่น
+          </h2>
+          <p style={{ color: isDark ? '#9ca3af' : '#6b7280', fontSize:14, lineHeight:1.6, margin:'0 0 24px' }}>
+            ttsam.app เปิดอยู่ใน Browser แถบอื่นแล้ว<br />
+            การเปิดหลายแถบพร้อมกันทำให้ connection TikTok ซ้อนกันได้
+          </p>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <button
+              onClick={() => {
+                if (window.BroadcastChannel) {
+                  const ch = new BroadcastChannel('ttplus_main_tab');
+                  ch.postMessage({ type: 'TAB_TAKE_OVER', id: tabIdRef.current });
+                  ch.close();
+                }
+                setDuplicateTab(false);
+              }}
+              style={{
+                padding:'12px', borderRadius:12, border:'none', cursor:'pointer',
+                background:'#f59e0b', color:'#000', fontWeight:700, fontSize:14,
+              }}>
+              ✅ ใช้แถบนี้แทน
+            </button>
+            <button
+              onClick={() => window.close()}
+              style={{
+                padding:'12px', borderRadius:12, cursor:'pointer', fontSize:14,
+                background:'transparent', border:`1px solid ${isDark ? '#374151' : '#d1d5db'}`,
+                color: isDark ? '#9ca3af' : '#6b7280', fontWeight:500,
+              }}>
+              ✕ ปิดแถบนี้
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

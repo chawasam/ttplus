@@ -598,18 +598,14 @@ async function stopConnection(userId) {
   const conn = activeConnections.get(userId);
   if (!conn) return;
 
-  // ตั้ง flag ก่อน disconnect เพื่อกัน auto-reconnect
+  // ตั้ง flag ก่อน disconnect — ห้าม delete จาก activeConnections ที่นี่!
+  // 'disconnected' event handler จะอ่าน manualDisconnect=true แล้วทำ:
+  //   - delete จาก map, log session, emit 'disconnected' ไปยัง socket + widget room
+  // ถ้า delete ก่อน handler จะอ่านได้ wasManual=false แล้ว scheduleReconnect แทน
   conn.manualDisconnect = true;
 
   try { conn.connection.disconnect(); } catch (e) { console.warn('[TikTok] disconnect error:', e?.message); }
-  activeConnections.delete(userId);
-  await logSession({ userId, tiktokUsername: conn.tiktokUsername, action: 'manual_disconnect' });
-
-  // แจ้ง widget ทุกตัวที่อยู่ใน room ให้หยุดอัปเดต
-  emitToWidgetRoom(userId, 'connection_status', {
-    status: 'disconnected',
-    tiktokUsername: conn.tiktokUsername,
-  });
+  // handler 'disconnected' จัดการ log + emit + delete เอง
 }
 
 function hasConnection(userId) {
