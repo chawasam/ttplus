@@ -34,20 +34,27 @@ async function getLeaderboard(req, res) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    const achBoard = [];
-    for (const { uid, count } of sortedAch) {
-      const acct = await db.collection('game_accounts').doc(uid).get();
+    // ดึง account docs ทั้ง 10 พร้อมกัน แล้วดึง character docs พร้อมกันอีกรอบ
+    const acctDocs = await Promise.all(
+      sortedAch.map(({ uid }) => db.collection('game_accounts').doc(uid).get())
+    );
+    const charFetches = acctDocs.map((acct, i) => {
       const charId = acct.data()?.characterId;
-      if (!charId) continue;
-      const charDoc = await db.collection('game_characters').doc(charId).get();
-      if (!charDoc.exists) continue;
+      if (!charId) return Promise.resolve(null);
+      return db.collection('game_characters').doc(charId).get();
+    });
+    const charDocs = await Promise.all(charFetches);
+
+    const achBoard = [];
+    for (let i = 0; i < sortedAch.length; i++) {
+      const charDoc = charDocs[i];
+      if (!charDoc || !charDoc.exists) continue;
       const c = charDoc.data();
       achBoard.push({
         rank: achBoard.length + 1,
         name: c.name||'???', race: c.race||'', class: c.class||'', level: c.level||1,
-        value: count, title: c.equippedTitle||'',
+        value: sortedAch[i].count, title: c.equippedTitle||'',
       });
-      if (achBoard.length >= 10) break;
     }
 
     return res.json({

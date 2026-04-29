@@ -515,11 +515,17 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       activeConnections.delete(userId);
       await logSession({ userId, tiktokUsername, action: 'disconnect' });
 
-      // ล้าง cooldowns เมื่อ disconnect — ป้องกัน memory leak สำหรับ VJ ที่หยุด stream
-      if (wasManual) clearVjCooldowns(userId);
+      // ล้าง in-memory state เมื่อ manual disconnect — ป้องกัน memory leak
+      if (wasManual) {
+        clearVjCooldowns(userId);
+        likesLeaderboard.delete(userId);
+        giftsLeaderboard.delete(userId);
+        recentMembers.delete(userId);
+        firstActivityUsers.delete(userId);
+      }
 
       if (wasManual) {
-        // Manual stop — แจ้ง disconnected ทันที ไม่ reconnect
+        // Manual stop — แจ้ง disconnected ทันที ไม่ reconnect (state ถูก clear ข้างบนแล้ว)
         if (socketId) io.to(socketId).emit('connection_status', { status: 'disconnected', tiktokUsername });
         io.to(widgetRoom).emit('connection_status', { status: 'disconnected', tiktokUsername });
       } else {
