@@ -208,7 +208,14 @@ const WIDGETS = [
       { key: 'maxRows',      label: '📋 จำนวนแถวสูงสุด',        type: 'number', default: 10, min: 1, max: 20, step: 1 },
     ],
   },
-  { id: 'fireworks',         icon: '🎆', name: 'Gift Fireworks',    desc: 'พลุของขวัญ — Rocket = avatar ผู้ส่ง, ระเบิด = รูปของขวัญ', size: '800 × 800' },
+  {
+    id: 'fireworks', icon: '🎆', name: 'Gift Fireworks',
+    desc: 'พลุของขวัญ — Rocket = avatar ผู้ส่ง, ระเบิด = รูปของขวัญ',
+    size: '800 × 800',
+    configFields: [
+      { key: 'vol', label: '🔊 ระดับเสียง', type: 'volume', default: 80 },
+    ],
+  },
   { id: 'myactions',         icon: '🎬', name: 'Actions Overlay',   desc: 'แสดง GIF/วิดีโอ/Alert จากระบบ ลูกเล่น TT บน OBS', size: '1920 × 1080', noStyle: true },
   {
     id: 'nowplaying', icon: '🎶', name: 'Now Playing',
@@ -570,6 +577,17 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     toast.success(`✅ Apply ${WIDGETS.find(w => w.id === widgetId)?.name} แล้ว`);
   }, [customConfigs]);
 
+  // Inline volume slider — update config + push real-time ทันที (ไม่ต้องกด Save)
+  const setWidgetVol = useCallback((widgetId, vol) => {
+    const v = Math.max(0, Math.min(100, Number(vol)));
+    setCustomConfigs(prev => ({ ...prev, [widgetId]: { ...prev[widgetId], vol: v } }));
+    // Push real-time ถ้า socket connected
+    const socket = socketRef.current || getSocket();
+    if (socket?.connected) {
+      socket.emit('push_style_update', { widgetId, style: { vol: v } });
+    }
+  }, []);
+
   const toggleHowto = () => setHowtoOpen(prev => {
     const next = !prev;
     try { localStorage.setItem('ttplus_howto', next ? '1' : '0'); } catch {}
@@ -865,6 +883,33 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                               >
                                 {coinjarSimulating ? '⏳ กำลังส่ง...' : '🎲 จำลองของขวัญ (random)'}
                               </button>
+                            )}
+
+                            {/* Inline volume slider — แสดงเฉพาะ widget ที่มีเสียง */}
+                            {w.configFields?.some(f => f.key === 'vol') && (
+                              <div className={clsx(
+                                'flex items-center gap-3 mb-3 px-3 py-2 rounded-lg',
+                                isDark ? 'bg-gray-800/60' : 'bg-gray-100/80'
+                              )}>
+                                <span className="text-base flex-shrink-0">
+                                  {(customConfigs[w.id]?.vol ?? 80) === 0 ? '🔇' : (customConfigs[w.id]?.vol ?? 80) < 40 ? '🔈' : '🔊'}
+                                </span>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  step={5}
+                                  value={customConfigs[w.id]?.vol ?? 80}
+                                  onChange={e => setWidgetVol(w.id, e.target.value)}
+                                  className="flex-1 h-1.5 accent-brand-500 cursor-pointer"
+                                />
+                                <span className={clsx(
+                                  'text-xs font-mono w-8 text-right flex-shrink-0',
+                                  isDark ? 'text-gray-400' : 'text-gray-500'
+                                )}>
+                                  {customConfigs[w.id]?.vol ?? 80}%
+                                </span>
+                              </div>
                             )}
 
                             {/* Action buttons */}

@@ -415,6 +415,7 @@ export default function FireworksWidget() {
   const canvasRef  = useRef(null);
   const rocketsRef = useRef([]);
   const runningRef = useRef(true);
+  const volumeRef  = useRef(0.8); // real-time volume — updated via socket style_update
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -460,7 +461,7 @@ export default function FireworksWidget() {
 
     // ── Volume (from URL param ?vol=0-100, default 80) ──
     const volParam = parseInt(params.get('vol') ?? '80');
-    const volume   = Math.max(0, Math.min(100, isNaN(volParam) ? 80 : volParam)) / 100;
+    volumeRef.current = Math.max(0, Math.min(100, isNaN(volParam) ? 80 : volParam)) / 100;
 
     // ── Patterns (from URL param ?patterns=ring,willow,... default all) ──
     const patternsParam = params.get('patterns') ?? 'ring,willow,scatter,star,fan';
@@ -490,7 +491,7 @@ export default function FireworksWidget() {
 
       const spawnOne = () => {
         if (!runningRef.current) return;
-        playFirework(volume);
+        playFirework(volumeRef.current);
         rocketsRef.current.push(makeRocket({
           avatarImg,
           giftImg,
@@ -537,7 +538,17 @@ export default function FireworksWidget() {
     const wt   = params.get('cid') ?? params.get('wt');
     let socket = null;
     if (wt) {
-      socket = createWidgetSocket(wt, { gift: spawnFromGift });
+      socket = createWidgetSocket(wt, {
+        gift: spawnFromGift,
+        // Real-time volume update จาก inline slider ใน widgets.js
+        style_update: ({ widgetId, style }) => {
+          if (widgetId !== 'fireworks') return;
+          if (style?.vol !== undefined) {
+            const v = Math.max(0, Math.min(100, Number(style.vol)));
+            volumeRef.current = v / 100;
+          }
+        },
+      });
     }
 
     return () => {
