@@ -225,9 +225,8 @@ export default function App({ Component, pageProps }) {
     if (typeof window === 'undefined' || !window.BroadcastChannel) return;
     const ch = new BroadcastChannel('ttplus_main_tab');
     chRef.current = ch;
-    // ประกาศว่าเพิ่งเปิด
-    ch.postMessage({ type: 'TAB_OPEN', id: tabIdRef.current });
-    ch.onmessage = (e) => {
+    // ตั้ง listener ก่อนเสมอ แล้วค่อย broadcast — ป้องกัน race condition
+    const handler = (e) => {
       if (!e.data || e.data.id === tabIdRef.current) return;
       if (e.data.type === 'TAB_OPEN') {
         // มีแถบใหม่เพิ่งเปิด — เราเป็นแถบที่ active อยู่แล้ว ตอบกลับเงียบๆ ไม่แสดง overlay
@@ -242,7 +241,14 @@ export default function App({ Component, pageProps }) {
         setTabRole('taken_over');
       }
     };
-    return () => { ch.close(); chRef.current = null; };
+    ch.addEventListener('message', handler);
+    // ประกาศว่าเพิ่งเปิด (หลัง listener พร้อมแล้ว)
+    ch.postMessage({ type: 'TAB_OPEN', id: tabIdRef.current });
+    return () => {
+      ch.removeEventListener('message', handler);
+      ch.close();
+      chRef.current = null;
+    };
   }, [isMainPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isMainPage) {

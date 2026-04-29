@@ -134,6 +134,7 @@ const WIDGETS = [
       { key: 'ct', label: '🫙 รูปแบบภาชนะ', type: 'select', default: 'jar',
         options: [
           { value: 'jar',       label: '🫙 โถแก้ว' },
+          { value: 'fatjar',    label: '🏺 ขวดโหล' },
           { value: 'fishbowl',  label: '🐠 โถปลา' },
           { value: 'beermug',   label: '🍺 แก้วเบียร์' },
           { value: 'trophy',    label: '🏆 ถ้วยรางวัล' },
@@ -287,11 +288,15 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
 
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
-  const [audioEnabled, setAudioEnabled] = useState(() => {
-    try { return localStorage.getItem('ttplus_widgets_audio') === '1'; } catch { return false; }
-  });
+  // เริ่มต้น false เสมอ (SSR ไม่มี localStorage) แล้ว sync จาก localStorage ใน useEffect
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const audioEnabledRef = useRef(false);
   useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('ttplus_widgets_audio') === '1') setAudioEnabled(true);
+    } catch {}
+  }, []);
 
   // Web Audio API — ใช้ AudioContext ตัวเดียว (ต้อง resume หลัง user gesture)
   const audioCtxRef = useRef(null);
