@@ -4420,24 +4420,36 @@ export default function AdminPage() {
   if (!authed) return null;
 
   const unresolvedCount = summary?.unresolvedFlags || 0;
-  const TABS = [
-    { key:'system',    label:'🖥️ System' },
+
+  // ─── Two-tier nav: section + game sub-tabs ──────────────────────────────────
+  const GAME_TABS = [
     { key:'overview',  label:'📊 Overview' },
     { key:'flags',     label:`🚩 Flags${unresolvedCount > 0 ? ` (${unresolvedCount})` : ''}` },
     { key:'players',   label:'👥 Players' },
     { key:'activity',  label:'📜 Activity' },
     { key:'economy',   label:'📈 Economy' },
-    { key:'rp',        label:'💎 RP Monitor' },
-    { key:'bugs',      label:'🐛 Bug Radar' },
+    { key:'rp',        label:'💎 RP' },
+    { key:'bugs',      label:'🐛 Bugs' },
     { key:'churn',     label:'😴 Churn' },
     { key:'roadmap',   label:'🗺️ Roadmap' },
     { key:'insights',  label:'💡 Insights' },
-    { key:'items',     label:'🛒 Item Economy' },
-    { key:'skills',    label:'⚔️ Skill Stats' },
+    { key:'items',     label:'🛒 Items' },
+    { key:'skills',    label:'⚔️ Skills' },
     { key:'database',  label:'🗄️ Database' },
-    { key:'balance',   label:'⚖️ Balance Sim' },
-    { key:'gifts',     label:'🎁 Gift Catalog' },
+    { key:'balance',   label:'⚖️ Balance' },
+    { key:'gifts',     label:'🎁 Gifts' },
   ];
+  const isGameTab   = GAME_TABS.some(t => t.key === tab);
+  const section     = tab === 'system' ? 'system' : 'game';
+
+  const sectionBtnStyle = (active) => ({
+    padding: '8px 20px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+    borderRadius: 8,
+    background: active ? '#f59e0b22' : 'transparent',
+    color:       active ? '#f59e0b'   : '#6b7280',
+    outline:     active ? '2px solid #f59e0b55' : 'none',
+    transition:  'all .15s',
+  });
 
   return (
     <>
@@ -4476,26 +4488,42 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div style={{ background:'#111827', borderBottom:'1px solid #1f2937', padding:'0 28px',
-          display:'flex', gap:2 }}>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              style={{ padding:'12px 18px', border:'none', background:'transparent', cursor:'pointer',
-                fontSize:14, fontWeight: tab===t.key ? 700 : 400,
-                color: tab===t.key ? '#f59e0b' : '#6b7280',
-                borderBottom: tab===t.key ? '2px solid #f59e0b' : '2px solid transparent',
-                transition:'color .15s' }}>
-              {t.label}
-            </button>
-          ))}
+        {/* Section selector (tier 1) */}
+        <div style={{ background:'#0d1117', borderBottom:'1px solid #1f2937', padding:'10px 28px',
+          display:'flex', alignItems:'center', gap:8 }}>
+          <button style={sectionBtnStyle(section === 'system')}
+            onClick={() => setTab('system')}>
+            🖥️ ระบบ
+          </button>
+          <button style={sectionBtnStyle(section === 'game')}
+            onClick={() => { if (!isGameTab) setTab('overview'); }}>
+            ⚔️ เกม
+          </button>
         </div>
+
+        {/* Game sub-tabs (tier 2) — only when section === 'game' */}
+        {section === 'game' && (
+          <div style={{ background:'#111827', borderBottom:'1px solid #1f2937', padding:'0 20px',
+            display:'flex', gap:0, overflowX:'auto', scrollbarWidth:'thin',
+            scrollbarColor:'#374151 transparent' }}>
+            {GAME_TABS.map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                style={{ padding:'10px 14px', border:'none', background:'transparent', cursor:'pointer',
+                  fontSize:13, fontWeight: tab===t.key ? 700 : 400,
+                  color: tab===t.key ? '#f59e0b' : '#6b7280',
+                  borderBottom: tab===t.key ? '2px solid #f59e0b' : '2px solid transparent',
+                  whiteSpace:'nowrap', transition:'color .15s', flexShrink:0 }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Content */}
         <div style={{ maxWidth:1200, margin:'0 auto', padding:'28px 28px' }}>
+          {tab === 'system'    && <SystemTab />}
           {tab === 'overview'  && <OverviewTab summary={summary} setTab={setTab} />}
           {tab === 'flags'     && <FlagsTab flags={flags} setFlags={setFlags} />}
-          {tab === 'system'    && <SystemTab />}
           {tab === 'players'   && <PlayersTab />}
           {tab === 'activity'  && <ActivityTab />}
           {tab === 'economy'   && <EconomyTab />}

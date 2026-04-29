@@ -127,7 +127,27 @@ const BOSS_ELEMENTS  = [
 const CREATURE_EMOJIS = ['🐉','🦋','🦄','🐣','🔥','🌟','👑','🐺'];
 
 const WIDGETS = [
-  { id: 'coinjar',     icon: '🫙', name: 'Gift Jar',        desc: 'ขวดโหลของขวัญ — jar อยู่ด้านล่าง gifts ร่วงจากด้านบน',  size: '1200 × 1200' },
+  {
+    id: 'coinjar', icon: '🫙', name: 'Gift Jar',
+    desc: 'ขวดโหลของขวัญ — jar อยู่ด้านล่าง gifts ร่วงจากด้านบน', size: '1200 × 1200',
+    configFields: [
+      { key: 'ct', label: '🫙 รูปแบบภาชนะ', type: 'select', default: 'jar',
+        options: [
+          { value: 'jar',       label: '🫙 โถแก้ว' },
+          { value: 'fishbowl',  label: '🐠 โถปลา' },
+          { value: 'beermug',   label: '🍺 แก้วเบียร์' },
+          { value: 'trophy',    label: '🏆 ถ้วยรางวัล' },
+          { value: 'cauldron',  label: '🪄 หม้อเวทย์' },
+          { value: 'chest',     label: '📦 หีบสมบัติ' },
+          { value: 'bucket',    label: '🪣 ถัง' },
+          { value: 'popcorn',   label: '🍿 ป๊อปคอร์น' },
+          { value: 'skull',     label: '💀 กะโหลก' },
+          { value: 'wineglass', label: '🍷 แก้วไวน์' },
+          { value: 'flowerpot', label: '🌸 กระถาง' },
+        ],
+      },
+    ],
+  },
   {
     id: 'bossbattle', icon: '👾', name: 'Boss Battle',
     desc: 'มอนสเตอร์บน OBS — gift ทำดาเมจ ระบบธาตุ 5 ธาตุ ส่งผิดธาตุ = heal boss',
@@ -195,9 +215,19 @@ const WIDGETS = [
     desc: 'แสดงเพลงที่กำลังฟังจาก Spotify — 10 สไตล์ให้เลือก เชื่อมต่อ Spotify ได้ที่ Settings',
     size: 'ขึ้นอยู่กับ Style', noStyle: true,
     configFields: [
-      { key: 'style', label: '🎨 เลือก Style', type: 'nowplaying_style', default: 'glass' },
-      { key: 'fade',  label: '🌫️ Fade รอบขอบ Widget', type: 'toggle', default: 1,
+      { key: 'style',        label: '🎨 เลือก Style',                     type: 'nowplaying_style', default: 'glass' },
+      { key: 'fade',         label: '🌫️ Fade รอบขอบ Widget',              type: 'toggle', default: 1,
         onLabel: 'เปิด — ขอบ Widget จะ Fade โปร่งใส (แนะนำสำหรับ OBS)', offLabel: 'ปิด — ขอบทึบ' },
+      { key: '_g1',          label: '✏️ ข้อความ & สี',                    type: 'group' },
+      { key: 'fontSize',     label: '📏 ขนาดตัวอักษร Title (px)',         type: 'number', default: 13, min: 8, max: 36, step: 1 },
+      { key: 'titleColor',   label: '🎨 สี Title (hex ไม่ต้องใส่ #)',      type: 'text',   default: 'ffffff',   maxLen: 8 },
+      { key: 'artistColor',  label: '🎨 สี Artist (hex หรือ hex+alpha)',   type: 'text',   default: 'ffffff99', maxLen: 10 },
+      { key: '_g2',          label: '📜 การเลื่อนข้อความ (Marquee)',       type: 'group' },
+      { key: 'marquee',      label: '📜 เลื่อนข้อความ',                    type: 'toggle', default: 0,
+        onLabel: 'เปิด — ข้อความเลื่อนแบบ Marquee', offLabel: 'ปิด — ตัดข้อความเมื่อยาวเกิน' },
+      { key: 'marqueeDir',   label: '↔️ ทิศทางเลื่อน',                    type: 'select', default: 'left',
+        options: [{ value: 'left', label: '← เลื่อนซ้าย' }, { value: 'right', label: '→ เลื่อนขวา' }] },
+      { key: 'marqueeSpeed', label: '⚡ ความเร็ว (วินาที/รอบ — น้อย=เร็ว)', type: 'number', default: 8, min: 2, max: 30, step: 1 },
     ],
   },
   // ── ซ่อนชั่วคราว — ยังไม่พร้อมใช้งาน ──
@@ -398,10 +428,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     // nowplaying ใช้ ?cid= เหมือน widget อื่น (ต้องการ widgetCid)
     if (widgetId === 'nowplaying') {
       if (!baseUrl || !widgetCid) return '';
-      const cfg   = customConfigs['nowplaying'] || {};
-      const style = cfg.style || 'glass';
-      const fade  = cfg.fade ?? 1;
-      return `${baseUrl}/widget/nowplaying?cid=${widgetCid}&style=${style}&fade=${fade}`;
+      const w       = WIDGETS.find(ww => ww.id === 'nowplaying');
+      const configQ = buildCustomParams(w);
+      const base    = `${baseUrl}/widget/nowplaying?cid=${widgetCid}`;
+      return configQ ? `${base}&${configQ}` : base;
     }
     if (!baseUrl || !widgetCid) return '';
     const w = WIDGETS.find(ww => ww.id === widgetId);
@@ -465,12 +495,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
-    // nowplaying preview ใช้ style + fade params
+    // nowplaying preview — รวม configFields params ทั้งหมด
     if (widgetId === 'nowplaying') {
-      const cfg   = customConfigs['nowplaying'] || {};
-      const style = cfg.style || 'glass';
-      const fade  = cfg.fade ?? 1;
-      return `${baseUrl}/widget/nowplaying?preview=1&style=${style}&fade=${fade}`;
+      const w       = WIDGETS.find(ww => ww.id === 'nowplaying');
+      const configQ = buildCustomParams(w);
+      const base    = `${baseUrl}/widget/nowplaying?preview=1`;
+      return configQ ? `${base}&${configQ}` : base;
     }
     const w = WIDGETS.find(ww => ww.id === widgetId);
     // preview ใช้ ?preview=1 เสมอ — ไม่ต้องการ cid/vjId
