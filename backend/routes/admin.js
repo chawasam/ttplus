@@ -7,6 +7,7 @@ const { generalLimiter, connectLimiter } = require('../middleware/rateLimiter');
 const { getServerMetrics }               = require('../handlers/admin/metrics');
 const { reportError, getErrors, resolveError } = require('../handlers/admin/errorLog');
 const { getGameMetrics }                 = require('../handlers/admin/gameMetrics');
+const { listEvents, createEvent, updateEvent, deleteEvent } = require('../handlers/admin/seasonEvents');
 const { stopConnection }                 = require('../handlers/tiktok');
 
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'cksamg@gmail.com';
@@ -29,6 +30,12 @@ router.get('/metrics',     getServerMetrics);
 router.get('/game-metrics', getGameMetrics);
 router.get('/errors',      getErrors);
 router.patch('/errors/:id/resolve', resolveError);
+
+// ─── Season / Event Management ──────────────────────────────────────────────
+router.get('/season-events',      listEvents);
+router.post('/season-events',     createEvent);
+router.put('/season-events/:id',  updateEvent);
+router.delete('/season-events/:id', deleteEvent);
 
 // Kick a TikTok connection (force disconnect)
 router.post('/connections/:userId/kick', async (req, res) => {

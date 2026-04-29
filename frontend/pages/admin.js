@@ -4438,6 +4438,7 @@ export default function AdminPage() {
     { key:'database',  label:'🗄️ Database' },
     { key:'balance',   label:'⚖️ Balance' },
     { key:'gifts',     label:'🎁 Gifts' },
+    { key:'season',    label:'🎉 Season Events' },
   ];
   const isGameTab   = GAME_TABS.some(t => t.key === tab);
   const section     = tab === 'system' ? 'system' : 'game';
@@ -4537,9 +4538,359 @@ export default function AdminPage() {
           {tab === 'database'  && <DatabaseTab />}
           {tab === 'balance'   && <BalanceSimTab />}
           {tab === 'gifts'     && <GiftCatalogTab />}
+          {tab === 'season'    && <SeasonEventsTab />}
         </div>
       </div>
     </>
+  );
+}
+
+// ─── SeasonEventsTab ──────────────────────────────────────────────────────────
+function SeasonEventsTab() {
+  const [events,  setEvents]  = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editing,  setEditing]  = React.useState(null); // event obj | null
+  const [saving,   setSaving]   = React.useState(false);
+  const [deleting, setDeleting] = React.useState(null);
+
+  const EMPTY = { name:'', type:'double_xp', description:'', startAt:'', endAt:'', multiplier:2, dungeonId:'', banner:'🎉', active:true };
+  const [form, setForm] = React.useState(EMPTY);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api.get('/api/admin/season-events');
+      setEvents(r.data?.events || []);
+    } catch { toast.error('โหลด events ไม่ได้'); }
+    finally { setLoading(false); }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const now = Date.now();
+
+  function statusOf(ev) {
+    if (!ev.active) return { label: 'ปิด', color: '#6b7280' };
+    if (ev.startAt > now) return { label: '⏳ รอเริ่ม', color: '#f59e0b' };
+    if (ev.endAt   < now) return { label: '✅ จบแล้ว',  color: '#4b5563' };
+    return { label: '🟢 กำลังใช้งาน', color: '#22c55e' };
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '—';
+    return new Date(Number(ts)).toLocaleString('th-TH', { dateStyle:'short', timeStyle:'short' });
+  }
+
+  function toInput(ts) {
+    if (!ts) return '';
+    return new Date(Number(ts)).toISOString().slice(0,16);
+  }
+
+  function fromInput(str) {
+    return str ? new Date(str).getTime() : 0;
+  }
+
+  function openCreate() {
+    setForm(EMPTY);
+    setEditing(null);
+    setShowForm(true);
+  }
+
+  function openEdit(ev) {
+    setForm({
+      name:        ev.name        || '',
+      type:        ev.type        || 'double_xp',
+      description: ev.description || '',
+      startAt:     toInput(ev.startAt),
+      endAt:       toInput(ev.endAt),
+      multiplier:  ev.multiplier  ?? 2,
+      dungeonId:   ev.dungeonId   || '',
+      banner:      ev.banner      || '🎉',
+      active:      ev.active      ?? true,
+    });
+    setEditing(ev);
+    setShowForm(true);
+  }
+
+  async function submit() {
+    if (!form.name.trim()) { toast.error('ต้องมีชื่อ'); return; }
+    if (!form.startAt || !form.endAt) { toast.error('ต้องระบุวันที่'); return; }
+    setSaving(true);
+    const payload = {
+      ...form,
+      startAt: fromInput(form.startAt),
+      endAt:   fromInput(form.endAt),
+      multiplier: Number(form.multiplier) || 2,
+    };
+    try {
+      if (editing) {
+        await api.put(`/api/admin/season-events/${editing.id}`, payload);
+        toast.success('อัปเดตสำเร็จ');
+      } else {
+        await api.post('/api/admin/season-events', payload);
+        toast.success('สร้าง event สำเร็จ');
+      }
+      setShowForm(false);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'ล้มเหลว');
+    } finally { setSaving(false); }
+  }
+
+  async function doDelete(id) {
+    try {
+      await api.delete(`/api/admin/season-events/${id}`);
+      toast.success('ลบแล้ว');
+      setDeleting(null);
+      load();
+    } catch { toast.error('ลบไม่ได้'); }
+  }
+
+  async function toggleActive(ev) {
+    try {
+      await api.put(`/api/admin/season-events/${ev.id}`, { active: !ev.active });
+      load();
+    } catch { toast.error('ล้มเหลว'); }
+  }
+
+  const TYPE_LABELS = {
+    double_xp:       '⚡ Double XP',
+    double_gold:     '💰 Double Gold',
+    bonus_drop:      '📦 Bonus Drop Rate',
+    limited_dungeon: '🏰 Limited Dungeon',
+    custom:          '✨ Custom',
+  };
+
+  const activeNow = events.filter(e => e.active && e.startAt <= now && e.endAt >= now);
+  const upcoming  = events.filter(e => e.active && e.startAt > now);
+  const past      = events.filter(e => !e.active || e.endAt < now);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      {/* Header */}
+      <div style={{ display:'flex', gap:12, alignItems:'center', justifyContent:'space-between', flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+          <h2 style={{ color:'#f59e0b', fontWeight:800, fontSize:20, margin:0 }}>🎉 Season & Event Management</h2>
+          <span style={{ color:'#4b5563', fontSize:12 }}>สร้าง / จัดการ seasonal events และ limited content</span>
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={load} style={{ padding:'7px 14px', borderRadius:8, border:'1px solid #374151', color:'#9ca3af', background:'transparent', cursor:'pointer', fontSize:13 }}>↻ Refresh</button>
+          <button onClick={openCreate} style={{ padding:'7px 16px', borderRadius:8, border:'none', background:'#f59e0b', color:'#000', fontWeight:700, cursor:'pointer', fontSize:13 }}>+ สร้าง Event</button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+        <StatCard label="กำลังใช้งาน" value={activeNow.length} icon="🟢" color="#22c55e" sub="events ที่ active อยู่ตอนนี้" />
+        <StatCard label="กำลังจะมา" value={upcoming.length} icon="⏳" color="#f59e0b" sub="scheduled ไว้" />
+        <StatCard label="ทั้งหมด" value={events.length} icon="📋" color="#818cf8" />
+      </div>
+
+      {/* Active now banner */}
+      {activeNow.length > 0 && (
+        <div style={{ ...card, borderColor:'#22c55e44', background:'#052e1644' }}>
+          <div style={{ color:'#22c55e', fontSize:13, fontWeight:700, marginBottom:10 }}>🟢 กำลังใช้งานอยู่ตอนนี้</div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {activeNow.map(ev => (
+              <div key={ev.id} style={{ background:'#052e16', border:'1px solid #22c55e44', borderRadius:10, padding:'10px 16px', minWidth:180 }}>
+                <div style={{ fontSize:22, marginBottom:4 }}>{ev.banner || '🎉'}</div>
+                <div style={{ color:'#f9fafb', fontWeight:700, fontSize:14 }}>{ev.name}</div>
+                <div style={{ color:'#22c55e', fontSize:12, marginTop:2 }}>{TYPE_LABELS[ev.type] || ev.type}</div>
+                {ev.multiplier > 1 && <div style={{ color:'#f59e0b', fontSize:12 }}>×{ev.multiplier}</div>}
+                <div style={{ color:'#4b5563', fontSize:11, marginTop:4 }}>หมด {fmtDate(ev.endAt)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Event list */}
+      {loading ? (
+        <div style={{ ...card, textAlign:'center', color:'#4b5563', padding:40 }}>กำลังโหลด...</div>
+      ) : events.length === 0 ? (
+        <div style={{ ...card, textAlign:'center', color:'#4b5563', padding:40 }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+          <div>ยังไม่มี event — กด "สร้าง Event" เพื่อเริ่มต้น</div>
+        </div>
+      ) : (
+        <div style={{ ...card, padding:0, overflow:'hidden' }}>
+          {events.map((ev, i) => {
+            const st = statusOf(ev);
+            return (
+              <div key={ev.id} style={{ display:'flex', gap:14, alignItems:'center', padding:'14px 20px',
+                borderBottom: i < events.length-1 ? '1px solid #111827' : 'none',
+                background: st.color === '#22c55e' ? '#052e1622' : 'transparent' }}>
+                <div style={{ fontSize:28, flexShrink:0 }}>{ev.banner || '🎉'}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4 }}>
+                    <span style={{ color:'#f9fafb', fontWeight:700, fontSize:14 }}>{ev.name}</span>
+                    <span style={{ ...badge(st.color), fontSize:11 }}>{st.label}</span>
+                    <span style={{ ...badge('#818cf8'), fontSize:11 }}>{TYPE_LABELS[ev.type] || ev.type}</span>
+                    {ev.multiplier > 1 && <span style={{ ...badge('#f59e0b'), fontSize:11 }}>×{ev.multiplier}</span>}
+                  </div>
+                  {ev.description && <div style={{ color:'#6b7280', fontSize:12, marginBottom:4 }}>{ev.description}</div>}
+                  <div style={{ color:'#4b5563', fontSize:11 }}>
+                    {fmtDate(ev.startAt)} → {fmtDate(ev.endAt)}
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <button onClick={() => toggleActive(ev)}
+                    style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${ev.active?'#22c55e44':'#374151'}`,
+                      color: ev.active?'#22c55e':'#6b7280', background:'transparent', cursor:'pointer', fontSize:12 }}>
+                    {ev.active ? '✓ Active' : '○ Off'}
+                  </button>
+                  <button onClick={() => openEdit(ev)}
+                    style={{ padding:'5px 12px', borderRadius:8, border:'1px solid #374151',
+                      color:'#9ca3af', background:'transparent', cursor:'pointer', fontSize:12 }}>
+                    ✏️ แก้ไข
+                  </button>
+                  <button onClick={() => setDeleting(ev.id)}
+                    style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #f8717144',
+                      color:'#f87171', background:'transparent', cursor:'pointer', fontSize:12 }}>
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Form modal */}
+      {showForm && (
+        <div style={{ position:'fixed', inset:0, background:'#000a', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={e => e.target===e.currentTarget && setShowForm(false)}>
+          <div style={{ ...card, width:520, border:'1px solid #f59e0b44', maxHeight:'90vh', overflowY:'auto' }}>
+            <h3 style={{ color:'#f59e0b', marginBottom:20 }}>{editing ? '✏️ แก้ไข Event' : '🎉 สร้าง Event ใหม่'}</h3>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {/* Name + Banner */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:10 }}>
+                <div>
+                  <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>ชื่อ Event *</div>
+                  <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
+                    placeholder="เช่น: Double XP Weekend" maxLength={80}
+                    style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13, boxSizing:'border-box' }} />
+                </div>
+                <div>
+                  <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>Banner</div>
+                  <input value={form.banner} onChange={e=>setForm(p=>({...p,banner:e.target.value}))}
+                    placeholder="🎉" maxLength={10}
+                    style={{ width:60, background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:18, textAlign:'center' }} />
+                </div>
+              </div>
+
+              {/* Type */}
+              <div>
+                <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>ประเภท *</div>
+                <select value={form.type} onChange={e=>setForm(p=>({...p,type:e.target.value}))}
+                  style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13 }}>
+                  {Object.entries(TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>คำอธิบาย</div>
+                <textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}
+                  rows={2} maxLength={300} placeholder="อธิบาย event..."
+                  style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13, resize:'vertical', boxSizing:'border-box' }} />
+              </div>
+
+              {/* Dates */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div>
+                  <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>เริ่ม *</div>
+                  <input type="datetime-local" value={form.startAt} onChange={e=>setForm(p=>({...p,startAt:e.target.value}))}
+                    style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13, boxSizing:'border-box' }} />
+                </div>
+                <div>
+                  <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>สิ้นสุด *</div>
+                  <input type="datetime-local" value={form.endAt} onChange={e=>setForm(p=>({...p,endAt:e.target.value}))}
+                    style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13, boxSizing:'border-box' }} />
+                </div>
+              </div>
+
+              {/* Multiplier + DungeonId (conditional) */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div>
+                  <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>Multiplier (เช่น 2 = ×2)</div>
+                  <input type="number" min={1} max={10} step={0.5} value={form.multiplier}
+                    onChange={e=>setForm(p=>({...p,multiplier:e.target.value}))}
+                    style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13, boxSizing:'border-box' }} />
+                </div>
+                {form.type === 'limited_dungeon' && (
+                  <div>
+                    <div style={{ color:'#6b7280', fontSize:11, marginBottom:5 }}>Dungeon ID</div>
+                    <input value={form.dungeonId} onChange={e=>setForm(p=>({...p,dungeonId:e.target.value}))}
+                      placeholder="เช่น: shadow_realm" maxLength={50}
+                      style={{ width:'100%', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#e5e7eb', padding:'9px 12px', fontSize:13, boxSizing:'border-box' }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Active toggle */}
+              <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+                <input type="checkbox" checked={form.active} onChange={e=>setForm(p=>({...p,active:e.target.checked}))} />
+                <span style={{ color:'#9ca3af', fontSize:13 }}>เปิดใช้งาน event นี้</span>
+              </label>
+
+              {/* Buttons */}
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:6 }}>
+                <button onClick={() => setShowForm(false)}
+                  style={{ padding:'9px 18px', borderRadius:8, border:'1px solid #374151', color:'#6b7280', background:'transparent', cursor:'pointer' }}>
+                  ยกเลิก
+                </button>
+                <button onClick={submit} disabled={saving}
+                  style={{ padding:'9px 20px', borderRadius:8, border:'none', background:'#f59e0b', color:'#000', fontWeight:700, cursor:'pointer' }}>
+                  {saving ? '...' : editing ? '✓ อัปเดต' : '+ สร้าง'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm */}
+      {deleting && (
+        <div style={{ position:'fixed', inset:0, background:'#000a', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={e => e.target===e.currentTarget && setDeleting(null)}>
+          <div style={{ ...card, width:360, border:'1px solid #f87171' }}>
+            <h3 style={{ color:'#f87171', marginBottom:12 }}>🗑️ ลบ Event?</h3>
+            <p style={{ color:'#9ca3af', fontSize:13, marginBottom:20 }}>การกระทำนี้ไม่สามารถย้อนกลับได้</p>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button onClick={() => setDeleting(null)}
+                style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #374151', color:'#6b7280', background:'transparent', cursor:'pointer' }}>ยกเลิก</button>
+              <button onClick={() => doDelete(deleting)}
+                style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'#f87171', color:'#0a0a0a', fontWeight:700, cursor:'pointer' }}>ลบเลย</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Guide */}
+      <div style={{ ...card }}>
+        <div style={{ color:'#9ca3af', fontSize:12, fontWeight:700, marginBottom:14 }}>📘 ประเภท Event ที่รองรับ</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          {[
+            { icon:'⚡', type:'Double XP', desc:'ผู้เล่นได้ XP ×N จากทุก source ตลอดช่วงเวลา — ดีสำหรับ retention weekend' },
+            { icon:'💰', type:'Double Gold', desc:'Gold จาก combat และ quests ×N — กระตุ้นให้เล่นเพื่อ farm' },
+            { icon:'📦', type:'Bonus Drop Rate', desc:'โอกาส item drop เพิ่มขึ้น — เหมาะกับ dungeon event' },
+            { icon:'🏰', type:'Limited Dungeon', desc:'Dungeon พิเศษที่เปิดเฉพาะช่วง event — ต้องระบุ Dungeon ID' },
+            { icon:'✨', type:'Custom', desc:'Event ประเภทอื่นๆ ที่ต้องใช้ custom logic ใน game code' },
+          ].map(item => (
+            <div key={item.type} style={{ background:'#1f2937', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ color:'#e5e7eb', fontSize:13, fontWeight:600, marginBottom:4 }}>{item.icon} {item.type}</div>
+              <div style={{ color:'#6b7280', fontSize:12 }}>{item.desc}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop:12, padding:'10px 14px', background:'#1f2937', borderRadius:8, fontSize:12, color:'#6b7280' }}>
+          💡 Game logic ดึง active events ได้ผ่าน <code style={{ color:'#818cf8' }}>GET /api/game/active-events</code> — รองรับ double XP/gold ใน combat และ quest reward calculation
+        </div>
+      </div>
+    </div>
   );
 }
 

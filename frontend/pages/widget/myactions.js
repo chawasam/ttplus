@@ -13,15 +13,40 @@ const POLL_MS = 1500;
 
 // ── OBS WebSocket v5 helper ───────────────────────────────────────────────
 class ObsWs {
-  constructor() { this.ws = null; this.ready = false; }
+  constructor() {
+    this.ws       = null;
+    this.ready    = false;
+    this._retries = 0;
+    this._dead    = false; // set true เมื่อ component unmount — หยุด reconnect
+    this._msgHandlers = []; // ใช้ array แทน .onmessage เพื่อรองรับหลาย listener พร้อมกัน
+  }
+
   connect(host = 'localhost', port = 4455, password = '') {
+    if (this._dead) return;
     try {
       this.ws = new WebSocket(`ws://${host}:${port}`);
-      this.ws.onopen = () => { this.ready = true; };
-      this.ws.onclose = () => { this.ready = false; setTimeout(() => this.connect(host, port, password), 5000); };
+      this.ws.onopen = () => { this.ready = true; this._retries = 0; };
+      this.ws.onclose = () => {
+        this.ready = false;
+        if (this._dead) return;
+        // Exponential backoff: 5s, 10s, 20s, 40s, 60s (cap)
+        const delay = Math.min(60000, 5000 * Math.pow(2, Math.min(this._retries, 4)));
+        this._retries++;
+        setTimeout(() => this.connect(host, port, password), delay);
+      };
       this.ws.onerror = () => {};
+      this.ws.addEventListener('message', (evt) => {
+        this._msgHandlers.forEach(fn => { try { fn(evt); } catch {} });
+      });
     } catch {}
   }
+
+  // เพิ่ม / ลบ message handler — ปลอดภัยจาก race condition
+  addMessageHandler(fn) { this._msgHandlers.push(fn); }
+  removeMessageHandler(fn) { this._msgHandlers = this._msgHandlers.filter(h => h !== fn); }
+
+  destroy() { this._dead = true; this.ws?.close(); }
+
   send(requestType, requestData = {}) {
     if (!this.ready || !this.ws) return;
     this.ws.send(JSON.stringify({
@@ -54,11 +79,13 @@ export default function MyActionsOverlay() {
 
   // ── Connect OBS WebSocket (ถ้ามี obsScene/obsSource ใน action) ──
   useEffect(() => {
-    // Overlay อ่าน OBS host จาก query param ถ้ามี (เพิ่ม ?obsHost=localhost&obsPort=4455)
+    const obs  = obsRef.current;
     const host = router.query.obsHost || 'localhost';
     const port = parseInt(router.query.obsPort) || 4455;
-    obsRef.current.connect(host, port);
-  }, [router.query.obsHost, router.query.obsPort]);
+    obs.connect(host, port);
+    // cleanup: ปิด socket + หยุด reconnect loop เมื่อ unmount
+    return () => obs.destroy();
+  }, [router.query.obsHost, router.query.obsPort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Execute OBS commands ──
   const executeObs = useCallback((item) => {
@@ -68,24 +95,26 @@ export default function MyActionsOverlay() {
     // Switch scene
     if (item.types?.includes('switch_obs_scene') && item.obsScene) {
       if (item.obsSceneReturn && obs.ws && obs.ready) {
-        // Get current scene first, then switch, then return after duration
+        // Get current scene first → switch → return after duration
+        // ใช้ addMessageHandler แทน .onmessage เพื่อรองรับ concurrent requests
         const reqId = 'gcp_' + Date.now();
-        const origHandler = obs.ws.onmessage;
-        obs.ws.onmessage = (evt) => {
-          if (origHandler) origHandler(evt);
+        const handler = (evt) => {
           try {
             const msg = JSON.parse(evt.data);
             if (msg.op === 7 && msg.d.requestId === reqId) {
+              obs.removeMessageHandler(handler); // cleanup ทันทีหลังรับ response
               const prevScene = msg.d.responseData?.currentProgramSceneName;
               obs.switchScene(item.obsScene);
               if (prevScene) setTimeout(() => obs.switchScene(prevScene), dur);
-              obs.ws.onmessage = origHandler; // restore
             }
           } catch {}
         };
+        obs.addMessageHandler(handler);
         obs.ws.send(JSON.stringify({
           op: 6, d: { requestType: 'GetCurrentProgramScene', requestId: reqId, requestData: {} },
         }));
+        // Safety cleanup ถ้า OBS ไม่ตอบใน 10s
+        setTimeout(() => obs.removeMessageHandler(handler), 10000);
       } else {
         obs.switchScene(item.obsScene);
       }
@@ -106,7 +135,7 @@ export default function MyActionsOverlay() {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     const audio = new Audio(url);
     audio.volume = 0.9;
-    audio.play().catch(() => {});
+    audio.play().catch((e) => { console.warn('[MyActions] audio play failed:', e?.message); });
     audioRef.current = audio;
   }, []);
 

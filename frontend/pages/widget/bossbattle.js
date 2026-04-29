@@ -409,7 +409,7 @@ export default function BossBattleWidget() {
     setHp(newHp);
     try { localStorage.setItem(STORAGE_KEY, String(newHp)); } catch {}
 
-    const pct = newHp / maxHpRef.current;
+    const pct = maxHpRef.current > 0 ? newHp / maxHpRef.current : 0;
     setHpColor(pct > 0.6 ? '#22c55e' : pct > 0.3 ? '#f59e0b' : '#ef4444');
     setIsEnraged(pct <= 0.30 && newHp > 0);
     setLastHitter(hitter); setLastHitType(hitType);

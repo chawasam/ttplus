@@ -198,4 +198,8 @@ router.post('/dungeon/action',        dungeon.roomAction);
 router.post('/dungeon/flee',          dungeon.fleeDungeon);
 router.get ('/dungeon/active-runs',   dungeon.getActiveDungeonRuns);
 
+// ─── Season Events (public — no auth required) ───────────────────────────────
+const { getActiveEvents } = require('../handlers/admin/seasonEvents');
+router.get('/active-events', getActiveEvents);
+
 module.exports = router;
