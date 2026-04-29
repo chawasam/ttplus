@@ -13,15 +13,20 @@ const W = 800;
 const H = 600;
 
 /**
- * Gift radius — scale ×0.5 จากเดิม (12–33px → 10–17px)
- * floor 10px เพื่อให้ emoji ยังอ่านออก
- * log-scale: 1 diamond→10px, ~1000→13px, 34999→17px
+ * Gift radius — 4 tier ตามราคา diamond:
+ *   <100    → 10px (1×)    ผ่านคอขวดสบาย
+ *   100-999 → 18px (1.8×)  ผ่านคอขวดสบาย
+ *  1000-9999→ 28px (2.8×)  ผ่านคอขวดได้ (neck=86px, max r=43)
+ *  10000+  → 38px (3.8×)   เกือบเต็มคอพอดี — เห็นความต่างชัด
+ * giftScale: URL param gs= ให้ VJ ปรับ % ได้ (50–200)
  */
 function getItemR(diamonds = 0, giftScale = 100) {
-  const MIN_R = 10, MAX_R = 17;
   const d = Math.max(1, diamonds || 1);
-  const t = Math.min(1, Math.log(d) / Math.log(34999));
-  const r = Math.round(MIN_R + t * (MAX_R - MIN_R));
+  let r;
+  if      (d >= 10000) r = 38;
+  else if (d >=  1000) r = 28;
+  else if (d >=   100) r = 18;
+  else                 r = 10;
   return Math.max(10, Math.round(r * (giftScale / 100)));
 }
 
