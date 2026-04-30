@@ -8,12 +8,17 @@ const { getServerMetrics }               = require('../handlers/admin/metrics');
 const { reportError, getErrors, resolveError } = require('../handlers/admin/errorLog');
 const { getGameMetrics }                 = require('../handlers/admin/gameMetrics');
 const { listEvents, createEvent, updateEvent, deleteEvent } = require('../handlers/admin/seasonEvents');
+const { getFirebaseUsage } = require('../handlers/admin/firebaseUsage');
 const { stopConnection }                 = require('../handlers/tiktok');
+const { getReadStats, resetReadStats }   = require('../utils/readTracker');
 
-const OWNER_EMAIL = process.env.OWNER_EMAIL || 'cksamg@gmail.com';
+const OWNER_EMAIL = process.env.OWNER_EMAIL;
+if (!OWNER_EMAIL) {
+  console.error('[Admin] WARNING: OWNER_EMAIL env var not set — admin endpoints will reject all requests');
+}
 
 function ownerOnly(req, res, next) {
-  if (!req.user || req.user.email !== OWNER_EMAIL) {
+  if (!OWNER_EMAIL || !req.user || req.user.email !== OWNER_EMAIL) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
@@ -26,9 +31,12 @@ router.post('/errors/report', generalLimiter, verifyToken, reportError);
 // ─── Admin-only endpoints ────────────────────────────────────────────────────
 router.use(verifyToken, ownerOnly);
 
-router.get('/metrics',     getServerMetrics);
-router.get('/game-metrics', getGameMetrics);
-router.get('/errors',      getErrors);
+router.get('/metrics',        getServerMetrics);
+router.get('/game-metrics',   getGameMetrics);
+router.get('/firebase-usage', getFirebaseUsage);
+router.get('/errors',         getErrors);
+router.get('/read-stats',     (req, res) => res.json(getReadStats()));
+router.post('/read-stats/reset', (req, res) => { resetReadStats(); res.json({ ok: true, resetAt: Date.now() }); });
 router.patch('/errors/:id/resolve', resolveError);
 
 // ─── Season / Event Management ──────────────────────────────────────────────

@@ -57,8 +57,32 @@ class ObsWs {
   switchScene(sceneName) {
     this.send('SetCurrentProgramScene', { sceneName });
   }
-  setSourceVisible(sceneName, sourceName, visible) {
-    this.send('SetSceneItemEnabled', { sceneName, sceneItemName: sourceName, sceneItemEnabled: visible });
+  // OBS WS v5: ต้องแปลง sourceName → sceneItemId ก่อนด้วย GetSceneItemId
+  setSourceVisible(sceneName, sourceName, visible, returnAfterMs = 0) {
+    if (!this.ready || !this.ws || !sourceName) return;
+    const reqId = 'gsi_' + Date.now();
+
+    const handler = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.op === 7 && msg.d.requestId === reqId) {
+          this.removeMessageHandler(handler);
+          const sceneItemId = msg.d.responseData?.sceneItemId;
+          if (sceneItemId == null) return; // source ไม่เจอใน scene นั้น
+          this.send('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: visible });
+          if (returnAfterMs > 0) {
+            setTimeout(() => {
+              this.send('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: !visible });
+            }, returnAfterMs);
+          }
+        }
+      } catch {}
+    };
+
+    this.addMessageHandler(handler);
+    this.send('GetSceneItemId', { sceneName, sourceName });
+    // safety cleanup ถ้า OBS ไม่ตอบใน 10s
+    setTimeout(() => this.removeMessageHandler(handler), 10000);
   }
 }
 
@@ -121,10 +145,31 @@ export default function MyActionsOverlay() {
     }
 
     // Activate / deactivate source
+    // setSourceVisible ใหม่จะ: GetSceneItemId → SetSceneItemEnabled (ถูกต้องกับ OBS WS v5)
+    // ถ้า obsScene ว่าง → ต้อง query current scene ก่อน
     if (item.types?.includes('activate_obs_source') && item.obsSource) {
-      obs.setSourceVisible(item.obsScene || '', item.obsSource, true);
-      if (item.obsSourceReturn) {
-        setTimeout(() => obs.setSourceVisible(item.obsScene || '', item.obsSource, false), dur);
+      const returnMs = item.obsSourceReturn ? dur : 0;
+      if (item.obsScene) {
+        // ทราบ scene แน่ชัด — ใช้โดยตรง
+        obs.setSourceVisible(item.obsScene, item.obsSource, true, returnMs);
+      } else if (obs.ready && obs.ws) {
+        // ไม่รู้ scene → query current program scene ก่อน
+        const reqId = 'gcp_src_' + Date.now();
+        const handler = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.op === 7 && msg.d.requestId === reqId) {
+              obs.removeMessageHandler(handler);
+              const currentScene = msg.d.responseData?.currentProgramSceneName;
+              if (currentScene) obs.setSourceVisible(currentScene, item.obsSource, true, returnMs);
+            }
+          } catch {}
+        };
+        obs.addMessageHandler(handler);
+        obs.ws.send(JSON.stringify({
+          op: 6, d: { requestType: 'GetCurrentProgramScene', requestId: reqId, requestData: {} },
+        }));
+        setTimeout(() => obs.removeMessageHandler(handler), 10000);
       }
     }
   }, []);
@@ -162,8 +207,7 @@ export default function MyActionsOverlay() {
     // TTS
     if (item.types?.includes('read_tts') && item.ttsText) readTts(item.ttsText);
 
-    // OBS commands
-    executeObs(item);
+    // OBS commands: ไม่ execute จาก overlay — ใช้ dashboard Socket.IO เท่านั้น
 
     // Auto-hide after displayDuration
     const dur = (item.displayDuration || 5) * 1000;

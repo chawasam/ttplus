@@ -72,6 +72,12 @@ function validateSettings(raw) {
     allowed.tiktokUsername = u;
   }
 
+  // actionsEnabled — master toggle ระบบ Actions (default: true)
+  if (raw.actionsEnabled !== undefined) {
+    if (typeof raw.actionsEnabled !== 'boolean') throw new Error('actionsEnabled must be boolean');
+    allowed.actionsEnabled = raw.actionsEnabled;
+  }
+
   // alertSound
   if (raw.alertSound !== undefined) {
     if (typeof raw.alertSound !== 'boolean') throw new Error('alertSound must be boolean');

@@ -3,7 +3,7 @@
 // คลิกข้อความ → broadcast ไป Pin Chat + Pin Profile Card พร้อมกัน
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { sanitizeEvent } from '../../lib/sanitize';
-import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import { SkinParticles } from '../../lib/chatSkins';
 import SKINS from '../../lib/chatSkins';
@@ -208,8 +208,9 @@ export default function ChatWidget() {
                       {msg.nickname || msg.uniqueId}
                     </div>
                     <div style={{
-                      color: styles.tc,
+                      ...tcCssProps(styles),
                       fontSize: styles.fs,
+                      fontWeight: styles.fw ? 700 : 'normal',
                       lineHeight: 1.4, marginTop: 2,
                       ...skinText,
                     }}>
@@ -229,8 +230,10 @@ export default function ChatWidget() {
                       {msg.nickname || msg.uniqueId}
                     </span>
                     <span style={{
-                      color: styles.tc,
-                      fontSize: styles.fs, marginLeft: 6,
+                      ...tcCssProps(styles),
+                      fontSize: styles.fs,
+                      fontWeight: styles.fw ? 700 : 'normal',
+                      marginLeft: 6,
                       ...skinText,
                     }}>
                       {msg.comment}

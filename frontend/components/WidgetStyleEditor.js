@@ -50,7 +50,20 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         <span style={{ color: addHash(style.ac), fontWeight: 700, fontSize: style.fs, borderRadius: style.br }}>
           ชื่อผู้ใช้
         </span>
-        <span style={{ color: addHash(style.tc), fontSize: style.fs - 1 }}>
+        <span style={style.tcr ? {
+          background: 'linear-gradient(90deg,#ff6464,#ff9500,#ffee00,#64dc64,#3ca0ff,#b450ff,#ff6464)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+          backgroundSize: '300% auto',
+          animation: 'rainbowText 3s linear infinite',
+          fontSize: style.fs - 1,
+          fontWeight: style.fw ? 700 : 'normal',
+        } : {
+          color: addHash(style.tc),
+          fontSize: style.fs - 1,
+          fontWeight: style.fw ? 700 : 'normal',
+        }}>
           ตัวอย่างข้อความ Widget
         </span>
       </div>
@@ -97,20 +110,50 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       </div>
 
-      {/* Text Color */}
+      {/* Text Color + Rainbow Toggle */}
       <div className={row}>
         <span className={label}>สีตัวอักษร</span>
         <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={addHash(style.tc)}
-            onChange={e => set('tc', stripHash(e.target.value))}
-            className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-          />
-          <span className={clsx('text-xs font-mono', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-            #{style.tc.toUpperCase()}
-          </span>
-          <button onClick={() => set('tc', d.tc)} className="text-xs text-gray-500 hover:text-brand-400 transition" title="รีเซ็ต">↩</button>
+          {/* 🌈 Rainbow toggle */}
+          <button
+            onClick={() => set('tcr', style.tcr ? 0 : 1)}
+            title={style.tcr ? 'ปิด Rainbow' : 'เปิดสีเรนโบว์'}
+            className={clsx(
+              'text-sm px-1.5 py-0.5 rounded-lg border transition',
+              style.tcr
+                ? 'border-transparent text-white'
+                : theme === 'dark'
+                  ? 'bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-500'
+                  : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
+            )}
+            style={style.tcr ? {
+              background: 'linear-gradient(90deg,#ff6464,#ff9500,#ffee00,#64dc64,#3ca0ff,#b450ff)',
+            } : {}}
+          >🌈</button>
+          {!style.tcr ? (
+            <>
+              <input
+                type="color"
+                value={addHash(style.tc)}
+                onChange={e => set('tc', stripHash(e.target.value))}
+                className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+              />
+              <span className={clsx('text-xs font-mono', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                #{style.tc.toUpperCase()}
+              </span>
+              <button onClick={() => set('tc', d.tc)} className="text-xs text-gray-500 hover:text-brand-400 transition" title="รีเซ็ต">↩</button>
+            </>
+          ) : (
+            <span
+              className="text-xs font-semibold"
+              style={{
+                background: 'linear-gradient(90deg,#ff6464,#ff9500,#ffee00,#64dc64,#3ca0ff,#b450ff)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >Rainbow ✨</span>
+          )}
         </div>
       </div>
 
@@ -145,6 +188,30 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
           onChange={e => set('fs', +e.target.value)}
           className="w-full accent-brand-500"
         />
+      </div>
+
+      {/* Font Weight (Bold toggle) */}
+      <div className="space-y-2">
+        <span className={label}>น้ำหนักตัวอักษร</span>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { val: 0, label: 'ปกติ', fw: 'normal' },
+            { val: 1, label: 'หนา (Bold)', fw: '700' },
+          ].map(opt => (
+            <button key={opt.val}
+              onClick={() => set('fw', opt.val)}
+              className={clsx(
+                'py-2 px-3 rounded-lg text-xs transition border',
+                (style.fw ?? 0) === opt.val
+                  ? 'bg-brand-500 border-brand-500 text-white'
+                  : theme === 'dark'
+                    ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                    : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+              )}>
+              <span style={{ fontWeight: opt.fw }}>{opt.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Border Radius */}
@@ -473,7 +540,7 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
                   onClick={() => set('showSender', opt.val)}
                   className={clsx(
                     'py-2 px-3 rounded-lg text-xs font-semibold transition border',
-                    (style.showSender ?? 1) === opt.val
+                    (style.showSender ?? 0) === opt.val
                       ? 'bg-brand-500 border-brand-500 text-white'
                       : theme === 'dark'
                         ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
@@ -497,7 +564,7 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
                   onClick={() => set('showGiftName', opt.val)}
                   className={clsx(
                     'py-2 px-3 rounded-lg text-xs font-semibold transition border',
-                    (style.showGiftName ?? 1) === opt.val
+                    (style.showGiftName ?? 0) === opt.val
                       ? 'bg-brand-500 border-brand-500 text-white'
                       : theme === 'dark'
                         ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
@@ -521,7 +588,7 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
                   onClick={() => set('showGiftImage', opt.val)}
                   className={clsx(
                     'py-2 px-3 rounded-lg text-xs font-semibold transition border',
-                    (style.showGiftImage ?? 1) === opt.val
+                    (style.showGiftImage ?? 0) === opt.val
                       ? 'bg-brand-500 border-brand-500 text-white'
                       : theme === 'dark'
                         ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'

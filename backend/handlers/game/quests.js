@@ -3,6 +3,7 @@ const admin = require('firebase-admin');
 const { DAILY_QUESTS, DAILY_BONUS, getTodayKey, buildFreshQuests } = require('../../data/quests');
 const { addGold } = require('./currency');
 const { getItem, rollItem } = require('../../data/items');
+const { giveXP } = require('./xp');
 
 // ─────────────────────────────────────────────
 //  Helper: โหลด (หรือสร้างใหม่) quest doc วันนี้
@@ -76,19 +77,14 @@ async function claimReward(req, res) {
 
       await addGold(uid, DAILY_BONUS.gold);
 
-      // XP
-      const accountDoc = await db.collection('game_accounts').doc(uid).get();
-      const charId = accountDoc.data()?.characterId;
-      if (charId) {
-        await db.collection('game_characters').doc(charId).update({
-          xp: admin.firestore.FieldValue.increment(DAILY_BONUS.xp),
-        });
-      }
+      // XP (with level-up check)
+      const xpResult = await giveXP(uid, DAILY_BONUS.xp, db);
 
       // Item — check inventory capacity first
+      const accountDoc = await db.collection('game_accounts').doc(uid).get();
+      const charId = accountDoc.data()?.characterId;
       let item = null;
       if (DAILY_BONUS.itemId) {
-        // Check if inventory has space
         let hasSpace = true;
         if (charId) {
           const charDoc2     = await db.collection('game_characters').doc(charId).get();
@@ -108,7 +104,7 @@ async function claimReward(req, res) {
       }
 
       await ref.update({ bonusClaimed: true });
-      return res.json({ success: true, rewards: { gold: DAILY_BONUS.gold, xp: DAILY_BONUS.xp, item } });
+      return res.json({ success: true, rewards: { gold: DAILY_BONUS.gold, xp: DAILY_BONUS.xp, item }, levelUp: xpResult.levelUp });
     }
 
     // ── Regular quest reward ──
@@ -124,22 +120,14 @@ async function claimReward(req, res) {
 
     // Grant rewards
     if (def.reward.gold) await addGold(uid, def.reward.gold);
-    if (def.reward.xp) {
-      const accountDoc = await db.collection('game_accounts').doc(uid).get();
-      const charId = accountDoc.data()?.characterId;
-      if (charId) {
-        await db.collection('game_characters').doc(charId).update({
-          xp: admin.firestore.FieldValue.increment(def.reward.xp),
-        });
-      }
-    }
+    const xpResult = def.reward.xp ? await giveXP(uid, def.reward.xp, db) : { levelUp: null };
 
     // Mark claimed
     const updatedQuests = [...data.quests];
     updatedQuests[idx] = { ...questState, claimed: true };
     await ref.update({ quests: updatedQuests });
 
-    return res.json({ success: true, rewards: def.reward });
+    return res.json({ success: true, rewards: def.reward, levelUp: xpResult.levelUp });
   } catch (err) {
     console.error('[Quests] claimReward:', err.message);
     res.status(500).json({ error: 'Server error' });

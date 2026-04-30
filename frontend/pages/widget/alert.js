@@ -2,7 +2,7 @@
 // OBS Size แนะนำ: 400 x 150
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
-import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function AlertWidget() {
@@ -132,7 +132,7 @@ export default function AlertWidget() {
           <p style={{ color: glowColor, fontWeight: 700, fontSize: styles.fs, fontFamily: 'sans-serif', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {alert.nickname || alert.uniqueId}
           </p>
-          <p style={{ color: styles.tc, fontSize: styles.fs - 2, fontFamily: 'sans-serif', margin: '3px 0 0' }}>
+          <p style={{ ...tcCssProps(styles), fontSize: styles.fs - 2, fontWeight: styles.fw ? 700 : 'normal', fontFamily: 'sans-serif', margin: '3px 0 0' }}>
             {alert.alertType === 'gift'
               ? `ส่ง ${alert.giftName}${alert.repeatCount > 1 ? ` ×${alert.repeatCount}` : ''} 🎁`
               : 'ติดตามแล้ว! 🎉'}

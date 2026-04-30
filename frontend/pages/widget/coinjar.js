@@ -50,24 +50,27 @@ let J = getJ(0);
 
 // ── Module-level spawn zone (updated on container/offset change) ─────────────
 // openL/openR = actual x after offset applied
-let currentSpawnZone = { openL: JAR_BASE.nL, openR: JAR_BASE.nR };
+let currentSpawnZone = { openL: JAR_BASE.nL, openR: JAR_BASE.nR, spawnY: JAR_BASE.nT };
 
 // ── Container registry ───────────────────────────────────────────────────────
 // Note: buildXxx functions are function declarations → hoisted, safe to ref here
 const CONTAINERS = {
-  jar:       { label: 'โถแก้ว',     openL: 357, openR: 443, buildWalls: buildJarWalls       },
-  fatjar:    { label: 'ขวดโหล',     openL: 287, openR: 513, buildWalls: buildFatJarWalls    },
-  fishbowl:  { label: 'โถปลา',     openL: 370, openR: 430, buildWalls: buildFishbowlWalls   },
-  beermug:   { label: 'แก้วเบียร์',  openL: 325, openR: 475, buildWalls: buildBeerMugWalls   },
-  trophy:    { label: 'ถ้วยรางวัล', openL: 295, openR: 505, buildWalls: buildTrophyWalls     },
-  cauldron:  { label: 'หม้อเวทย์',   openL: 305, openR: 495, buildWalls: buildCauldronWalls  },
-  chest:     { label: 'หีบสมบัติ',   openL: 290, openR: 510, buildWalls: buildChestWalls     },
-  bucket:    { label: 'ถัง',        openL: 315, openR: 485, buildWalls: buildBucketWalls     },
-  popcorn:   { label: 'ป๊อปคอร์น',   openL: 285, openR: 515, buildWalls: buildPopcornWalls   },
-  skull:     { label: 'กะโหลก',     openL: 360, openR: 440, buildWalls: buildSkullWalls      },
-  wineglass: { label: 'แก้วไวน์',   openL: 305, openR: 495, buildWalls: buildWineGlassWalls },
-  flowerpot: { label: 'กระถาง',     openL: 305, openR: 495, buildWalls: buildFlowerpotWalls  },
-  pandajar:  { label: 'Panda Jar',  openL: 313, openR: 487, buildWalls: buildPandaJarWalls   },
+  jar:       { label: 'โถแก้ว',       openL: 357, openR: 443, spawnY: 331, buildWalls: buildJarWalls       },
+  fatjar:    { label: 'ขวดโหล',       openL: 287, openR: 513, spawnY: 288, buildWalls: buildFatJarWalls    },
+  fishbowl:  { label: 'โถปลา',        openL: 370, openR: 430, spawnY: 295, buildWalls: buildFishbowlWalls  },
+  beermug:   { label: 'แก้วเบียร์',   openL: 325, openR: 475, spawnY: 290, buildWalls: buildBeerMugWalls   },
+  trophy:    { label: 'ถ้วยรางวัล',   openL: 295, openR: 505, spawnY: 285, buildWalls: buildTrophyWalls    },
+  cauldron:  { label: 'หม้อเวทย์',    openL: 305, openR: 495, spawnY: 285, buildWalls: buildCauldronWalls  },
+  chest:     { label: 'หีบสมบัติ',    openL: 290, openR: 510, spawnY: 335, buildWalls: buildChestWalls     },
+  bucket:    { label: 'ถัง',          openL: 315, openR: 485, spawnY: 290, buildWalls: buildBucketWalls    },
+  popcorn:   { label: 'ป๊อปคอร์น',    openL: 285, openR: 515, spawnY: 285, buildWalls: buildPopcornWalls   },
+  skull:     { label: 'กะโหลก',       openL: 360, openR: 440, spawnY: 285, buildWalls: buildSkullWalls     },
+  wineglass: { label: 'แก้วไวน์',     openL: 305, openR: 495, spawnY: 285, buildWalls: buildWineGlassWalls },
+  flowerpot: { label: 'กระถาง',       openL: 305, openR: 495, spawnY: 325, buildWalls: buildFlowerpotWalls },
+  pandajar:  { label: 'Panda Jar',    openL: 313, openR: 487, spawnY: 288, buildWalls: buildPandaJarWalls  },
+  catjar2a:  { label: 'CatJar 2 (A)', openL: 295, openR: 505, spawnY: 288, buildWalls: buildCatjar2AWalls  },
+  catjar2b:  { label: 'CatJar 2 (B)', openL: 325, openR: 475, spawnY: 231, buildWalls: buildCatjar2BWalls  },
+  catjar3:   { label: 'CatJar 3',     openL: 291, openR: 509, spawnY: 288, buildWalls: buildCatjar3Walls   },
 };
 
 // ===================== Emoji fallback =====================
@@ -111,9 +114,30 @@ function setupEngine(M, buildWallsFn, ox = 0) {
 }
 
 function setupRunner(engine, M) {
-  const { Runner } = M;
-  const runner = Runner.create({ delta: 1000 / 30 }); // 30fps physics
+  const { Runner, Events, Body, Composite } = M;
+  const runner = Runner.create({ delta: 1000 / 60 }); // 60fps — ลด tunneling (step เล็กลงครึ่งนึง)
   Runner.run(runner, engine);
+
+  // ── Velocity cap — ป้องกัน gift ตกเร็ว/กระเด็นออกข้างหลังชนกอง ────────────
+  // MAX_VY: ลดจาก 18→14 → ชนกองนุ่มขึ้น ถ่ายแรงน้อยลง
+  // MAX_VX: cap horizontal 7 px/step — กันของกระเด็นออกทางซ้าย-ขวาหลัง collision
+  const MAX_VY = 14;
+  const MAX_VX = 7;
+  Events.on(engine, 'beforeUpdate', () => {
+    for (const body of Composite.allBodies(engine.world)) {
+      if (body.label === 'gift') {
+        const vx = body.velocity.x;
+        const vy = body.velocity.y;
+        if (vy > MAX_VY || Math.abs(vx) > MAX_VX) {
+          Body.setVelocity(body, {
+            x: Math.max(-MAX_VX, Math.min(MAX_VX, vx)),
+            y: Math.min(MAX_VY, vy),
+          });
+        }
+      }
+    }
+  });
+
   return runner;
 }
 
@@ -234,7 +258,7 @@ function setupLiveSocket(cidOrWt, { spawnItem, setPopup, popupTimer, maxItemsRef
         toRemove.forEach(b => Composite.remove(engine.world, b));
         J = getJ(newOx);
         const con = containerRef.current || CONTAINERS.jar;
-        currentSpawnZone = { openL: con.openL + newOx, openR: con.openR + newOx };
+        currentSpawnZone = { openL: con.openL + newOx, openR: con.openR + newOx, spawnY: con.spawnY ?? JAR_BASE.nT };
         Composite.add(engine.world, con.buildWalls(Bodies, newOx));
         setJarOffset(newOx);
       }
@@ -260,9 +284,9 @@ export default function CoinJarWidget() {
   const [jarOffset, setJarOffset]       = useState(0);
   const [containerType, setContainerType] = useState('jar');
 
-  const showSenderRef               = useRef(1);
-  const showGiftNameRef             = useRef(1);
-  const showGiftImageRef            = useRef(1);
+  const showSenderRef               = useRef(0);
+  const showGiftNameRef             = useRef(0);
+  const showGiftImageRef            = useRef(0);
 
   const engineRef   = useRef(null);
   const mRef        = useRef(null);
@@ -309,7 +333,7 @@ export default function CoinJarWidget() {
         // x: สุ่มภายในช่องเปิดของ container
         const { openL, openR } = currentSpawnZone;
         const x = openL + itemR + 4 + Math.random() * Math.max(0, openR - openL - (itemR + 4) * 2);
-        const y = -itemR; // off-screen เหนือ canvas
+        const y = (currentSpawnZone.spawnY ?? JAR_BASE.nT) / 2 - itemR; // กำเนิดกึ่งกลางระหว่าง top canvas กับปากขวด
 
         const body = Bodies.circle(x, y, itemR, {
           restitution:    0.05,
@@ -318,7 +342,7 @@ export default function CoinJarWidget() {
           frictionAir:    0.04,
           density:        0.002,
           label:          'gift',
-          sleepThreshold: 20,
+          sleepThreshold: 60, // 1s @ 60fps — ให้เวลากลิ้งก่อนหลับ
         });
         body._img      = imgUrl;
         body._emoji    = emoji;
@@ -331,6 +355,20 @@ export default function CoinJarWidget() {
         });
 
         Composite.add(engineRef.current.world, body);
+
+        // ── ปลุก sleeping pile ทุกครั้งที่ของใหม่ตกลงมา ─────────────────────
+        // ราคาถูกมาก: iterate ≤50 bodies, check flag, wake เฉพาะที่ isSleeping
+        // ให้ pile สูงๆ ได้กลิ้ง/พังตามฟิสิกส์จริง ก่อนที่จะหลับใหม่
+        if (M.Sleeping) {
+          const { openL, openR } = currentSpawnZone;
+          const margin = itemR * 2;
+          for (const b of Composite.allBodies(engineRef.current.world)) {
+            if (b.label === 'gift' && b.isSleeping &&
+                b.position.x >= openL - margin && b.position.x <= openR + margin) {
+              M.Sleeping.set(b, false);
+            }
+          }
+        }
 
         const all = Composite.allBodies(engineRef.current.world)
           .filter(b => b.label === 'gift');
@@ -387,12 +425,12 @@ export default function CoinJarWidget() {
       const ox = Math.max(-100, Math.min(100, s.jx ?? 0));
       maxItemsRef.current  = s.mi ?? 80;
       giftScaleRef.current = s.gs ?? 100;
-      showSenderRef.current    = s.showSender    ?? 1;
-      showGiftNameRef.current  = s.showGiftName  ?? 1;
-      showGiftImageRef.current = s.showGiftImage ?? 1;
+      showSenderRef.current    = s.showSender    ?? 0;
+      showGiftNameRef.current  = s.showGiftName  ?? 0;
+      showGiftImageRef.current = s.showGiftImage ?? 0;
 
       J = getJ(ox);
-      currentSpawnZone = { openL: container.openL + ox, openR: container.openR + ox };
+      currentSpawnZone = { openL: container.openL + ox, openR: container.openR + ox, spawnY: container.spawnY ?? JAR_BASE.nT };
       setJarOffset(ox);
       setContainerType(ctParam in CONTAINERS ? ctParam : 'jar');
 
@@ -552,6 +590,105 @@ export default function CoinJarWidget() {
             height:        551,
             left:          277 + jarOffset,
             top:           150,
+            zIndex:        3,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
+      {/* ── CatJar2 A — Rear layer (scale=0.4355 → 470×836px | left=164, top=−34) ── */}
+      {/* ปากขวด y=288 พื้นขวด y=558 | ภาพล้น canvas ด้านบน/ล่าง (overflow:hidden) */}
+      {containerType === 'catjar2a' && (
+        <img
+          src="/jar/catjar2_R.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         470,
+            height:        836,
+            left:          164 + jarOffset,
+            top:           -34,
+            zIndex:        0,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      {containerType === 'catjar2a' && (
+        <img
+          src="/jar/catjar2_F.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         470,
+            height:        836,
+            left:          164 + jarOffset,
+            top:           -34,
+            zIndex:        3,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
+      {/* ── CatJar2 B — Rear layer (scale=0.3125 → 338×600px | left=231, top=0) ── */}
+      {/* ปากขวด y=231 พื้นขวด y=425 | ภาพพอดี canvas ไม่ล้น                      */}
+      {containerType === 'catjar2b' && (
+        <img
+          src="/jar/catjar2_R.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         338,
+            height:        600,
+            left:          231 + jarOffset,
+            top:           0,
+            zIndex:        0,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      {containerType === 'catjar2b' && (
+        <img
+          src="/jar/catjar2_F.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         338,
+            height:        600,
+            left:          231 + jarOffset,
+            top:           0,
+            zIndex:        3,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
+      {/* ── CatJar3 — Rear layer (scale=0.4441 → 480×853px | left=160, top=-39) ── */}
+      {/* ปากขวด y=288 พื้นขวด y=558 | overflow:hidden บน container ตัดส่วนล้น    */}
+      {containerType === 'catjar3' && (
+        <img
+          src="/jar/catjar3_R.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         480,
+            height:        853,
+            left:          160 + jarOffset,
+            top:           -39,
+            zIndex:        0,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      {containerType === 'catjar3' && (
+        <img
+          src="/jar/catjar3_F.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         480,
+            height:        853,
+            left:          160 + jarOffset,
+            top:           -39,
             zIndex:        3,
             pointerEvents: 'none',
           }}
@@ -818,6 +955,105 @@ function buildPandaJarWalls(Bodies, ox = 0) {
     makeSeg(Bodies, R,   bY,    R-2,  531),   // โค้งขวา ท่อนที่ 1
     makeSeg(Bodies, R-2, 531,   R-10, 558),   // โค้งขวา ท่อนที่ 2
     cFloor(Bodies, 558, L+10, R-10),          // พื้น: x=323 → 477
+    ...commonWalls(Bodies),
+  ];
+}
+
+// ===================== Physics Walls — CATJAR2 A =====================
+// Option A: scale = 270/620 ≈ 0.4355 → display 470×836 px | left=164, top=−34
+// canvas_x = image_x × 0.4355 + 164
+// canvas_y = image_y × 0.4355 − 34
+//
+// Key measurements (stable zone image y=1000–1240):
+//   left  inner x = 300 → canvas x = 295
+//   right inner x = 782 → canvas x = 505
+//   center = (295+505)/2 = 400.0 ✓
+//
+// Bottom curve (image y=1240→1360):
+//   left:  (299,506)→(290,545)→(287,558)
+//   right: (502,506)→(510,545)→(513,558)
+function buildCatjar2AWalls(Bodies, ox = 0) {
+  const o  = ox;
+  const L  = 295 + o;
+  const R  = 505 + o;
+  const tY = 288;   // ปากขวด
+  const bY = 506;   // จุดเริ่มโค้งก้น (image y≈1240)
+  return [
+    vW(Bodies, L,     tY,  bY,   true),            // ผนังซ้ายตรง
+    vW(Bodies, R,     tY,  bY,   false),            // ผนังขวาตรง
+    makeSeg(Bodies, L+4,  bY,  L-5,  545),          // โค้งซ้าย ท่อนที่ 1
+    makeSeg(Bodies, L-5,  545, L-8,  558),          // โค้งซ้าย ท่อนที่ 2
+    makeSeg(Bodies, R-3,  bY,  R+5,  545),          // โค้งขวา ท่อนที่ 1
+    makeSeg(Bodies, R+5,  545, R+8,  558),          // โค้งขวา ท่อนที่ 2
+    cFloor(Bodies, 558, L-8, R+8),                  // พื้นในขวด: x=287→513
+    // พื้นนอกขวด (เส้นน้ำเงิน y≈390) — หนา 3× ป้องกัน tunneling
+    Bodies.rectangle(400 + o, 390 + 15, 800, 30, { isStatic: true, friction: 0.3 }),
+    ...commonWalls(Bodies),
+  ];
+}
+
+// ===================== Physics Walls — CATJAR2 B =====================
+// Option B: scale = 600/1920 ≈ 0.3125 → display 338×600 px | left=231, top=0
+// canvas_x = image_x × 0.3125 + 231
+// canvas_y = image_y × 0.3125 + 0
+//
+// Key measurements:
+//   left  inner x = 300 → canvas x = 325
+//   right inner x = 782 → canvas x = 475
+//   center = (325+475)/2 = 400.0 ✓
+//   ปากขวด canvas y = 231  |  พื้นขวด canvas y = 425
+//
+// Bottom curve (image y=1240→1360):
+//   left:  (327,388)→(321,416)→(319,425)
+//   right: (474,388)→(479,416)→(481,425)
+function buildCatjar2BWalls(Bodies, ox = 0) {
+  const o  = ox;
+  const L  = 325 + o;
+  const R  = 475 + o;
+  const tY = 231;   // ปากขวด (image y=740 × 0.3125)
+  const bY = 388;   // จุดเริ่มโค้งก้น (image y≈1240 × 0.3125)
+  const fY = 425;   // พื้นขวด (image y=1360 × 0.3125)
+  return [
+    vW(Bodies, L,     tY,  bY,   true),
+    vW(Bodies, R,     tY,  bY,   false),
+    makeSeg(Bodies, L+2,  bY,  L-4,  416),
+    makeSeg(Bodies, L-4,  416, L-6,  fY),
+    makeSeg(Bodies, R-1,  bY,  R+4,  416),
+    makeSeg(Bodies, R+4,  416, R+6,  fY),
+    cFloor(Bodies, fY, L-6, R+6),
+    ...commonWalls(Bodies),
+  ];
+}
+
+// ===================== Physics Walls — CATJAR3 =====================
+// Image: /jar/catjar3_F.png  1080×1920 px RGBA
+// scale = 270 / (1344 - 736) = 270 / 608 = 0.4441
+// CSS: width=480px height=853px left=160px top=-39px
+// canvas_x = image_x * 0.4441 + 160
+// canvas_y = image_y * 0.4441 - 39
+//
+// Key measurements (image coords → canvas):
+//   left  inner x = 295 → canvas x = 291
+//   right inner x = 786 → canvas x = 509
+//   center = (291+509)/2 = 400 ✓
+//   ปากขวด image y=736  → canvas y=288 ✓
+//   พื้นขวด image y=1344 → canvas y=558 ✓
+//
+// Bottom curve (image y=1284→1344): walls flare very slightly outward
+//   left:  (291,540)→(288,558)
+//   right: (509,540)→(512,558)
+function buildCatjar3Walls(Bodies, ox = 0) {
+  const o  = ox;
+  const L  = 291 + o;
+  const R  = 509 + o;
+  const tY = 288;   // ปากขวด
+  const bY = 540;   // จุดเริ่มโค้งก้น (image y≈1304)
+  return [
+    vW(Bodies, L,    tY,  bY,  true),             // ผนังซ้ายตรง
+    vW(Bodies, R,    tY,  bY,  false),             // ผนังขวาตรง
+    makeSeg(Bodies, L,    bY,  L - 3, 558),        // โค้งซ้าย
+    makeSeg(Bodies, R,    bY,  R + 3, 558),        // โค้งขวา
+    cFloor(Bodies, 558, L - 3, R + 3),             // พื้น: x=288→512
     ...commonWalls(Bodies),
   ];
 }

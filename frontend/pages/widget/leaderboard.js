@@ -1,7 +1,7 @@
 // widget/leaderboard.js — Gift Leaderboard Overlay สำหรับ OBS
 // OBS Size แนะนำ: 300 x 400
 import { useEffect, useState } from 'react';
-import { parseWidgetStyles } from '../../lib/widgetStyles';
+import { parseWidgetStyles, tcCssProps } from '../../lib/widgetStyles';
 import { sanitizeEvent, safeTikTokImageUrl } from '../../lib/sanitize';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 
@@ -97,7 +97,7 @@ export default function LeaderboardWidget() {
               />
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <p style={{ color: styles.tc, fontSize: styles.fs, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <p style={{ ...tcCssProps(styles), fontSize: styles.fs, fontWeight: styles.fw ? 700 : 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user.nickname || user.uniqueId}
               </p>
             </div>

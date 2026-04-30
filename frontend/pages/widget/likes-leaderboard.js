@@ -2,7 +2,7 @@
 // OBS Size: 300 x 520
 import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import SKINS, { SkinParticles } from '../../lib/chatSkins';
 
@@ -73,9 +73,21 @@ export default function LikesLeaderboardWidget() {
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'likes-leaderboard') return;
         if (style?._reset) return;
+        // อัปเดต visual style (สี/font ฯลฯ)
         const next = rawToStyle(style, 'likes-leaderboard');
         stylesRef.current = next;
         setStyles(next);
+        // อัปเดต config toggles ถ้า Drawer ส่งมาด้วย (real-time toggle fix)
+        setConfig(prev => {
+          const u = {};
+          if (style.showMedal    !== undefined) u.showMedal    = Number(style.showMedal)    !== 0;
+          if (style.showBg       !== undefined) u.showBg       = Number(style.showBg)        !== 0;
+          if (style.showAvatar   !== undefined) u.showAvatar   = Number(style.showAvatar)    !== 0;
+          if (style.showProgress !== undefined) u.showProgress = Number(style.showProgress)  !== 0;
+          if (style.showLikes    !== undefined) u.showLikes    = Number(style.showLikes)     !== 0;
+          if (style.maxRows      !== undefined) u.maxRows      = Math.min(20, Math.max(1, Number(style.maxRows) || 10));
+          return Object.keys(u).length ? { ...prev, ...u } : prev;
+        });
       },
     });
 
@@ -195,9 +207,9 @@ export default function LikesLeaderboardWidget() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
-                        color: styles.tc,
+                        ...tcCssProps(styles),
                         fontSize: styles.fs,
-                        fontWeight: 600,
+                        fontWeight: styles.fw ? 700 : 600,
                         margin: 0,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',

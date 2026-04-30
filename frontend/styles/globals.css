@@ -57,3 +57,8 @@ html.widget, html.widget body {
   50%       { transform: scale(1.15); }
 }
 .gift-bounce { animation: giftBounce 0.6s ease-in-out; }
+
+@keyframes rainbowText {
+  0%   { background-position: 0%   center; }
+  100% { background-position: 300% center; }
+}

@@ -2,7 +2,7 @@
 // รับข้อความ pin มาจาก Chat Overlay ผ่าน BroadcastChannel
 // OBS Size แนะนำ: 500 x 100
 import { useEffect, useState } from 'react';
-import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import { SkinParticles } from '../../lib/chatSkins';
 import SKINS from '../../lib/chatSkins';
@@ -119,7 +119,9 @@ export default function PinChatWidget() {
                 {pinned.nickname}
               </div>
               <div style={{
-                color: styles.tc, fontSize: styles.fs,
+                ...tcCssProps(styles),
+                fontSize: styles.fs,
+                fontWeight: styles.fw ? 700 : 'normal',
                 fontFamily: 'sans-serif', lineHeight: 1.4,
                 ...skinTextSt,
               }}>

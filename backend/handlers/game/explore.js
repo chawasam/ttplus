@@ -4,6 +4,7 @@ const { getZone, getExploreEvent } = require('../../data/maps');
 const { getItem, rollItem }        = require('../../data/items');
 const { addGold }                  = require('./currency');
 const { logReward }                = require('../../utils/anticheat');
+const { giveXP }                   = require('./xp');
 
 const STAMINA_COST        = 20;
 const EXPLORE_COOLDOWN_MS = 3000; // 3 วินาที
@@ -132,8 +133,8 @@ async function explore(req, res) {
       response.msg = result.msg;
     }
 
-    // Add small XP
-    await charRef.update({ xp: admin.firestore.FieldValue.increment(2) });
+    // Add small XP (with level-up check)
+    await giveXP(uid, 2, db);
 
     // ── 7. Quest + achievement tracking ──────────────────────────────────
     trackQuestProgress(uid, 'explore', 1).catch(() => {});

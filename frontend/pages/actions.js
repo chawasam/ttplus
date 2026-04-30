@@ -50,7 +50,7 @@ const TRIGGER_LIST = [
   { id: 'likes',            label: '👍 Like ครบ X ครั้ง' },
   { id: 'chat',             label: '💬 พิมพ์ในแชท (ทุก comment)' },
   { id: 'command',          label: '⌨️ พิมพ์ keyword ในแชท' },
-  { id: 'gift_min_coins',   label: '🎁 ส่งของขวัญ ≥ X coins' },
+  { id: 'gift_min_coins',   label: '🪙 ส่งของขวัญ ≥ X coins' },
   { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ', popular: true },
   { id: 'subscriber_emote', label: '😄 ส่ง Subscriber Emote' },
   { id: 'fan_club_sticker', label: '🏅 ส่ง Fan Club Sticker' },
@@ -2914,7 +2914,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
               const getEventTypeTag = (ev) => {
                 switch (ev.trigger) {
                   case 'specific_gift':    return 'Gift ชิ้นนั้นๆ';
-                  case 'gift_min_coins':   return 'Gift ≥ X coins';
+                  case 'gift_min_coins':   return '🪙 Gift ≥ X coins';
                   case 'command':          return 'Keyword';
                   case 'likes':            return 'Like ครบ X';
                   default:                 return null;
@@ -2994,7 +2994,10 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                           {/* col: who */}
                           <div className={clsx(cellBase, 'py-1')}>
                             <span className="text-xs text-slate-500 truncate">
-                              {WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label || ev.whoCanTrigger}
+                              {ev.whoCanTrigger === 'specific_user'
+                                ? <span className="text-brand-400 font-medium">@{ev.specificUser || '?'}</span>
+                                : WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label || ev.whoCanTrigger
+                              }
                             </span>
                           </div>
 

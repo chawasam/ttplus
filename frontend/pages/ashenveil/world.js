@@ -68,6 +68,13 @@ const SCREENS = {
 
 const DIFFICULTY_COLOR = ['', 'text-green-400', 'text-yellow-400', 'text-red-400'];
 
+// Panel resize steps (S/M/L) — L = ครึ่งหน้าจอ
+const PANEL_STEPS = [
+  { dotSize: 6,  maxH: '7rem',  title: 'Compact' },
+  { dotSize: 9,  maxH: '16rem', title: 'Normal'  },
+  { dotSize: 13, maxH: '50dvh', title: 'Large'   },
+];
+
 // ─────────────────────────────────────────────────────────
 //  BGM Config — วาง file ไว้ใน /public/bgm/ แล้วอัปเดต path ด้านล่าง
 //  ถ้าไฟล์ไม่มี → fallback ไปใช้ ashenveil-1.mp3 อัตโนมัติ
@@ -263,7 +270,17 @@ export default function GameWorld() {
   const [craftingRecipes,  setCraftingRecipes]  = useState([]);
   const [craftingLoad,     setCraftingLoad]     = useState(false);
   const [craftingTab,      setCraftingTab]      = useState('all'); // 'all' | category filter
+  const [actionTab,        setActionTab]        = useState('combat'); // 'combat'|'bag'|'quest'|'char'|'sys'
+  // panelSize: 0=compact 1=normal 2=large 3=max — บันทึกใน localStorage
+  const [panelSize, setPanelSize] = useState(() => {
+    try { return parseInt(localStorage.getItem('ash_panelSize') || '1', 10); } catch { return 1; }
+  });
   const [craftingBusy,     setCraftingBusy]     = useState(false);
+
+  // ── Announcement ticker ──
+  const [tipIdx, setTipIdx] = useState(0);
+  const [giftAnnouncement, setGiftAnnouncement] = useState(null); // { text } หรือ null
+  const giftAnnoTimer = useRef(null);
 
   // ── Quest Popup (real-time progress via socket) ──
   const [questPopup,      setQuestPopup]       = useState(null);  // { type, questName, hint, progress, total, rewards, ... }
@@ -294,6 +311,7 @@ export default function GameWorld() {
   const [settingsStep,   setSettingsStep]   = useState('status');// 'status' | 'input' | 'wait'
   const [settingsPolling,setSettingsPolling]= useState(false);
   const settingsPollRef  = useRef(null);
+  const charLoadedRef    = useRef(false);   // กัน onAuthStateChanged ยิงซ้ำ
   // ── Display settings (theme / font / brightness) shared across all Ashenveil pages ──
   const ashSettings = useAshenveilSettings();
   const { fontSize, setFontSize, cssFilter: ashFilter, fontPx } = ashSettings;
@@ -312,6 +330,8 @@ export default function GameWorld() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) { router.replace('/ashenveil'); return; }
+      if (charLoadedRef.current) return;   // ป้องกัน token-refresh ยิงซ้ำ
+      charLoadedRef.current = true;
 
       // ── Ensure socket is connected + authenticated ──────────────────────────
       // กรณีผู้เล่นเปิด /ASHENVEIL/world ตรงๆ โดยไม่ผ่าน dashboard
@@ -372,6 +392,12 @@ export default function GameWorld() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [gameLog, battleLog]);
 
+  // Tip ticker — หมุนทุก 7 วินาที
+  useEffect(() => {
+    const id = setInterval(() => setTipIdx(i => i + 1), 7000);
+    return () => clearInterval(id);
+  }, []);
+
   const addLog = useCallback((...msgs) => {
     setGameLog(prev => [...prev.slice(-100), ...msgs]);
   }, []);
@@ -427,11 +453,39 @@ export default function GameWorld() {
     await Promise.all([loadQuests(), loadWeeklyQuests()]);
   }, [loadQuests, loadWeeklyQuests]);
 
+  // ── Shared level-up celebration (ใช้ได้จากทุก handler ที่ให้ XP) ──
+  const triggerLevelUp = useCallback((newLv) => {
+    if (!newLv) return;
+    setChar(c => c ? {
+      ...c,
+      level:      newLv,
+      xp:         0,
+      xpToNext:   Math.floor(200 * Math.pow(newLv, 1.9)),
+      hpMax:      (c.hpMax || 100) + 10,
+      mpMax:      (c.mpMax  || 50) + 5,
+      hp:         (c.hpMax || 100) + 10,
+      mp:         (c.mpMax  || 50) + 5,
+      statPoints:  (c.statPoints  || 0) + 3,
+      skillPoints: (c.skillPoints || 0) + 1,
+    } : c);
+    addLog(`─────────────────────────────────────`);
+    addLog(`🎉 LEVEL UP! คุณขึ้นเป็น Level ${newLv}!`);
+    addLog(`✨ +3 Stat Points · +1 Skill Point`);
+    addLog(`─────────────────────────────────────`);
+    clearTimeout(levelUpFlashTimer.current);
+    setLevelUpFlash(newLv);
+    levelUpFlashTimer.current = setTimeout(() => setLevelUpFlash(null), 4000);
+  }, [addLog]);
+
   const handleClaimQuest = useCallback(async (questId) => {
     try {
       const { data } = await claimQuestReward(questId);
       if (data.rewards?.gold) setGold(g => g + data.rewards.gold);
-      if (data.rewards?.xp)   setChar(c => c ? { ...c, xp: (c.xp || 0) + data.rewards.xp } : c);
+      if (data.levelUp) {
+        triggerLevelUp(data.levelUp);
+      } else if (data.rewards?.xp) {
+        setChar(c => c ? { ...c, xp: (c.xp || 0) + data.rewards.xp } : c);
+      }
       const label = questId === 'bonus' ? '🎁 Bonus reward' : questId;
       toast.success(`✅ รับรางวัล ${label} แล้ว! (+${data.rewards?.gold || 0}G)`);
       addLog(`🎖️ รับรางวัล Quest: +${data.rewards?.gold || 0} Gold, +${data.rewards?.xp || 0} XP`);
@@ -439,7 +493,7 @@ export default function GameWorld() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
     }
-  }, [loadQuests]);
+  }, [loadQuests, triggerLevelUp]);
 
   // ===== Daily Shop =====
   const loadDailyShop = useCallback(async () => {
@@ -759,7 +813,11 @@ export default function GameWorld() {
     try {
       const { data } = await claimWeeklyReward(questId);
       if (data.rewards?.gold) setGold(g => g + data.rewards.gold);
-      if (data.rewards?.xp)   setChar(c => c ? { ...c, xp: (c.xp || 0) + data.rewards.xp } : c);
+      if (data.levelUp) {
+        triggerLevelUp(data.levelUp);
+      } else if (data.rewards?.xp) {
+        setChar(c => c ? { ...c, xp: (c.xp || 0) + data.rewards.xp } : c);
+      }
       const label = questId === 'bonus' ? '🏆 Weekly Bonus' : questId;
       toast.success(`✅ รับรางวัล ${label}! (+${data.rewards?.gold || 0}G)`);
       addLog(`🎖️ รับ Weekly Quest: +${data.rewards?.gold || 0} Gold, +${data.rewards?.xp || 0} XP`);
@@ -767,7 +825,7 @@ export default function GameWorld() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'รับรางวัลไม่ได้');
     }
-  }, [loadWeeklyQuests, addLog]);
+  }, [loadWeeklyQuests, addLog, triggerLevelUp]);
 
   // ===== Achievements + Titles =====
   const loadAchievements = useCallback(async () => {
@@ -804,7 +862,11 @@ export default function GameWorld() {
     try {
       const { data } = await claimLoginBonus();
       setGold(g => g + (data.reward?.gold || 0));
-      setChar(c => c ? { ...c, xp: (c.xp || 0) + (data.reward?.xp || 0) } : c);
+      if (data.levelUp) {
+        triggerLevelUp(data.levelUp);
+      } else if (data.reward?.xp) {
+        setChar(c => c ? { ...c, xp: (c.xp || 0) + data.reward.xp } : c);
+      }
       addLog(`🎁 Login Bonus Day ${data.newStreak}! +${data.reward?.gold || 0} Gold, +${data.reward?.xp || 0} XP${data.reward?.items?.length ? ', +ของพิเศษ' : ''}`);
       toast.success(`🎁 รับ Login Bonus Day ${data.newStreak}!`, { duration: 4000 });
       setShowLoginBonus(false);
@@ -812,7 +874,7 @@ export default function GameWorld() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'รับ Login Bonus ไม่ได้');
     }
-  }, [addLog]);
+  }, [addLog, triggerLevelUp]);
 
   // ===== World Boss =====
   const openWorldBoss = useCallback(async () => {
@@ -1194,6 +1256,26 @@ export default function GameWorld() {
     };
   }, [addLog]);
 
+  // ── Big gift announcement in ticker bar ──
+  useEffect(() => {
+    const sock = getSocket();
+    if (!sock) return;
+    const onGift = (d) => {
+      if (!d.isRepeatEnd) return; // รอแค่ event สุดท้าย (จบ combo)
+      const totalCoins = (d.diamondCount || 0) * (d.repeatCount || 1);
+      if (totalCoins < 20000) return;
+      const text = `🎉 ยินดีด้วย! ${d.nickname || d.uniqueId} ได้รับ ${d.giftName}!`;
+      if (giftAnnoTimer.current) clearTimeout(giftAnnoTimer.current);
+      setGiftAnnouncement({ text });
+      giftAnnoTimer.current = setTimeout(() => setGiftAnnouncement(null), 10000);
+    };
+    sock.on('gift', onGift);
+    return () => {
+      sock.off('gift', onGift);
+      if (giftAnnoTimer.current) clearTimeout(giftAnnoTimer.current);
+    };
+  }, []);
+
   const toggleBgm = useCallback(() => {
     setBgmEnabled(prev => {
       const next = !prev;
@@ -1303,28 +1385,16 @@ export default function GameWorld() {
         const rewards = data.state?.rewards || {};
         if (rewards.gold) setGold(g => g + rewards.gold);
         if (rewards.levelUp) {
-          const newLv = rewards.levelUp;
-          const newXpToNext = Math.floor(200 * Math.pow(newLv, 1.9));
-          setChar(c => c ? {
-            ...c,
-            level:      newLv,
-            xp:         0,
-            xpToNext:   newXpToNext,
-            hpMax:      (c.hpMax || 100) + 10,
-            mpMax:      (c.mpMax || 50)  + 5,
-            hp:         (c.hpMax || 100) + 10,
-            mp:         (c.mpMax || 50)  + 5,
-            statPoints:  (c.statPoints  || 0) + 3,
-            skillPoints: (c.skillPoints || 0) + 1,
-          } : c);
-          // Celebration flash
-          clearTimeout(levelUpFlashTimer.current);
-          setLevelUpFlash(newLv);
-          levelUpFlashTimer.current = setTimeout(() => setLevelUpFlash(null), 4000);
+          // Level-up: ใช้ triggerLevelUp shared function (แสดง flash + log + อัปเดต char)
+          triggerLevelUp(rewards.levelUp);
         } else {
-          // Normal XP gain (not level-up)
-          if (rewards.xp) setChar(c => c ? { ...c, xp: Math.min((c.xp || 0) + rewards.xp, (c.xpToNext || 9999) - 1) } : c);
+          // Normal XP gain: cap ที่ xpToNext - 1 (ใช้ || 100 ไม่ใช่ || 9999)
+          if (rewards.xp) setChar(c => c ? { ...c, xp: Math.min((c.xp || 0) + rewards.xp, (c.xpToNext || 100) - 1) } : c);
         }
+
+        // Sync char state จาก server ใน background หลังทุก victory
+        // เพื่อให้ level/xp/xpToNext ถูกต้องแม้ rewards.levelUp มาไม่ครบ
+        loadCharacter().then(r => { if (r?.data) setChar(r.data); }).catch(() => {});
 
         // Pending loot (inventory overflow) — show modal
         if (rewards.pendingDrops?.length) {
@@ -1416,7 +1486,7 @@ export default function GameWorld() {
     } finally {
       setBusy(false);
     }
-  }, [battle, busy]);
+  }, [battle, busy, triggerLevelUp]);
 
   // ── Player manually dismisses victory screen ──
   const handleVictoryDismiss = useCallback(() => {
@@ -2270,14 +2340,74 @@ export default function GameWorld() {
           </div>
         </div>
       )}
-      <div className="min-h-screen bg-[#0a0a0a] text-amber-100 flex flex-col"
+      <div className="bg-[#0a0a0a] text-amber-100 flex flex-col overflow-hidden"
         style={{
+          height:          '100dvh',
           fontFamily:      "'Courier New', Courier, monospace",
           fontSize:        fontPx,
           filter:          ashFilter,
           transform:       ashSettings.scale !== 1.0 ? `scale(${ashSettings.scale})` : undefined,
           transformOrigin: 'top center',
         }}>
+
+        {/* ── ANNOUNCEMENT / TIP TICKER ── */}
+        {(() => {
+          const TIPS = [
+            '💡 สำรวจพื้นที่ทุกโซนเพื่อสะสม XP และ Gold ก่อนท้าดันเจี้ยน',
+            '⚔️ สะสม Combo 10 ครั้งในการต่อสู้เพื่อปล่อยท่า Limit Break สุดทรงพลัง!',
+            '🛡️ กด Guard เมื่อศัตรูแสดง ⚠️ เพื่อลด Damage จากท่าชาร์จ',
+            '📋 ทำ Daily Quest ทุกวันเพื่อรับ XP และรางวัลพิเศษสะสม',
+            '📊 อัปเกรด Stat Points ในหน้าตัวละครเพื่อเพิ่มพลังตามสไตล์การเล่น',
+            '🏰 ดันเจี้ยนให้รางวัลดีกว่าการสำรวจ — ใช้ Dungeon Key เพื่อเข้า',
+            '💬 พูดคุยกับ NPC และส่งของขวัญเพื่อเพิ่ม Affection รับ Quest พิเศษ',
+            '🛒 ตรวจ Daily Shop ทุกวัน มีสินค้าหมุนเวียนใหม่ทุก 24 ชั่วโมง',
+            '💎 RP ใช้ซื้อไอเทมหายากใน RP Shop — สะสมจากกิจกรรม Live TikTok',
+            '💀 World Boss ปรากฏช่วงพิเศษ ร่วมกันล้มเพื่อรับรางวัลสุดหายาก!',
+            '⚒️ Crafting ช่วยสร้างอุปกรณ์จาก Material ที่ได้จากการสำรวจและต่อสู้',
+            '🎁 รับ Login Bonus ทุกวัน — รางวัลสะสมดีขึ้นตามจำนวนวันติดต่อกัน',
+            '✨ ปลดล็อค Skills ด้วย SP เพื่อเพิ่มความสามารถพิเศษในการต่อสู้',
+            '💤 พักผ่อนฟื้น HP/MP ได้ที่เมนูพักผ่อน — ประหยัดกว่าซื้อ Potion',
+            '🔧 Enhancement อุปกรณ์ที่หน้า Enhance เพื่อเพิ่มพลัง Gear ที่มีอยู่แล้ว',
+          ];
+          const tip = TIPS[tipIdx % TIPS.length];
+          const isGiftAlert = !!giftAnnouncement;
+          const displayText = isGiftAlert ? giftAnnouncement.text : tip;
+          const displayKey  = isGiftAlert ? `gift-${giftAnnouncement.text}` : `tip-${tipIdx}`;
+          return (
+            <div className="shrink-0 flex items-center px-3 border-b select-none overflow-hidden"
+              style={{
+                height: '2rem', minHeight: '2rem',
+                borderBottomColor: isGiftAlert ? 'rgba(251,191,36,0.4)' : 'rgba(120,53,15,0.3)',
+                background: isGiftAlert ? '#110900' : undefined,
+                animation: isGiftAlert ? 'giftBgPulse 1.6s ease-in-out infinite' : undefined,
+                transition: 'background 0.4s ease, border-color 0.4s ease',
+              }}>
+              <span className="text-xs mr-2 shrink-0" style={{ color: isGiftAlert ? '#fde68a' : '#92400e' }}>
+                {isGiftAlert ? '🎉' : '📢'}
+              </span>
+              <span key={displayKey} className="text-xs truncate"
+                style={isGiftAlert ? {
+                  fontWeight: 700,
+                  background: 'linear-gradient(90deg, #b45309 0%, #fde68a 30%, #fbbf24 50%, #fde68a 70%, #b45309 100%)',
+                  backgroundSize: '200% auto',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  animation: 'goldShimmer 1.8s linear infinite, tipFadeIn 0.5s ease',
+                } : {
+                  color: 'rgba(253,230,138,0.8)',
+                  animation: 'tipFadeIn 0.5s ease',
+                }}>
+                {displayText}
+              </span>
+              <style>{`
+                @keyframes tipFadeIn  { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+                @keyframes goldShimmer { to { background-position: 200% center; } }
+                @keyframes giftBgPulse { 0%,100% { background:#110900; } 50% { background:#1f1000; } }
+              `}</style>
+            </div>
+          );
+        })()}
 
         {/* ── STATUS BAR ── */}
         {(() => {
@@ -2297,76 +2427,103 @@ export default function GameWorld() {
           const storyName   = activeStory?.name;
 
           return (
-            <div className="border-b border-gray-800 bg-gray-950">
-              {/* Row 1 — vitals + economy */}
-              <div className="px-4 pt-2 pb-1 flex flex-wrap gap-4 text-xs">
-                <span className="text-amber-400 font-bold">{char?.name}</span>
+            <div className="border-b border-gray-800 bg-gray-950 select-none">
+
+              {/* ── Row 1 — Character identity ── */}
+              <div className="px-3 pt-2 pb-1 flex items-center gap-2 flex-wrap">
+                {/* Name */}
+                <span className="text-amber-400 font-bold text-sm tracking-wide">{char?.name}</span>
+                {/* Title badge */}
                 {equippedTitle && (
-                  <span className="text-amber-600 text-[10px] border border-amber-900/60 px-1 rounded">🎖️ {equippedTitle}</span>
+                  <span className="text-amber-500 text-xs border border-amber-800/70 px-1.5 py-0.5 rounded leading-none">
+                    🎖️ {equippedTitle}
+                  </span>
                 )}
-                <span className="text-gray-500">{char?.race} {char?.class} Lv.{char?.level}</span>
-                <span className="text-red-400">❤️ {char?.hp}/{char?.hpMax}</span>
-                <span className="text-blue-400">💧 {char?.mp}/{char?.mpMax}</span>
-                <span className="text-yellow-400">💰 {gold.toLocaleString()} G</span>
-                <span className="text-green-400">⚡ {char?.stamina}/{char?.staminaMax}</span>
-                <span className="text-purple-400">🌀 {rp} RP</span>
-                {rpStones > 0 && <span className="text-emerald-400" title="Resurrection Stones">💎×{rpStones}</span>}
-                <span className="text-gray-400 ml-auto">📍 {getZoneName(zone)}</span>
-                {/* Font size quick controls */}
-                <div className="flex items-center gap-0.5 ml-2 select-none">
-                  <button
-                    onClick={() => {
-                      const order = ['xs','sm','base','lg'];
-                      const idx = order.indexOf(fontSize);
-                      if (idx > 0) setFontSize(order[idx - 1]);
-                    }}
-                    title="ลดขนาดตัวอักษร"
-                    className="px-1.5 py-0.5 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded text-[10px] transition leading-none">
-                    A-
-                  </button>
-                  <span className="text-[9px] text-gray-600 px-0.5">{FONT_SIZES[fontSize]?.label}</span>
-                  <button
-                    onClick={() => {
-                      const order = ['xs','sm','base','lg'];
-                      const idx = order.indexOf(fontSize);
-                      if (idx < order.length - 1) setFontSize(order[idx + 1]);
-                    }}
-                    title="เพิ่มขนาดตัวอักษร"
-                    className="px-1.5 py-0.5 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 rounded text-[11px] transition leading-none">
-                    A+
-                  </button>
-                </div>
+                {/* Race / Class / Lv */}
+                <span className="text-gray-400 text-sm">{char?.race} {char?.class}</span>
+                <span className="text-gray-300 text-sm font-semibold">Lv.<span className="text-white">{char?.level}</span></span>
+                {/* Gold */}
+                <span className="text-yellow-400 text-sm font-semibold ml-1">💰 {gold.toLocaleString()} G</span>
+                {/* RP */}
+                <span className="text-purple-400 text-sm">🌀 {rp} RP</span>
+                {/* Resurrection stones */}
+                {rpStones > 0 && (
+                  <span className="text-emerald-400 text-sm" title="Resurrection Stones">💎×{rpStones}</span>
+                )}
+                {/* Location — pushed right */}
+                <span className="text-gray-500 text-xs ml-auto">📍 {getZoneName(zone)}</span>
               </div>
 
-              {/* Row 2 — XP bar + quest progress + story hint */}
-              <div className="px-4 pb-1.5 flex items-center gap-3 text-[10px]">
+              {/* ── Row 2 — Vitals with progress bars ── */}
+              <div className="px-3 pb-1.5 flex items-center gap-3 flex-wrap">
+                {/* HP */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-red-400 text-sm">❤️</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-24 h-2 bg-gray-800 rounded overflow-hidden">
+                      <div className="h-full rounded transition-all duration-300"
+                        style={{
+                          width: `${Math.min(100, Math.round((char?.hp / char?.hpMax) * 100))}%`,
+                          background: char?.hp / char?.hpMax > 0.5 ? '#ef4444' : char?.hp / char?.hpMax > 0.25 ? '#f97316' : '#dc2626',
+                        }} />
+                    </div>
+                    <span className="text-red-300 text-xs leading-none">{char?.hp}/{char?.hpMax}</span>
+                  </div>
+                </div>
+                {/* MP */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-blue-400 text-sm">💧</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-20 h-2 bg-gray-800 rounded overflow-hidden">
+                      <div className="h-full bg-blue-500 rounded transition-all duration-300"
+                        style={{ width: `${Math.min(100, Math.round((char?.mp / char?.mpMax) * 100))}%` }} />
+                    </div>
+                    <span className="text-blue-300 text-xs leading-none">{char?.mp}/{char?.mpMax}</span>
+                  </div>
+                </div>
+                {/* Stamina */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-green-400 text-sm">⚡</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-16 h-2 bg-gray-800 rounded overflow-hidden">
+                      <div className="h-full bg-green-500 rounded transition-all duration-300"
+                        style={{ width: `${Math.min(100, Math.round((char?.stamina / char?.staminaMax) * 100))}%` }} />
+                    </div>
+                    <span className="text-green-300 text-xs leading-none">{char?.stamina}/{char?.staminaMax}</span>
+                  </div>
+                </div>
+
                 {/* XP bar */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-purple-500">⭐</span>
-                  <div className="w-20 h-1 bg-gray-800 rounded overflow-hidden">
-                    <div className="h-full bg-purple-700 rounded transition-all duration-500"
-                      style={{ width: `${xpPct}%` }} />
+                  <span className="text-purple-400 text-sm">⭐</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-20 h-2 bg-gray-800 rounded overflow-hidden">
+                      <div className="h-full bg-purple-600 rounded transition-all duration-500"
+                        style={{ width: `${xpPct}%` }} />
+                    </div>
+                    <span className="text-purple-300 text-xs leading-none">
+                      {xp}/{xpToNext}
+                      {xpPct >= 90 && <span className="text-purple-300 animate-pulse ml-1">↑</span>}
+                    </span>
                   </div>
-                  <span className="text-gray-600">{xp}/{xpToNext}</span>
-                  {xpPct >= 90 && <span className="text-purple-400 animate-pulse">↑ ใกล้ Level Up!</span>}
                 </div>
 
                 {/* Daily quest count */}
                 {dqTotal > 0 && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className={dqDone === dqTotal ? 'text-green-500' : 'text-gray-500'}>📋</span>
-                    <span className={dqDone === dqTotal ? 'text-green-400' : 'text-gray-500'}>
+                    <span className={dqDone === dqTotal ? 'text-green-400 text-sm' : 'text-gray-500 text-sm'}>📋</span>
+                    <span className={`text-xs font-semibold ${dqDone === dqTotal ? 'text-green-400' : 'text-gray-400'}`}>
                       {dqDone}/{dqTotal}
                     </span>
-                    {questBadge && <span className="text-green-400 animate-pulse">✦ รับรางวัล</span>}
+                    {questBadge && <span className="text-green-400 text-xs animate-pulse">✦</span>}
                   </div>
                 )}
 
                 {/* Active story quest hint */}
                 {storyHint && (
                   <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-                    <span className="text-amber-700 shrink-0">📖</span>
-                    <span className="text-gray-600 truncate" title={`${storyName}: ${storyHint}`}>
+                    <span className="text-amber-600 shrink-0 text-sm">📖</span>
+                    <span className="text-gray-400 text-xs truncate" title={`${storyName}: ${storyHint}`}>
                       {storyHint}
                     </span>
                   </div>
@@ -2376,11 +2533,11 @@ export default function GameWorld() {
           );
         })()}
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* ── MAIN LOG ── */}
-          <div className="flex-1 flex flex-col">
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
               <style>{`
                 @keyframes log-pop {
                   from { opacity: 0; transform: translateX(-5px); }
@@ -2407,56 +2564,178 @@ export default function GameWorld() {
             </div>
 
             {/* ── ACTION PANEL ── */}
-            <div className="border-t border-gray-800 p-4" style={{ fontFamily: 'system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif' }}>
+            <div className="border-t border-gray-800 flex flex-col shrink-0 overflow-hidden"
+              style={{ fontFamily: 'system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif' }}>
+              {/* Resize handle bar — ▼ left · S/M/L/XL center · ▲ right */}
+              <div className="flex items-center px-2 py-1 border-b border-gray-800/60 bg-gray-950 select-none gap-2">
+                {/* ▼ shrink — far left */}
+                <button
+                  onClick={() => { const next = Math.max(0, Math.max(0, Math.min(2, panelSize)) - 1); setPanelSize(next); try { localStorage.setItem('ash_panelSize', String(next)); } catch {}; }}
+                  disabled={Math.max(0, Math.min(2, panelSize)) <= 0}
+                  title="ย่อเมนู"
+                  style={{
+                    width: 72, height: 24, borderRadius: 6, flexShrink: 0,
+                    border: '1px solid #374151', background: 'transparent',
+                    color: Math.max(0, Math.min(2, panelSize)) <= 0 ? '#374151' : '#9ca3af',
+                    fontSize: 14, cursor: Math.max(0, Math.min(2, panelSize)) <= 0 ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  ▼
+                </button>
+                {/* S/M/L/XL dots — center */}
+                <div className="flex items-center gap-2 flex-1 justify-center">
+                  {PANEL_STEPS.map((s, i) => {
+                    const active = i === Math.max(0, Math.min(2, panelSize));
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => { setPanelSize(i); try { localStorage.setItem('ash_panelSize', String(i)); } catch {} }}
+                        title={s.title}
+                        style={{
+                          width: 26, height: 26, borderRadius: '50%',
+                          border: `1px solid ${active ? '#f59e0b' : '#374151'}`,
+                          background: active ? 'rgba(245,158,11,0.12)' : 'transparent',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'border-color 0.15s, background 0.15s',
+                          padding: 0,
+                        }}>
+                        <span style={{
+                          display: 'block',
+                          width: s.dotSize, height: s.dotSize,
+                          borderRadius: '50%',
+                          background: active ? '#f59e0b' : '#4b5563',
+                          transition: 'background 0.15s, width 0.15s, height 0.15s',
+                        }} />
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* ▲ expand — far right */}
+                <button
+                  onClick={() => { const next = Math.min(2, Math.max(0, Math.min(2, panelSize)) + 1); setPanelSize(next); try { localStorage.setItem('ash_panelSize', String(next)); } catch {}; }}
+                  disabled={Math.max(0, Math.min(2, panelSize)) >= 2}
+                  title="ขยายเมนู"
+                  style={{
+                    width: 72, height: 24, borderRadius: 6, flexShrink: 0,
+                    border: '1px solid #374151', background: 'transparent',
+                    color: Math.max(0, Math.min(2, panelSize)) >= 2 ? '#374151' : '#9ca3af',
+                    fontSize: 14, cursor: Math.max(0, Math.min(2, panelSize)) >= 2 ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  ▲
+                </button>
+              </div>
+              {/* Panel content */}
+              <div className="overflow-y-auto overflow-x-hidden p-4"
+                style={{ height: PANEL_STEPS[Math.max(0, Math.min(2, panelSize))].maxH, transition: 'height 0.2s ease' }}>
 
               {/* WORLD HUB */}
               {screen === SCREENS.WORLD && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-3">[ เลือกการกระทำ ]</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* ── Quick Actions (ตรึงไว้เสมอ) ── */}
+                  <div className="flex gap-1.5 mb-3">
                     {zone !== 'town_square' && (
-                      <Btn onClick={handleExplore}  disabled={busy}>🔍 สำรวจ</Btn>
+                      <button onClick={handleExplore} disabled={busy}
+                        className="flex-1 px-2 py-2 border border-amber-700/60 bg-amber-900/20 text-amber-300 hover:bg-amber-900/40 transition text-sm disabled:opacity-40 rounded font-semibold">
+                        🔍 สำรวจ
+                      </button>
                     )}
-                    {zone !== 'town_square' && ZONE_BOSSES[zone] && (
-                      <Btn
-                        onClick={() => handleStartBattle(zone, ZONE_BOSSES[zone])}
-                        disabled={busy}
-                        title="สู้ Zone Boss (24h cooldown)"
-                      >💀 Zone Boss</Btn>
-                    )}
-                    <Btn onClick={handleRestPrompt} disabled={busy}>💤 พักผ่อน</Btn>
-                    <button onClick={loadInventory} disabled={busy}
-                      className="relative px-3 py-2 border border-gray-700 text-gray-300 hover:border-gray-500 hover:bg-gray-800/30 transition text-xs disabled:opacity-40 rounded">
-                      🎒 Inventory
-                      {(inventory.length >= (char?.inventoryLimit || 30) || pendingLoot.length > 0) && (
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border border-gray-900 animate-pulse" />
-                      )}
-                    </button>
-                    <Btn onClick={loadShop}       disabled={busy}>🏪 ร้านค้า</Btn>
-                    <Btn onClick={loadNPCs}       disabled={busy}>💬 NPC</Btn>
-                    <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
-                    <Btn onClick={() => setScreen('travel')} disabled={busy}>🗺️ เดินทาง</Btn>
-                    <button onClick={() => openQuests('daily')} disabled={busy}
-                      className="relative px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
-                      📋 ภารกิจ
-                      {(questBadge || weeklyBadge) && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
-                    </button>
-                    <Btn onClick={openMainQuestLog} disabled={busy}>📖 Story</Btn>
-                    <Btn onClick={openRPShop}       disabled={busy}>💎 RP Shop</Btn>
-                    <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
-                    <Btn onClick={openCharacter}    disabled={busy}>📊 ตัวละคร</Btn>
-                    <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
-                    <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
-                    <Btn onClick={openWorldBoss}    disabled={busy}>💀 World Boss</Btn>
-                    <Btn onClick={openCrafting}     disabled={busy}>⚒️ Crafting</Btn>
-                    <Btn onClick={openDailyShop}    disabled={busy}>🛒 Daily Shop</Btn>
-                    <button onClick={() => { setLoginBonusData(null); getLoginBonusStatus().then(r => { setLoginBonusData(r.data); setShowLoginBonus(true); }).catch(() => {}); }} disabled={busy}
-                      className="px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-xs disabled:opacity-40 rounded">
-                      🎁 Login Bonus
-                    </button>
-                    <Btn onClick={openSettings}     disabled={busy}>⚙️ ตั้งค่า</Btn>
-                    <Btn onClick={() => setDisplaySettingsOpen(true)} disabled={busy}>🎨 ปรับแสง</Btn>
+                    <Btn onClick={handleRestPrompt} disabled={busy} className="flex-1">💤 พักผ่อน</Btn>
+                    <Btn onClick={() => setScreen('travel')} disabled={busy} className="flex-1">🗺️ เดินทาง</Btn>
+                    <Btn onClick={loadNPCs} disabled={busy} className="flex-1">💬 NPC</Btn>
                   </div>
+
+                  {/* ── Tab bar ── */}
+                  {(() => {
+                    const TABS = [
+                      { id: 'combat', icon: '⚔️', label: 'ต่อสู้' },
+                      { id: 'bag',    icon: '🎒', label: 'คลัง' },
+                      { id: 'quest',  icon: '📋', label: 'ภารกิจ' },
+                      { id: 'char',   icon: '👤', label: 'ตัวละคร' },
+                      { id: 'sys',    icon: '⚙️', label: 'ระบบ' },
+                    ];
+                    const tabBtnCls = (id) =>
+                      `flex-1 flex flex-col items-center gap-0.5 py-1.5 border-b-2 text-sm transition ` +
+                      (actionTab === id
+                        ? 'border-amber-500 text-amber-400'
+                        : 'border-transparent text-gray-600 hover:text-gray-400');
+
+                    return (
+                      <div>
+                        {/* Tab headers */}
+                        <div className="flex border-b border-gray-800 mb-2">
+                          {TABS.map(t => (
+                            <button key={t.id} onClick={() => setActionTab(t.id)} className={tabBtnCls(t.id)}>
+                              <span className="text-xl leading-none">{t.icon}</span>
+                              <span className="text-xs leading-none">{t.label}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Tab content */}
+                        <div className="grid grid-cols-2 gap-1.5">
+
+                          {/* ⚔️ ต่อสู้ */}
+                          {actionTab === 'combat' && (<>
+                            {zone !== 'town_square' && ZONE_BOSSES[zone] && (
+                              <Btn onClick={() => handleStartBattle(zone, ZONE_BOSSES[zone])} disabled={busy} title="สู้ Zone Boss (24h cooldown)">
+                                💀 Zone Boss
+                              </Btn>
+                            )}
+                            <Btn onClick={openWorldBoss}  disabled={busy}>💀 World Boss</Btn>
+                            <Btn onClick={loadDungeons}   disabled={busy}>🏰 ดันเจี้ยน</Btn>
+                          </>)}
+
+                          {/* 🎒 คลัง */}
+                          {actionTab === 'bag' && (<>
+                            <button onClick={loadInventory} disabled={busy}
+                              className="relative px-3 py-2 border border-gray-700 text-gray-300 hover:border-gray-500 hover:bg-gray-800/30 transition text-base disabled:opacity-40 rounded">
+                              🎒 Inventory
+                              {(inventory.length >= (char?.inventoryLimit || 30) || pendingLoot.length > 0) && (
+                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border border-gray-900 animate-pulse" />
+                              )}
+                            </button>
+                            <Btn onClick={loadShop}     disabled={busy}>🏪 ร้านค้า</Btn>
+                            <Btn onClick={openDailyShop} disabled={busy}>🛒 Daily Shop</Btn>
+                            <Btn onClick={openCrafting}  disabled={busy}>⚒️ Crafting</Btn>
+                            <Btn onClick={openRPShop}    disabled={busy}>💎 RP Shop</Btn>
+                          </>)}
+
+                          {/* 📋 ภารกิจ */}
+                          {actionTab === 'quest' && (<>
+                            <button onClick={() => openQuests('daily')} disabled={busy}
+                              className="relative px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-base disabled:opacity-40 rounded">
+                              📋 ภารกิจ
+                              {(questBadge || weeklyBadge) && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500" />}
+                            </button>
+                            <Btn onClick={openMainQuestLog} disabled={busy}>📖 Story</Btn>
+                            <button
+                              onClick={() => { setLoginBonusData(null); getLoginBonusStatus().then(r => { setLoginBonusData(r.data); setShowLoginBonus(true); }).catch(() => {}); }}
+                              disabled={busy}
+                              className="px-3 py-2 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-base disabled:opacity-40 rounded">
+                              🎁 Login Bonus
+                            </button>
+                            <Btn onClick={openAchievements} disabled={busy}>🏆 Achievement</Btn>
+                          </>)}
+
+                          {/* 👤 ตัวละคร */}
+                          {actionTab === 'char' && (<>
+                            <Btn onClick={openCharacter}   disabled={busy}>📊 ตัวละคร</Btn>
+                            <Btn onClick={openSkills}       disabled={busy}>✨ Skills</Btn>
+                            <Btn onClick={openLeaderboard}  disabled={busy}>🥇 Leaderboard</Btn>
+                          </>)}
+
+                          {/* ⚙️ ระบบ */}
+                          {actionTab === 'sys' && (<>
+                            <Btn onClick={openSettings}                    disabled={busy}>⚙️ ตั้งค่า</Btn>
+                            <Btn onClick={() => setDisplaySettingsOpen(true)} disabled={busy}>🖥️ หน้าจอ &amp; เสียง</Btn>
+                          </>)}
+
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2473,7 +2752,7 @@ export default function GameWorld() {
                       <button
                         onClick={() => !locked && !isCurrent && !busy && handleTravel(z.id)}
                         disabled={busy || isCurrent || locked}
-                        className={`w-full px-3 py-2 border text-xs rounded transition text-left pr-10 ${
+                        className={`w-full px-3 py-2 border text-sm rounded transition text-left pr-10 ${
                           isCurrent ? 'border-amber-700 bg-amber-900/20 text-amber-300 cursor-default' :
                           locked    ? 'border-gray-900 text-gray-700 opacity-50 cursor-not-allowed' :
                                       'border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10'
@@ -2502,7 +2781,7 @@ export default function GameWorld() {
                       {!z.safe && (
                         <button
                           onClick={() => handleOpenZoneDetail(z.id)}
-                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center text-[10px] text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 rounded border border-gray-800 hover:border-amber-700 transition"
+                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center text-xs text-gray-500 hover:text-amber-400 hover:bg-amber-900/20 rounded border border-gray-800 hover:border-amber-700 transition"
                           title="ดูรายละเอียดมอนเตอร์">
                           ℹ
                         </button>
@@ -2513,18 +2792,18 @@ export default function GameWorld() {
                 return (
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-gray-400 text-xs">[ เลือก Zone — Lv.{charLv} ]</p>
+                      <p className="text-gray-400 text-sm">[ เลือก Zone — Lv.{charLv} ]</p>
                       <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                     </div>
 
                     {/* Safe zones */}
-                    <p className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mb-1.5">🏙️ Safe Zone</p>
+                    <p className="text-sm text-gray-600 font-semibold uppercase tracking-widest mb-1.5">🏙️ Safe Zone</p>
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       {safeZones.map(renderZone)}
                     </div>
 
                     {/* Combat zones */}
-                    <p className="text-[10px] text-gray-600 font-semibold uppercase tracking-widest mb-1.5">⚔️ Combat Zones</p>
+                    <p className="text-sm text-gray-600 font-semibold uppercase tracking-widest mb-1.5">⚔️ Combat Zones</p>
                     <div className="grid grid-cols-2 gap-2">
                       {combatZones.map(renderZone)}
                     </div>
@@ -2536,7 +2815,7 @@ export default function GameWorld() {
               {screen === SCREENS.EXPLORE && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 🔍 ผลการสำรวจ ]</p>
+                    <p className="text-gray-400 text-sm">[ 🔍 ผลการสำรวจ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
                 </div>
@@ -2548,7 +2827,7 @@ export default function GameWorld() {
                   {!battle.result ? (
                     <>
                       {/* ── Enemy info + Type badge ── */}
-                      <div className="flex gap-2 mb-1 text-xs text-gray-500 items-center flex-wrap">
+                      <div className="flex gap-2 mb-2 text-sm text-gray-400 items-center flex-wrap">
                         <span className="text-red-400 font-semibold">👹 {battle.enemy.name}: {battle.enemy.hp}/{battle.enemy.hpMax} HP</span>
                         {/* Phase 2A: Monster Type Badge */}
                         {battle.enemy.type && battle.enemy.type !== 'unknown' && (() => {
@@ -2562,14 +2841,14 @@ export default function GameWorld() {
                           }[battle.enemy.type] || 'bg-gray-900/60 text-gray-400 border-gray-700';
                           const typeIcon = { beast:'🐾', undead:'💀', void:'🌀', human:'👤', construct:'⚙️', demon:'👿' }[battle.enemy.type] || '❓';
                           return (
-                            <span className={`text-[10px] px-1.5 py-0.5 border rounded font-semibold ${typeStyle}`}>
+                            <span className={`text-xs px-1.5 py-0.5 border rounded font-semibold ${typeStyle}`}>
                               {typeIcon} {battle.enemy.type.toUpperCase()}
                             </span>
                           );
                         })()}
                         <span className="text-blue-400">💧 {battle.player?.mp}/{battle.player?.mpMax} MP</span>
                         <span className="ml-auto">Turn {battle.turn}</span>
-                        {(battle.comboCount || 0) >= 3 && (
+                        {(battle.comboCount || 0) >= 2 && (
                           <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${battle.comboCount >= 10 ? 'bg-orange-900/50 text-orange-300 border border-orange-700' : battle.comboCount >= 5 ? 'bg-red-900/40 text-red-300 border border-red-800' : 'bg-amber-900/30 text-amber-400 border border-amber-800'}`}>
                             🔥 ×{battle.comboCount}
                           </span>
@@ -2579,10 +2858,10 @@ export default function GameWorld() {
                       {/* Phase 2C: Momentum Bar */}
                       <div className="mb-1.5">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[10px] text-yellow-500 font-semibold">⚡ Momentum</span>
-                          <span className="text-[10px] text-yellow-400">{battle.momentum || 0}/100</span>
+                          <span className="text-xs text-yellow-500 font-semibold">⚡ Momentum</span>
+                          <span className="text-xs text-yellow-400">{battle.momentum || 0}/100</span>
                           {battle.limitBreakReady && (
-                            <span className="text-[10px] text-yellow-300 animate-pulse font-bold ml-1">— LIMIT BREAK READY!</span>
+                            <span className="text-xs text-yellow-300 animate-pulse font-bold ml-1">— LIMIT BREAK READY!</span>
                           )}
                         </div>
                         <div className="w-full h-2 bg-gray-900 rounded-full border border-gray-800 overflow-hidden">
@@ -2597,7 +2876,7 @@ export default function GameWorld() {
                       {/* Berserker: Rage Stacks */}
                       {battle.rageStacks !== undefined && (
                         <div className="mb-1.5 flex items-center gap-2">
-                          <span className="text-[10px] text-red-400 font-semibold w-16 shrink-0">🔥 Rage</span>
+                          <span className="text-xs text-red-400 font-semibold w-16 shrink-0">🔥 Rage</span>
                           <div className="flex gap-0.5">
                             {Array.from({ length: 10 }).map((_, i) => (
                               <div key={i} className={`w-3 h-3 rounded-sm border transition-all ${
@@ -2607,7 +2886,7 @@ export default function GameWorld() {
                               }`} />
                             ))}
                           </div>
-                          <span className={`text-[10px] ml-1 ${battle.frenzying ? 'text-orange-300 font-bold animate-pulse' : 'text-gray-600'}`}>
+                          <span className={`text-xs ml-1 ${battle.frenzying ? 'text-orange-300 font-bold animate-pulse' : 'text-gray-600'}`}>
                             {battle.frenzying ? '💢 FRENZY!' : `×${battle.rageStacks || 0} ATK +${(battle.rageStacks || 0) * 5}%`}
                           </span>
                         </div>
@@ -2616,7 +2895,7 @@ export default function GameWorld() {
                       {/* Engineer: Turret status */}
                       {battle.turret !== undefined && (
                         <div className="mb-1.5 flex items-center gap-2">
-                          <span className="text-[10px] text-yellow-500 font-semibold w-16 shrink-0">⚙️ Turret</span>
+                          <span className="text-xs text-yellow-500 font-semibold w-16 shrink-0">⚙️ Turret</span>
                           {battle.turret ? (
                             <div className="flex items-center gap-2">
                               <div className="flex gap-0.5">
@@ -2626,10 +2905,10 @@ export default function GameWorld() {
                                   }`} />
                                 ))}
                               </div>
-                              <span className="text-[10px] text-yellow-400">{battle.turret.dmg} dmg/turn</span>
+                              <span className="text-xs text-yellow-400">{battle.turret.dmg} dmg/turn</span>
                             </div>
                           ) : (
-                            <span className="text-[10px] text-gray-600">ไม่มี Turret — ใช้ Deploy Turret</span>
+                            <span className="text-xs text-gray-600">ไม่มี Turret — ใช้ Deploy Turret</span>
                           )}
                         </div>
                       )}
@@ -2637,7 +2916,7 @@ export default function GameWorld() {
                       {/* Necromancer: Soul Shards + Minions */}
                       {battle.soulShards !== undefined && (
                         <div className="mb-1.5 flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] text-purple-400 font-semibold w-16 shrink-0">🦴 Soul</span>
+                          <span className="text-xs text-purple-400 font-semibold w-16 shrink-0">🦴 Soul</span>
                           <div className="flex gap-1">
                             {Array.from({ length: 3 }).map((_, i) => (
                               <div key={i} className={`w-4 h-4 rounded border text-[8px] flex items-center justify-center ${
@@ -2648,7 +2927,7 @@ export default function GameWorld() {
                           {(battle.minions?.length || 0) > 0 && (
                             <div className="flex gap-1">
                               {battle.minions.map((m, i) => (
-                                <span key={i} className="text-[9px] px-1 border border-purple-800 text-purple-400 rounded">
+                                <span key={i} className="text-[10px] px-1 border border-purple-800 text-purple-400 rounded">
                                   🦴{m.dmg}({m.turnsLeft}t)
                                 </span>
                               ))}
@@ -2660,7 +2939,7 @@ export default function GameWorld() {
                       {/* Rifter: Void Charges */}
                       {battle.voidCharges !== undefined && (
                         <div className="mb-1.5 flex items-center gap-2">
-                          <span className="text-[10px] text-indigo-400 font-semibold w-16 shrink-0">⚡ Void</span>
+                          <span className="text-xs text-indigo-400 font-semibold w-16 shrink-0">⚡ Void</span>
                           <div className="flex gap-0.5">
                             {Array.from({ length: 5 }).map((_, i) => (
                               <div key={i} className={`w-3.5 h-3.5 rounded-full border transition-all ${
@@ -2671,10 +2950,10 @@ export default function GameWorld() {
                             ))}
                           </div>
                           {battle.voidCharges >= 5 && (
-                            <span className="text-[10px] text-indigo-300 animate-pulse font-bold ml-1">⚡ MAX! Release!</span>
+                            <span className="text-xs text-indigo-300 animate-pulse font-bold ml-1">⚡ MAX! Release!</span>
                           )}
                           {battle.voidCharges > 0 && battle.voidCharges < 5 && (
-                            <span className="text-[10px] text-indigo-500">{battle.voidCharges * 25} bonus dmg ready</span>
+                            <span className="text-xs text-indigo-500">{battle.voidCharges * 25} bonus dmg ready</span>
                           )}
                         </div>
                       )}
@@ -2682,7 +2961,7 @@ export default function GameWorld() {
                       {/* ── Phase 3E: Bard Song Stacks ── */}
                       {battle.songStacks !== undefined && (
                         <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] text-yellow-400 font-semibold w-14 flex-shrink-0">🎵 Song</span>
+                          <span className="text-xs text-yellow-400 font-semibold w-14 flex-shrink-0">🎵 Song</span>
                           <div className="flex gap-0.5">
                             {Array.from({ length: 10 }).map((_, i) => (
                               <div
@@ -2696,9 +2975,9 @@ export default function GameWorld() {
                             ))}
                           </div>
                           {battle.songActive && battle.songStacks > 0 ? (
-                            <span className="text-[10px] text-yellow-300 font-bold">ATK +{(battle.songStacks || 0) * 3}%</span>
+                            <span className="text-xs text-yellow-300 font-bold">ATK +{(battle.songStacks || 0) * 3}%</span>
                           ) : battle.songActive ? (
-                            <span className="text-[10px] text-yellow-600 italic">กำลังเล่น...</span>
+                            <span className="text-xs text-yellow-600 italic">กำลังเล่น...</span>
                           ) : null}
                         </div>
                       )}
@@ -2710,21 +2989,21 @@ export default function GameWorld() {
                             ? 'bg-gray-800/80 border-gray-400/60 animate-pulse'
                             : 'bg-gray-950 border-gray-800'
                         }`}>
-                          <span className="text-[10px] text-gray-300 font-semibold">👻 Plane</span>
+                          <span className="text-xs text-gray-300 font-semibold">👻 Plane</span>
                           {battle.etherealPlane ? (
                             <>
-                              <span className="text-[10px] text-gray-200 font-bold ml-1">ETHEREAL</span>
-                              <span className="text-[10px] text-blue-400 ml-auto">Phys -50% ({battle.etherealTurns}t)</span>
+                              <span className="text-xs text-gray-200 font-bold ml-1">ETHEREAL</span>
+                              <span className="text-xs text-blue-400 ml-auto">Phys -50% ({battle.etherealTurns}t)</span>
                             </>
                           ) : (
-                            <span className="text-[10px] text-gray-600 ml-1">Material</span>
+                            <span className="text-xs text-gray-600 ml-1">Material</span>
                           )}
                         </div>
                       )}
 
                       {/* ── Telegraphed move warning ── */}
                       {battle.telegraphMove && (
-                        <div className="mb-1.5 px-2 py-1 rounded bg-red-950/60 border border-red-700/60 text-xs text-red-300 flex items-center gap-2 animate-pulse">
+                        <div className="mb-1.5 px-2 py-1 rounded bg-red-950/60 border border-red-700/60 text-sm text-red-300 flex items-center gap-2 animate-pulse">
                           <span>⚠️</span>
                           <span className="font-semibold">{battle.enemy.name} กำลังชาร์จ {battle.telegraphMove.emoji} {battle.telegraphMove.name}!</span>
                           <span className="ml-auto text-red-500">Guard เพื่อลด damage!</span>
@@ -2738,18 +3017,18 @@ export default function GameWorld() {
                             const statusColor = { STUN:'text-yellow-400 border-yellow-800', SLOW:'text-blue-400 border-blue-800', BURN:'text-orange-400 border-orange-800', BLEED:'text-red-400 border-red-800', POISON:'text-green-400 border-green-800', CURSE:'text-purple-400 border-purple-800', MARKED:'text-pink-400 border-pink-800' }[s.type] || 'text-gray-400 border-gray-700';
                             const statusIcon  = { STUN:'😵', SLOW:'🐢', BURN:'🔥', BLEED:'🩸', POISON:'☠️', CURSE:'💜', MARKED:'🎯' }[s.type] || '⚠️';
                             return (
-                              <span key={i} className={`text-[10px] px-1 border rounded ${statusColor}`}>
+                              <span key={i} className={`text-xs px-1 border rounded ${statusColor}`}>
                                 {statusIcon} {s.type}({s.duration})
                               </span>
                             );
                           })}
                           {battle.enemy?.shieldPhase && (
-                            <span className="text-[10px] px-1 border border-cyan-700 text-cyan-400 rounded animate-pulse">
+                            <span className="text-xs px-1 border border-cyan-700 text-cyan-400 rounded animate-pulse">
                               🛡️ SHIELD({battle.enemy.shieldPhase.turnsLeft}t)
                             </span>
                           )}
                           {battle.enemy?.evasionPhase && (
-                            <span className="text-[10px] px-1 border border-gray-500 text-gray-300 rounded animate-pulse">
+                            <span className="text-xs px-1 border border-gray-500 text-gray-300 rounded animate-pulse">
                               💨 EVADE {Math.round((battle.enemy.evasionPhase.dodgeRate || 0) * 100)}%({battle.enemy.evasionPhase.turnsLeft}t)
                             </span>
                           )}
@@ -2763,7 +3042,7 @@ export default function GameWorld() {
                             const statusColor = { STUN:'text-yellow-300 border-yellow-700', SLOW:'text-blue-300 border-blue-700', BURN:'text-orange-300 border-orange-700', BLEED:'text-red-300 border-red-700', POISON:'text-green-300 border-green-700', CURSE:'text-purple-300 border-purple-700' }[s.type] || 'text-gray-300 border-gray-600';
                             const statusIcon  = { STUN:'😵', SLOW:'🐢', BURN:'🔥', BLEED:'🩸', POISON:'☠️', CURSE:'💜' }[s.type] || '⚠️';
                             return (
-                              <span key={i} className={`text-[10px] px-1 border rounded ${statusColor} bg-gray-900/40`}>
+                              <span key={i} className={`text-xs px-1 border rounded ${statusColor} bg-gray-900/40`}>
                                 {statusIcon} คุณ {s.type}({s.duration})
                               </span>
                             );
@@ -2775,7 +3054,7 @@ export default function GameWorld() {
                       {battle.player?.buffs?.length > 0 && (
                         <div className="flex gap-1 mb-1 flex-wrap">
                           {battle.player.buffs.map((b, i) => (
-                            <span key={i} className="text-[10px] px-1 border border-amber-800 text-amber-500 rounded">
+                            <span key={i} className="text-xs px-1 border border-amber-800 text-amber-500 rounded">
                               {b.type === 'ATK_BUFF' ? '⚔️' : b.type === 'CRIT_BUFF' ? '🎯' : '✨'} {b.type} ({b.duration}t)
                             </span>
                           ))}
@@ -2787,7 +3066,7 @@ export default function GameWorld() {
                         <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>⚔️ โจมตี</Btn>
                         <button
                           onClick={() => handleBattleAction('guard')} disabled={busy}
-                          className="px-2 py-1.5 border border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-800/40 transition text-xs disabled:opacity-30 rounded font-semibold">
+                          className="px-2 py-1.5 border border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-800/40 transition text-sm disabled:opacity-30 rounded font-semibold">
                           🛡️ ตั้งรับ
                         </button>
                         <button
@@ -2801,7 +3080,7 @@ export default function GameWorld() {
                       {battle.limitBreakReady && (
                         <button
                           onClick={() => handleBattleAction('limit_break')} disabled={busy}
-                          className="w-full mb-1.5 px-3 py-2 rounded border-2 border-yellow-500 bg-yellow-950/60 text-yellow-300 hover:bg-yellow-900/40 font-bold text-xs transition animate-pulse disabled:opacity-30">
+                          className="w-full mb-1.5 px-3 py-2 rounded border-2 border-yellow-500 bg-yellow-950/60 text-yellow-300 hover:bg-yellow-900/40 font-bold text-sm transition animate-pulse disabled:opacity-30">
                           ⚡💥 LIMIT BREAK — ปล่อยพลังสูงสุด!!
                         </button>
                       )}
@@ -2824,7 +3103,7 @@ export default function GameWorld() {
                               <button key={sk.id}
                                 onClick={() => handleBattleAction('skill', { skillId: sk.id })}
                                 disabled={busy || (battle.player?.mp || 0) < sk.mpCost}
-                                className={`px-2 py-1.5 border text-blue-300 hover:bg-blue-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded ${
+                                className={`px-2 py-1.5 border text-blue-300 hover:bg-blue-900/20 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed rounded ${
                                   hasTypeAdv ? 'border-yellow-600 bg-yellow-950/20 text-yellow-300 hover:bg-yellow-900/30' :
                                   isWeakness ? 'border-orange-700 bg-orange-950/10 text-orange-300 hover:bg-orange-900/20' :
                                   isResist   ? 'border-gray-700 bg-gray-950/10 text-gray-500' :
@@ -2834,8 +3113,8 @@ export default function GameWorld() {
                                 {!hasTypeAdv && elemIcon && <span className={isWeakness ? 'text-orange-400' : isResist ? 'text-gray-600' : 'text-gray-500'}>{elemIcon} </span>}
                                 {sk.name}
                                 <span className={hasTypeAdv ? 'text-yellow-700' : isWeakness ? 'text-orange-700' : isResist ? 'text-gray-700' : 'text-blue-600'}> ({sk.mpCost}MP)</span>
-                                {isWeakness && <span className="text-orange-500 text-[9px] ml-0.5">×{elemMod}</span>}
-                                {isResist && <span className="text-gray-600 text-[9px] ml-0.5">×{elemMod}</span>}
+                                {isWeakness && <span className="text-orange-500 text-[10px] ml-0.5">×{elemMod}</span>}
+                                {isResist && <span className="text-gray-600 text-[10px] ml-0.5">×{elemMod}</span>}
                               </button>
                             );
                           })}
@@ -2943,7 +3222,7 @@ export default function GameWorld() {
               {screen === SCREENS.INVENTORY && (
                 <div className="max-h-screen overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 🎒 Inventory — คลิกเพื่อจัดการ ]</p>
+                    <p className="text-gray-400 text-sm">[ 🎒 Inventory — คลิกเพื่อจัดการ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -2960,8 +3239,8 @@ export default function GameWorld() {
                     return (
                       <div className="mb-3 px-2 py-1.5 rounded border border-gray-800 bg-gray-900/30">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-gray-500 text-[10px]">🎒 ช่องเก็บของ</span>
-                          <span className="text-xs font-bold" style={{ color: barColor }}>
+                          <span className="text-gray-500 text-sm">🎒 ช่องเก็บของ</span>
+                          <span className="text-sm font-bold" style={{ color: barColor }}>
                             {count}/{limit}
                             {isUpgraded && <span className="text-gray-600 font-normal ml-1">(Max {MAX_LIMIT})</span>}
                             {isFull && <span className="text-red-400 ml-1">เต็ม!</span>}
@@ -2973,7 +3252,7 @@ export default function GameWorld() {
                         </div>
                         {pendingLoot.length > 0 && (
                           <button onClick={() => { setPendingLootModal(true); setTrashSelected([]); }}
-                            className="mt-1.5 w-full text-center py-1 rounded border border-red-700 bg-red-950/20 text-red-400 text-[10px] hover:bg-red-900/30 transition animate-pulse">
+                            className="mt-1.5 w-full text-center py-1 rounded border border-red-700 bg-red-950/20 text-red-400 text-sm hover:bg-red-900/30 transition animate-pulse">
                             ⚠️ มีไอเทมค้างอยู่ {pendingLoot.length} ชิ้น — กดเพื่อจัดการ
                           </button>
                         )}
@@ -2985,7 +3264,7 @@ export default function GameWorld() {
                   <div className="flex gap-1 mb-3">
                     {[['all','📦 ทั้งหมด'],['equipped','⚔️ สวมใส่']].map(([id, label]) => (
                       <button key={id} onClick={() => setInvTab(id)}
-                        className={`flex-1 py-1 text-xs rounded border transition-colors ${invTab === id ? 'border-amber-600 text-amber-300 bg-amber-900/20' : 'border-gray-800 text-gray-500 hover:border-gray-600'}`}>
+                        className={`flex-1 py-1 text-sm rounded border transition-colors ${invTab === id ? 'border-amber-600 text-amber-300 bg-amber-900/20' : 'border-gray-800 text-gray-500 hover:border-gray-600'}`}>
                         {label}
                       </button>
                     ))}
@@ -3011,17 +3290,17 @@ export default function GameWorld() {
                     const hasAny = equipped.some(e => e.item);
                     return (
                       <div className="mb-3 border border-gray-800 rounded p-2 bg-gray-900/30">
-                        <p className="text-gray-500 text-[10px] mb-2">⚔️ สวมใส่อยู่ในขณะนี้</p>
-                        {!hasAny && <p className="text-gray-700 text-xs text-center py-1">ยังไม่ได้สวมใส่อุปกรณ์ใด</p>}
+                        <p className="text-gray-500 text-sm mb-2">⚔️ สวมใส่อยู่ในขณะนี้</p>
+                        {!hasAny && <p className="text-gray-700 text-sm text-center py-1">ยังไม่ได้สวมใส่อุปกรณ์ใด</p>}
                         <div className="grid grid-cols-2 gap-1">
                           {equipped.filter(e => e.item).map(({ slot, item }) => (
                             <button key={slot} onClick={() => setItemModal({ item, context: 'inv' })}
-                              className={`flex items-center gap-1 px-1.5 py-1 rounded border border-gray-700 bg-black/20 text-left text-[10px] hover:bg-gray-800/40 truncate`}>
+                              className={`flex items-center gap-1 px-1.5 py-1 rounded border border-gray-700 bg-black/20 text-left text-sm hover:bg-gray-800/40 truncate`}>
                               <span className="shrink-0">{SLOT_ICON[slot] || '📦'}</span>
                               <span className={`truncate ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
                                 {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
                               </span>
-                              <span className="text-gray-700 text-[9px] shrink-0 ml-auto">{SLOT_LABEL[slot]}</span>
+                              <span className="text-gray-700 text-sm shrink-0 ml-auto">{SLOT_LABEL[slot]}</span>
                             </button>
                           ))}
                         </div>
@@ -3035,31 +3314,31 @@ export default function GameWorld() {
                       ? inventory.filter(i => i.equipped)
                       : inventory;
                     if (shown.length === 0) return (
-                      <p className="text-gray-500 text-xs text-center py-4">
+                      <p className="text-gray-500 text-sm text-center py-4">
                         {invTab === 'equipped' ? '⚔️ ยังไม่ได้สวมใส่อุปกรณ์ใด' : 'ว่างเปล่า...'}
                       </p>
                     );
                     return shown.map(item => (
                     <div key={item.instanceId}
                       onClick={() => setItemModal({ item, context: 'inv' })}
-                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-xs cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
+                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-sm cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
                         {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
                       </span>
                       {item.grade && GRADE_LABEL[item.grade] && (
-                        <span className={`text-[9px] px-1 py-0.5 rounded border ${GRADE_COLOR[item.grade]} border-current opacity-60 shrink-0`}>
+                        <span className={`text-sm px-1 py-0.5 rounded border ${GRADE_COLOR[item.grade]} border-current opacity-60 shrink-0`}>
                           {GRADE_LABEL[item.grade]}
                         </span>
                       )}
                       {item.quality && item.quality !== 'normal' && (
-                        <span className="text-[9px] px-1 py-0.5 rounded shrink-0 font-bold"
+                        <span className="text-sm px-1 py-0.5 rounded shrink-0 font-bold"
                           style={{ color: item.qualityColor, border: `1px solid ${item.qualityColor}`, opacity: 0.85 }}>
                           {item.qualityLabel}
                         </span>
                       )}
-                      {item.equipped && <span className="text-amber-600 text-[10px] shrink-0">[ใส่อยู่]</span>}
-                      <span className="text-gray-700 text-[10px] shrink-0">ℹ️</span>
+                      {item.equipped && <span className="text-amber-600 text-sm shrink-0">[ใส่อยู่]</span>}
+                      <span className="text-gray-700 text-sm shrink-0">ℹ️</span>
                     </div>
                   ));
                   })()}
@@ -3070,17 +3349,17 @@ export default function GameWorld() {
               {screen === SCREENS.SHOP && (
                 <div className="max-h-60 overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 🛒 ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
+                    <p className="text-gray-400 text-sm">[ 🛒 ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
                   {shopItems.map(item => (
                     <div key={item.itemId}
                       onClick={() => setItemModal({ item, context: 'shop' })}
-                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-xs cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
+                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-sm cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>{item.name}</span>
                       <span className="text-yellow-600 shrink-0">{item.buyPrice}G</span>
-                      <span className="text-gray-700 text-[10px] shrink-0">ℹ️</span>
+                      <span className="text-gray-700 text-sm shrink-0">ℹ️</span>
                     </div>
                   ))}
                 </div>
@@ -3102,7 +3381,7 @@ export default function GameWorld() {
                     return (
                       <div>
                         <div className="flex items-center justify-between mb-3">
-                          <p className="text-gray-500 text-xs">[ 👥 NPC — ความสัมพันธ์ ]</p>
+                          <p className="text-gray-500 text-sm">[ 👥 NPC — ความสัมพันธ์ ]</p>
                           <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                         </div>
                         <div className="space-y-2">
@@ -3118,22 +3397,22 @@ export default function GameWorld() {
                                   <span className="text-2xl shrink-0">{n.emoji}</span>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-amber-200 text-xs font-bold">{n.name}</span>
-                                      <span className={`text-[10px] px-1.5 py-px rounded-full border ${tier.border} ${tier.color}`}>
+                                      <span className="text-amber-200 text-sm font-bold">{n.name}</span>
+                                      <span className={`text-sm px-1.5 py-px rounded-full border ${tier.border} ${tier.color}`}>
                                         {tier.label}
                                       </span>
-                                      {n.bondUnlocked && <span className="text-[10px] text-pink-500">✨ Bond</span>}
+                                      {n.bondUnlocked && <span className="text-sm text-pink-500">✨ Bond</span>}
                                     </div>
-                                    <p className="text-gray-500 text-[10px] truncate">{n.title}</p>
+                                    <p className="text-gray-500 text-sm truncate">{n.title}</p>
                                   </div>
-                                  <span className="text-pink-500 text-xs shrink-0">❤️ {n.affection}</span>
+                                  <span className="text-pink-500 text-sm shrink-0">❤️ {n.affection}</span>
                                 </div>
                                 {/* Affection bar */}
                                 <div className="w-full h-1.5 bg-gray-900 rounded-full">
                                   <div className={`h-1.5 rounded-full transition-all ${tier.bar}`}
                                     style={{ width: `${pct}%` }} />
                                 </div>
-                                <div className="flex justify-between text-[10px] text-gray-700 mt-0.5">
+                                <div className="flex justify-between text-sm text-gray-700 mt-0.5">
                                   <span>{tier.label}</span>
                                   {n.affection < 100 && <span>→ {nextTierVal} ถึง tier ถัดไป</span>}
                                   {n.affection >= 100 && <span className="text-pink-700">MAX ✨</span>}
@@ -3152,7 +3431,7 @@ export default function GameWorld() {
               {screen === SCREENS.DUNGEON_LIST && (
                 <div className="max-h-72 overflow-y-auto">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-gray-400 text-xs">[ 🏰 เลือก Dungeon ]</p>
+                    <p className="text-gray-400 text-sm">[ 🏰 เลือก Dungeon ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -3160,11 +3439,11 @@ export default function GameWorld() {
                   {featuredData?.featured && (
                     <div className={`border rounded p-2 mb-3 ${featuredData.claimed ? 'border-gray-700 opacity-60' : 'border-amber-500 bg-amber-950/30'}`}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-amber-400 text-xs font-bold">⭐ Featured Dungeon สัปดาห์นี้</span>
-                        {featuredData.claimed && <span className="text-green-600 text-xs ml-auto">✓ รับโบนัสแล้ว</span>}
-                        {!featuredData.claimed && <span className="text-amber-300 text-xs ml-auto animate-pulse">🎁 โบนัสพิเศษ!</span>}
+                        <span className="text-amber-400 text-sm font-bold">⭐ Featured Dungeon สัปดาห์นี้</span>
+                        {featuredData.claimed && <span className="text-green-600 text-sm ml-auto">✓ รับโบนัสแล้ว</span>}
+                        {!featuredData.claimed && <span className="text-amber-300 text-sm ml-auto animate-pulse">🎁 โบนัสพิเศษ!</span>}
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-300">
+                      <div className="flex items-center gap-2 text-sm text-gray-300">
                         <span>{featuredData.featured.dungeonEmoji}</span>
                         <span className="text-amber-200">{featuredData.featured.dungeonName}</span>
                         <span className="text-gray-500">·</span>
@@ -3179,29 +3458,29 @@ export default function GameWorld() {
                     <div key={d.id} className={`border rounded p-2 mb-2 ${featuredData?.featured?.dungeonId === d.id && !featuredData.claimed ? 'border-amber-600' : 'border-gray-800'}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-lg">{d.emoji}</span>
-                        <span className="text-amber-300 text-xs font-bold">{d.nameTH}</span>
+                        <span className="text-amber-300 text-sm font-bold">{d.nameTH}</span>
                         {featuredData?.featured?.dungeonId === d.id && !featuredData.claimed && (
-                          <span className="text-amber-400 text-xs">⭐</span>
+                          <span className="text-amber-400 text-sm">⭐</span>
                         )}
-                        <span className={`text-xs ml-auto ${DIFFICULTY_COLOR[d.difficulty] || 'text-gray-400'}`}>
+                        <span className={`text-sm ml-auto ${DIFFICULTY_COLOR[d.difficulty] || 'text-gray-400'}`}>
                           {'★'.repeat(Math.min(d.difficulty, 5))}{'☆'.repeat(Math.max(0, 5 - d.difficulty))} {d.difficultyLabel}
                         </span>
                       </div>
-                      <p className="text-gray-500 text-xs mb-1 leading-relaxed">{d.desc.substring(0, 80)}...</p>
-                      <div className="flex items-center gap-2 text-xs">
+                      <p className="text-gray-500 text-sm mb-1 leading-relaxed">{d.desc.substring(0, 80)}...</p>
+                      <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-400">Lv.{d.minLevel}+ · {d.totalRooms} ห้อง</span>
                         {d.levelLocked && <span className="text-red-600 ml-auto">🔒 ต้อง Lv.{d.minLevel}</span>}
                         {d.onCooldown && <span className="text-orange-600 ml-auto">⏳ {d.cooldownHoursLeft} ชั่วโมง</span>}
                         {d.blockedByOtherRun && <span className="text-gray-400 ml-auto">⛔ มี run อื่นค้างอยู่</span>}
                         {d.canEnter && (
                           <button onClick={() => handleEnterDungeon(d.id)} disabled={busy}
-                            className="ml-auto px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-40">
+                            className="ml-auto px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm disabled:opacity-40">
                             เข้า Dungeon →
                           </button>
                         )}
                         {d.hasActiveRun && (
                           <button onClick={() => handleEnterDungeon(d.id)} disabled={busy}
-                            className="ml-auto px-2 py-0.5 border border-blue-700 text-blue-400 hover:bg-blue-900/20 rounded text-xs disabled:opacity-40">
+                            className="ml-auto px-2 py-0.5 border border-blue-700 text-blue-400 hover:bg-blue-900/20 rounded text-sm disabled:opacity-40">
                             กลับเข้า →
                           </button>
                         )}
@@ -3232,8 +3511,8 @@ export default function GameWorld() {
                       <div className="mb-3">
                         {/* Header */}
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs text-gray-500">{dungeonInfo?.emoji} {dungeonInfo?.nameTH}</span>
-                          <span className="text-xs text-gray-600">ห้อง {current + 1} / {rooms.length}</span>
+                          <span className="text-sm text-gray-500">{dungeonInfo?.emoji} {dungeonInfo?.nameTH}</span>
+                          <span className="text-sm text-gray-600">ห้อง {current + 1} / {rooms.length}</span>
                         </div>
 
                         {/* Room tiles */}
@@ -3251,7 +3530,7 @@ export default function GameWorld() {
                                                 'border-gray-800 bg-black/30 opacity-60'
                                   }`}>
                                   {isCleared ? (
-                                    <span className="text-green-700 text-xs">✓</span>
+                                    <span className="text-green-700 text-sm">✓</span>
                                   ) : (
                                     <span className={isCurrent ? icon.color : 'grayscale opacity-50'}
                                       style={isCurrent ? {} : { filter: 'grayscale(1)' }}>
@@ -3259,7 +3538,7 @@ export default function GameWorld() {
                                     </span>
                                   )}
                                   {isCurrent && (
-                                    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-amber-400 text-xs leading-none">▾</span>
+                                    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-amber-400 text-sm leading-none">▾</span>
                                   )}
                                 </div>
                                 {/* Connector line (ยกเว้นหลังห้องสุดท้าย) */}
@@ -3272,7 +3551,7 @@ export default function GameWorld() {
                         </div>
 
                         {/* Current room label */}
-                        <p className="text-xs text-amber-300/70 mt-1.5">
+                        <p className="text-sm text-amber-300/70 mt-1.5">
                           {dungeonRoom.name || (ROOM_ICON[dungeonRoom.type]?.emoji + ' ' + dungeonRoom.type)}
                         </p>
                       </div>
@@ -3281,14 +3560,14 @@ export default function GameWorld() {
 
                   {/* Room description */}
                   {dungeonRoom.desc && (
-                    <p className="text-gray-400 text-xs leading-relaxed mb-2 italic">{dungeonRoom.desc}</p>
+                    <p className="text-gray-400 text-sm leading-relaxed mb-2 italic">{dungeonRoom.desc}</p>
                   )}
 
                   {/* Room log */}
                   {dungeonLog.length > 0 && (
                     <div className="max-h-24 overflow-y-auto mb-3 border border-gray-900 rounded p-1.5 bg-black/20">
                       {dungeonLog.slice(-10).map((line, i) => (
-                        <p key={i} className={`text-xs leading-relaxed ${
+                        <p key={i} className={`text-sm leading-relaxed ${
                           line.startsWith('─') ? 'text-gray-800' :
                           line.startsWith('✅') || line.startsWith('🏆') ? 'text-green-400' :
                           line.startsWith('💀') || line.startsWith('🩸') ? 'text-red-400' :
@@ -3351,7 +3630,7 @@ export default function GameWorld() {
                 <div className="text-center">
                   <p className="text-green-400 text-sm mb-1">🏆 Dungeon Clear!</p>
                   {dungeonReward && (
-                    <div className="text-xs text-gray-400 mb-2 space-y-0.5">
+                    <div className="text-sm text-gray-400 mb-2 space-y-0.5">
                       {dungeonReward.gold > 0 && <p className="text-yellow-400">💰 +{dungeonReward.gold} Gold</p>}
                       {dungeonReward.xp  > 0 && <p className="text-purple-400">⭐ +{dungeonReward.xp} XP</p>}
                       {dungeonReward.items?.map((it, i) => (
@@ -3373,10 +3652,10 @@ export default function GameWorld() {
 
               {/* DAILY QUESTS */}
               {screen === SCREENS.QUESTS && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   {/* Header + back */}
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-400 text-xs">[ 📋 ภารกิจ ]</p>
+                    <p className="text-gray-400 text-sm">[ 📋 ภารกิจ ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -3387,7 +3666,7 @@ export default function GameWorld() {
                       { key: 'weekly', label: '📅 รายสัปดาห์', badge: weeklyBadge },
                     ].map(({ key, label, badge }) => (
                       <button key={key} onClick={() => setQuestTab(key)}
-                        className={`relative px-3 py-1 text-xs rounded border transition ${
+                        className={`relative px-3 py-1 text-sm rounded border transition ${
                           questTab === key
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
                             : 'border-gray-800 text-gray-500 hover:text-gray-300'
@@ -3401,12 +3680,12 @@ export default function GameWorld() {
                   {/* ── Daily tab ── */}
                   {questTab === 'daily' && (
                     !questData ? (
-                      <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                      <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                     ) : (
                       <>
-                        <p className="text-gray-600 text-xs mb-1">{questData.date || ''}</p>
+                        <p className="text-gray-600 text-sm mb-1">{questData.date || ''}</p>
                         {questData.quests.map(q => (
-                          <div key={q.id} className={`border rounded p-2 text-xs ${
+                          <div key={q.id} className={`border rounded p-2 text-sm ${
                             q.claimed   ? 'border-gray-900 opacity-40' :
                             q.completed ? 'border-green-800' : 'border-gray-800'
                           }`}>
@@ -3416,7 +3695,7 @@ export default function GameWorld() {
                                 <span className="text-gray-400">✓ รับแล้ว</span>
                               ) : q.completed ? (
                                 <button onClick={() => handleClaimQuest(q.id)}
-                                  className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
+                                  className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-sm">
                                   รับรางวัล
                                 </button>
                               ) : (
@@ -3436,7 +3715,7 @@ export default function GameWorld() {
                           </div>
                         ))}
                         {/* Bonus */}
-                        <div className={`border rounded p-2 text-xs ${
+                        <div className={`border rounded p-2 text-sm ${
                           questData.bonusClaimed ? 'border-gray-900 opacity-40' :
                           questData.allCompleted ? 'border-amber-700 bg-amber-900/10' : 'border-gray-800 opacity-60'
                         }`}>
@@ -3446,7 +3725,7 @@ export default function GameWorld() {
                               <span className="text-gray-400">✓ รับแล้ว</span>
                             ) : questData.allCompleted ? (
                               <button onClick={() => handleClaimQuest('bonus')}
-                                className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
+                                className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-sm animate-pulse">
                                 🎁 รับ!
                               </button>
                             ) : (
@@ -3462,12 +3741,12 @@ export default function GameWorld() {
                   {/* ── Weekly tab ── */}
                   {questTab === 'weekly' && (
                     !weeklyData ? (
-                      <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                      <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                     ) : (
                       <>
-                        <p className="text-gray-600 text-xs mb-1">{weeklyData.weekKey ? `สัปดาห์ ${weeklyData.weekKey}` : ''}</p>
+                        <p className="text-gray-600 text-sm mb-1">{weeklyData.weekKey ? `สัปดาห์ ${weeklyData.weekKey}` : ''}</p>
                         {weeklyData.quests.map(q => (
-                          <div key={q.id} className={`border rounded p-2 text-xs ${
+                          <div key={q.id} className={`border rounded p-2 text-sm ${
                             q.claimed   ? 'border-gray-900 opacity-40' :
                             q.completed ? 'border-green-800' : 'border-gray-800'
                           }`}>
@@ -3477,7 +3756,7 @@ export default function GameWorld() {
                                 <span className="text-gray-400">✓ รับแล้ว</span>
                               ) : q.completed ? (
                                 <button onClick={() => handleClaimWeekly(q.id)}
-                                  className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs">
+                                  className="px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-sm">
                                   รับรางวัล
                                 </button>
                               ) : (
@@ -3499,7 +3778,7 @@ export default function GameWorld() {
                           </div>
                         ))}
                         {/* Weekly bonus */}
-                        <div className={`border rounded p-2 text-xs ${
+                        <div className={`border rounded p-2 text-sm ${
                           weeklyData.bonusClaimed ? 'border-gray-900 opacity-40' :
                           weeklyData.allCompleted ? 'border-amber-700 bg-amber-900/10' : 'border-gray-800 opacity-60'
                         }`}>
@@ -3509,7 +3788,7 @@ export default function GameWorld() {
                               <span className="text-gray-400">✓ รับแล้ว</span>
                             ) : weeklyData.allCompleted ? (
                               <button onClick={() => handleClaimWeekly('bonus')}
-                                className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-xs animate-pulse">
+                                className="px-2 py-0.5 border border-amber-600 text-amber-300 hover:bg-amber-900/30 rounded text-sm animate-pulse">
                                 🏆 รับ!
                               </button>
                             ) : (
@@ -3526,14 +3805,14 @@ export default function GameWorld() {
 
               {/* RP SHOP */}
               {screen === SCREENS.RP_SHOP && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 💎 RP Shop — Realm Points: <span className="text-purple-400">{rp}</span> ]</p>
+                    <p className="text-gray-400 text-sm">[ 💎 RP Shop — Realm Points: <span className="text-purple-400">{rp}</span> ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {rpShopLoading ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : (
                     <>
                       {/* Group by category */}
@@ -3549,7 +3828,7 @@ export default function GameWorld() {
                         if (!catItems.length) return null;
                         return (
                           <div key={cat.key}>
-                            <p className="text-gray-500 text-xs mb-1">{cat.label}</p>
+                            <p className="text-gray-500 text-sm mb-1">{cat.label}</p>
                             {catItems.map(item => {
                               const isCapped = item.capped;
                               const bought   = item.alreadyBought;
@@ -3558,7 +3837,7 @@ export default function GameWorld() {
                               const pendingSkill = item.id === 'rp_skill_reset' && rpPendingSkillReset;
                               const pendingStat  = item.id === 'rp_stat_reset'  && rpPendingStatReset;
                               return (
-                              <div key={item.id} className={`border rounded p-2 mb-1 text-xs ${
+                              <div key={item.id} className={`border rounded p-2 mb-1 text-sm ${
                                 bought || isCapped ? 'border-gray-900 opacity-40' :
                                 !afford            ? 'border-gray-800 opacity-60' :
                                                      'border-purple-900 bg-purple-900/10'
@@ -3568,20 +3847,20 @@ export default function GameWorld() {
                                     <p className="text-amber-200 font-bold">{item.name}</p>
                                     <p className="text-gray-300 leading-relaxed mt-0.5">{item.desc}</p>
                                     {item.currentOwned !== undefined && item.maxOwn && (
-                                      <p className="text-purple-500 text-[10px] mt-0.5">{item.currentOwned}/{item.maxOwn} ก้อน</p>
+                                      <p className="text-purple-500 text-sm mt-0.5">{item.currentOwned}/{item.maxOwn} ก้อน</p>
                                     )}
                                   </div>
                                   <div className="shrink-0 text-right space-y-1">
                                     <p className="text-purple-400 font-bold">{item.rpPrice} RP</p>
                                     {bought ? (
-                                      <span className="text-gray-400 text-xs">✓ ซื้อแล้ว</span>
+                                      <span className="text-gray-400 text-sm">✓ ซื้อแล้ว</span>
                                     ) : isCapped ? (
-                                      <span className="text-gray-500 text-xs">สูงสุดแล้ว</span>
+                                      <span className="text-gray-500 text-sm">สูงสุดแล้ว</span>
                                     ) : (
                                       <button
                                         onClick={() => handleBuyRPItem(item.id, item.name, item.rpPrice)}
                                         disabled={!afford}
-                                        className="mt-1 px-2 py-0.5 border border-purple-700 text-purple-400 hover:bg-purple-900/20 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                                        className="mt-1 px-2 py-0.5 border border-purple-700 text-purple-400 hover:bg-purple-900/20 rounded text-sm disabled:opacity-40 disabled:cursor-not-allowed">
                                         ซื้อ
                                       </button>
                                     )}
@@ -3590,7 +3869,7 @@ export default function GameWorld() {
                                       <button
                                         onClick={() => setSkillResetConfirmOpen(true)}
                                         disabled={resetBusy}
-                                        className="mt-1 px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs disabled:opacity-40">
+                                        className="mt-1 px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-sm disabled:opacity-40">
                                         ใช้ Reset
                                       </button>
                                     )}
@@ -3598,7 +3877,7 @@ export default function GameWorld() {
                                       <button
                                         onClick={() => setStatResetConfirmOpen(true)}
                                         disabled={resetBusy}
-                                        className="mt-1 px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs disabled:opacity-40">
+                                        className="mt-1 px-2 py-0.5 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-sm disabled:opacity-40">
                                         ใช้ Reset
                                       </button>
                                     )}
@@ -3612,45 +3891,45 @@ export default function GameWorld() {
                       })}
 
                       {/* RP Rate Info */}
-                      <div className="border border-purple-900/40 rounded p-2.5 text-xs bg-purple-950/20 space-y-1.5">
+                      <div className="border border-purple-900/40 rounded p-2.5 text-sm bg-purple-950/20 space-y-1.5">
                         <p className="text-purple-400 font-bold text-center">💎 วิธีรับ Realm Points (RP)</p>
                         <div className="flex items-center gap-2">
                           <span className="text-base shrink-0">🎁</span>
                           <div>
                             <p className="text-amber-300 font-semibold">Gift ใน TikTok LIVE</p>
-                            <p className="text-gray-500 text-[10px]">เปย์ VJ <span className="text-purple-400 font-bold">10 Coin = 1 RP</span> · ยิ่งเปย์ยิ่งได้ RP สะสมแลกของพิเศษ</p>
+                            <p className="text-gray-500 text-sm">เปย์ VJ <span className="text-purple-400 font-bold">10 Coin = 1 RP</span> · ยิ่งเปย์ยิ่งได้ RP สะสมแลกของพิเศษ</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 border-t border-gray-800 pt-1.5">
                           <span className="text-base shrink-0">📺</span>
                           <div>
                             <p className="text-amber-300 font-semibold">ดูสตรีม (Passive)</p>
-                            <p className="text-gray-500 text-[10px]">Online ทุก 5 นาที = <span className="text-purple-400 font-bold">1 RP</span> · ~12 RP/ชั่วโมง</p>
+                            <p className="text-gray-500 text-sm">Online ทุก 5 นาที = <span className="text-purple-400 font-bold">1 RP</span> · ~12 RP/ชั่วโมง</p>
                           </div>
                         </div>
                       </div>
 
                       {/* RP → Gold Redeem */}
-                      <div className="border border-yellow-900/50 rounded p-2.5 text-xs bg-yellow-950/20">
+                      <div className="border border-yellow-900/50 rounded p-2.5 text-sm bg-yellow-950/20">
                         <p className="text-yellow-400 font-bold mb-1.5">🪙 แลก RP → Gold</p>
-                        <p className="text-gray-500 text-[10px] mb-2">Rate: <span className="text-yellow-400">5 RP = 1 Gold</span> (1,000 RP = 200 Gold) · daily cap 5,000 RP</p>
+                        <p className="text-gray-500 text-sm mb-2">Rate: <span className="text-yellow-400">5 RP = 1 Gold</span> (1,000 RP = 200 Gold) · daily cap 5,000 RP</p>
                         <div className="flex gap-2 items-center">
                           <input
                             type="number" min="100" max="5000" step="100"
                             value={redeemRpAmt}
                             onChange={e => setRedeemRpAmt(Math.min(5000, Math.max(100, Number(e.target.value) || 100)))}
-                            className="flex-1 bg-black/40 border border-gray-700 rounded px-2 py-1 text-xs text-amber-200 w-0"
+                            className="flex-1 bg-black/40 border border-gray-700 rounded px-2 py-1 text-sm text-amber-200 w-0"
                           />
                           <span className="text-gray-600 shrink-0">RP →</span>
                           <span className="text-yellow-500 font-bold shrink-0">{Math.floor((redeemRpAmt || 0) / 5)} G</span>
                           <button
                             onClick={handleRedeemRP}
                             disabled={redeemBusy || rp < (redeemRpAmt || 0) || (redeemRpAmt || 0) < 100}
-                            className="shrink-0 px-2 py-1 border border-yellow-700 text-yellow-400 hover:bg-yellow-900/20 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                            className="shrink-0 px-2 py-1 border border-yellow-700 text-yellow-400 hover:bg-yellow-900/20 rounded text-sm disabled:opacity-40 disabled:cursor-not-allowed">
                             {redeemBusy ? '...' : 'แลก'}
                           </button>
                         </div>
-                        {rp < redeemRpAmt && <p className="text-red-500 text-[10px] mt-1">RP ไม่พอ (มี {rp} RP)</p>}
+                        {rp < redeemRpAmt && <p className="text-red-500 text-sm mt-1">RP ไม่พอ (มี {rp} RP)</p>}
                       </div>
                     </>
                   )}
@@ -3663,8 +3942,8 @@ export default function GameWorld() {
                   {/* Tab switcher */}
                   <div className="flex gap-1 mb-3 sticky top-0 bg-black/80 backdrop-blur py-1 z-10">
                     {[
-                      { key: 'main',  label: '🌑 บันทึกการผจญภัย' },
-                      { key: 'story', label: '📋 ภารกิจ Story' },
+                      { key: 'main',  label: '🌑 เนื้อเรื่องหลัก' },
+                      { key: 'story', label: '📋 เนื้อเรื่องคู่ขนาน' },
                       { key: 'side',  label: '⚔️ ภารกิจพิเศษ' },
                     ].map(({ key, label }) => (
                       <button key={key} onClick={() => {
@@ -3672,7 +3951,7 @@ export default function GameWorld() {
                         if (key === 'main' && !mainQuestLog) loadMainQuestLog();
                         if ((key === 'story' || key === 'side') && !questLog) loadQuestLog();
                       }}
-                        className={`px-2 py-1 text-xs rounded border transition ${
+                        className={`px-2 py-1 text-sm rounded border transition ${
                           questLogTab === key
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
                             : 'border-gray-700 text-gray-400 hover:text-gray-200'
@@ -3680,18 +3959,18 @@ export default function GameWorld() {
                         {label}
                       </button>
                     ))}
-                    <Btn onClick={() => setScreen(SCREENS.WORLD)} className="ml-auto text-xs">← กลับ</Btn>
+                    <Btn onClick={() => setScreen(SCREENS.WORLD)} className="ml-auto text-sm">← กลับ</Btn>
                   </div>
 
                   {/* ── MAIN QUEST TAB (Vorath / The Shattered Age) ── */}
                   {questLogTab === 'main' && (
                     !mainQuestLog ? (
-                      <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                      <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                     ) : (
                       <div className="space-y-3">
                         {/* Act progress banner */}
                         <div className="border border-purple-900 rounded-lg p-3 bg-purple-950/20 text-center">
-                          <p className="text-purple-400 text-xs font-bold tracking-wider uppercase">The Shattered Age</p>
+                          <p className="text-purple-400 text-sm font-bold tracking-wider uppercase">The Shattered Age</p>
                           <p className="text-gray-300 text-sm mt-1">Act {mainQuestLog.currentAct} / 5</p>
                           <div className="flex gap-1 justify-center mt-2">
                             {[1,2,3,4,5].map(a => (
@@ -3712,7 +3991,7 @@ export default function GameWorld() {
                             { key:'lore',     label:'📚 Lore' },
                           ].map(({ key, label }) => (
                             <button key={key} onClick={() => setMainQuestTab(key)}
-                              className={`px-2 py-1 text-xs rounded border transition ${
+                              className={`px-2 py-1 text-sm rounded border transition ${
                                 mainQuestTab === key
                                   ? 'border-purple-700 text-purple-300 bg-purple-900/20'
                                   : 'border-gray-800 text-gray-500 hover:text-gray-300'
@@ -3752,11 +4031,11 @@ export default function GameWorld() {
                             <div className="space-y-2">
                               {/* Theme card */}
                               <div className="border border-indigo-900/60 rounded-lg p-3 bg-indigo-950/20 space-y-2">
-                                <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider">🌍 Ashenveil: The Shattered Age</p>
-                                <p className="text-gray-200 text-xs leading-relaxed font-medium">
+                                <p className="text-indigo-400 text-sm font-bold uppercase tracking-wider">🌍 Ashenveil: The Shattered Age</p>
+                                <p className="text-gray-200 text-sm leading-relaxed font-medium">
                                   โลกถูกทำลายโดยความผิดพลาดของมนุษย์ — ตัวร้ายที่แท้จริงไม่ใช่ Vorath แต่คือความโลภของผู้เรียกเขามา
                                 </p>
-                                <div className="border-t border-indigo-900/40 pt-2 grid grid-cols-2 gap-2 text-[11px]">
+                                <div className="border-t border-indigo-900/40 pt-2 grid grid-cols-2 gap-2 text-sm">
                                   <div>
                                     <p className="text-gray-500 mb-0.5">500 ปีที่แล้ว</p>
                                     <p className="text-gray-400 leading-relaxed">สภา Archon เรียก Vorath มา → ควบคุมไม่ได้ → สังเวยคน 5 คนเพื่อผนึกเขา → โลกแตกเป็น 7 Shard</p>
@@ -3783,19 +4062,19 @@ export default function GameWorld() {
                                       <span className="text-base">{act.emoji}</span>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-indigo-300' : 'text-gray-500'}`}>{act.title}</span>
-                                          {isActive && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">▶ กำลังดำเนิน</span>}
-                                          {!isLocked && !isActive && done > 0 && done === questsInAct.length && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-900/60 text-green-400">✅ เสร็จแล้ว</span>}
+                                          <span className={`text-sm font-bold uppercase tracking-wider ${isActive ? 'text-indigo-300' : 'text-gray-500'}`}>{act.title}</span>
+                                          {isActive && <span className="text-sm px-1.5 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">▶ กำลังดำเนิน</span>}
+                                          {!isLocked && !isActive && done > 0 && done === questsInAct.length && <span className="text-sm px-1.5 py-0.5 rounded-full bg-green-900/60 text-green-400">✅ เสร็จแล้ว</span>}
                                         </div>
-                                        <p className="text-[11px] text-gray-500">{act.subtitle}</p>
+                                        <p className="text-sm text-gray-500">{act.subtitle}</p>
                                       </div>
-                                      {questsInAct.length > 0 && <span className="text-gray-700 text-[11px] shrink-0">{done}/{questsInAct.length}</span>}
+                                      {questsInAct.length > 0 && <span className="text-gray-700 text-sm shrink-0">{done}/{questsInAct.length}</span>}
                                     </div>
                                     {(!isLocked || isPrologue) && (
                                       <div className="px-3 py-2 bg-black/20 space-y-1.5">
-                                        <p className="text-gray-500 text-xs leading-relaxed">{act.summary}</p>
+                                        <p className="text-gray-500 text-sm leading-relaxed">{act.summary}</p>
                                         {act.reveal && (
-                                          <p className={`text-[11px] leading-relaxed border-l-2 pl-2 ${
+                                          <p className={`text-sm leading-relaxed border-l-2 pl-2 ${
                                             act.reveal.startsWith('⚖️') ? 'border-yellow-700 text-yellow-400/80' : 'border-purple-800 text-purple-400/80'
                                           }`}>{act.reveal}</p>
                                         )}
@@ -4013,7 +4292,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
                           return (
                             <div className="space-y-2">
-                              <p className="text-xs text-gray-500 mb-3">📖 บันทึกเนื้อเรื่องโดยละเอียด — ปลดล็อคเมื่อคุณเดินทางถึง Act นั้น</p>
+                              <p className="text-sm text-gray-500 mb-3">📖 บันทึกเนื้อเรื่องโดยละเอียด — ปลดล็อคเมื่อคุณเดินทางถึง Act นั้น</p>
                               {JOURNAL_ENTRIES.map(entry => {
                                 const unlocked = entry.act <= currentAct;
                                 const isOpen   = expandedAct === entry.act;
@@ -4035,19 +4314,19 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                           <div className={`text-sm font-medium ${unlocked ? 'text-purple-200' : 'text-gray-600'}`}>
                                             {entry.title}
                                           </div>
-                                          <div className="text-xs text-gray-500">{entry.subtitle}</div>
+                                          <div className="text-sm text-gray-500">{entry.subtitle}</div>
                                         </div>
                                       </div>
                                       {unlocked && (
-                                        <span className="text-gray-500 text-xs">{isOpen ? '▲' : '▼'}</span>
+                                        <span className="text-gray-500 text-sm">{isOpen ? '▲' : '▼'}</span>
                                       )}
                                       {!unlocked && (
-                                        <span className="text-xs text-gray-600">ยังไม่ถึง</span>
+                                        <span className="text-sm text-gray-600">ยังไม่ถึง</span>
                                       )}
                                     </button>
                                     {unlocked && isOpen && (
                                       <div className="px-4 pb-4 border-t border-purple-900/30">
-                                        <div className="mt-3 text-xs text-gray-300 leading-6 whitespace-pre-line">
+                                        <div className="mt-3 text-sm text-gray-300 leading-6 whitespace-pre-line">
                                           {entry.prose}
                                         </div>
                                       </div>
@@ -4089,15 +4368,15 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                     }`}>
                                       <span className="text-base">{info.emoji}</span>
                                       <div className="flex-1 min-w-0">
-                                        <p className={`text-xs font-bold ${hasActive ? 'text-purple-300' : 'text-gray-600'}`}>
+                                        <p className={`text-sm font-bold ${hasActive ? 'text-purple-300' : 'text-gray-600'}`}>
                                           Act {act} — {info.title}
                                         </p>
                                       </div>
-                                      <span className="text-gray-700 text-xs">{done}/{quests.length}</span>
+                                      <span className="text-gray-700 text-sm">{done}/{quests.length}</span>
                                     </div>
                                     <div className="divide-y divide-gray-900/60">
                                       {quests.map(q => (
-                                        <div key={q.id} className={`px-3 py-2.5 text-xs transition ${
+                                        <div key={q.id} className={`px-3 py-2.5 text-sm transition ${
                                           q.status === 'completed' ? 'opacity-35' :
                                           q.status === 'locked'    ? 'opacity-20' : ''
                                         }`}>
@@ -4113,7 +4392,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                                 q.status === 'active' ? 'text-purple-200' : 'text-gray-500'
                                               }`}>{q.name}</p>
                                               {q.status === 'active' && q.narrative && (
-                                                <p className="text-gray-400 leading-relaxed mt-1 italic text-xs">
+                                                <p className="text-gray-400 leading-relaxed mt-1 italic text-sm">
                                                   "{q.narrative.substring(0, 150)}{q.narrative.length > 150 ? '…' : ''}"
                                                 </p>
                                               )}
@@ -4126,12 +4405,12 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                                         <div className="h-1 bg-purple-600 rounded-full transition-all"
                                                           style={{ width: `${Math.min(100, ((q.currentStep.progress||0) / q.currentStep.count) * 100)}%` }} />
                                                       </div>
-                                                      <span className="text-gray-500 text-xs">
+                                                      <span className="text-gray-500 text-sm">
                                                         {q.currentStep.progress||0}/{q.currentStep.count}
                                                       </span>
                                                     </div>
                                                   )}
-                                                  <p className="text-gray-700 text-xs">
+                                                  <p className="text-gray-700 text-sm">
                                                     ขั้น {(q.currentStep.stepIndex||0)+1} / {q.currentStep.totalSteps}
                                                   </p>
                                                 </div>
@@ -4142,27 +4421,27 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                                !mainQuestLog.choiceFlags?.vorath_ending && (
                                                 <div className="mt-2 flex gap-2">
                                                   <button onClick={() => handleMakeChoice('vorath_ending', 'accord', 'ส่ง Vorath กลับบ้าน')}
-                                                    className="flex-1 px-2 py-1.5 rounded border border-purple-800 text-purple-300 text-xs hover:bg-purple-900/30 transition">
+                                                    className="flex-1 px-2 py-1.5 rounded border border-purple-800 text-purple-300 text-sm hover:bg-purple-900/30 transition">
                                                     🌑 ส่ง Vorath กลับบ้าน
                                                   </button>
                                                   <button onClick={() => handleMakeChoice('vorath_ending', 'seal', 'ผนึก Vorath ใหม่')}
-                                                    className="flex-1 px-2 py-1.5 rounded border border-red-900 text-red-400 text-xs hover:bg-red-900/20 transition">
+                                                    className="flex-1 px-2 py-1.5 rounded border border-red-900 text-red-400 text-sm hover:bg-red-900/20 transition">
                                                     🔒 ผนึก Vorath ใหม่
                                                   </button>
                                                 </div>
                                               )}
                                               {/* Show chosen ending */}
                                               {mainQuestLog.choiceFlags?.vorath_ending && q.currentStep?.choiceKey === 'vorath_ending' && (
-                                                <p className="mt-1 text-purple-500 text-xs italic">
+                                                <p className="mt-1 text-purple-500 text-sm italic">
                                                   เลือกแล้ว: {mainQuestLog.choiceFlags.vorath_ending === 'accord' ? '🌑 ส่ง Vorath กลับบ้าน' : '🔒 ผนึก Vorath ใหม่'}
                                                 </p>
                                               )}
                                               {q.status === 'completed' && q.completionText && (
-                                                <p className="text-gray-600 italic mt-1 text-xs leading-relaxed">
+                                                <p className="text-gray-600 italic mt-1 text-sm leading-relaxed">
                                                   "{q.completionText.substring(0, 100)}{q.completionText.length > 100 ? '…' : ''}"
                                                 </p>
                                               )}
-                                              <p className="text-yellow-800 mt-1 text-xs">
+                                              <p className="text-yellow-800 mt-1 text-sm">
                                                 🎁 {q.rewards?.xp} XP · {q.rewards?.gold}G
                                               </p>
                                             </div>
@@ -4182,19 +4461,19 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                           <div className="space-y-2">
                             {mainQuestLog.loreFragments?.length === 0 ? (
                               <div className="border border-gray-900 rounded p-4 text-center">
-                                <p className="text-gray-600 text-xs">ยังไม่พบ Lore Fragment</p>
-                                <p className="text-gray-700 text-xs mt-1">สำรวจโลก, กำจัดบอส และพูดคุยกับ NPC เพื่อค้นหาเรื่องราว</p>
+                                <p className="text-gray-600 text-sm">ยังไม่พบ Lore Fragment</p>
+                                <p className="text-gray-700 text-sm mt-1">สำรวจโลก, กำจัดบอส และพูดคุยกับ NPC เพื่อค้นหาเรื่องราว</p>
                               </div>
                             ) : mainQuestLog.loreFragments.map(frag => (
                               <div key={frag.id} className="border border-indigo-900 rounded-lg p-3 bg-indigo-950/20">
                                 <div className="flex items-start gap-2">
                                   <span className="text-indigo-400 text-sm shrink-0">📜</span>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-indigo-300 text-xs font-bold">{frag.title}</p>
-                                    <p className="text-gray-400 text-xs mt-1 leading-relaxed whitespace-pre-line">
+                                    <p className="text-indigo-300 text-sm font-bold">{frag.title}</p>
+                                    <p className="text-gray-400 text-sm mt-1 leading-relaxed whitespace-pre-line">
                                       {frag.content}
                                     </p>
-                                    <p className="text-gray-700 text-xs mt-1">📍 {frag.zone?.replace(/_/g,' ')}</p>
+                                    <p className="text-gray-700 text-sm mt-1">📍 {frag.zone?.replace(/_/g,' ')}</p>
                                   </div>
                                 </div>
                               </div>
@@ -4207,7 +4486,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
                   {/* ── OLD QUEST TABS (story / side) ── */}
                   {(questLogTab === 'story' || questLogTab === 'side') && (!questLog ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : questLogTab === 'story' ? (
                     /* ── STORY TAB — จัดกลุ่มตาม Act ── */
                     (() => {
@@ -4231,20 +4510,20 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                 <div className={`flex items-center gap-2 mb-2 border-b pb-1 ${
                                   hasActive ? 'border-amber-900' : 'border-gray-900'
                                 }`}>
-                                  <span className={`text-xs font-bold ${hasActive ? 'text-amber-500' : 'text-gray-600'}`}>
+                                  <span className={`text-sm font-bold ${hasActive ? 'text-amber-500' : 'text-gray-600'}`}>
                                     {ACT_LABELS[act] || `Act ${act}`}
                                   </span>
-                                  <span className="text-gray-700 text-xs ml-auto">{doneCount}/{quests.length}</span>
+                                  <span className="text-gray-700 text-sm ml-auto">{doneCount}/{quests.length}</span>
                                 </div>
                                 <div className="space-y-1.5">
                                   {quests.map(q => (
-                                    <div key={q.id} className={`border rounded p-2 text-xs transition ${
+                                    <div key={q.id} className={`border rounded p-2 text-sm transition ${
                                       q.status === 'completed' ? 'border-gray-800 opacity-40' :
                                       q.status === 'active'    ? 'border-amber-700 bg-amber-900/10 shadow-sm shadow-amber-900/30' :
                                                                  'border-gray-900 opacity-25'
                                     }`}>
                                       <div className="flex items-start gap-2">
-                                        <span className={`text-xs font-bold shrink-0 mt-0.5 ${
+                                        <span className={`text-sm font-bold shrink-0 mt-0.5 ${
                                           q.status === 'completed' ? 'text-green-600' :
                                           q.status === 'active'    ? 'text-amber-400' :
                                                                      'text-gray-600'
@@ -4264,24 +4543,24 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                                   <div className="h-1 bg-amber-600 rounded-full transition-all"
                                                     style={{ width: `${Math.min(100, ((q.currentStep.progress||0) / (q.currentStep.count||1)) * 100)}%` }} />
                                                 </div>
-                                                <span className="text-gray-400 shrink-0 text-xs">
+                                                <span className="text-gray-400 shrink-0 text-sm">
                                                   {q.currentStep.progress||0}/{q.currentStep.count}
                                                 </span>
                                               </div>
-                                              <p className="text-gray-600 text-xs">
+                                              <p className="text-gray-600 text-sm">
                                                 ขั้น {(q.currentStep.stepIndex||0) + 1} / {q.currentStep.totalSteps}
                                               </p>
                                             </div>
                                           )}
                                           {q.status === 'completed' && q.completionText && (
-                                            <p className="text-gray-600 italic leading-relaxed mt-1 text-xs">
+                                            <p className="text-gray-600 italic leading-relaxed mt-1 text-sm">
                                               "{q.completionText.substring(0, 120)}{q.completionText.length > 120 ? '…' : ''}"
                                             </p>
                                           )}
                                           {q.status === 'locked' && q.desc && (
                                             <p className="text-gray-600 leading-relaxed mt-0.5">{q.desc}</p>
                                           )}
-                                          <p className="text-yellow-700 mt-1 text-xs">
+                                          <p className="text-yellow-700 mt-1 text-sm">
                                             🎁 {q.rewards?.xp} XP · {q.rewards?.gold}G{q.rewards?.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}
                                           </p>
                                         </div>
@@ -4306,7 +4585,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       };
                       const catBadge = (cat) => {
                         const c = CAT[cat] || { emoji: '📜', label: cat, color: 'text-gray-400', border: '', bg: '' };
-                        return <span className={`${c.color} text-xs`}>{c.emoji} {c.label}</span>;
+                        return <span className={`${c.color} text-sm`}>{c.emoji} {c.label}</span>;
                       };
                       return (
                       <div className="space-y-3">
@@ -4314,9 +4593,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         {/* Active side quests */}
                         {questLog.sideActive.length > 0 && (
                           <div>
-                            <p className="text-amber-500 text-xs font-bold mb-1">▶ กำลังดำเนินการ</p>
+                            <p className="text-amber-500 text-sm font-bold mb-1">▶ กำลังดำเนินการ</p>
                             {questLog.sideActive.map(q => (
-                              <div key={q.id} className={`border rounded p-2 mb-1 text-xs ${(CAT[q.category]||{}).border||'border-amber-800'} ${(CAT[q.category]||{}).bg||'bg-amber-900/10'}`}>
+                              <div key={q.id} className={`border rounded p-2 mb-1 text-sm ${(CAT[q.category]||{}).border||'border-amber-800'} ${(CAT[q.category]||{}).bg||'bg-amber-900/10'}`}>
                                 <div className="flex items-center gap-1 mb-0.5">
                                   {catBadge(q.category)}
                                   <span className="text-amber-300 font-bold ml-1">{q.name}</span>
@@ -4327,9 +4606,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                     <div className="h-1 bg-amber-500 rounded-full transition-all"
                                       style={{ width: `${Math.min(100, (q.currentStep.progress / (q.currentStep.count||1)) * 100)}%` }} />
                                   </div>
-                                  <span className="text-gray-400 shrink-0 text-xs">{q.currentStep.progress}/{q.currentStep.count}</span>
+                                  <span className="text-gray-400 shrink-0 text-sm">{q.currentStep.progress}/{q.currentStep.count}</span>
                                 </div>
-                                <p className="text-gray-500 text-xs mt-0.5">ขั้น {q.currentStep.stepIndex + 1}/{q.currentStep.totalSteps}</p>
+                                <p className="text-gray-500 text-sm mt-0.5">ขั้น {q.currentStep.stepIndex + 1}/{q.currentStep.totalSteps}</p>
                                 <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}</p>
                               </div>
                             ))}
@@ -4339,9 +4618,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         {/* Available side quests */}
                         {questLog.sideAvailable.length > 0 && (
                           <div>
-                            <p className="text-gray-400 text-xs font-bold mb-1">📋 รับได้เลย</p>
+                            <p className="text-gray-400 text-sm font-bold mb-1">📋 รับได้เลย</p>
                             {questLog.sideAvailable.map(q => (
-                              <div key={q.id} className={`border rounded p-2 mb-1 text-xs ${(CAT[q.category]||{}).border||'border-gray-700'}`}>
+                              <div key={q.id} className={`border rounded p-2 mb-1 text-sm ${(CAT[q.category]||{}).border||'border-gray-700'}`}>
                                 <div className="flex items-start gap-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1 mb-0.5 flex-wrap">
@@ -4353,7 +4632,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                     <p className="text-yellow-600 mt-0.5">🎁 {q.rewards.xp} XP · {q.rewards.gold}G{q.rewards.items?.length ? ` · ${q.rewards.items.length} ชิ้น` : ''}</p>
                                   </div>
                                   <button onClick={() => handleAcceptSideQuest(q.id, q.name)}
-                                    className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                                    className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm">
                                     รับ
                                   </button>
                                 </div>
@@ -4365,9 +4644,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         {/* Locked personal quests — show affection progress to hint */}
                         {(questLog.lockedPersonal||[]).length > 0 && (
                           <div>
-                            <p className="text-pink-800 text-xs font-bold mb-1">🔒 ต้องสร้างความสัมพันธ์ก่อน</p>
+                            <p className="text-pink-800 text-sm font-bold mb-1">🔒 ต้องสร้างความสัมพันธ์ก่อน</p>
                             {(questLog.lockedPersonal||[]).map(q => (
-                              <div key={q.id} className="border border-pink-950 rounded p-2 mb-1 text-xs opacity-70">
+                              <div key={q.id} className="border border-pink-950 rounded p-2 mb-1 text-sm opacity-70">
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <span className="text-pink-600">❤️ NPC story</span>
                                   <span className="text-gray-500 font-bold ml-1">{q.name}</span>
@@ -4387,9 +4666,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         {/* Completed side quests */}
                         {questLog.sideCompleted.length > 0 && (
                           <div>
-                            <p className="text-gray-600 text-xs font-bold mb-1">✅ เสร็จแล้ว</p>
+                            <p className="text-gray-600 text-sm font-bold mb-1">✅ เสร็จแล้ว</p>
                             {questLog.sideCompleted.map(q => (
-                              <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-xs opacity-50">
+                              <div key={q.id} className="border border-gray-900 rounded p-2 mb-1 text-sm opacity-50">
                                 <div className="flex items-center gap-1">
                                   {catBadge(q.category)}
                                   <span className="text-gray-500 ml-1">✅ {q.name}</span>
@@ -4406,7 +4685,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
                         {questLog.sideActive.length === 0 && questLog.sideAvailable.length === 0 &&
                          questLog.sideCompleted.length === 0 && (questLog.lockedPersonal||[]).length === 0 && (
-                          <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้<br/>
+                          <p className="text-gray-500 text-sm text-center py-4">ยังไม่มีภารกิจพิเศษในขณะนี้<br/>
                             <span className="text-gray-600">คุยกับ NPC และสำรวจโลก Ashenveil เพื่อ unlock ภารกิจ</span>
                           </p>
                         )}
@@ -4419,30 +4698,30 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* SKILLS */}
               {screen === SCREENS.SKILLS && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ ✨ Skills — Skill Points: <span className="text-amber-400">{char?.skillPoints || 0}</span> ]</p>
+                    <p className="text-gray-400 text-sm">[ ✨ Skills — Skill Points: <span className="text-amber-400">{char?.skillPoints || 0}</span> ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {skillsLoading ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : !skillsData ? null : (
                     <>
                       {/* Passive skill */}
                       {skillsData.passive && (
-                        <div className="border border-green-900 rounded p-2 text-xs bg-green-900/10">
+                        <div className="border border-green-900 rounded p-2 text-sm bg-green-900/10">
                           <p className="text-green-400 font-bold">🌿 {skillsData.passive.name}: {skillsData.passive.desc}</p>
                           <p className="text-gray-400 mt-0.5">ทำงานอัตโนมัติทุก Battle (ไม่ต้องปลดล็อค)</p>
                         </div>
                       )}
 
                       {/* Active skills */}
-                      <p className="text-gray-500 text-xs">[ Active Skills — กดเพื่อดูรายละเอียด ]</p>
+                      <p className="text-gray-500 text-sm">[ Active Skills — กดเพื่อดูรายละเอียด ]</p>
                       {(skillsData.skills || []).map(sk => (
                         <div key={sk.id}
                           onClick={() => setSkillModal(sk)}
-                          className={`border rounded p-2 text-xs cursor-pointer transition-colors ${
+                          className={`border rounded p-2 text-sm cursor-pointer transition-colors ${
                             sk.unlocked    ? 'border-blue-800 bg-blue-900/10 hover:bg-blue-900/20' :
                             sk.canUnlock   ? 'border-gray-700 hover:border-gray-500' :
                                              'border-gray-900 opacity-50'
@@ -4451,8 +4730,8 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                             <div className="flex-1 min-w-0">
                               <p className={`font-bold ${sk.unlocked ? 'text-blue-300' : 'text-amber-200'}`}>
                                 {sk.name}
-                                {sk.unlocked && <span className="text-blue-600 font-normal ml-1 text-xs">✓ ปลดแล้ว</span>}
-                                {sk.levelLocked && !sk.unlocked && <span className="text-red-700 font-normal ml-1 text-xs">🔒 Lv.{sk.minLevel}</span>}
+                                {sk.unlocked && <span className="text-blue-600 font-normal ml-1 text-sm">✓ ปลดแล้ว</span>}
+                                {sk.levelLocked && !sk.unlocked && <span className="text-red-700 font-normal ml-1 text-sm">🔒 Lv.{sk.minLevel}</span>}
                               </p>
                               <p className="text-gray-400 mt-0.5 truncate">{sk.desc}</p>
                               <div className="flex gap-3 mt-1 text-gray-500">
@@ -4466,7 +4745,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                               <button
                                 onClick={e => { e.stopPropagation(); handleUnlockSkill(sk.id, sk.name, sk.skillPointCost); }}
                                 disabled={!sk.canUnlock}
-                                className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-30 disabled:cursor-not-allowed">
+                                className="shrink-0 px-2 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm disabled:opacity-30 disabled:cursor-not-allowed">
                                 ปลดล็อค
                               </button>
                             )}
@@ -4480,18 +4759,18 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* CHARACTER PROFILE */}
               {screen === SCREENS.CHARACTER && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 📊 ตัวละคร — Stat Points: <span className="text-amber-400">{charProfile?.statPoints ?? char?.statPoints ?? 0}</span> ]</p>
+                    <p className="text-gray-400 text-sm">[ 📊 ตัวละคร — Stat Points: <span className="text-amber-400">{charProfile?.statPoints ?? char?.statPoints ?? 0}</span> ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {charLoading ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : !charProfile ? null : (
                     <>
                       {/* Level / XP */}
-                      <div className="border border-gray-800 rounded p-2 text-xs space-y-1">
+                      <div className="border border-gray-800 rounded p-2 text-sm space-y-1">
                         <div className="flex justify-between">
                           <span className="text-amber-300 font-bold">{charProfile.name}</span>
                           <span className="text-gray-500">{charProfile.race} {charProfile.class}</span>
@@ -4510,7 +4789,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       </div>
 
                       {/* Combat stats */}
-                      <div className="border border-gray-800 rounded p-2 text-xs">
+                      <div className="border border-gray-800 rounded p-2 text-sm">
                         <p className="text-gray-400 mb-1">[ Combat Stats ]</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-gray-400">
                           <span>❤️ HP {charProfile.hp}/{charProfile.hpMax}</span>
@@ -4524,7 +4803,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       </div>
 
                       {/* Stat allocation */}
-                      <div className="border border-gray-800 rounded p-2 text-xs">
+                      <div className="border border-gray-800 rounded p-2 text-sm">
                         <p className="text-gray-400 mb-1">[ Allocate Stat Points — มี {charProfile.statPoints} points ]</p>
                         {[
                           { key: 'str', label: 'STR ⚔️', desc: '+2 ATK/point', val: charProfile.allocatedStats?.str || 0 },
@@ -4539,7 +4818,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                             <button
                               onClick={() => handleAllocateStat(s.key, s.label)}
                               disabled={(charProfile.statPoints || 0) < 1}
-                              className="px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs disabled:opacity-30 disabled:cursor-not-allowed">
+                              className="px-2 py-0.5 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm disabled:opacity-30 disabled:cursor-not-allowed">
                               +1
                             </button>
                           </div>
@@ -4547,7 +4826,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       </div>
 
                       {/* Skill points */}
-                      <div className="border border-gray-800 rounded p-2 text-xs text-gray-500">
+                      <div className="border border-gray-800 rounded p-2 text-sm text-gray-500">
                         <span>Skill Points: <span className="text-amber-400">{charProfile.skillPoints || 0}</span></span>
                         <span className="ml-3">Unlocked Skills: {(charProfile.unlockedSkills || []).join(', ') || 'ยังไม่มี'}</span>
                       </div>
@@ -4558,22 +4837,22 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* ENHANCEMENT */}
               {screen === SCREENS.ENHANCE && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 🔨 Enhance: {enhanceTarget?.name} ]</p>
+                    <p className="text-gray-400 text-sm">[ 🔨 Enhance: {enhanceTarget?.name} ]</p>
                     <Btn onClick={() => { setScreen(SCREENS.INVENTORY); }}>← กลับ</Btn>
                   </div>
 
                   {enhanceLoading ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : !enhanceInfo ? null : enhanceInfo.maxEnhanced ? (
                     <div className="text-center py-4">
                       <p className="text-amber-400 text-sm">🌟 Enhance MAX (+10)</p>
-                      <p className="text-gray-400 text-xs mt-1">อุปกรณ์นี้ Enhance สูงสุดแล้ว</p>
+                      <p className="text-gray-400 text-sm mt-1">อุปกรณ์นี้ Enhance สูงสุดแล้ว</p>
                     </div>
                   ) : (
                     <>
-                      <div className="border border-gray-800 rounded p-2 text-xs">
+                      <div className="border border-gray-800 rounded p-2 text-sm">
                         <p className="text-amber-300 font-bold">{enhanceInfo.itemName} +{enhanceInfo.currentEnhance} → +{enhanceInfo.nextLevel}</p>
                         <div className="mt-1 space-y-0.5 text-gray-400">
                           <p>💰 Gold: <span className={enhanceInfo.currentGold >= enhanceInfo.recipe?.gold ? 'text-yellow-400' : 'text-red-400'}>
@@ -4595,7 +4874,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       <button
                         onClick={handleEnhanceItem}
                         disabled={!enhanceInfo.canEnhance}
-                        className="w-full px-3 py-2 border border-amber-700 text-amber-300 hover:border-amber-500 hover:bg-amber-900/20 transition text-xs disabled:opacity-30 disabled:cursor-not-allowed rounded font-bold">
+                        className="w-full px-3 py-2 border border-amber-700 text-amber-300 hover:border-amber-500 hover:bg-amber-900/20 transition text-sm disabled:opacity-30 disabled:cursor-not-allowed rounded font-bold">
                         🔨 Enhance +{enhanceInfo.nextLevel}
                       </button>
                     </>
@@ -4607,7 +4886,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
               {screen === SCREENS.ACHIEVEMENTS && (
                 <div className="max-h-screen overflow-y-auto space-y-2">
                   <div className="flex items-center justify-between mb-2 sticky top-0 bg-black/80 backdrop-blur py-1 z-10">
-                    <p className="text-gray-400 text-xs">
+                    <p className="text-gray-400 text-sm">
                       [ 🏆 Achievements — ปลดล็อคแล้ว{' '}
                       <span className="text-amber-400">{achData?.unlockedCount ?? 0}</span>
                       /{achData?.totalCount ?? 0} ]
@@ -4618,26 +4897,26 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   {/* ── Title Collection ── */}
                   {achData?.unlockedTitles?.length > 0 && (
                     <div className="border border-amber-900/40 rounded p-2 mb-3 bg-amber-950/10">
-                      <p className="text-amber-600 text-xs font-bold mb-2">🎖️ ตำแหน่งที่ปลดล็อก</p>
+                      <p className="text-amber-600 text-sm font-bold mb-2">🎖️ ตำแหน่งที่ปลดล็อก</p>
                       <div className="flex flex-wrap gap-1.5">
                         {achData.unlockedTitles.map(t => {
                           const isEquipped = (achData.equippedTitle || equippedTitle) === t;
                           return (
                             <button key={t}
                               onClick={() => handleEquipTitle(isEquipped ? null : t)}
-                              className={`px-2 py-1 rounded border text-xs transition ${
+                              className={`px-2 py-1 rounded border text-sm transition ${
                                 isEquipped
                                   ? 'border-amber-500 text-amber-300 bg-amber-900/30'
                                   : 'border-gray-700 text-gray-400 hover:border-amber-700 hover:text-amber-400'
                               }`}>
                               {isEquipped ? '✨ ' : ''}{t}
-                              {isEquipped && <span className="ml-1 text-[10px] text-amber-600">(ใส่อยู่)</span>}
+                              {isEquipped && <span className="ml-1 text-sm text-amber-600">(ใส่อยู่)</span>}
                             </button>
                           );
                         })}
                         {(achData.equippedTitle || equippedTitle) && (
                           <button onClick={() => handleEquipTitle(null)}
-                            className="px-2 py-1 rounded border border-gray-800 text-gray-600 text-xs hover:text-red-400 hover:border-red-900">
+                            className="px-2 py-1 rounded border border-gray-800 text-gray-600 text-sm hover:text-red-400 hover:border-red-900">
                             ✕ ถอด
                           </button>
                         )}
@@ -4646,7 +4925,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   )}
 
                   {achLoading ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : !achData ? null : (
                     <>
                       {/* Group by category */}
@@ -4665,12 +4944,12 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         const catUnlocked = catAchs.filter(a => a.unlocked).length;
                         return (
                           <div key={cat.key}>
-                            <p className="text-gray-500 text-xs mb-1">
+                            <p className="text-gray-500 text-sm mb-1">
                               {cat.label}{' '}
                               <span className="text-gray-800">({catUnlocked}/{catAchs.length})</span>
                             </p>
                             {catAchs.map(ach => (
-                              <div key={ach.id} className={`border rounded p-2 mb-1 text-xs ${
+                              <div key={ach.id} className={`border rounded p-2 mb-1 text-sm ${
                                 ach.unlocked
                                   ? 'border-amber-800 bg-amber-900/10'
                                   : 'border-gray-900 opacity-50'
@@ -4693,7 +4972,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                       </>
                                     )}
                                     {/* Reward info */}
-                                    <div className="flex flex-wrap gap-2 mt-0.5 text-yellow-900 text-xs items-center">
+                                    <div className="flex flex-wrap gap-2 mt-0.5 text-yellow-900 text-sm items-center">
                                       {ach.reward?.gold > 0 && <span>💰 {ach.reward.gold}G</span>}
                                       {ach.reward?.xp   > 0 && <span>⭐ {ach.reward.xp} XP</span>}
                                       {ach.reward?.title && (
@@ -4701,7 +4980,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                           <button onClick={() => handleEquipTitle(
                                             (achData?.equippedTitle || equippedTitle) === ach.reward.title ? null : ach.reward.title
                                           )}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition ${
+                                            className={`px-1.5 py-0.5 rounded border text-sm transition ${
                                               (achData?.equippedTitle || equippedTitle) === ach.reward.title
                                                 ? 'border-amber-500 text-amber-300 bg-amber-900/20'
                                                 : 'border-amber-900 text-amber-700 hover:border-amber-600 hover:text-amber-400'
@@ -4727,9 +5006,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* SETTINGS */}
               {screen === SCREENS.SETTINGS && (
-                <div className="max-h-80 overflow-y-auto space-y-3">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-gray-400 text-xs">[ ⚙️ ตั้งค่า ]</p>
+                    <p className="text-gray-400 text-sm">[ ⚙️ ตั้งค่า ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -4738,9 +5017,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                     <div className="space-y-2">
                       {/* Verify badge */}
                       {verifyStatus === null ? (
-                        <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                        <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                       ) : verifyStatus.verified ? (
-                        <div className="border border-green-800 rounded p-2 text-xs space-y-0.5">
+                        <div className="border border-green-800 rounded p-2 text-sm space-y-0.5">
                           <p className="text-green-400 font-bold">✅ ยืนยัน TikTok แล้ว</p>
                           <p className="text-gray-400">
                             @{verifyStatus.tiktokUniqueId}
@@ -4752,20 +5031,20 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                           ) : (
                             <button
                               onClick={() => setSettingsStep('input')}
-                              className="mt-1 text-amber-500 hover:text-amber-300 underline text-xs">
+                              className="mt-1 text-amber-500 hover:text-amber-300 underline text-sm">
                               🔄 เปลี่ยน TikTok VJ
                             </button>
                           )}
                         </div>
                       ) : (
-                        <div className="border border-gray-800 rounded p-2 text-xs space-y-1">
+                        <div className="border border-gray-800 rounded p-2 text-sm space-y-1">
                           <p className="text-gray-500">❌ ยังไม่ได้ยืนยัน TikTok</p>
                           <p className="text-gray-400 leading-relaxed">
                             ยืนยัน TikTok เพื่อรับ Gold จาก Gift ใน Live ได้
                           </p>
                           <button
                             onClick={() => setSettingsStep('input')}
-                            className="mt-1 px-3 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                            className="mt-1 px-3 py-1 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm">
                             🔗 ยืนยัน TikTok ตอนนี้
                           </button>
                         </div>
@@ -4776,18 +5055,18 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   {/* ── INPUT STEP ── */}
                   {settingsStep === 'input' && (
                     <div className="space-y-2">
-                      <p className="text-gray-400 text-xs leading-relaxed">
+                      <p className="text-gray-400 text-sm leading-relaxed">
                         ใส่ TikTok username ของ VJ ที่เชื่อมต่อกับ{' '}
                         <span className="text-amber-400">ttsam.app</span> และกำลัง Live อยู่
                       </p>
                       <div className="flex gap-2">
-                        <span className="text-gray-400 text-xs self-center">@</span>
+                        <span className="text-gray-400 text-sm self-center">@</span>
                         <input
                           type="text"
                           value={settingsTiktok}
                           onChange={e => setSettingsTiktok(e.target.value.replace(/^@/, ''))}
                           placeholder="tiktok_username"
-                          className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-amber-100 placeholder-gray-700 focus:outline-none focus:border-amber-700"
+                          className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-amber-100 placeholder-gray-700 focus:outline-none focus:border-amber-700"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -4802,7 +5081,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   {/* ── WAIT STEP ── */}
                   {settingsStep === 'wait' && (
                     <div className="space-y-3">
-                      <p className="text-gray-400 text-xs leading-relaxed">
+                      <p className="text-gray-400 text-sm leading-relaxed">
                         พิมพ์ข้อความนี้ใน <span className="text-pink-400">TikTok Live</span>{' '}
                         ของ @{settingsTiktok} ภายใน <span className="text-amber-400">10 นาที</span>:
                       </p>
@@ -4814,12 +5093,12 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       </div>
                       {/* Polling indicator */}
                       {settingsPolling && (
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
                           <span className="animate-spin">⏳</span>
                           <span>รอการยืนยัน... (ตรวจสอบทุก 3 วินาที)</span>
                         </div>
                       )}
-                      <p className="text-gray-400 text-xs">
+                      <p className="text-gray-400 text-sm">
                         💡 tip: กด copy ข้อความในกล่องแล้วไป paste ใน comment TikTok Live
                       </p>
                       <div className="grid grid-cols-2 gap-2">
@@ -4838,7 +5117,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   {/* ── ACCESSIBILITY hint ── */}
                   {settingsStep === 'status' && (
                     <div className="border border-gray-800 rounded p-3 mt-1">
-                      <p className="text-gray-500 text-xs">
+                      <p className="text-gray-500 text-sm">
                         ⚙ ปรับธีม / ขนาดตัวอักษร / ความสว่าง / BGM
                         ได้ที่ปุ่ม <span className="text-amber-500 font-bold">⚙</span> มุมขวาล่าง
                       </p>
@@ -4849,18 +5128,18 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* WORLD BOSS */}
               {screen === SCREENS.WORLD_BOSS && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 💀 World Boss — Community Event ]</p>
+                    <p className="text-gray-400 text-sm">[ 💀 World Boss — Community Event ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {!worldBossData ? (
-                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm animate-pulse">กำลังโหลด...</p>
                   ) : !worldBossData.active ? (
                     <div className="text-center py-6 space-y-2">
                       <p className="text-gray-400 text-sm">ไม่มี World Boss ในขณะนี้</p>
-                      <p className="text-gray-500 text-xs leading-relaxed">
+                      <p className="text-gray-500 text-sm leading-relaxed">
                         Boss จะถูก spawn เมื่อ VJ เริ่ม Event<br />
                         หรือเมื่อมีการส่ง Gift มากพอ
                       </p>
@@ -4871,12 +5150,12 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       <div className="border border-red-900 rounded p-3 bg-red-900/10 text-center">
                         <p className="text-3xl mb-1">{worldBossData.boss?.emoji}</p>
                         <p className="text-red-300 font-bold text-sm">{worldBossData.boss?.nameTH}</p>
-                        <p className="text-gray-500 text-xs leading-relaxed mt-1">{worldBossData.boss?.desc}</p>
+                        <p className="text-gray-500 text-sm leading-relaxed mt-1">{worldBossData.boss?.desc}</p>
                       </div>
 
                       {/* HP Bar */}
                       <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-gray-500">
+                        <div className="flex justify-between text-sm text-gray-500">
                           <span>HP Boss</span>
                           <span>{(worldBossData.boss?.hp || 0).toLocaleString()} / {(worldBossData.boss?.hpMax || 0).toLocaleString()}</span>
                         </div>
@@ -4884,7 +5163,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                           <div className="h-3 bg-red-700 rounded transition-all duration-500"
                             style={{ width: `${worldBossData.boss?.hpPct || 0}%` }} />
                         </div>
-                        <div className="flex justify-between text-xs">
+                        <div className="flex justify-between text-sm">
                           <span className="text-red-600">{worldBossData.boss?.hpPct}% HP เหลือ</span>
                           <span className="text-gray-600">
                             ⏰ {Math.floor((worldBossData.boss?.timeLeft || 0) / 60)}m {(worldBossData.boss?.timeLeft || 0) % 60}s
@@ -4893,14 +5172,14 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       </div>
 
                       {/* My stats */}
-                      <div className="border border-gray-800 rounded p-2 text-xs flex gap-4">
+                      <div className="border border-gray-800 rounded p-2 text-sm flex gap-4">
                         <span className="text-gray-500">ดาเมจของคุณ: <span className="text-amber-400">{(worldBossData.myDamage || 0).toLocaleString()}</span></span>
                         <span className="text-gray-500">โจมตีแล้ว: <span className="text-amber-400">{worldBossData.myAttacks || 0} ครั้ง</span></span>
                       </div>
 
                       {/* Attack button */}
                       {worldBossData.cooldown > 0 ? (
-                        <div className="text-center border border-gray-800 rounded p-2 text-xs text-gray-600">
+                        <div className="text-center border border-gray-800 rounded p-2 text-sm text-gray-600">
                           ⏳ รอ {Math.floor(worldBossData.cooldown / 60)}m {worldBossData.cooldown % 60}s ก่อนโจมตีได้อีก
                         </div>
                       ) : (
@@ -4912,7 +5191,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
                       {/* Top 5 damage */}
                       {worldBossData.topPlayers?.length > 0 && (
-                        <div className="border border-gray-800 rounded p-2 text-xs">
+                        <div className="border border-gray-800 rounded p-2 text-sm">
                           <p className="text-gray-400 mb-1">[ Top Damage ]</p>
                           {worldBossData.topPlayers.map((p, i) => (
                             <div key={p.uid} className="flex items-center gap-2 py-0.5">
@@ -4932,9 +5211,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* LEADERBOARD */}
               {screen === SCREENS.LEADERBOARD && (
-                <div className="max-h-80 overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ 🥇 Leaderboard ]</p>
+                    <p className="text-gray-400 text-sm">[ 🥇 Leaderboard ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -4946,7 +5225,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       { key: 'achievements', label: '🏆 Ach' },
                     ].map(tab => (
                       <button key={tab.key} onClick={() => setLeaderboardTab(tab.key)}
-                        className={`flex-1 px-2 py-1 text-xs rounded border transition ${
+                        className={`flex-1 px-2 py-1 text-sm rounded border transition ${
                           leaderboardTab === tab.key
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
                             : 'border-gray-700 text-gray-400 hover:text-gray-200'
@@ -4957,11 +5236,11 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   </div>
 
                   {leaderboardLoad ? (
-                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm animate-pulse">กำลังโหลด...</p>
                   ) : !leaderboardData ? null : (
                     <div className="space-y-1">
                       {(leaderboardData[leaderboardTab] || []).map((p, i) => (
-                        <div key={i} className={`border rounded p-2 text-xs flex items-center gap-2 ${
+                        <div key={i} className={`border rounded p-2 text-sm flex items-center gap-2 ${
                           i === 0 ? 'border-yellow-700 bg-yellow-900/10' :
                           i === 1 ? 'border-gray-600 bg-gray-900/50' :
                           i === 2 ? 'border-amber-800 bg-amber-900/10' :
@@ -4972,8 +5251,8 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                           }`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</span>
                           <div className="flex-1 min-w-0">
                             <span className="text-amber-200 font-bold truncate">{p.name}</span>
-                            {p.title && <span className="text-amber-700 text-xs ml-1">"{p.title}"</span>}
-                            <div className="text-gray-400 text-xs">{p.race} {p.class} Lv.{p.level}</div>
+                            {p.title && <span className="text-amber-700 text-sm ml-1">"{p.title}"</span>}
+                            <div className="text-gray-400 text-sm">{p.race} {p.class} Lv.{p.level}</div>
                           </div>
                           <div className="text-right shrink-0">
                             <span className={`font-bold ${
@@ -4988,9 +5267,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         </div>
                       ))}
                       {(leaderboardData[leaderboardTab] || []).length === 0 && (
-                        <p className="text-gray-500 text-xs text-center py-4">ยังไม่มีข้อมูล</p>
+                        <p className="text-gray-500 text-sm text-center py-4">ยังไม่มีข้อมูล</p>
                       )}
-                      <p className="text-gray-800 text-xs text-center pt-1">
+                      <p className="text-gray-800 text-sm text-center pt-1">
                         อัปเดตล่าสุด: {leaderboardData.updatedAt ? new Date(leaderboardData.updatedAt).toLocaleTimeString('th-TH') : '—'}
                       </p>
                     </div>
@@ -5000,9 +5279,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* CRAFTING */}
               {screen === SCREENS.CRAFTING && (
-                <div className="max-h-[500px] overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-gray-400 text-xs">[ ⚒️ Crafting Workshop ]</p>
+                    <p className="text-gray-400 text-sm">[ ⚒️ Crafting Workshop ]</p>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
@@ -5010,7 +5289,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   <div className="flex flex-wrap gap-1 mb-2">
                     {['all', 'weapon', 'armor', 'consumable', 'material', 'relic'].map(cat => (
                       <button key={cat} onClick={() => setCraftingTab(cat)}
-                        className={`px-2 py-1 text-xs rounded border transition ${
+                        className={`px-2 py-1 text-sm rounded border transition ${
                           craftingTab === cat
                             ? 'border-amber-600 text-amber-300 bg-amber-900/20'
                             : 'border-gray-700 text-gray-500 hover:text-gray-300'
@@ -5025,9 +5304,9 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   </div>
 
                   {craftingLoad ? (
-                    <p className="text-gray-400 text-xs animate-pulse">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm animate-pulse">กำลังโหลด...</p>
                   ) : craftingRecipes.length === 0 ? (
-                    <p className="text-gray-500 text-xs text-center py-4">ยังไม่มี Recipe ที่ใช้ได้</p>
+                    <p className="text-gray-500 text-sm text-center py-4">ยังไม่มี Recipe ที่ใช้ได้</p>
                   ) : (
                     <div className="space-y-2">
                       {craftingRecipes
@@ -5047,15 +5326,15 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1 flex-wrap">
                                     <span className="text-sm">{recipe.emoji}</span>
-                                    <span className={`font-bold text-xs ${gradeColor}`}>{recipe.name}</span>
-                                    <span className={`text-xs ${gradeColor} opacity-70`}>[{recipe.resultGrade}]</span>
+                                    <span className={`font-bold text-sm ${gradeColor}`}>{recipe.name}</span>
+                                    <span className={`text-sm ${gradeColor} opacity-70`}>[{recipe.resultGrade}]</span>
                                   </div>
-                                  <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">{recipe.desc}</p>
+                                  <p className="text-gray-500 text-sm mt-0.5 leading-relaxed">{recipe.desc}</p>
                                 </div>
                                 <button
                                   onClick={() => handleCraft(recipe.recipeId)}
                                   disabled={!recipe.canCraft || craftingBusy}
-                                  className={`shrink-0 px-3 py-1.5 text-xs rounded border transition ${
+                                  className={`shrink-0 px-3 py-1.5 text-sm rounded border transition ${
                                     recipe.canCraft
                                       ? 'border-amber-600 text-amber-300 hover:bg-amber-900/20'
                                       : 'border-gray-800 text-gray-600 cursor-not-allowed'
@@ -5068,7 +5347,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                               <div className="flex flex-wrap gap-1">
                                 {recipe.ingredients.map(ing => (
                                   <span key={ing.itemId}
-                                    className={`text-xs px-1.5 py-0.5 rounded border ${
+                                    className={`text-sm px-1.5 py-0.5 rounded border ${
                                       ing.have >= ing.qty
                                         ? 'border-green-900 text-green-400 bg-green-900/10'
                                         : 'border-red-900 text-red-400 bg-red-900/10'
@@ -5077,14 +5356,14 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                                   </span>
                                 ))}
                                 {recipe.goldCost > 0 && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded border border-yellow-900 text-yellow-400 bg-yellow-900/10">
+                                  <span className="text-sm px-1.5 py-0.5 rounded border border-yellow-900 text-yellow-400 bg-yellow-900/10">
                                     💰 {recipe.goldCost.toLocaleString()} Gold
                                   </span>
                                 )}
                               </div>
 
                               {!recipe.canCraft && recipe.missing.length > 0 && (
-                                <p className="text-red-600 text-xs">
+                                <p className="text-red-600 text-sm">
                                   ขาด: {recipe.missing.map(m => `${m.emoji} ${m.name} ×${m.need - m.have}`).join(', ')}
                                 </p>
                               )}
@@ -5098,20 +5377,20 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
               {/* DAILY SHOP */}
               {screen === SCREENS.DAILY_SHOP && (
-                <div className="max-h-[500px] overflow-y-auto space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-amber-300 text-xs font-bold">🛒 Daily Shop</p>
-                      <p className="text-gray-600 text-xs">หมุนใหม่ทุกวัน 07:00 น.</p>
+                      <p className="text-amber-300 text-sm font-bold">🛒 Daily Shop</p>
+                      <p className="text-gray-600 text-sm">หมุนใหม่ทุกวัน 07:00 น.</p>
                     </div>
                     <Btn onClick={() => setScreen(SCREENS.WORLD)}>← กลับ</Btn>
                   </div>
 
                   {!dailyShopData ? (
-                    <p className="text-gray-400 text-xs">กำลังโหลด...</p>
+                    <p className="text-gray-400 text-sm">กำลังโหลด...</p>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between text-xs mb-1">
+                      <div className="flex items-center justify-between text-sm mb-1">
                         <span className="text-gray-400">💰 <span className="text-amber-400">{dailyShopData.balance?.toLocaleString() || 0}G</span></span>
                         <span className="text-gray-600">ซื้อได้คนละ 1 ชิ้น/slot/วัน</span>
                       </div>
@@ -5121,8 +5400,8 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                         <div className="border border-yellow-700 bg-yellow-900/10 rounded-lg p-2 mb-2 flex items-center gap-2">
                           <span className="text-yellow-400 text-base">⭐</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-yellow-400 text-xs font-bold">Deal of the Day — ลด 30%!</p>
-                            <p className="text-gray-400 text-xs">{dailyShopData.items.find(i => i.isDeal)?.emoji} {dailyShopData.items.find(i => i.isDeal)?.name}</p>
+                            <p className="text-yellow-400 text-sm font-bold">Deal of the Day — ลด 30%!</p>
+                            <p className="text-gray-400 text-sm">{dailyShopData.items.find(i => i.isDeal)?.emoji} {dailyShopData.items.find(i => i.isDeal)?.name}</p>
                           </div>
                         </div>
                       )}
@@ -5140,21 +5419,21 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                               <span className="text-2xl shrink-0">{item.emoji}</span>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1">
-                                  <p className={`text-xs font-bold ${RARITY_COLOR[item.rarity] || 'text-gray-300'}`}>{item.name}</p>
-                                  {item.isDeal && <span className="text-yellow-400 text-xs">⭐</span>}
-                                  {item.purchased && <span className="text-green-600 text-xs ml-1">✅ ซื้อแล้ว</span>}
+                                  <p className={`text-sm font-bold ${RARITY_COLOR[item.rarity] || 'text-gray-300'}`}>{item.name}</p>
+                                  {item.isDeal && <span className="text-yellow-400 text-sm">⭐</span>}
+                                  {item.purchased && <span className="text-green-600 text-sm ml-1">✅ ซื้อแล้ว</span>}
                                 </div>
-                                <p className="text-gray-600 text-xs capitalize">{item.category}</p>
+                                <p className="text-gray-600 text-sm capitalize">{item.category}</p>
                               </div>
                               <div className="text-right shrink-0">
                                 {item.isDeal && item.origPrice && (
-                                  <p className="text-gray-600 text-xs line-through">{item.origPrice}G</p>
+                                  <p className="text-gray-600 text-sm line-through">{item.origPrice}G</p>
                                 )}
-                                <p className={`text-xs font-bold ${item.isDeal ? 'text-yellow-400' : 'text-amber-400'}`}>{item.price}G</p>
+                                <p className={`text-sm font-bold ${item.isDeal ? 'text-yellow-400' : 'text-amber-400'}`}>{item.price}G</p>
                                 {!item.purchased && (
                                   <button onClick={() => handleBuyDailyShopItem(item.slotId, item.name, item.price)}
                                     disabled={!canAfford}
-                                    className={`mt-1 px-2 py-0.5 text-xs rounded border transition ${
+                                    className={`mt-1 px-2 py-0.5 text-sm rounded border transition ${
                                       canAfford
                                         ? item.isDeal
                                           ? 'border-yellow-700 text-yellow-300 hover:bg-yellow-900/30'
@@ -5175,7 +5454,8 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
               )}
 
               {/* NPC TALK */}
-              {screen === SCREENS.NPC_TALK && activeNPC && (() => {
+              {screen === SCREENS.NPC_TALK && activeNPC && (
+                (() => {
                 const npcLines = activeNPC.lines || [activeNPC.dialog || ''];
                 const totalLines = npcLines.length;
                 const isLast = npcLineIdx >= totalLines - 1;
@@ -5215,12 +5495,12 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                             <span className="text-xl">{activeNPC.emoji}</span>
                             <div className="flex-1">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-amber-400 text-xs font-bold">{activeNPC.name}</span>
-                                {activeNPC.title && <span className="text-gray-600 text-[10px]">— {activeNPC.title}</span>}
-                                <span className={`text-[10px] px-1 rounded ${tier.color}`}>{tier.label}</span>
+                                <span className="text-amber-400 text-sm font-bold">{activeNPC.name}</span>
+                                {activeNPC.title && <span className="text-gray-600 text-sm">— {activeNPC.title}</span>}
+                                <span className={`text-sm px-1 rounded ${tier.color}`}>{tier.label}</span>
                               </div>
                             </div>
-                            <span className="text-pink-500 text-xs shrink-0">❤️ {activeNPC.affection}/100</span>
+                            <span className="text-pink-500 text-sm shrink-0">❤️ {activeNPC.affection}/100</span>
                           </div>
                           {/* Affection progress bar */}
                           <div className="w-full h-1 bg-gray-900 rounded-full">
@@ -5228,7 +5508,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                           </div>
                           {/* Bond reward hint */}
                           {activeNPC.bondUnlocked && activeNPC.bondDesc && (
-                            <p className="text-pink-600 text-[10px] mt-1">✨ {activeNPC.bondDesc}</p>
+                            <p className="text-pink-600 text-sm mt-1">✨ {activeNPC.bondDesc}</p>
                           )}
                         </div>
                       );
@@ -5236,7 +5516,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
                     {/* Quest badge */}
                     {activeNPC.isQuestDialog && activeNPC.questContext && (
-                      <div className="mb-2 px-2 py-0.5 rounded text-[10px] inline-block"
+                      <div className="mb-2 px-2 py-0.5 rounded text-sm inline-block"
                         style={{ background: '#92400e22', border: '1px solid #92400e', color: '#fbbf24' }}>
                         📜 {activeNPC.questContext.questName}
                       </div>
@@ -5252,7 +5532,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                     >
                       {/* Past lines (dimmed) */}
                       {npcLineIdx > 0 && npcLines.slice(0, npcLineIdx).map((l, i) => (
-                        <p key={i} className="text-gray-600 text-xs italic mb-1">"{l}"</p>
+                        <p key={i} className="text-gray-600 text-sm italic mb-1">"{l}"</p>
                       ))}
                       {/* Current line */}
                       <p className="text-gray-200 text-sm italic leading-relaxed">
@@ -5261,13 +5541,13 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                       {/* Line counter + advance hint */}
                       <div className="flex justify-between items-center mt-2">
                         {totalLines > 1 && (
-                          <span className="text-gray-700 text-[10px]">{npcLineIdx + 1}/{totalLines}</span>
+                          <span className="text-gray-700 text-sm">{npcLineIdx + 1}/{totalLines}</span>
                         )}
                         {isDoneTyping && !isLast && (
-                          <span className="text-amber-700 text-[10px] animate-pulse ml-auto">แตะเพื่ออ่านต่อ ▶</span>
+                          <span className="text-amber-700 text-sm animate-pulse ml-auto">แตะเพื่ออ่านต่อ ▶</span>
                         )}
                         {isDoneTyping && isLast && (
-                          <span className="text-gray-700 text-[10px] ml-auto">— จบบทสนทนา —</span>
+                          <span className="text-gray-700 text-sm ml-auto">— จบบทสนทนา —</span>
                         )}
                       </div>
                     </div>
@@ -5276,11 +5556,11 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                     {(isDoneTyping && isLast) || !activeNPC.isQuestDialog ? (
                       <>
                         <div className="flex items-center justify-between mb-1.5">
-                          <p className="text-gray-500 text-xs">🎁 ให้ของขวัญ ({activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้งวันนี้)</p>
+                          <p className="text-gray-500 text-sm">🎁 ให้ของขวัญ ({activeNPC.giftLimit - activeNPC.giftUsedToday}/{activeNPC.giftLimit} ครั้งวันนี้)</p>
                         </div>
                         {/* Likes / hates hints */}
                         {(activeNPC.likes?.length > 0 || activeNPC.hates?.length > 0) && (
-                          <div className="flex gap-3 mb-2 text-[10px]">
+                          <div className="flex gap-3 mb-2 text-sm">
                             {activeNPC.likes?.length > 0 && (
                               <span className="text-green-700">
                                 💚 ชอบ: {activeNPC.likes.slice(0, 3).join(', ')}
@@ -5300,7 +5580,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                             return (
                               <button key={item.instanceId}
                                 onClick={() => handleGiveGift(activeNPC.npcId, item.instanceId, item.name)}
-                                className="w-full flex items-center gap-2 px-1.5 py-1 text-xs border-b border-gray-900 hover:bg-gray-900 text-left">
+                                className="w-full flex items-center gap-2 px-1.5 py-1 text-sm border-b border-gray-900 hover:bg-gray-900 text-left">
                                 <span>{item.emoji}</span>
                                 <span className={GRADE_COLOR[item.grade]}>{item.name}</span>
                                 <span className="ml-auto shrink-0">
@@ -5312,7 +5592,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                             );
                           })}
                           {inventory.filter(i => ['MATERIAL','JUNK','CONSUMABLE'].includes(i.type)).length === 0 && (
-                            <p className="text-gray-600 text-xs px-2 py-2">ไม่มี item ที่จะให้ได้</p>
+                            <p className="text-gray-600 text-sm px-2 py-2">ไม่มี item ที่จะให้ได้</p>
                           )}
                         </div>
                       </>
@@ -5321,8 +5601,10 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                     <Btn onClick={() => setScreen(SCREENS.NPC)}>← กลับ</Btn>
                   </div>
                 );
-              })()}
+                })()
+              )}
 
+              </div>
             </div>
           </div>
         </div>
@@ -5363,22 +5645,22 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                 <div className="flex-1 min-w-0">
                   <p className={`text-base font-bold ${sk.unlocked ? 'text-blue-300' : 'text-amber-200'}`}>{sk.name}</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {sk.unlocked && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400 border border-blue-800">✓ ปลดล็อคแล้ว</span>}
-                    {sk.levelLocked && !sk.unlocked && <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-900">🔒 ต้อง Lv.{sk.minLevel}</span>}
-                    {sk.element && <span className={`text-xs px-1.5 py-0.5 rounded border border-gray-700 ${ELEMENT_COLOR[sk.element] || 'text-gray-400'}`}>{sk.element.toUpperCase()}</span>}
-                    {sk.magicDamage && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400 border border-purple-900">Magic</span>}
-                    {sk.goFirst && <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-900">⚡ โจมตีก่อน</span>}
+                    {sk.unlocked && <span className="text-sm px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400 border border-blue-800">✓ ปลดล็อคแล้ว</span>}
+                    {sk.levelLocked && !sk.unlocked && <span className="text-sm px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-900">🔒 ต้อง Lv.{sk.minLevel}</span>}
+                    {sk.element && <span className={`text-sm px-1.5 py-0.5 rounded border border-gray-700 ${ELEMENT_COLOR[sk.element] || 'text-gray-400'}`}>{sk.element.toUpperCase()}</span>}
+                    {sk.magicDamage && <span className="text-sm px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400 border border-purple-900">Magic</span>}
+                    {sk.goFirst && <span className="text-sm px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-900">⚡ โจมตีก่อน</span>}
                   </div>
                 </div>
                 <button onClick={() => setSkillModal(null)} className="ml-2 text-gray-500 hover:text-white text-lg leading-none">✕</button>
               </div>
 
               {/* Description */}
-              <p className="text-gray-300 text-xs leading-relaxed border-l-2 border-gray-700 pl-2 italic">{sk.desc}</p>
+              <p className="text-gray-300 text-sm leading-relaxed border-l-2 border-gray-700 pl-2 italic">{sk.desc}</p>
 
               {/* Stats */}
-              <div className="space-y-1.5 text-xs">
-                <p className="text-gray-500 uppercase tracking-wide text-[10px]">[ สถิติ ]</p>
+              <div className="space-y-1.5 text-sm">
+                <p className="text-gray-500 uppercase tracking-wide text-sm">[ สถิติ ]</p>
 
                 {/* Cost row */}
                 <div className="flex gap-4 text-gray-300">
@@ -5450,10 +5732,25 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 
         // stat label map
         const STAT_LABEL = {
-          atk: '⚔️ โจมตี', def: '🛡️ ป้องกัน', mag: '✨ เวทย์',
-          spd: '💨 ความเร็ว', hp: '❤️ HP', mp: '💧 MP',
-          hp_bonus: '❤️ HP เพิ่ม', block_rate: '🛡️ บล็อค%',
-          atk_spd: '⚡ ความเร็วโจมตี',
+          atk:        '⚔️ โจมตี',
+          atk_bonus:  '⚔️ โจมตี%',
+          atk_spd:    '⚡ ความเร็วโจมตี',
+          def:        '🛡️ ป้องกัน',
+          block_rate: '🛡️ บล็อค%',
+          mag:        '✨ เวทย์',
+          spell_power:'✨ Spell Power',
+          spd:        '💨 ความเร็ว',
+          hp:         '❤️ HP',
+          hp_bonus:   '❤️ HP เพิ่ม',
+          mp:         '💧 MP',
+          mp_bonus:   '💧 MP เพิ่ม',
+          mp_regen:   '💧 MP Regen/เทิร์น',
+          crit_rate:  '🎯 Crit Rate%',
+          lifesteal:  '🩸 Lifesteal%',
+          gold_bonus: '💰 Gold โบนัส%',
+          shadow_dmg: '🌑 Shadow Dmg%',
+          void_dmg:   '🌀 Void Dmg%',
+          rune_power: '🔮 Rune Power',
         };
         const TYPE_LABEL = {
           MAIN_HAND:'อาวุธ', OFF_HAND:'โล่/มือซ้าย', HEAD:'หมวก',
@@ -5486,19 +5783,19 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                   </p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     {item.grade && GRADE_LABEL[item.grade] && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${GRADE_COLOR[item.grade]} border-current opacity-80`}>
+                      <span className={`text-sm px-1.5 py-0.5 rounded border ${GRADE_COLOR[item.grade]} border-current opacity-80`}>
                         {GRADE_LABEL[item.grade]}
                       </span>
                     )}
                     {item.quality && item.quality !== 'normal' && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                      <span className="text-sm px-1.5 py-0.5 rounded font-bold"
                         style={{ color: item.qualityColor, border: `1px solid ${item.qualityColor}` }}>
                         ✦ {item.qualityLabel} (×{item.qualityMult})
                       </span>
                     )}
-                    <span className="text-gray-500 text-[11px]">{TYPE_LABEL[item.type] || item.type}</span>
-                    {item.levelReq > 1 && <span className="text-gray-600 text-[11px]">Lv.{item.levelReq}+</span>}
-                    {item.equipped && <span className="text-amber-500 text-[11px]">✓ ใส่อยู่</span>}
+                    <span className="text-gray-500 text-sm">{TYPE_LABEL[item.type] || item.type}</span>
+                    {item.levelReq > 1 && <span className="text-gray-600 text-sm">Lv.{item.levelReq}+</span>}
+                    {item.equipped && <span className="text-amber-500 text-sm">✓ ใส่อยู่</span>}
                   </div>
                 </div>
                 <button onClick={() => setItemModal(null)}
@@ -5515,15 +5812,15 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
               {/* Stats */}
               {hasStats && (
                 <div className="border border-gray-800 rounded p-2 space-y-1">
-                  <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1">สถิติ</p>
+                  <p className="text-gray-600 text-sm uppercase tracking-widest mb-1">สถิติ</p>
                   {Object.entries(baseStats).map(([k, v]) => (
-                    <div key={k} className="flex justify-between text-xs">
+                    <div key={k} className="flex justify-between text-sm">
                       <span className="text-gray-500">{STAT_LABEL[k] || k}</span>
                       <span className="text-amber-300">+{v}</span>
                     </div>
                   ))}
                   {Object.entries(rollStats).map(([k, v]) => (
-                    <div key={k} className="flex justify-between text-xs">
+                    <div key={k} className="flex justify-between text-sm">
                       <span className="text-gray-500">{STAT_LABEL[k] || k}
                         {item.quality && item.quality !== 'normal'
                           ? <span style={{ color: item.qualityColor }}> ({item.qualityLabel})</span>
@@ -5537,7 +5834,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
               )}
 
               {/* Price info */}
-              <div className="flex gap-3 text-xs text-gray-500">
+              <div className="flex gap-3 text-sm text-gray-500">
                 {isShop && item.buyPrice > 0 && (
                   <span>💰 ราคา: <span className="text-yellow-400">{item.buyPrice}G</span></span>
                 )}
@@ -5551,34 +5848,34 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
                 {canEquip && (
                   <button onClick={() => { handleEquip(item.instanceId, item.type); setItemModal(null); }}
                     disabled={busy}
-                    className="flex-1 py-2 border border-blue-700 text-blue-400 hover:bg-blue-900/20 rounded text-xs disabled:opacity-40">
+                    className="flex-1 py-2 border border-blue-700 text-blue-400 hover:bg-blue-900/20 rounded text-sm disabled:opacity-40">
                     ✅ ใส่
                   </button>
                 )}
                 {item.equipped && isInv && (
                   <button onClick={() => { handleUnequip && handleUnequip(item.instanceId, item.equipped); setItemModal(null); }}
                     disabled={busy}
-                    className="flex-1 py-2 border border-gray-700 text-gray-400 hover:bg-gray-900/30 rounded text-xs disabled:opacity-40">
+                    className="flex-1 py-2 border border-gray-700 text-gray-400 hover:bg-gray-900/30 rounded text-sm disabled:opacity-40">
                     ↩ ถอด
                   </button>
                 )}
                 {canEnhance && (
                   <button onClick={() => { openEnhance(item.instanceId, item.name); setItemModal(null); }}
-                    className="flex-1 py-2 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-xs">
+                    className="flex-1 py-2 border border-amber-700 text-amber-400 hover:bg-amber-900/20 rounded text-sm">
                     🔨 +{(item.enhancement||0)+1}↑ Enhance
                   </button>
                 )}
                 {canSell && (
                   <button onClick={() => { handleSell(item.instanceId, item.name); setItemModal(null); }}
                     disabled={busy}
-                    className="flex-1 py-2 border border-gray-700 text-gray-500 hover:bg-gray-900/20 rounded text-xs disabled:opacity-40">
+                    className="flex-1 py-2 border border-gray-700 text-gray-500 hover:bg-gray-900/20 rounded text-sm disabled:opacity-40">
                     🪙 ขาย {item.sellPrice}G
                   </button>
                 )}
                 {isShop && (
                   <button onClick={() => { handleBuy(item.itemId, item.name, item.buyPrice); setItemModal(null); }}
                     disabled={busy || gold < (item.buyPrice || 0)}
-                    className="flex-1 py-2 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-xs disabled:opacity-40 disabled:text-gray-600">
+                    className="flex-1 py-2 border border-green-700 text-green-400 hover:bg-green-900/20 rounded text-sm disabled:opacity-40 disabled:text-gray-600">
                     {gold >= (item.buyPrice || 0) ? `🛒 ซื้อ ${item.buyPrice}G` : '💸 Gold ไม่พอ'}
                   </button>
                 )}
@@ -5594,7 +5891,7 @@ Ashenveil ได้รับรุ่งอรุณใหม่`,
 function Btn({ onClick, disabled, children, className = '' }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`px-3 py-2.5 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-sm disabled:opacity-40 disabled:cursor-not-allowed rounded ${className}`}>
+      className={`px-3 py-2.5 border border-gray-700 text-amber-300 hover:border-amber-600 hover:bg-amber-900/10 transition text-base disabled:opacity-40 disabled:cursor-not-allowed rounded ${className}`}>
       {children}
     </button>
   );

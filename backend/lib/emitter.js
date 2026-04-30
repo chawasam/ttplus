@@ -10,10 +10,15 @@ function setIO(io, userSockets) {
   _userSockets = userSockets;
 }
 
+// Returns true if a socket was found and the event was emitted, false otherwise
 function emitToUser(uid, event, data) {
-  if (!_io || !_userSockets) return;
+  if (!_io || !_userSockets) return false;
   const socketId = _userSockets.get(uid);
-  if (socketId) _io.to(socketId).emit(event, data);
+  if (socketId) {
+    _io.to(socketId).emit(event, data);
+    return true;
+  }
+  return false;
 }
 
 // Broadcast to ALL connected authenticated game clients

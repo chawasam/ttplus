@@ -3,6 +3,7 @@
 
 const admin = require('firebase-admin');
 const { emitToUser } = require('../../lib/emitter');
+const { trackRead } = require('../../utils/readTracker');
 
 function db() { return admin.firestore(); }
 
@@ -57,6 +58,7 @@ async function getVjEvents(vjUid) {
     db().collection('tt_actions').where('uid', '==', vjUid).where('enabled', '==', true).get(),
     db().collection('user_settings').doc(vjUid).get(),
   ]);
+  trackRead('eventProcessor.getVjEvents', evSnap.size + acSnap.size + 1);
 
   const actions = {};
   acSnap.docs.forEach(d => { actions[d.id] = { id: d.id, ...d.data() }; });

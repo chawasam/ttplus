@@ -16,7 +16,14 @@ const CATEGORIES = [
   { id: 'mvp',    label: 'MVP',      emoji: '🏆' },
 ];
 
-const DEFAULT_HOTKEYS = { taptap: '', nwm: '', x2: '', x3: '', mvp: '' };
+const DEFAULT_HOTKEYS = { taptap: 'Numpad1', nwm: 'Numpad2', x2: 'Numpad3', x3: 'Numpad4', mvp: 'Numpad5' };
+
+// แสดงชื่อ hotkey ให้อ่านง่าย
+function displayKey(hk) {
+  if (!hk) return '—';
+  if (hk.startsWith('Numpad')) return `⌨${hk.replace('Numpad', '')}`;
+  return hk;
+}
 
 // ── clsx minimal ────────────────────────────────────────────────────────────
 function cx(...args) { return args.filter(Boolean).join(' '); }
@@ -31,6 +38,7 @@ function pickVideo(list) {
 export default function PKPage({ theme, user, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const isDark = theme === 'dark';
 
+  const [enabled,     setEnabled]     = useState(true);
   const [activeTab,   setActiveTab]   = useState('taptap');
   const [hotkeys,     setHotkeys]     = useState(DEFAULT_HOTKEYS);
   const [categories,  setCategories]  = useState({
@@ -60,6 +68,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
           setCategories(data.config.categories || {
             taptap: [], nwm: [], x2: [], x3: [], mvp: [],
           });
+          if (typeof data.config.enabled === 'boolean') setEnabled(data.config.enabled);
         }
       } catch { /* config not set yet */ }
 
@@ -96,13 +105,13 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   }, [user]);
 
   // ─── Auto-save config (debounce 800ms) ──────────────────────────────────
-  const autoSave = useCallback((newHotkeys, newCategories) => {
+  const autoSave = useCallback((newHotkeys, newCategories, newEnabled) => {
     if (!user) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         setSaving(true);
-        await api.post('/api/pk/config', { hotkeys: newHotkeys, categories: newCategories });
+        await api.post('/api/pk/config', { hotkeys: newHotkeys, categories: newCategories, enabled: newEnabled });
       } catch {
         toast.error('บันทึกไม่สำเร็จ');
       } finally {
@@ -113,12 +122,19 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
   function updateCategories(newCats) {
     setCategories(newCats);
-    autoSave(hotkeys, newCats);
+    autoSave(hotkeys, newCats, enabled);
   }
 
   function updateHotkeys(newHk) {
     setHotkeys(newHk);
-    autoSave(newHk, categories);
+    autoSave(newHk, categories, enabled);
+  }
+
+  function toggleEnabled() {
+    const next = !enabled;
+    setEnabled(next);
+    autoSave(hotkeys, categories, next);
+    toast(next ? '✅ PK Panel เปิดใช้งานแล้ว' : '⏸ PK Panel ปิดอยู่', { duration: 1800 });
   }
 
   // ─── Keyboard shortcut listener ─────────────────────────────────────────
@@ -129,16 +145,23 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
       // ขณะกำลังตั้งค่า hotkey — จับ key แล้ว set
       if (settingKey !== null) {
         e.preventDefault();
-        const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+        // ถ้าเป็น Numpad ใช้ e.code (เช่น "Numpad1") เพื่อแยกจากแถวตัวเลขปกติ
+        const key = e.code.startsWith('Numpad') ? e.code : (e.key.length === 1 ? e.key.toUpperCase() : e.key);
         setSettingKey(null);
         const newHk = { ...hotkeys, [settingKey]: key };
         updateHotkeys(newHk);
         return;
       }
-      // เช็ค hotkey ของแต่ละ category
+      // ถ้า panel ปิดอยู่ ไม่ทำงาน
+      if (!enabled) return;
+      // เช็ค hotkey ของแต่ละ category (รองรับทั้ง Numpad code และ key ปกติ)
       for (const cat of CATEGORIES) {
-        const hk = hotkeys[cat.id]?.toUpperCase();
-        if (hk && e.key.toUpperCase() === hk) {
+        const hk = hotkeys[cat.id];
+        if (!hk) continue;
+        const match = hk.startsWith('Numpad')
+          ? e.code === hk
+          : e.key.toUpperCase() === hk.toUpperCase();
+        if (match) {
           e.preventDefault();
           triggerCategory(cat.id);
           return;
@@ -147,7 +170,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hotkeys, categories, settingKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hotkeys, categories, settingKey, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Trigger: pick random checked video + emit socket ───────────────────
   function triggerCategory(catId) {
@@ -326,14 +349,51 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
       {/* ── Header ── */}
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ color: txt, fontSize: 22, fontWeight: 800, margin: 0 }}>
-              ⚔️ PK Panel
-            </h1>
-            <p style={{ color: muted, fontSize: 13, margin: '3px 0 0' }}>
-              เล่นวิดีโอทับ OBS ระหว่าง PK — กดคีย์ลัดหรือคลิกปุ่มเพื่อเปิดใช้งาน
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div>
+              <h1 style={{ color: txt, fontSize: 22, fontWeight: 800, margin: 0 }}>
+                ⚔️ PK Panel
+              </h1>
+              <p style={{ color: muted, fontSize: 13, margin: '3px 0 0' }}>
+                เล่นวิดีโอทับ OBS ระหว่าง PK — กดคีย์ลัดหรือคลิกปุ่มเพื่อเปิดใช้งาน
+              </p>
+            </div>
+
+            {/* ── Enable / Disable toggle ── */}
+            <button
+              onClick={toggleEnabled}
+              title={enabled ? 'คลิกเพื่อปิด PK Panel' : 'คลิกเพื่อเปิด PK Panel'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 18px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: enabled ? '#16a34a' : (isDark ? '#374151' : '#d1d5db'),
+                boxShadow: enabled ? '0 0 16px #16a34a66' : 'none',
+                transition: 'all 0.2s',
+                flexShrink: 0,
+              }}>
+              {/* toggle knob */}
+              <div style={{
+                width: 42, height: 24, borderRadius: 12,
+                background: enabled ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
+                position: 'relative', flexShrink: 0,
+              }}>
+                <div style={{
+                  position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
+                  background: '#fff',
+                  left: enabled ? 21 : 3,
+                  transition: 'left 0.2s',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                }} />
+              </div>
+              <span style={{
+                fontSize: 14, fontWeight: 800,
+                color: enabled ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
+              }}>
+                {enabled ? '🟢 เปิดใช้งาน' : '⏸ ปิดอยู่'}
+              </span>
+            </button>
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               onClick={() => importRef.current?.click()}
@@ -438,14 +498,14 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
               <button
                 onClick={() => setSettingKey(activeTab)}
                 style={{
-                  minWidth: 48, padding: '5px 12px', borderRadius: 8,
+                  minWidth: 52, padding: '5px 12px', borderRadius: 8,
                   border: `2px solid ${settingKey === activeTab ? accent : border}`,
                   background: settingKey === activeTab ? `${accent}22` : (isDark ? '#222' : '#f5f5f5'),
                   color:  settingKey === activeTab ? accent : txt,
-                  fontWeight: 800, fontSize: 16, cursor: 'pointer',
-                  fontFamily: 'monospace',
+                  fontWeight: 800, fontSize: 15, cursor: 'pointer',
+                  fontFamily: 'monospace', letterSpacing: 0,
                 }}>
-                {settingKey === activeTab ? '...' : (hotkeys[activeTab] || '—')}
+                {settingKey === activeTab ? '...' : displayKey(hotkeys[activeTab])}
               </button>
               {settingKey === activeTab && (
                 <span style={{ fontSize: 12, color: accent }}>กดคีย์ที่ต้องการ</span>
@@ -465,11 +525,17 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
             {/* Trigger button */}
             <button
-              onClick={() => triggerCategory(activeTab)}
+              onClick={() => enabled && triggerCategory(activeTab)}
+              title={!enabled ? 'เปิด PK Panel ก่อน' : undefined}
               style={{
                 marginLeft: 'auto', padding: '9px 20px', borderRadius: 10, border: 'none',
-                background: accent, color: '#fff', fontWeight: 700, fontSize: 14,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                background: enabled ? accent : (isDark ? '#374151' : '#d1d5db'),
+                color: enabled ? '#fff' : muted,
+                fontWeight: 700, fontSize: 14,
+                cursor: enabled ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', gap: 6,
+                opacity: enabled ? 1 : 0.6,
+                transition: 'all 0.2s',
               }}>
               ▶ เล่นเลย
             </button>
@@ -547,16 +613,19 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
         {/* ── Hotkey summary ── */}
         <div style={{ marginTop: 20, background: card, border: `1px solid ${border}`, borderRadius: 14, padding: '14px 20px' }}>
-          <p style={{ color: muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>⌨️ คีย์ลัดทั้งหมด (กดขณะอยู่ในหน้านี้)</p>
+          <p style={{ color: muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>
+            ⌨️ คีย์ลัดทั้งหมด (กดขณะอยู่ในหน้านี้)
+            {!enabled && <span style={{ color: '#f59e0b', marginLeft: 8 }}>— ปิดอยู่ คีย์ลัดไม่ทำงาน</span>}
+          </p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {CATEGORIES.map(cat => (
-              <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: enabled ? 1 : 0.4 }}>
                 <span style={{
                   background: isDark ? '#222' : '#f3f4f6',
                   border: `1.5px solid ${border}`, borderRadius: 7,
-                  padding: '3px 10px', fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: txt,
+                  padding: '3px 10px', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: txt,
                 }}>
-                  {hotkeys[cat.id] || '—'}
+                  {displayKey(hotkeys[cat.id])}
                 </span>
                 <span style={{ color: muted, fontSize: 12 }}>{cat.emoji} {cat.label}</span>
               </div>

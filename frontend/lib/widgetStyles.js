@@ -35,15 +35,15 @@ export const VALID_SKIN_IDS = [
 
 // ค่า default ของแต่ละ widget (hex ไม่มี #)
 export const WIDGET_DEFAULTS = {
-  alert:            { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16 },
-  chat:             { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '', bw: 100, layout: 'inline', fullBubble: 0, lang: 'th', pagebg: '' },
-  pinchat:          { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0, skin: '' },
-  pinprofile:       { bg: '0a0a14', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 16, rx: 0, ry: 0, rz: 0, skin: '', orient: 'v', showChat: 1 },
-  leaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, rba: 5 },
-  likesLeaderboard:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16, skin: '' },
-  'likes-leaderboard':  { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16, skin: '' },
-  giftLeaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, skin: '' },
-  'gift-leaderboard':   { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, skin: '' },
+  alert:            { bg: '1a0a1e', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 14, br: 16, fw: 0, tcr: 0 },
+  chat:             { bg: '000000', bga: 65, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 10, dir: 'down', max: 12, rx: 0, ry: 0, rz: 0, skin: '', bw: 100, layout: 'inline', fullBubble: 0, lang: 'th', pagebg: '', fw: 0, tcr: 0 },
+  pinchat:          { bg: '111111', bga: 85, tc: 'ffffff', ac: 'ff2d62', fs: 15, br: 12, rx: 0, ry: 0, rz: 0, skin: '', fw: 0, tcr: 0 },
+  pinprofile:       { bg: '0a0a14', bga: 92, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 16, rx: 0, ry: 0, rz: 0, skin: '', orient: 'v', showChat: 1, fw: 0, tcr: 0 },
+  leaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, rba: 5, fw: 0, tcr: 0 },
+  likesLeaderboard:     { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16, skin: '', fw: 0, tcr: 0 },
+  'likes-leaderboard':  { bg: '000000', bga: 70, tc: 'ffffff', ac: 'f59e0b', fs: 13, br: 16, skin: '', fw: 0, tcr: 0 },
+  giftLeaderboard:      { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, skin: '', fw: 0, tcr: 0 },
+  'gift-leaderboard':   { bg: '000000', bga: 70, tc: 'ffffff', ac: 'a78bfa', fs: 13, br: 16, skin: '', fw: 0, tcr: 0 },
   fireworks:            { bg: '000000', bga:  0, tc: 'ffffff', ac: 'ff8800', fs: 14, br: 12, vol: 80, patterns: 'ring,willow,scatter,star,fan', pcount: 10 },
   goal:             { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ff2d62', fs: 13, br: 12 },
   viewers:          { bg: '000000', bga: 70, tc: 'ffffff', ac: 'ffffff', fs: 22, br: 12 },
@@ -190,6 +190,16 @@ export function parseWidgetStyles(params, widgetId) {
     ? (patternsRaw.split(',').filter(p => VALID_FW_PATTERNS.includes(p)).join(',') || 'ring,willow,scatter,star,fan')
     : 'ring,willow,scatter,star,fan';
 
+  // fw — font weight 0=ปกติ 1=หนา (bold)
+  const fw = d.fw !== undefined
+    ? (parseInt(params.get('fw') ?? d.fw) === 1 ? 1 : 0)
+    : 0;
+
+  // tcr — text color rainbow 0=ปิด 1=เปิด
+  const tcr = d.tcr !== undefined
+    ? (parseInt(params.get('tcr') ?? d.tcr) === 1 ? 1 : 0)
+    : 0;
+
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     rowBgRgba:   hexAlphaToRgba(tc, rba),
@@ -202,8 +212,9 @@ export function parseWidgetStyles(params, widgetId) {
     rx, ry, rz,
     jx, mi, gs,
     skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba,
+    fw, tcr,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba, fw, tcr },
   };
 }
 
@@ -246,6 +257,8 @@ export function styleToParams(style, widgetId) {
   if (d.vol          !== undefined && style.vol          !== d.vol)          p.set('vol',      style.vol);
   if (d.patterns     !== undefined && style.patterns     !== d.patterns)     p.set('patterns', style.patterns);
   if (d.pcount       !== undefined && style.pcount       !== d.pcount)       p.set('pcount',   style.pcount);
+  if (d.fw           !== undefined && style.fw           !== d.fw)           p.set('fw',        style.fw);
+  if (d.tcr          !== undefined && style.tcr          !== d.tcr)          p.set('tcr',       style.tcr);
   return p.toString();
 }
 
@@ -327,6 +340,12 @@ export function rawToStyle(raw = {}, widgetId) {
   const pcount = d.pcount !== undefined
     ? ([10, 20, 30].includes(pcountRaw2) ? pcountRaw2 : 10)
     : 10;
+  const fw = d.fw !== undefined
+    ? (parseInt(raw.fw ?? d.fw) === 1 ? 1 : 0)
+    : 0;
+  const tcr = d.tcr !== undefined
+    ? (parseInt(raw.tcr ?? d.tcr) === 1 ? 1 : 0)
+    : 0;
   return {
     bgRgba:      hexAlphaToRgba(bg, bga),
     rowBgRgba:   hexAlphaToRgba(tc, rba),
@@ -336,7 +355,26 @@ export function rawToStyle(raw = {}, widgetId) {
     rx, ry, rz,
     jx, mi, gs,
     skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba,
+    fw, tcr,
     transform3D: make3DTransform(rx, ry, rz),
-    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba },
+    raw:         { bg, bga, tc, ac, fs, br, dir, max, rx, ry, rz, jx, mi, gs, skin, bw, layout, orient, showChat, showSender, showGiftName, showGiftImage, fullBubble, lang, pagebg, vol, patterns, pcount, rba, fw, tcr },
   };
+}
+
+/**
+ * คืน CSS props สำหรับ text color — ถ้า tcr=1 จะใช้ rainbow animation
+ * ใช้แบบ spread: <span style={{ ...tcCssProps(styles), fontSize: styles.fs }}>
+ */
+export function tcCssProps(styles) {
+  if (styles?.tcr) {
+    return {
+      background: 'linear-gradient(90deg,#ff6464,#ff9500,#ffee00,#64dc64,#3ca0ff,#b450ff,#ff6464)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      backgroundSize: '300% auto',
+      animation: 'rainbowText 3s linear infinite',
+    };
+  }
+  return { color: styles?.tc || '#ffffff' };
 }

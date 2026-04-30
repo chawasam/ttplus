@@ -11,9 +11,32 @@ const { getSkill, getClassSkills } = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { logReward } = require('../../utils/anticheat');
 
+// ── Equipment bonus cache — ลด Firestore reads จาก 14 → 1 ต่อ battle ──────────
+// invalidateEquipCache(uid) ต้องเรียกทุกครั้งที่ equip/unequip ใน inventory.js
+const _equipBonusCache = new Map(); // uid → { bonus, cachedAt }
+const EQUIP_CACHE_TTL  = 5 * 60 * 1000; // 5 นาที
+
+function invalidateEquipCache(uid) {
+  _equipBonusCache.delete(uid);
+}
+
+// ล้าง expired entries ทุก 10 นาที
+setInterval(() => {
+  const cutoff = Date.now() - EQUIP_CACHE_TTL;
+  for (const [k, v] of _equipBonusCache.entries()) {
+    if (v.cachedAt < cutoff) _equipBonusCache.delete(k);
+  }
+}, 10 * 60 * 1000);
+
 // ── Calculate total equipment stat bonuses ────────────────────────────────────
 // Returns { atk, def, spd, hp_bonus, crit_rate, mp_bonus, mp_regen, ... }
 async function calcEquipBonus(uid) {
+  // Cache hit — ลด N+1 inventory queries เหลือ 0 reads
+  const cached = _equipBonusCache.get(uid);
+  if (cached && Date.now() - cached.cachedAt < EQUIP_CACHE_TTL) {
+    return cached.bonus;
+  }
+
   const db = admin.firestore();
   const bonus = { atk:0, def:0, spd:0, hp_bonus:0, crit_rate:0, mp_bonus:0, mp_regen:0,
                   atk_bonus:0, block_rate:0, void_dmg:0, lifesteal:0, gold_bonus:0 };
@@ -58,6 +81,8 @@ async function calcEquipBonus(uid) {
   } catch (err) {
     console.error('[Combat] calcEquipBonus error:', err.message);
   }
+  // เก็บ cache ก่อน return
+  _equipBonusCache.set(uid, { bonus, cachedAt: Date.now() });
   return bonus;
 }
 
@@ -1980,4 +2005,4 @@ async function claimPendingLoot(req, res) {
   }
 }
 
-module.exports = { startBattle, processAction, rest, cleanupStaleBattles, LIMIT_BREAK_DEFS, claimPendingLoot };
+module.exports = { startBattle, processAction, rest, cleanupStaleBattles, LIMIT_BREAK_DEFS, claimPendingLoot, invalidateEquipCache };

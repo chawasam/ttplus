@@ -4,6 +4,7 @@
 
 const admin = require('firebase-admin');
 const { pushGameEvent } = require('./achievements');
+const { giveXP } = require('./xp');
 
 // UTC+7 วันนี้ในรูป YYYY-MM-DD
 function todayTH() {
@@ -88,14 +89,14 @@ async function claimLoginBonus(req, res) {
       totalLoginDays: admin.firestore.FieldValue.increment(1),
     });
 
-    // XP → char
-    const charId = acct.characterId;
-    if (charId && reward.xp > 0) {
-      const charRef = db.collection('game_characters').doc(charId);
-      batch.update(charRef, { xp: admin.firestore.FieldValue.increment(reward.xp) });
-    }
-
     await batch.commit();
+
+    // XP → char (with level-up check, after batch commit)
+    let xpLevelUp = null;
+    if (reward.xp > 0) {
+      const xpResult = await giveXP(uid, reward.xp, db);
+      xpLevelUp = xpResult.levelUp;
+    }
 
     // Grant items
     const grantedItems = [];
@@ -122,6 +123,7 @@ async function claimLoginBonus(req, res) {
       newStreak,
       reward,
       items:    grantedItems,
+      levelUp:  xpLevelUp,
       msg: `✅ ${reward.label} +${reward.gold} Gold, +${reward.xp} XP`,
     });
   } catch (err) {

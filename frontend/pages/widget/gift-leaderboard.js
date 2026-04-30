@@ -2,7 +2,7 @@
 // OBS Size: 300 x 520
 import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import SKINS, { SkinParticles } from '../../lib/chatSkins';
 
@@ -72,10 +72,22 @@ export default function GiftLeaderboardWidget() {
       // ── Real-time style update จาก Customize Drawer ──
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'gift-leaderboard') return;
-        if (style?._reset) return; // reset ไม่มีผลกับ leaderboard
+        if (style?._reset) return;
+        // อัปเดต visual style (สี/font ฯลฯ)
         const next = rawToStyle(style, 'gift-leaderboard');
         stylesRef.current = next;
         setStyles(next);
+        // อัปเดต config toggles ถ้า Drawer ส่งมาด้วย (real-time toggle fix)
+        setConfig(prev => {
+          const u = {};
+          if (style.showMedal    !== undefined) u.showMedal    = Number(style.showMedal)    !== 0;
+          if (style.showBg       !== undefined) u.showBg       = Number(style.showBg)        !== 0;
+          if (style.showAvatar   !== undefined) u.showAvatar   = Number(style.showAvatar)    !== 0;
+          if (style.showProgress !== undefined) u.showProgress = Number(style.showProgress)  !== 0;
+          if (style.showCoins    !== undefined) u.showCoins    = Number(style.showCoins)     !== 0;
+          if (style.maxRows      !== undefined) u.maxRows      = Math.min(20, Math.max(1, Number(style.maxRows) || 10));
+          return Object.keys(u).length ? { ...prev, ...u } : prev;
+        });
       },
     });
 
@@ -184,9 +196,9 @@ export default function GiftLeaderboardWidget() {
                     <span
                       style={{
                         display: 'block',
-                        color: styles.tc,
+                        ...tcCssProps(styles),
                         fontSize: styles.fs,
-                        fontWeight: isTop3 ? 700 : 500,
+                        fontWeight: styles.fw ? 700 : (isTop3 ? 700 : 500),
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',

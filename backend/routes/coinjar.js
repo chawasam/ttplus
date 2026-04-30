@@ -2,8 +2,9 @@
 const express          = require('express');
 const router           = express.Router();
 const { verifyToken }  = require('../middleware/auth');
-const { emitToWidgetRoom } = require('../lib/emitter');
-const { getGiftCatalog }   = require('../handlers/tiktok');
+const { emitToWidgetRoom }   = require('../lib/emitter');
+const { getGiftCatalog }     = require('../handlers/tiktok');
+const { processEvent }       = require('../handlers/actions/eventProcessor');
 
 // ── Fallback gift list (ใช้เมื่อ catalog ยังว่างอยู่ — เช่น server เพิ่ง start) ──
 const FALLBACK_GIFTS = [
@@ -63,7 +64,13 @@ router.post('/simulate', verifyToken, async (req, res) => {
     _simulated:        true,   // flag เผื่อ widget ต้องการรู้ว่าเป็น simulation
   };
 
+  // 1. ส่งไป CoinJar / Widget (fireworks, leaderboard ฯลฯ)
   emitToWidgetRoom(uid, 'gift', payload);
+
+  // 2. ส่งเข้า Events → Actions pipeline (เหมือน TikTok gift จริง)
+  processEvent(uid, 'gift', payload).catch(err => {
+    console.warn('[Simulate] processEvent error:', err.message);
+  });
 
   res.json({
     ok:     true,

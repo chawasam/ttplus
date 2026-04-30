@@ -3,6 +3,7 @@ const admin = require('firebase-admin');
 const { getItem, SLOT_NAMES, GRADE_COLOR, ITEM_QUALITY } = require('../../data/items');
 const { deductGold, addGold } = require('./currency');
 const { SHOP_INVENTORY } = require('../../data/maps');
+const { invalidateEquipCache } = require('./combat');
 
 const EQUIP_SLOTS = ['HEAD','FACE','CHEST','GLOVES','LEGS','FEET','CAPE',
                      'MAIN_HAND','OFF_HAND','RING_L','RING_R','AMULET','BELT','RELIC'];
@@ -134,6 +135,7 @@ async function equipItem(req, res) {
     batch.set(equipRef, { ...equipment, [slot]: instanceId }, { merge: true });
 
     await batch.commit();
+    invalidateEquipCache(uid); // bust combat.js cache → battle ถัดไปอ่านใหม่
     return res.json({ success: true, slot, instanceId, msg: `ใส่ ${def.name} ใน ${SLOT_NAMES[slot]} แล้ว` });
   } catch (err) {
     console.error('[Inventory] equipItem:', err.message);
@@ -167,7 +169,7 @@ async function unequipItem(req, res) {
     if (!snap.empty) batch.update(snap.docs[0].ref, { equipped: null });
     batch.update(equipRef, { [slot]: null });
     await batch.commit();
-
+    invalidateEquipCache(uid); // bust combat.js cache
     return res.json({ success: true, slot, msg: `ถอด item จาก ${SLOT_NAMES[slot] || slot} แล้ว` });
   } catch (err) {
     console.error('[Inventory] unequipItem:', err.message);

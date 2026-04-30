@@ -432,41 +432,63 @@ function tickRocket(ctx, r, now) {
   }
 }
 
-// ── Web Audio helpers (OBS-safe — ไม่ถูก autoplay block) ───────────────────
-let _audioCtx    = null;
-let _fireworkBuf = null;
+// ── Web Audio helpers ────────────────────────────────────────────────────────
+// Strategy:
+//   1. Fetch MP3 bytes eagerly — ไม่ต้องมี AudioContext
+//   2. สร้าง AudioContext แค่ครั้งเดียว (ตอน first playback หรือ click)
+//      ถ้า browser block (no user gesture) → ลองแค่ครั้งเดียว ไม่ retry ซ้ำ
+//      เพื่อหลีกเลี่ยง "AudioContext not allowed" warning ×N
+//   3. เมื่อ user คลิก → ลอง init ใหม่ (ใช้ได้ใน browser preview)
+//   OBS CEF: ไม่มี autoplay restriction → init สำเร็จจากกิจกรรมแรก
+let _audioCtx     = null;
+let _fireworkBuf  = null;
+let _rawMp3       = null;    // raw ArrayBuffer จาก fetch
+let _initAttempted = false;  // ลอง init ไปแล้วหรือยัง (ป้องกัน retry loop)
 
-function getAudioCtx() {
-  if (!_audioCtx) {
-    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  // OBS CEF: resume ทุกครั้งเพื่อหลีกเลี่ยง suspended state
-  if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
-  return _audioCtx;
+async function prefetchFireworkBytes() {
+  try {
+    const res = await fetch('/sfx/firework.mp3');
+    _rawMp3 = await res.arrayBuffer();
+  } catch (_) {}
 }
 
-async function preloadFirework() {
+async function _initAudio() {
+  if (_fireworkBuf)   return;  // ready แล้ว
+  if (!_rawMp3)       return;  // ยังไม่ได้ fetch
+  if (_initAttempted) return;  // ลองแล้ว ไม่ retry (หลีกเลี่ยง warning loop)
+  _initAttempted = true;
   try {
-    const ctx = getAudioCtx();
-    const res  = await fetch('/sfx/firework.mp3');
-    const buf  = await res.arrayBuffer();
-    _fireworkBuf = await ctx.decodeAudioData(buf);
+    if (!_audioCtx) {
+      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (_audioCtx.state === 'suspended') await _audioCtx.resume();
+    _fireworkBuf = await _audioCtx.decodeAudioData(_rawMp3.slice(0));
   } catch (_) {}
+}
+
+// เมื่อ user คลิก → reset flag แล้วลอง init ใหม่ (สำหรับ browser preview)
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', () => {
+    _initAttempted = false;
+    _initAudio();
+  }, { once: true });
 }
 
 function playFirework(vol) {
-  if (!_fireworkBuf || vol <= 0) return;
-  try {
-    const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
-    const src  = ctx.createBufferSource();
-    src.buffer = _fireworkBuf;
-    const gain = ctx.createGain();
-    gain.gain.value = Math.max(0, Math.min(1, vol));
-    src.connect(gain);
-    gain.connect(ctx.destination);
-    src.start(0);
-  } catch (_) {}
+  if (vol <= 0) return;
+  _initAudio().then(() => {
+    if (!_fireworkBuf || !_audioCtx) return;
+    try {
+      if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+      const src  = _audioCtx.createBufferSource();
+      src.buffer = _fireworkBuf;
+      const gain = _audioCtx.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, vol));
+      src.connect(gain);
+      gain.connect(_audioCtx.destination);
+      src.start(0);
+    } catch (_) {}
+  });
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -477,6 +499,10 @@ export default function FireworksWidget() {
   const volumeRef  = useRef(0.8); // real-time volume — updated via socket style_update
 
   useEffect(() => {
+    // Reset running flag — สำคัญมากสำหรับ React StrictMode ที่ mount→cleanup→mount
+    // cleanup ตั้ง runningRef = false แต่ mount ครั้งที่ 2 ต้องรีเซ็ตกลับเป็น true
+    runningRef.current = true;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.width  = W;
@@ -485,8 +511,8 @@ export default function FireworksWidget() {
 
     const params = new URLSearchParams(window.location.search);
 
-    // ── Preload audio ──
-    preloadFirework();
+    // ── Prefetch audio bytes (no AudioContext yet — avoids autoplay warning) ──
+    prefetchFireworkBytes();
 
     // ── Animation loop ──
     let raf;
@@ -569,8 +595,9 @@ export default function FireworksWidget() {
       spawnOne();
     }
 
-    // ── Preview mode ──
+    // ── Preview mode — demo fireworks (ไม่ return early เพื่อให้ socket ยังทำงาน) ──
     const isPreview = params.get('preview') === '1';
+    let demoTimer   = null;
 
     if (isPreview) {
       const demoGifts = [
@@ -585,21 +612,18 @@ export default function FireworksWidget() {
         idx++;
       };
       fireDemo();
-      const demoTimer = setInterval(fireDemo, 5000);
-      return () => {
-        runningRef.current = false;
-        cancelAnimationFrame(raf);
-        clearInterval(demoTimer);
-      };
+      demoTimer = setInterval(fireDemo, 5000);
+      // ไม่ return — fall through ไปยัง socket setup ด้านล่าง
+      // เพื่อให้ปุ่ม "จำลองของขวัญ" ใน dashboard ส่ง socket event มาแล้วพลุยิงได้จริง
     }
 
-    // ── Socket connection ──
+    // ── Socket connection — connect เสมอถ้ามี cid (รวมถึง preview mode) ──
     const wt   = params.get('cid') ?? params.get('wt');
     let socket = null;
     if (wt) {
       socket = createWidgetSocket(wt, {
         gift: spawnFromGift,
-        // Real-time volume update จาก inline slider ใน widgets.js
+        // Real-time volume/style update จาก inline slider ใน widgets.js
         style_update: ({ widgetId, style }) => {
           if (widgetId !== 'fireworks') return;
           if (style?.vol !== undefined) {
@@ -613,7 +637,8 @@ export default function FireworksWidget() {
     return () => {
       runningRef.current = false;
       cancelAnimationFrame(raf);
-      if (socket) socket.disconnect();
+      if (demoTimer) clearInterval(demoTimer);
+      if (socket)    socket.disconnect();
     };
   }, []);
 

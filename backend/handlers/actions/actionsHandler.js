@@ -13,6 +13,7 @@
 const admin = require('firebase-admin');
 const { v4: uuidv4 } = require('uuid');
 const { getUidForCid, registerCid } = require('../../utils/widgetToken');
+const { trackRead } = require('../../utils/readTracker');
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -46,7 +47,9 @@ async function getActions(req, res) {
   const uid = req.user.uid;
   try {
     const snap = await db().collection('tt_actions').where('uid', '==', uid).get();
-    const actions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    trackRead('actionsHandler.getActions', snap.size);
+    // ใส่ id ไว้ท้ายสุดเพื่อให้ Firestore document ID ชนะ field 'id' ที่อาจติดมาใน data
+    const actions = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     return res.json({ actions });
   } catch (err) {
     console.error('[Actions] getActions:', err.message);
@@ -74,9 +77,11 @@ async function createAction(req, res) {
       // TTS
       ttsText:     data.ttsText     || 'ขอบคุณ {username} ที่ส่ง {giftname}!',
       // OBS WebSocket
-      obsScene:    data.obsScene    || '',          // ชื่อ scene ที่จะสลับไป
-      obsSceneDuration: data.obsSceneDuration ?? 0, // 0 = เปิดตลอด, >0 = กี่วินาทีแล้วกลับ
-      obsSource:   data.obsSource   || '',          // ชื่อ source ที่จะ activate
+      obsScene:        data.obsScene        || '',   // ชื่อ scene ที่จะสลับไป
+      obsSceneReturn:  data.obsSceneReturn  ?? false, // กลับ scene เดิมหลังจบ
+      obsSceneDuration: data.obsSceneDuration ?? 0,  // 0 = เปิดตลอด, >0 = กี่วินาทีแล้วกลับ
+      obsSource:       data.obsSource       || '',   // ชื่อ source ที่จะ activate
+      obsSourceReturn: data.obsSourceReturn ?? false, // ปิด source กลับหลังจบ
       obsSourceDuration: data.obsSourceDuration ?? 0,
       // Display settings
       displayDuration: data.displayDuration ?? 5,   // วินาที
@@ -165,7 +170,9 @@ async function getEvents(req, res) {
   const uid = req.user.uid;
   try {
     const snap = await db().collection('tt_events').where('uid', '==', uid).get();
-    const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    trackRead('actionsHandler.getEvents', snap.size);
+    // id ไว้ท้ายสุดเพื่อให้ Firestore document ID ชนะ field 'id' ใน data
+    const events = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     return res.json({ events });
   } catch (err) {
     console.error('[Actions] getEvents:', err.message);
@@ -256,12 +263,19 @@ async function deleteEvent(req, res) {
 async function saveObsSettings(req, res) {
   const uid = req.user.uid;
   const { host, port, password } = req.body;
+
+  // Validate + sanitize
+  const safeHost = String(host || 'localhost').replace(/[^\w.\-]/g, '').slice(0, 255) || 'localhost';
+  const safePort = parseInt(port, 10) || 4455;
+  if (safePort < 1 || safePort > 65535) return res.status(400).json({ error: 'Invalid port (1-65535)' });
+  const safePass = String(password || '').slice(0, 256);
+
   try {
     await db().collection('tt_obs_settings').doc(uid).set({
       uid,
-      host:     host     || 'localhost',
-      port:     port     || 4455,
-      password: password || '',
+      host:     safeHost,
+      port:     safePort,
+      password: safePass,
       updatedAt: Date.now(),
     }, { merge: true });
     return res.json({ success: true });
@@ -321,6 +335,7 @@ async function getOverlayQueue(req, res) {
       .orderBy('queuedAt', 'asc')
       .limit(1)
       .get();
+    trackRead('myactions.overlayQueue', 1);
 
     if (snap.empty) return res.json({ item: null });
 
@@ -337,9 +352,109 @@ async function getOverlayQueue(req, res) {
   }
 }
 
+// ── Import Backup ────────────────────────────────────────────────────────────
+async function importBackup(req, res) {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { actions: importedActions = [], events: importedEvents = [] } = req.body || {};
+  if (!Array.isArray(importedActions) || !Array.isArray(importedEvents)) {
+    return res.status(400).json({ error: 'actions และ events ต้องเป็น array' });
+  }
+
+  try {
+    const firestore = db();
+    const batch = firestore.batch();
+
+    // ลบ actions เดิม
+    const oldActions = await firestore.collection('tt_actions').where('uid', '==', uid).get();
+    oldActions.docs.forEach(d => batch.delete(d.ref));
+
+    // ลบ events เดิม
+    const oldEvents = await firestore.collection('tt_events').where('uid', '==', uid).get();
+    oldEvents.docs.forEach(d => batch.delete(d.ref));
+
+    // เพิ่ม actions ใหม่
+    // ลบ field 'id' ออกก่อนบันทึก — 'id' ไม่ใช่ Firestore field แต่เป็น doc ID
+    // ถ้าไม่ลบ getActions จะส่ง id เก่าจาก backup ไปให้ frontend แทน Firestore doc ID ใหม่
+    for (const a of importedActions.slice(0, 200)) { // limit 200
+      const { id: _id, ...aData } = a; // eslint-disable-line no-unused-vars
+      const ref = firestore.collection('tt_actions').doc();
+      batch.set(ref, { ...aData, uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    // เพิ่ม events ใหม่
+    for (const e of importedEvents.slice(0, 200)) { // limit 200
+      const { id: _id, ...eData } = e; // eslint-disable-line no-unused-vars
+      const ref = firestore.collection('tt_events').doc();
+      batch.set(ref, { ...eData, uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    await batch.commit();
+    return res.json({ ok: true, actions: importedActions.length, events: importedEvents.length });
+  } catch (err) {
+    console.error('[Actions] importBackup:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// ── Fire Action (preview/test — queues to overlay) ───────────────────────────
+async function fireAction(req, res) {
+  const { id } = req.params;
+  const uid = req.user.uid;
+  console.log('[Actions] fireAction id=%s uid=%s', id, uid);
+
+  try {
+    const snap = await db().collection('tt_actions').doc(id).get();
+    console.log('[Actions] fireAction exists=%s docUid=%s', snap.exists, snap.data()?.uid);
+    if (!snap.exists || snap.data().uid !== uid) {
+      return res.status(404).json({ error: 'ไม่พบ Action' });
+    }
+    const action = { id: snap.id, ...snap.data() };
+    const context = { username: 'ทดสอบ', giftname: 'Rose', coins: '100', likeCount: '0' };
+
+    // Queue to overlay (same format as eventProcessor)
+    const fillTemplate = (text) => (text || '')
+      .replace(/\{username\}/gi, context.username)
+      .replace(/\{giftname\}/gi, context.giftname)
+      .replace(/\{coins\}/gi,    context.coins)
+      .replace(/\{likecount\}/gi, context.likeCount);
+
+    await db().collection('tt_action_queue').add({
+      vjUid:          uid,
+      screen:         action.overlayScreen || 1,
+      actionId:       action.id,
+      types:          action.types,
+      pictureUrl:     action.pictureUrl  || '',
+      videoUrl:       action.videoUrl    || '',
+      audioUrl:       action.audioUrl    || '',
+      alertText:      fillTemplate(action.alertText),
+      ttsText:        fillTemplate(action.ttsText),
+      obsScene:       action.obsScene        || '',
+      obsSceneReturn: action.obsSceneReturn  ?? false,
+      obsSource:      action.obsSource       || '',
+      obsSourceReturn:action.obsSourceReturn ?? false,
+      displayDuration:action.displayDuration ?? 5,
+      fadeInOut:      action.fadeInOut       ?? true,
+      username:       context.username,
+      giftname:       context.giftname,
+      played:         false,
+      queuedAt:       Date.now(),
+      isPreview:      true,
+    });
+
+    return res.json({ success: true, actionName: action.name });
+  } catch (err) {
+    console.error('[Actions] fireAction:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 module.exports = {
   getActions, createAction, updateAction, deleteAction,
   getEvents,  createEvent,  updateEvent,  deleteEvent,
   saveObsSettings, getObsSettings,
   getOverlayQueue,
+  importBackup,
+  fireAction,
 };

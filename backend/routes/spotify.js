@@ -11,6 +11,7 @@ const REDIRECT_URI  = 'https://api.ttsam.app/api/spotify/callback';
 const SCOPES        = 'user-read-currently-playing user-read-playback-state user-read-playback-position';
 
 const { getUidForCid } = require('../utils/widgetToken');
+const { trackRead } = require('../utils/readTracker');
 
 function db() { return admin.firestore(); }
 
@@ -191,6 +192,7 @@ router.get('/now-playing', async (req, res) => {
   }
 
   if (!resolvedUid) return res.status(400).json({ error: 'uid or cid required' });
+  trackRead('spotify.nowPlaying', 1);
   try {
     const token   = await getValidToken(resolvedUid);
     const spRes   = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', {
@@ -238,6 +240,7 @@ router.get('/queue', async (req, res) => {
   }
 
   if (!resolvedUid) return res.status(400).json({ error: 'uid or cid required' });
+  trackRead('spotify.queue', 1);
 
   try {
     const token = await getValidToken(resolvedUid);

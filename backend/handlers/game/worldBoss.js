@@ -324,7 +324,17 @@ async function spawnWorldBoss(req, res) {
 
     await db.collection('game_world_boss').doc(BOSS_DOC).set(bossData);
 
-    // Broadcast spawn event to all online players (via game_events collection)
+    // Broadcast spawn — socket push ทันที แทน polling
+    broadcastAll('world_boss_spawn', {
+      bossId:    bossTemplate.bossId,
+      bossName:  bossTemplate.nameTH,
+      emoji:     bossTemplate.emoji,
+      hp:        bossTemplate.hp,
+      hpMax:     bossTemplate.hp,
+      expiresAt: bossData.expiresAt,
+      msg:       bossTemplate.spawnMsg,
+    });
+
     await db.collection('game_global_events').add({
       type:      'world_boss_spawn',
       bossId:    bossTemplate.bossId,
@@ -373,6 +383,18 @@ async function triggerBossFromGift(giftCount) {
   };
 
   await db.collection('game_world_boss').doc(BOSS_DOC).set(bossData);
+
+  // Socket push — client รับได้ทันที ไม่ต้อง poll
+  broadcastAll('world_boss_spawn', {
+    bossId:    bossTemplate.bossId,
+    bossName:  bossTemplate.nameTH,
+    emoji:     bossTemplate.emoji,
+    hp:        bossTemplate.hp,
+    hpMax:     bossTemplate.hp,
+    expiresAt: bossData.expiresAt,
+    msg:       bossTemplate.spawnMsg,
+  });
+
   await db.collection('game_global_events').add({
     type: 'world_boss_spawn', bossId: bossTemplate.bossId,
     bossName: bossTemplate.nameTH, emoji: bossTemplate.emoji,

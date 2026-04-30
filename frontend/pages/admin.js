@@ -4898,6 +4898,8 @@ function SeasonEventsTab() {
 function SystemTab() {
   const [sysData,  setSysData]  = useState(null);
   const [gameData, setGameData] = useState(null);
+  const [fbData,   setFbData]   = useState(null);
+  const [rdData,   setRdData]   = useState(null);
   const [errors,   setErrors]   = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [expanded, setExpanded] = useState(null);
@@ -4908,14 +4910,18 @@ function SystemTab() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sysRes, errRes, gameRes] = await Promise.all([
+      const [sysRes, errRes, gameRes, fbRes, rdRes] = await Promise.all([
         api.get('/api/admin/metrics'),
         api.get('/api/admin/errors?limit=50'),
         api.get('/api/admin/game-metrics'),
+        api.get('/api/admin/firebase-usage'),
+        api.get('/api/admin/read-stats'),
       ]);
       setSysData(sysRes.data);
       setErrors(errRes.data?.errors || []);
       setGameData(gameRes.data);
+      setFbData(fbRes.data);
+      setRdData(rdRes.data);
     } catch { /* 403 = not owner, show nothing */ }
     finally {
       setLoading(false);
@@ -4950,6 +4956,88 @@ function SystemTab() {
       setErrors(prev => prev.filter(e => e.id !== id));
     } catch { alert('Resolve ไม่สำเร็จ'); }
   }, []);
+
+  // ── API Health Check ──────────────────────────────────────────────────
+  const [hcResults, setHcResults] = useState([]); // [{ group, label, method, path, status, ms, note, ok }]
+  const [hcRunning, setHcRunning] = useState(false);
+  const [hcDone,    setHcDone]    = useState(false);
+
+  const runHealthCheck = useCallback(async () => {
+    if (hcRunning) return;
+    setHcRunning(true);
+    setHcDone(false);
+    setHcResults([]);
+
+    const BACKEND = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || '';
+    const token = await (async () => {
+      try {
+        const { getAuth } = await import('firebase/auth');
+        return await getAuth().currentUser?.getIdToken();
+      } catch { return null; }
+    })();
+
+    const authHdr = token ? { Authorization: `Bearer ${token}` } : {};
+
+    const tests = [
+      // ── Public ────────────────────────────────────────────────────
+      { group:'🌐 Public', method:'GET', path:'/health',                       auth:false, label:'Health ping' },
+      { group:'🌐 Public', method:'GET', path:'/api/gifts/public',              auth:false, label:'Gift catalog (public)' },
+      { group:'🌐 Public', method:'GET', path:'/api/actions/overlay?cid=0',     auth:false, label:'Overlay queue (no auth)' },
+      { group:'🌐 Public', method:'GET', path:'/api/leaderboard',               auth:false, label:'Leaderboard' },
+      // ── Auth Required ─────────────────────────────────────────────
+      { group:'🔐 Auth',   method:'GET', path:'/api/actions',                   auth:true,  label:'Actions list' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/actions/events',            auth:true,  label:'Events list' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/actions/obs-settings',      auth:true,  label:'OBS settings' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/actions/gift-catalog',      auth:true,  label:'Gift catalog (auth)' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/settings',                  auth:true,  label:'User settings' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/tiktok/status',             auth:true,  label:'TikTok status' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/stats',                     auth:true,  label:'Live stats' },
+      { group:'🔐 Auth',   method:'GET', path:'/api/csrf-token',                auth:true,  label:'CSRF token' },
+      { group:'🔐 Auth',   method:'POST', path:'/api/widget-token',             auth:true,  body:{}, label:'Widget token' },
+      // ── Admin Only ────────────────────────────────────────────────
+      { group:'👑 Admin',  method:'GET', path:'/api/admin/metrics',             auth:true,  label:'Server metrics' },
+      { group:'👑 Admin',  method:'GET', path:'/api/admin/game-metrics',        auth:true,  label:'Game metrics' },
+      { group:'👑 Admin',  method:'GET', path:'/api/admin/firebase-usage',      auth:true,  label:'Firebase usage' },
+      { group:'👑 Admin',  method:'GET', path:'/api/admin/errors?limit=5',      auth:true,  label:'Error log' },
+    ];
+
+    const out = [];
+    for (const t of tests) {
+      const t0 = Date.now();
+      let status = 0, note = '', ok = false;
+      try {
+        const headers = { 'Content-Type': 'application/json', ...(t.auth ? authHdr : {}) };
+        const res = await fetch(`${BACKEND}${t.path}`, {
+          method: t.method,
+          headers,
+          body: t.body ? JSON.stringify(t.body) : undefined,
+        });
+        status = res.status;
+        try {
+          const data = await res.json();
+          // extract useful note from common response shapes
+          if (Array.isArray(data))                      note = `${data.length} items`;
+          else if (Array.isArray(data.actions))         note = `${data.actions.length} actions`;
+          else if (Array.isArray(data.events))          note = `${data.events.length} events`;
+          else if (Array.isArray(data.gifts))           note = `${data.gifts.length} gifts`;
+          else if (Array.isArray(data.errors))          note = `${data.errors.length} errors`;
+          else if (data.token)                          note = 'token OK';
+          else if (data.cid)                            note = `cid:${data.cid}`;
+          else if (data.status)                         note = data.status;
+          else if (data.connected != null)              note = data.connected ? 'connected' : 'idle';
+        } catch {}
+        ok = status >= 200 && status < 400;
+      } catch (e) {
+        note = e.message?.slice(0, 40) || 'network error';
+        ok = false;
+      }
+      const ms = Date.now() - t0;
+      out.push({ ...t, status, ms, note, ok });
+      setHcResults([...out]); // live update
+    }
+    setHcRunning(false);
+    setHcDone(true);
+  }, [hcRunning]);
 
   const s = sysData?.server, c = sysData?.connections, q = sysData?.queue, ev = sysData?.events, hb = sysData?.heartbeats;
   const gt = gameData?.totals;
@@ -5119,6 +5207,277 @@ function SystemTab() {
             </div>
           )}
 
+          {/* ── Firebase Usage Monitor ── */}
+          {fbData && (() => {
+            const lim  = fbData.limits;
+            const tot  = fbData.totals;
+            const qh   = fbData.queueHealth;
+            const daily = fbData.daily;
+
+            // helper: progress bar inline
+            function FbBar({ used, limit, label: lbl, unit = '', color }) {
+              const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+              const col = pct > 85 ? '#ef4444' : pct > 65 ? '#f59e0b' : (color || '#34d399');
+              return (
+                <div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#9ca3af', marginBottom:4 }}>
+                    <span>{lbl}</span>
+                    <span style={{ color: col, fontWeight:700 }}>
+                      {used?.toLocaleString()}{unit} / {limit?.toLocaleString()}{unit} ({pct}%)
+                    </span>
+                  </div>
+                  <div style={{ height:6, borderRadius:3, background:'#1f2937', overflow:'hidden' }}>
+                    <div style={{ height:'100%', borderRadius:3, background:col, width:`${pct}%`, transition:'width .5s' }} />
+                  </div>
+                </div>
+              );
+            }
+
+            // mini bar chart for daily stats
+            function DailyBar({ slots, metricKey, color }) {
+              const max = Math.max(1, ...slots.map(s => s[metricKey] || 0));
+              return (
+                <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:48 }}>
+                  {slots.map((s, i) => {
+                    const val = s[metricKey] || 0;
+                    const h   = Math.round((val / max) * 44);
+                    const isToday = i === slots.length - 1;
+                    return (
+                      <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                        <div title={`${val}`} style={{
+                          width:'100%', height: h || 2, borderRadius:2,
+                          background: isToday ? color : color + '66',
+                          transition:'height .3s', minHeight:2,
+                        }} />
+                        <span style={{ fontSize:9, color:'#6b7280', whiteSpace:'nowrap' }}>{s.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+
+            // queue health color
+            const qColor = qh?.stuckOver30m > 0 ? '#ef4444' : qh?.stuckOver5m > 0 ? '#f59e0b' : '#34d399';
+
+            return (
+              <>
+                {/* ── Firestore Free Tier Limits ── */}
+                <div style={{ ...card, marginBottom:16 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+                    <span style={{ ...label, margin:0 }}>🔥 Firebase / Firestore — Free Tier Usage</span>
+                    <span style={{ fontSize:11, color:'#6b7280' }}>Spark Plan limits (estimated)</span>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+                    <FbBar lbl="Writes (ประมาณวันนี้)" used={daily?.estimatedWritesToday || 0} limit={lim.writes} color="#818cf8" />
+                    <FbBar lbl="Reads (ประมาณวันนี้)"  used={daily?.estimatedReadsToday  || 0} limit={lim.reads}  color="#60a5fa" />
+                    <FbBar lbl="Storage (ประมาณ)" used={tot?.estimatedStorageMB || 0} limit={lim.storage} unit=" MB" color="#34d399" />
+                    <div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#9ca3af', marginBottom:4 }}>
+                        <span>Firebase Auth Users</span>
+                        <span style={{ color:'#f472b6', fontWeight:700 }}>{(tot?.authUsers ?? '…').toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize:11, color:'#6b7280' }}>ไม่มีจำกัดใน Spark plan</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize:11, color:'#4b5563', borderTop:'1px solid #1f2937', paddingTop:10 }}>
+                    ⚠️ Reads/Writes เป็นการประมาณจาก activity pattern — ไม่ใช่ค่าจาก Firebase Console โดยตรง
+                    · ตรวจสอบค่าจริงได้ที่ <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer"
+                      style={{ color:'#818cf8' }}>Firebase Console → Usage</a>
+                  </div>
+                </div>
+
+                {/* ── Collection Sizes + Queue Health ── */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:16 }}>
+
+                  {/* Actions collections */}
+                  <div style={card}>
+                    <div style={{ ...label, marginBottom:10 }}>⚡ Actions / TikTok</div>
+                    {fbData.collections.actions.map(c => (
+                      <div key={c.key} style={{ display:'flex', justifyContent:'space-between',
+                        fontSize:12, padding:'3px 0', borderBottom:'1px solid #1f2937' }}>
+                        <span style={{ color:'#9ca3af' }}>{c.icon} {c.label}</span>
+                        <span style={{ fontWeight:700, color:'#e5e7eb' }}>
+                          {c.count != null ? c.count.toLocaleString() : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Game collections */}
+                  <div style={card}>
+                    <div style={{ ...label, marginBottom:10 }}>🎮 Game</div>
+                    {fbData.collections.game.map(c => (
+                      <div key={c.key} style={{ display:'flex', justifyContent:'space-between',
+                        fontSize:12, padding:'3px 0', borderBottom:'1px solid #1f2937' }}>
+                        <span style={{ color:'#9ca3af' }}>{c.icon} {c.label}</span>
+                        <span style={{ fontWeight:700, color:'#e5e7eb' }}>
+                          {c.count != null ? c.count.toLocaleString() : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* System + Queue health */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                    <div style={card}>
+                      <div style={{ ...label, marginBottom:10 }}>⚙️ System</div>
+                      {fbData.collections.system.map(c => (
+                        <div key={c.key} style={{ display:'flex', justifyContent:'space-between',
+                          fontSize:12, padding:'3px 0', borderBottom:'1px solid #1f2937' }}>
+                          <span style={{ color:'#9ca3af' }}>{c.icon} {c.label}</span>
+                          <span style={{ fontWeight:700, color:'#e5e7eb' }}>
+                            {c.count != null ? c.count.toLocaleString() : '—'}
+                          </span>
+                        </div>
+                      ))}
+                      <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', fontSize:12 }}>
+                        <span style={{ color:'#6b7280' }}>Total documents</span>
+                        <span style={{ fontWeight:800, color:'#f59e0b' }}>
+                          {(tot?.documents || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Queue health */}
+                    <div style={{ ...card, borderColor: qColor + '55' }}>
+                      <div style={{ ...label, marginBottom:10, color: qColor }}>📬 Queue Health</div>
+                      {[
+                        ['Pending',     qh?.pending,      '#9ca3af'],
+                        ['> 5 นาที',   qh?.stuckOver5m,  qh?.stuckOver5m  > 0 ? '#f59e0b' : '#34d399'],
+                        ['> 30 นาที',  qh?.stuckOver30m, qh?.stuckOver30m > 0 ? '#ef4444' : '#34d399'],
+                      ].map(([lbl, val, col]) => (
+                        <div key={lbl} style={{ display:'flex', justifyContent:'space-between', fontSize:12,
+                          padding:'3px 0', borderBottom:'1px solid #1f2937' }}>
+                          <span style={{ color:'#9ca3af' }}>{lbl}</span>
+                          <span style={{ fontWeight:700, color: col }}>{val ?? '—'}</span>
+                        </div>
+                      ))}
+                      {qh?.oldestMs != null && (
+                        <div style={{ marginTop:8, fontSize:11, color:'#6b7280' }}>
+                          เก่าสุด: {qh.oldestMs < 60000
+                            ? `${Math.round(qh.oldestMs / 1000)}s`
+                            : `${Math.round(qh.oldestMs / 60000)}m`} ago
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── 7-day Daily Activity ── */}
+                {daily?.slots?.length > 0 && (
+                  <div style={{ ...card, marginBottom:16 }}>
+                    <div style={{ ...label, marginBottom:14 }}>📊 Activity 7 วันย้อนหลัง</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
+                      <div>
+                        <div style={{ fontSize:12, color:'#818cf8', fontWeight:600, marginBottom:8 }}>
+                          ⚔️ Battles / วัน
+                        </div>
+                        <DailyBar slots={daily.slots} metricKey="battles" color="#818cf8" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:12, color:'#f59e0b', fontWeight:600, marginBottom:8 }}>
+                          ⚡ Actions Fired / วัน
+                        </div>
+                        <DailyBar slots={daily.slots} metricKey="actions" color="#f59e0b" />
+                      </div>
+                    </div>
+                    <div style={{ marginTop:12, display:'flex', gap:24, fontSize:12 }}>
+                      <span style={{ color:'#6b7280' }}>
+                        Today battles: <strong style={{ color:'#818cf8' }}>{daily.slots[daily.slots.length-1]?.battles || 0}</strong>
+                      </span>
+                      <span style={{ color:'#6b7280' }}>
+                        Today actions: <strong style={{ color:'#f59e0b' }}>{daily.slots[daily.slots.length-1]?.actions || 0}</strong>
+                      </span>
+                      <span style={{ color:'#6b7280' }}>
+                        Est. writes today: <strong style={{ color: daily.estimatedWritesToday > 15000 ? '#ef4444' : '#34d399' }}>
+                          ~{daily.estimatedWritesToday?.toLocaleString()}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {/* ── Firestore Read Profiler ── */}
+          {rdData && (() => {
+            const rows = rdData.rows || [];
+            const topRows = rows.slice(0, 15);
+            const maxTotal = topRows[0]?.total || 1;
+            const resetAgo = rdData.resetAt ? Math.round((Date.now() - rdData.resetAt) / 60000) : null;
+
+            const handleReset = async () => {
+              if (!confirm('Reset read counters?')) return;
+              try { await api.post('/api/admin/read-stats/reset'); setRdData(null); fetchAll(); }
+              catch { alert('Reset ไม่สำเร็จ'); }
+            };
+
+            return (
+              <div style={{ ...card, marginBottom:16 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                  <div style={{ ...label }}>🔍 Firestore Read Sources</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    {resetAgo !== null && (
+                      <span style={{ fontSize:11, color:'#6b7280' }}>since {resetAgo}m ago</span>
+                    )}
+                    <span style={{ fontSize:11, color:'#9ca3af' }}>
+                      total: <strong style={{ color:'#f59e0b' }}>{(rdData.totalAll || 0).toLocaleString()}</strong>
+                    </span>
+                    <button onClick={handleReset}
+                      style={{ padding:'3px 10px', borderRadius:6, border:'1px solid #374151',
+                        background:'transparent', color:'#9ca3af', cursor:'pointer', fontSize:11 }}>
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                {/* summary badges */}
+                <div style={{ display:'flex', gap:12, marginBottom:14, flexWrap:'wrap' }}>
+                  {[
+                    ['1m',  rdData.total1m  || 0, '#818cf8'],
+                    ['5m',  rdData.total5m  || 0, '#34d399'],
+                  ].map(([lbl, val, col]) => (
+                    <div key={lbl} style={{ background:'#111827', borderRadius:8, padding:'6px 12px',
+                      border:`1px solid ${col}44`, textAlign:'center' }}>
+                      <div style={{ fontSize:18, fontWeight:800, color: col }}>{val.toLocaleString()}</div>
+                      <div style={{ fontSize:10, color:'#6b7280' }}>reads / {lbl}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {topRows.length === 0 ? (
+                  <span style={muted}>ยังไม่มีข้อมูล — รอให้มีการเรียก API ก่อน</span>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {topRows.map((r, i) => {
+                      const pct = Math.max(2, Math.round(r.total / maxTotal * 100));
+                      const col = i === 0 ? '#ef4444' : i < 3 ? '#f59e0b' : '#34d399';
+                      return (
+                        <div key={r.label}>
+                          <div style={{ display:'flex', justifyContent:'space-between',
+                            fontSize:11, color:'#9ca3af', marginBottom:2 }}>
+                            <span style={{ fontFamily:'monospace', color:'#e5e7eb' }}>{r.label}</span>
+                            <span style={{ display:'flex', gap:10, color:'#6b7280' }}>
+                              <span>1m: <strong style={{ color:'#818cf8' }}>{r.last1m}</strong></span>
+                              <span>5m: <strong style={{ color:'#34d399' }}>{r.last5m}</strong></span>
+                              <span>total: <strong style={{ color: col }}>{r.total.toLocaleString()}</strong></span>
+                            </span>
+                          </div>
+                          <div style={{ height:5, borderRadius:3, background:'#1f2937', overflow:'hidden' }}>
+                            <div style={{ height:'100%', borderRadius:3, background: col,
+                              width:`${pct}%`, transition:'width .5s' }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* ── Connections table ── */}
           <div style={{ ...card, marginBottom:16 }}>
             <div style={{ ...label, marginBottom:12 }}>TikTok Live Connections ({c?.tiktok ?? 0})</div>
@@ -5211,6 +5570,131 @@ function SystemTab() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── API Health Check Panel ── */}
+          <div style={{ ...card, marginTop:16 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+              <div>
+                <span style={{ ...label, margin:0 }}>🔬 API Health Check</span>
+                <p style={{ ...muted, marginTop:4 }}>ทดสอบทุก endpoint จาก browser — ใช้ token ที่ login อยู่</p>
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {hcDone && hcResults.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const groups = [...new Set(hcResults.map(r => r.group))];
+                      const text = groups.map(g => {
+                        const rows = hcResults.filter(r => r.group === g).map(r =>
+                          `${r.ok ? '✅' : r.status === 0 ? '⏸' : '❌'} [${r.method}] ${r.status || '—'} ${r.label} ${r.path.split('?')[0]} ${r.ms}ms${r.note ? ' → ' + r.note : ''}`
+                        );
+                        return `── ${g} ──\n${rows.join('\n')}`;
+                      }).join('\n\n');
+                      const passed = hcResults.filter(r => r.ok).length;
+                      const full = `API Health Check — ${passed}/${hcResults.length} passed\n\n${text}`;
+                      navigator.clipboard.writeText(full)
+                        .then(() => toast.success('คัดลอกผลลัพธ์แล้ว'))
+                        .catch(() => toast.error('คัดลอกไม่ได้'));
+                    }}
+                    title="คัดลอกผลลัพธ์"
+                    style={{
+                      padding:'6px 12px', borderRadius:8, border:'1px solid #374151',
+                      background:'transparent', color:'#9ca3af', cursor:'pointer',
+                      fontSize:12, fontWeight:500,
+                    }}>
+                    📋 Copy
+                  </button>
+                )}
+                <button onClick={runHealthCheck} disabled={hcRunning}
+                style={{
+                  padding:'8px 18px', borderRadius:8, border:'1px solid #6d28d9',
+                  background: hcRunning ? '#1a1f30' : '#4c1d95',
+                  color: hcRunning ? '#6b7280' : '#e9d5ff',
+                  cursor: hcRunning ? 'not-allowed' : 'pointer',
+                  fontSize:13, fontWeight:600, transition:'all 0.2s',
+                }}>
+                {hcRunning ? '⏳ กำลังทดสอบ...' : '▶ Run Tests'}
+              </button>
+              </div>
+            </div>
+
+            {/* Results */}
+            {hcResults.length > 0 && (() => {
+              const groups = [...new Set(hcResults.map(r => r.group))];
+              const passed = hcResults.filter(r => r.ok).length;
+              const total  = hcResults.length;
+              const failed = hcResults.filter(r => !r.ok && r.status !== 0).length;
+
+              return (
+                <div>
+                  {/* Summary bar */}
+                  {hcDone && (
+                    <div style={{
+                      display:'flex', gap:12, alignItems:'center', padding:'10px 14px',
+                      borderRadius:8, marginBottom:14,
+                      background: passed === total ? '#052e16' : '#1c0505',
+                      border: `1px solid ${passed === total ? '#166534' : '#7f1d1d'}`,
+                    }}>
+                      <span style={{ fontSize:18 }}>{passed === total ? '✅' : '❌'}</span>
+                      <span style={{ color: passed === total ? '#4ade80' : '#f87171', fontWeight:700, fontSize:14 }}>
+                        {passed}/{total} passed
+                      </span>
+                      {failed > 0 && <span style={{ color:'#f87171', fontSize:12 }}>{failed} failed</span>}
+                      <span style={{ color:'#6b7280', fontSize:12, marginLeft:'auto' }}>
+                        {hcResults.reduce((s,r) => s + r.ms, 0)}ms total
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Group rows */}
+                  {groups.map(grp => (
+                    <div key={grp} style={{ marginBottom:12 }}>
+                      <div style={{ ...label, marginBottom:6 }}>{grp}</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                        {hcResults.filter(r => r.group === grp).map((r, i) => (
+                          <div key={i} style={{
+                            display:'flex', alignItems:'center', gap:8,
+                            padding:'6px 10px', borderRadius:6,
+                            background: r.ok ? '#052e16' : r.status === 0 ? '#1a1f30' : '#1c0505',
+                            border: `1px solid ${r.ok ? '#14532d' : r.status === 0 ? '#374151' : '#7f1d1d'}`,
+                            fontSize:12,
+                          }}>
+                            <span style={{ width:16, textAlign:'center', flexShrink:0 }}>
+                              {r.ok ? '✅' : r.status === 0 ? '⏸' : '❌'}
+                            </span>
+                            <span style={{ color:'#9ca3af', width:32, fontFamily:'monospace', flexShrink:0 }}>
+                              {r.method}
+                            </span>
+                            <span style={{
+                              color: r.ok ? '#86efac' : '#f87171',
+                              fontFamily:'monospace', width:28, textAlign:'center', flexShrink:0,
+                            }}>
+                              {r.status || '—'}
+                            </span>
+                            <span style={{ color:'#d1d5db', flexShrink:0 }}>{r.label}</span>
+                            <span style={{ color:'#6b7280', fontSize:11 }}>{r.path.split('?')[0]}</span>
+                            {r.note && (
+                              <span style={{ color:'#7c3aed', fontSize:11, marginLeft:'auto', flexShrink:0 }}>
+                                → {r.note}
+                              </span>
+                            )}
+                            <span style={{ color:'#4b5563', fontSize:11, marginLeft: r.note ? 8 : 'auto', flexShrink:0 }}>
+                              {r.ms}ms
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {!hcRunning && !hcDone && (
+              <div style={{ textAlign:'center', padding:'20px 0', color:'#374151', fontSize:13 }}>
+                กด Run Tests เพื่อตรวจสอบว่า backend ทุก endpoint ทำงานปกติ
               </div>
             )}
           </div>

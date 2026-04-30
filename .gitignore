@@ -27,3 +27,6 @@ npm-debug.log*
 # ===== Misc =====
 *.pem
 .eslintcache
+
+# ===== Dev Tools (ไม่ต้องขึ้น production) =====
+backend/test-api.js

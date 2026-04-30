@@ -3,6 +3,7 @@
 const admin = require('firebase-admin');
 const { ACHIEVEMENTS, getAchievement } = require('../../data/achievements');
 const { addGold } = require('./currency');
+// giveXP is loaded lazily (below) to avoid circular dep with xp.js
 
 // ===== GET achievements with progress =====
 async function getAchievements(req, res) {
@@ -115,8 +116,8 @@ async function checkAchievements(uid, eventType, value = 1) {
         await addGold(uid, def.reward.gold, 'achievement');
       }
       if (def.reward.xp > 0) {
-        const cRef = db.collection('game_characters').doc(charId);
-        await cRef.update({ xp: admin.firestore.FieldValue.increment(def.reward.xp) });
+        const { giveXP } = require('./xp');
+        await giveXP(uid, def.reward.xp, db);
       }
       // Title reward — save to game_achievements.unlockedTitles
       if (def.reward.title) {

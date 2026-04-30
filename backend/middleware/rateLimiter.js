@@ -40,7 +40,7 @@ const settingsLimiter = rateLimit({
 
 const tokenLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 ชั่วโมง
-  max: 10,
+  max: 60,                   // เพิ่มจาก 10 → 60 (หลายหน้าเรียก token พร้อมกัน + refresh)
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many token requests. Try again in 1 hour.' },
@@ -48,8 +48,9 @@ const tokenLimiter = rateLimit({
 
 // ===== Socket.io Rate Limiter — Per USER (ไม่ใช่ per socket) =====
 // ป้องกันการสร้าง socket ใหม่เพื่อ bypass limit
-const userEventCounts = new Map(); // userId -> { count, resetAt }
+const userEventCounts   = new Map(); // userId -> { count, resetAt }
 const socketEventCounts = new Map(); // socketId -> { count, resetAt } สำหรับ unauthenticated
+const ipEventCounts     = new Map(); // ip -> { count, resetAt } สำหรับ pre-auth (ป้องกัน multi-socket)
 
 /**
  * Rate limit per userId (สำหรับ authenticated socket)
@@ -83,6 +84,23 @@ function socketRateLimit(socketId, maxEvents = 5, windowMs = 10000) {
   return true;
 }
 
+/**
+ * Rate limit per IP (สำหรับ unauthenticated socket events เช่น authenticate)
+ * ป้องกัน attacker เปิด N sockets จาก IP เดียวกัน เพื่อ bypass socketRateLimit
+ */
+function socketRateLimitByIp(ip, maxEvents = 15, windowMs = 10000) {
+  if (!ip) return true; // ถ้าไม่รู้ IP ให้ผ่าน (fallback safe)
+  const now   = Date.now();
+  const entry = ipEventCounts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipEventCounts.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxEvents) return false;
+  entry.count++;
+  return true;
+}
+
 function clearSocketLimit(socketId) {
   socketEventCounts.delete(socketId);
 }
@@ -94,12 +112,13 @@ function clearUserLimit(userId) {
 // ล้าง expired entries ทุก 1 นาที
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of userEventCounts.entries())  { if (now > v.resetAt) userEventCounts.delete(k); }
+  for (const [k, v] of userEventCounts.entries())   { if (now > v.resetAt) userEventCounts.delete(k); }
   for (const [k, v] of socketEventCounts.entries()) { if (now > v.resetAt) socketEventCounts.delete(k); }
+  for (const [k, v] of ipEventCounts.entries())     { if (now > v.resetAt) ipEventCounts.delete(k); }
 }, 60 * 1000);
 
 module.exports = {
   generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter,
-  socketRateLimit, socketRateLimitByUser,
+  socketRateLimit, socketRateLimitByUser, socketRateLimitByIp,
   clearSocketLimit, clearUserLimit,
 };

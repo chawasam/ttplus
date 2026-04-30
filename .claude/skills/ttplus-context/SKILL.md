@@ -534,6 +534,18 @@ Deploy อัตโนมัติเมื่อ push ถึง main branch บ
 
 ---
 
+## Skills เพิ่มเติม (อ่านก่อนทำงานส่วนนั้น)
+
+| งาน | อ่าน |
+|-----|------|
+| เพิ่ม OBS Widget ใหม่ (widgets.js, widget page, CSP, CORS) | `.claude/skills/ttplus-widget/SKILL.md` |
+| แก้/สร้าง Actions & Events, debug OBS ยิงผิด/ซ้ำ | `.claude/skills/ttplus-actions/SKILL.md` |
+| เพิ่ม coinjar skin จากรูปภาพ PNG จริง | `.claude/skills/coinjar-skin/SKILL.md` |
+
+path เหล่านี้ relative จาก `TTplus/` root ของ project
+
+---
+
 ## Recent Changes (session context)
 
 สิ่งที่ implement ล่าสุดเพื่อให้ทราบสถานะปัจจุบัน:

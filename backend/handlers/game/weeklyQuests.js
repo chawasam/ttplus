@@ -4,6 +4,7 @@ const { WEEKLY_QUESTS, WEEKLY_BONUS, getWeekKey, buildFreshWeeklyQuests } = requ
 const { getItem, rollItem } = require('../../data/items');
 const { addGold } = require('./currency');
 const { checkAchievements } = require('./achievements');
+const { giveXP } = require('./xp');
 
 async function loadOrInitWeeklyDoc(uid, db) {
   const ref  = db.collection('game_weekly_quests').doc(uid);
@@ -147,30 +148,9 @@ async function grantRewards(uid, reward, db) {
   }
 
   if (reward.xp > 0) {
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (accountDoc.exists) {
-      const charId = accountDoc.data().characterId;
-      if (charId) {
-        const charRef = db.collection('game_characters').doc(charId);
-        const charDoc = await charRef.get();
-        const char    = charDoc.data();
-        const newXp   = (char.xp || 0) + reward.xp;
-        const updates = { xp: newXp };
-        if (newXp >= (char.xpToNext || 100)) {
-          updates.level    = (char.level || 1) + 1;
-          updates.xp       = newXp - (char.xpToNext || 100);
-          updates.xpToNext = Math.floor((char.xpToNext || 100) * 1.5);
-          updates.hpMax    = char.hpMax + 10;
-          updates.hp       = char.hpMax + 10;
-          updates.mpMax    = char.mpMax + 5;
-          updates.mp       = char.mpMax + 5;
-          updates.statPoints  = (char.statPoints  || 0) + 3;
-          updates.skillPoints = (char.skillPoints || 0) + 1;
-        }
-        await charRef.update(updates);
-        result.xp = reward.xp;
-      }
-    }
+    const xpResult = await giveXP(uid, reward.xp, db);
+    result.xp      = reward.xp;
+    result.levelUp = xpResult.levelUp || null;
   }
 
   for (const itemId of (reward.items || [])) {

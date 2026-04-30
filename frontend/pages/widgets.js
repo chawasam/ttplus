@@ -133,6 +133,11 @@ const WIDGETS = [
     configFields: [
       { key: 'ct', label: '🫙 รูปแบบภาชนะ', type: 'select', default: 'jar',
         options: [
+          { value: 'pandajar',  label: '🐼 Panda Jar',   featured: true },
+          { value: 'catjar3',   label: '🐱 CatJar 3',     featured: true },
+          // { value: 'catjar2b',  label: '🐱 CatJar 2 (B)', featured: true }, // ซ่อนชั่วคราว
+          // { value: 'catjar2a',  label: '🐱 CatJar 2 (A)' },                 // ซ่อนชั่วคราว
+          // { value: 'catjar2a', label: '🐱 CatJar 2 (A)' },
           { value: 'jar',       label: '🫙 โถแก้ว' },
           { value: 'fatjar',    label: '🏺 ขวดโหล' },
           { value: 'fishbowl',  label: '🐠 โถปลา' },
@@ -145,7 +150,6 @@ const WIDGETS = [
           { value: 'skull',     label: '💀 กะโหลก' },
           { value: 'wineglass', label: '🍷 แก้วไวน์' },
           { value: 'flowerpot', label: '🌸 กระถาง' },
-          { value: 'pandajar',  label: '🐼 Panda Jar' },
         ],
       },
     ],
@@ -242,7 +246,7 @@ const WIDGETS = [
   {
     id: 'spotifyqueue', icon: '🎵', name: 'Spotify Queue',
     desc: 'แสดงคิวเพลง Spotify สูงสุด 20 เพลง — เชื่อมต่อ Spotify ได้ที่ Settings',
-    size: '340 × ปรับอัตโนมัติ', noStyle: true,
+    size: '340 × ปรับอัตโนมัติ', noStyle: true, liveConfig: true,
     configFields: [
       { key: '_g0',         label: '📋 คิวเพลง',                            type: 'group' },
       { key: 'maxItems',    label: '📋 จำนวนเพลงสูงสุด',                    type: 'number',   default: 10, min: 1, max: 20, step: 1 },
@@ -320,7 +324,9 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const socketRef    = useRef(null);
   const importRef    = useRef(null);
   const [spotifyConnected, setSpotifyConnected] = useState(null); // null=unknown, true, false
-  const [coinjarSimulating, setCoinjarSimulating] = useState(false);
+  const [simulatingWidgetId, setSimulatingWidgetId] = useState(null); // id ของ widget ที่กำลัง simulate อยู่
+  // select field ที่กำลัง "ขยาย" สกินอื่นๆ — key = f.key, value = boolean
+  const [expandedSelects, setExpandedSelects] = useState({});
 
 
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
@@ -561,34 +567,44 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   }, [user, widgetCid, baseUrl, buildCustomParams]);
 
   // ── จำลองของขวัญ random → emit ไปยัง widget จริงของ user ──
-  const simulateCoinjar = useCallback(async () => {
+  // widgetId บอก widget ที่กำลังจำลอง → ใช้เลือก toast message และ lock ปุ่มเฉพาะตัวนั้น
+  const SIMULATE_TOAST = {
+    coinjar:    (g, p, d) => `🎁 ${g}${p} (${d} 💎) ตกลงในขวดแล้ว!`,
+    fireworks:  (g, p, d) => `🎆 ${g}${p} (${d} 💎) ยิงพลุแล้ว!`,
+    bossbattle: (g, p, d) => `⚔️ ${g}${p} (${d} 💎) โจมตีบอสแล้ว!`,
+  };
+  const simulateGift = useCallback(async (widgetId) => {
     if (!user) { setShowLoginModal(true); return; }
-    if (coinjarSimulating) return;
-    setCoinjarSimulating(true);
+    if (simulatingWidgetId) return;
+    setSimulatingWidgetId(widgetId);
     try {
       const res = await api.post('/api/coinjar/simulate');
       const { gift, diamonds, repeat } = res.data;
       const plural = repeat > 1 ? ` ×${repeat}` : '';
-      toast.success(`🎁 ${gift}${plural} (${diamonds} 💎) ตกลงในขวดแล้ว!`);
+      const toastFn = SIMULATE_TOAST[widgetId] ?? SIMULATE_TOAST.coinjar;
+      toast.success(toastFn(gift, plural, diamonds));
     } catch {
       toast.error('ส่ง simulate ไม่ได้ — ตรวจสอบว่า widget เปิดอยู่');
     } finally {
-      setCoinjarSimulating(false);
+      setSimulatingWidgetId(null);
     }
-  }, [user, coinjarSimulating]);
+  }, [user, simulatingWidgetId]);
 
   const getPreviewUrl = useCallback((widgetId) => {
     if (!baseUrl) return '#';
     // nowplaying preview — รวม configFields params ทั้งหมด
     if (widgetId === 'nowplaying') {
-      const w       = WIDGETS.find(ww => ww.id === 'nowplaying');
-      const configQ = buildCustomParams(w);
-      const base    = `${baseUrl}/widget/nowplaying?preview=1`;
+      const w         = WIDGETS.find(ww => ww.id === 'nowplaying');
+      const configQ   = buildCustomParams(w);
+      const cidSuffix = widgetCid ? `&cid=${widgetCid}` : '';
+      const base      = `${baseUrl}/widget/nowplaying?preview=1${cidSuffix}`;
       return configQ ? `${base}&${configQ}` : base;
     }
     const w = WIDGETS.find(ww => ww.id === widgetId);
-    // preview ใช้ ?preview=1 เสมอ — ไม่ต้องการ cid/vjId
-    const base = `${baseUrl}/widget/${widgetId}?preview=1`;
+    // preview ใช้ ?preview=1 + cid เพื่อให้ socket connect ด้วย
+    // ถ้าไม่มี cid widget จะไม่ join room → simulate button ส่ง gift มาไม่ถึง
+    const cidSuffix = widgetCid ? `&cid=${widgetCid}` : '';
+    const base = `${baseUrl}/widget/${widgetId}?preview=1${cidSuffix}`;
 
     if (w?.configFields) {
       const configQ = buildCustomParams(w);
@@ -604,7 +620,7 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     if (!style) return base;
     const styleQ = styleToParams(style, widgetId);
     return styleQ ? `${base}&${styleQ}` : base;
-  }, [baseUrl, styles, buildCustomParams, customConfigs]);
+  }, [baseUrl, widgetCid, styles, buildCustomParams, customConfigs]);
 
   const saveStyleForWidget = useCallback(async (widgetId, style) => {
     if (!user) { setShowLoginModal(true); return; }
@@ -614,7 +630,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     // ===== Real-time push ไปยัง widget ที่เปิดอยู่ใน OBS =====
     const socket = socketRef.current || getSocket();
     if (socket?.connected) {
-      socket.emit('push_style_update', { widgetId, style });
+      // รวม configFields เข้าไปด้วย เพื่อให้ leaderboard toggles (showMedal ฯลฯ) update real-time
+      const w   = WIDGETS.find(ww => ww.id === widgetId);
+      const cfg = w?.configFields ? (customConfigs[widgetId] || {}) : {};
+      socket.emit('push_style_update', { widgetId, style: { ...style, ...cfg } });
     }
 
     try {
@@ -932,23 +951,29 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                               </div>
                             )}
 
-                            {/* CoinJar — ปุ่มจำลองของขวัญ */}
-                            {w.id === 'coinjar' && (
-                              <button
-                                onClick={simulateCoinjar}
-                                disabled={coinjarSimulating || !tokenReady}
-                                className={clsx(
-                                  'w-full mb-2 py-2 rounded-lg text-sm font-semibold transition border',
-                                  coinjarSimulating || !tokenReady
-                                    ? 'opacity-50 cursor-not-allowed'
-                                    : isDark
-                                      ? 'bg-violet-900/30 border-violet-700/50 text-violet-300 hover:bg-violet-800/40 hover:border-violet-500/70'
-                                      : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100 hover:border-violet-300',
-                                )}
-                              >
-                                {coinjarSimulating ? '⏳ กำลังส่ง...' : '🎲 จำลองของขวัญ (random)'}
-                              </button>
-                            )}
+                            {/* CoinJar / Fireworks / BossBattle — ปุ่มจำลองของขวัญ */}
+                            {/* simulate ส่ง gift event ทั้ง room → ทุก widget ที่ฟัง gift จะรับได้ */}
+                            {(w.id === 'coinjar' || w.id === 'fireworks' || w.id === 'bossbattle') && (() => {
+                              const isThis = simulatingWidgetId === w.id;
+                              const isBusy = !!simulatingWidgetId;
+                              const ICON = { coinjar: '🎁', fireworks: '🎆', bossbattle: '⚔️' };
+                              return (
+                                <button
+                                  onClick={() => simulateGift(w.id)}
+                                  disabled={isBusy || !tokenReady}
+                                  className={clsx(
+                                    'w-full mb-2 py-2 rounded-lg text-sm font-semibold transition border',
+                                    isBusy || !tokenReady
+                                      ? 'opacity-50 cursor-not-allowed'
+                                      : isDark
+                                        ? 'bg-violet-900/30 border-violet-700/50 text-violet-300 hover:bg-violet-800/40 hover:border-violet-500/70'
+                                        : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100 hover:border-violet-300',
+                                  )}
+                                >
+                                  {isThis ? '⏳ กำลังส่ง...' : `🎲 จำลอง ${ICON[w.id] ?? '🎁'}`}
+                                </button>
+                              );
+                            })()}
 
                             {/* Inline volume slider — แสดงเฉพาะ widget ที่มีเสียง */}
                             {w.configFields?.some(f => f.key === 'vol') && (
@@ -1243,16 +1268,62 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                               {val ? `✅ ${f.onLabel}` : `⬜ ${f.offLabel}`}
                             </button>
                           )}
-                          {f.type==='select' && (
-                            <div className="flex gap-2 flex-wrap">
-                              {f.options.map(opt => (
-                                <button key={opt.value} onClick={() => setKey(f.key, opt.value)}
-                                  className={clsx('flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition', val===opt.value ? 'bg-brand-500/15 border-brand-500/50 text-brand-400' : isDark?'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500':'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200')}>
-                                  {opt.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          {f.type==='select' && (() => {
+                            const featuredOpts = f.options.filter(o => o.featured);
+                            const otherOpts    = f.options.filter(o => !o.featured);
+                            const isExpanded   = !!expandedSelects[f.key];
+                            // ถ้า value ปัจจุบันอยู่ใน otherOpts ให้ auto-expand
+                            const currentInOther = otherOpts.some(o => o.value === val);
+                            const showOthers = isExpanded || currentInOther;
+                            const renderBtn = (opt) => (
+                              <button key={opt.value} onClick={() => setKey(f.key, opt.value)}
+                                style={opt.featured && val!==opt.value ? {
+                                  background: 'linear-gradient(135deg,rgba(255,100,100,0.08),rgba(255,180,60,0.08),rgba(100,220,100,0.08),rgba(60,160,255,0.08),rgba(180,80,255,0.08))',
+                                  borderImage: 'linear-gradient(135deg,#ff6464,#ffb43c,#64dc64,#3ca0ff,#b450ff) 1',
+                                } : undefined}
+                                className={clsx('flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition',
+                                  val===opt.value
+                                    ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
+                                    : opt.featured
+                                      ? isDark ? 'text-gray-200 hover:border-gray-400' : 'text-gray-700 hover:border-gray-400'
+                                      : isDark ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                                )}>
+                                {opt.label}
+                              </button>
+                            );
+                            return (
+                              <div className="space-y-2">
+                                {/* Featured row — แสดงเสมอ */}
+                                {featuredOpts.length > 0 && (
+                                  <div className="flex gap-2 flex-wrap">
+                                    {featuredOpts.map(renderBtn)}
+                                  </div>
+                                )}
+                                {/* ปุ่ม toggle "ดูสกินอื่นๆ" */}
+                                {otherOpts.length > 0 && (
+                                  <button
+                                    onClick={() => setExpandedSelects(prev => ({ ...prev, [f.key]: !isExpanded }))}
+                                    className={clsx('w-full py-1.5 px-3 rounded-lg text-xs border transition flex items-center justify-between',
+                                      isDark ? 'bg-gray-800/60 border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-500'
+                                             : 'bg-gray-50 border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300'
+                                    )}>
+                                    <span>{showOthers ? '▴ ซ่อนสกินอื่นๆ' : `▾ ดูสกินอื่นๆ (${otherOpts.length})`}</span>
+                                    {currentInOther && !isExpanded && (
+                                      <span className={clsx('text-xs', isDark?'text-gray-400':'text-gray-500')}>
+                                        ใช้งานอยู่: {otherOpts.find(o=>o.value===val)?.label}
+                                      </span>
+                                    )}
+                                  </button>
+                                )}
+                                {/* Other skins — แสดงเมื่อ expand */}
+                                {showOthers && otherOpts.length > 0 && (
+                                  <div className="flex gap-2 flex-wrap">
+                                    {otherOpts.map(renderBtn)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {f.type==='element' && (
                             <div className="space-y-1.5">
                               {BOSS_ELEMENTS.map(el => (

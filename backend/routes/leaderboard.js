@@ -5,6 +5,7 @@ const router  = express.Router();
 const admin   = require('firebase-admin');
 const { getLeaderboard, loadLeaderboardFromFirestore } = require('../handlers/tiktok');
 const { getUidForCid, registerCid } = require('../utils/widgetToken');
+const { trackRead } = require('../utils/readTracker');
 
 // ── ดึง uid จาก cid (memory cache → Firestore fallback) ─────────────────────
 async function resolveCid(cid) {
@@ -13,6 +14,7 @@ async function resolveCid(cid) {
   try {
     const doc = await admin.firestore().collection('widget_cids').doc(String(cid)).get();
     if (doc.exists && doc.data()?.uid) {
+      trackRead('leaderboard.resolveCid', 1);
       registerCid(cid, doc.data().uid);
       return doc.data().uid;
     }
@@ -43,6 +45,7 @@ router.get('/:vjId?', async (req, res) => {
 
   // Fallback: โหลดจาก Firestore และ populate in-memory Maps ด้วย
   // ทำให้ request ถัดๆ ไปใช้ in-memory (fast path) ไม่ต้องอ่าน Firestore ซ้ำ
+  trackRead('leaderboard.firestoreFallback', 1);
   try {
     await loadLeaderboardFromFirestore(vjId);
     const freshData = getLeaderboard(vjId, type);

@@ -4,6 +4,7 @@ const router  = express.Router();
 const { verifyToken } = require('../middleware/auth');
 const h = require('../handlers/actions/actionsHandler');
 const { getGiftCatalog } = require('../handlers/tiktok');
+const { simulateEventWithResult } = require('../handlers/actions/eventProcessor');
 
 // Actions CRUD
 router.get   ('/',          verifyToken, h.getActions);
@@ -17,6 +18,9 @@ router.post  ('/events',     verifyToken, h.createEvent);
 router.put   ('/events/:id', verifyToken, h.updateEvent);
 router.delete('/events/:id', verifyToken, h.deleteEvent);
 
+// Bulk import (Export/Import feature)
+router.post('/import', verifyToken, h.importBackup);
+
 // OBS Settings
 router.get ('/obs-settings', verifyToken, h.getObsSettings);
 router.post('/obs-settings', verifyToken, h.saveObsSettings);
@@ -29,6 +33,48 @@ router.get('/gift-catalog', verifyToken, async (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: 'ดึง gift catalog ไม่ได้' });
   }
+});
+
+// Fire action immediately (preview/test — queues to overlay widget)
+router.post('/:id/fire', verifyToken, h.fireAction);
+
+// Simulate TikTok event → trigger matching Events → fire Actions (returns result)
+// Body: { type, giftName?, diamondCount?, comment?, likeCount?, nickname? }
+router.post('/simulate-event', verifyToken, async (req, res) => {
+  const uid = req.user.uid;
+  const { type, giftName, diamondCount, comment, likeCount, nickname } = req.body || {};
+
+  const VALID_TYPES = ['gift', 'follow', 'subscribe', 'like', 'chat', 'share', 'join'];
+  if (!type || !VALID_TYPES.includes(type)) {
+    return res.status(400).json({ error: `type ต้องเป็นหนึ่งใน: ${VALID_TYPES.join(', ')}` });
+  }
+
+  const fake = nickname || 'ทดสอบ';
+
+  // สร้าง payload ให้ตรงกับ TikTok event จริงในแต่ละ type
+  const payload = {
+    uniqueId:   fake,
+    nickname:   fake,
+    _simulated: true,
+    ...(type === 'gift' && {
+      giftName:     giftName  || 'Rose',
+      diamondCount: Math.max(0, parseInt(diamondCount, 10) || 1),
+      repeatCount:  1,
+      isRepeatEnd:  true,
+    }),
+    ...(type === 'like' && {
+      likeCount:      Math.max(1, parseInt(likeCount, 10) || 1),
+      totalLikeCount: Math.max(1, parseInt(likeCount, 10) || 1),
+    }),
+    ...((type === 'chat') && {
+      comment: String(comment || 'ทดสอบ'),
+    }),
+  };
+
+  const { matched, error } = await simulateEventWithResult(uid, type === 'chat' ? 'chat' : type, payload);
+
+  if (error) return res.status(500).json({ error });
+  res.json({ ok: true, type, payload: { giftName: payload.giftName, diamondCount: payload.diamondCount, comment: payload.comment, nickname: fake }, matched });
 });
 
 // Overlay queue — ไม่ต้อง auth (OBS Browser Source เรียกเอง)

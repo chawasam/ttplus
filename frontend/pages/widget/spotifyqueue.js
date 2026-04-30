@@ -21,6 +21,7 @@
 //   &showDivider=1        (เส้นคั่นระหว่าง current กับ queue, default 1)
 
 import { useEffect, useState, useRef } from 'react';
+import { createWidgetSocket } from '../../lib/widgetSocket';
 
 const BACKEND  = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 const POLL_MS  = 10_000; // refresh ทุก 10 วิ
@@ -134,7 +135,9 @@ export default function SpotifyQueueWidget() {
   const [queue,   setQueue]   = useState([]);
   const [error,   setError]   = useState(null);
   const [isDemo,  setIsDemo]  = useState(false);
-  const timerRef = useRef(null);
+  const timerRef  = useRef(null);
+  const paramsRef = useRef(null);
+  const socketRef = useRef(null);
 
   // ── parse URL params ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -164,7 +167,42 @@ export default function SpotifyQueueWidget() {
     if (p.get('artistColor')) cfg.artistColor = parseColor(p.get('artistColor'), null);
     if (p.get('bgColor'))     cfg.bgColor     = parseColor(p.get('bgColor'),     null);
     if (p.get('accentColor')) cfg.accentColor = parseColor(p.get('accentColor'), null);
+    paramsRef.current = cfg;
     setParams(cfg);
+
+    // ── Socket: รับ style_update แบบ real-time จาก widgets page ──────────────
+    const socket = createWidgetSocket(cfg.cid, {
+      style_update: ({ widgetId, style }) => {
+        if (widgetId !== 'spotifyqueue') return;
+        setParams(prev => {
+          if (!prev) return prev;
+          const updated = { ...prev };
+          // map style keys → param keys (เหมือน configFields ใน widgets.js)
+          const boolKeys = ['showArt','showArtist','showDuration','showNumber',
+                            'showCurrent','showDivider','marquee','roundArt'];
+          for (const [k, v] of Object.entries(style)) {
+            if (boolKeys.includes(k)) {
+              updated[k] = v === 1 || v === true || v === '1';
+            } else if (['fontSize','rowHeight','bgOpacity','scrollSpeed','maxItems'].includes(k)) {
+              updated[k] = Number(v);
+            } else if (['theme'].includes(k)) {
+              updated[k] = v;
+            } else if (['titleColor','artistColor','accentColor','bgColor'].includes(k)) {
+              // ว่างเปล่า = ล้าง custom color กลับตามธีม
+              updated[k] = (v && String(v).trim()) ? parseColor(String(v), null) : null;
+            }
+          }
+          paramsRef.current = updated;
+          return updated;
+        });
+      },
+    });
+    if (socket) socketRef.current = socket;
+
+    return () => {
+      socketRef.current = null;
+      socket?.disconnect();
+    };
   }, []);
 
   // ── fetch ──────────────────────────────────────────────────────────────────
@@ -197,7 +235,8 @@ export default function SpotifyQueueWidget() {
   useEffect(() => {
     if (!params) return;
     fetchQueue(params);
-    timerRef.current = setInterval(() => fetchQueue(params), POLL_MS);
+    // interval ใช้ paramsRef เพื่อ fetch ด้วย config ล่าสุดเสมอ (รวม real-time update)
+    timerRef.current = setInterval(() => fetchQueue(paramsRef.current || params), POLL_MS);
     return () => clearInterval(timerRef.current);
   }, [params]);
 
@@ -207,15 +246,27 @@ export default function SpotifyQueueWidget() {
   const accent = params.accentColor || '#1DB954';
 
   // compose bg color with opacity
-  let rootBg = t.bg;
+  // bgOpacity ใช้ได้เสมอ ไม่ว่าจะมี custom bgColor หรือไม่
+  const op = params.bgOpacity / 100;
+  let rootBg;
   if (params.bgColor) {
-    const op = (params.bgOpacity / 100).toFixed(2);
-    // hex → rgba
+    // custom color + opacity
     const hex = params.bgColor.replace('#', '');
     const r = parseInt(hex.slice(0,2),16);
     const g = parseInt(hex.slice(2,4),16);
     const b = parseInt(hex.slice(4,6),16);
-    rootBg = `rgba(${r},${g},${b},${op})`;
+    rootBg = op === 0 ? 'transparent' : `rgba(${r},${g},${b},${op.toFixed(2)})`;
+  } else {
+    // ใช้ theme color แต่ apply opacity ที่ user กำหนด
+    if (op === 0) {
+      rootBg = 'transparent';
+    } else {
+      // parse rgba จาก theme string แล้วแทน alpha
+      const m = t.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      rootBg = m
+        ? `rgba(${m[1]},${m[2]},${m[3]},${op.toFixed(2)})`
+        : t.bg;
+    }
   }
 
   const artRadius = params.roundArt ? '6px' : '2px';

@@ -28,7 +28,7 @@ const { Server } = require('socket.io');
 const helmet = require('helmet');
 const admin = require('firebase-admin');
 
-const { generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
+const { generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter, socketRateLimit, socketRateLimitByIp, clearSocketLimit, clearUserLimit } = require('./middleware/rateLimiter');
 const { verifyToken } = require('./middleware/auth');
 const { generateCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { startConnection, stopConnection, hasConnection, getActiveConnectionCount, getLeaderboard, loadLeaderboardFromFirestore, getRecentMembers, getConnectionByUsername, getConnectionInfo } = require('./handlers/tiktok');
@@ -429,7 +429,8 @@ io.on('connection', (socket) => {
     || socket.handshake.address;
 
   socket.on('authenticate', async (data) => {
-    if (!socketRateLimit(socket.id, 5, 10000)) {
+    // ป้องกัน multi-socket bypass: ตรวจ per-socketId + per-IP
+    if (!socketRateLimit(socket.id, 5, 10000) || !socketRateLimitByIp(socketIp, 15, 10000)) {
       socket.emit('authenticated', { success: false, error: 'Too many requests' });
       socket.disconnect(true);
       return;

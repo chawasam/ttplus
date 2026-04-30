@@ -3,7 +3,7 @@
 // OBS Size แนะนำ: แนวนอน 400×150 | แนวตั้ง 240×240
 import { useEffect, useState } from 'react';
 import { safeTikTokImageUrl } from '../../lib/sanitize';
-import { parseWidgetStyles, rawToStyle } from '../../lib/widgetStyles';
+import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 
 export default function PinProfileWidget() {
@@ -110,8 +110,9 @@ export default function PinProfileWidget() {
         background:   `${userColor}14`,
         borderLeft:   `3px solid ${userColor}`,
         borderRadius: styles.br > 6 ? styles.br - 4 : 4,
-        color:        styles.tc,
+        ...tcCssProps(styles),
         fontSize:     styles.fs - 1,
+        fontWeight:   styles.fw ? 700 : 'normal',
         fontFamily:   'sans-serif',
         lineHeight:   1.5,
         wordBreak:    'break-word',
