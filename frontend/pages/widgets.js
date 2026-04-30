@@ -145,6 +145,7 @@ const WIDGETS = [
           { value: 'skull',     label: '💀 กะโหลก' },
           { value: 'wineglass', label: '🍷 แก้วไวน์' },
           { value: 'flowerpot', label: '🌸 กระถาง' },
+          { value: 'pandajar',  label: '🐼 Panda Jar' },
         ],
       },
     ],
@@ -238,6 +239,42 @@ const WIDGETS = [
       { key: 'marqueeSpeed', label: '⚡ ความเร็ว (วินาที/รอบ — น้อย=เร็ว)', type: 'number', default: 8, min: 2, max: 30, step: 1 },
     ],
   },
+  {
+    id: 'spotifyqueue', icon: '🎵', name: 'Spotify Queue',
+    desc: 'แสดงคิวเพลง Spotify สูงสุด 20 เพลง — เชื่อมต่อ Spotify ได้ที่ Settings',
+    size: '340 × ปรับอัตโนมัติ', noStyle: true,
+    configFields: [
+      { key: '_g0',         label: '📋 คิวเพลง',                            type: 'group' },
+      { key: 'maxItems',    label: '📋 จำนวนเพลงสูงสุด',                    type: 'number',   default: 10, min: 1, max: 20, step: 1 },
+      { key: 'showCurrent', label: '▶ แสดงเพลงที่กำลังเล่น',               type: 'toggle',   default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showDivider', label: '〰 เส้นคั่น "คิวถัดไป"',               type: 'toggle',   default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: '_g1',         label: '🎨 ธีม & สี',                           type: 'group' },
+      { key: 'theme',       label: '🎨 ธีม',                                type: 'select',   default: 'dark',
+        options: [
+          { value: 'dark',    label: '🌑 Dark' },
+          { value: 'light',   label: '☀️ Light' },
+          { value: 'glass',   label: '🔲 Glass' },
+          { value: 'minimal', label: '🪶 Minimal' },
+        ],
+      },
+      { key: 'bgColor',     label: '🟦 สี Background (ทับค่าธีม)',          type: 'colorhex', default: '' },
+      { key: 'bgOpacity',   label: '💧 ความโปร่งแสง Background (0–100)',    type: 'number',   default: 90, min: 0, max: 100, step: 5 },
+      { key: 'accentColor', label: '✅ สี Accent (เพลงปัจจุบัน)',            type: 'colorhex', default: '1DB954' },
+      { key: '_g2',         label: '✏️ ข้อความ',                            type: 'group' },
+      { key: 'fontSize',    label: '📏 ขนาดตัวอักษร Title (px)',            type: 'number',   default: 13, min: 8, max: 28, step: 1 },
+      { key: 'titleColor',  label: '🎨 สี Title (ว่าง = ตามธีม)',           type: 'colorhex', default: '' },
+      { key: 'artistColor', label: '🎨 สี Artist (ว่าง = ตามธีม)',          type: 'colorhex', default: '' },
+      { key: 'marquee',     label: '📜 เลื่อนข้อความเมื่อยาว',              type: 'toggle',   default: 0, onLabel: 'เปิด — Marquee', offLabel: 'ปิด — ตัดข้อความ' },
+      { key: 'scrollSpeed', label: '⚡ ความเร็ว Marquee (วินาที/รอบ)',       type: 'number',   default: 20, min: 4, max: 60, step: 2 },
+      { key: '_g3',         label: '🖼️ Layout',                             type: 'group' },
+      { key: 'rowHeight',   label: '↕ ความสูงแต่ละแถว (px)',                type: 'number',   default: 56, min: 36, max: 100, step: 4 },
+      { key: 'showArt',     label: '🖼 Album Art',                           type: 'toggle',   default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'roundArt',    label: '⬜ Album Art มน/เหลี่ยม',               type: 'toggle',   default: 1, onLabel: 'มน (rounded)', offLabel: 'เหลี่ยม (square)' },
+      { key: 'showArtist',  label: '🎤 ชื่อศิลปิน',                         type: 'toggle',   default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showDuration',label: '⏱ ความยาวเพลง',                         type: 'toggle',   default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+      { key: 'showNumber',  label: '🔢 เลขลำดับ',                            type: 'toggle',   default: 1, onLabel: 'เปิด', offLabel: 'ปิด — ซ่อน' },
+    ],
+  },
   // ── ซ่อนชั่วคราว — ยังไม่พร้อมใช้งาน ──
   // { id: 'dungeon', icon: '🏚️', name: 'Dungeon Activity', desc: 'แสดงผู้เล่นที่กำลัง run dungeon อยู่ + feed เหตุการณ์ live', size: '360 × 480', noStyle: true },
   // { id: 'leaderboard', ... }
@@ -249,7 +286,7 @@ const WIDGET_GROUPS = [
   { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
   { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard'] },
   { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
-  { id: 'music', label: '🎵 Music',                   ids: ['nowplaying'] },
+  { id: 'music', label: '🎵 Music',                   ids: ['nowplaying', 'spotifyqueue'] },
 ];
 
 // user, authLoading มาจาก _app.js
@@ -464,8 +501,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         continue;
       }
       const val = overrides[f.key] ?? cfg[f.key] ?? f.default;
-      // ข้าม url/text fields ที่ว่าง
-      if ((f.type === 'url' || f.type === 'text') && !val) continue;
+      // ข้าม url/text/colorhex fields ที่ว่าง (colorhex ว่าง = ใช้ค่า default ของ widget)
+      if ((f.type === 'url' || f.type === 'text' || f.type === 'colorhex') && !val) continue;
       params.push(`${f.key}=${encodeURIComponent(val)}`);
     }
     return params.join('&');
@@ -1032,6 +1069,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                 {/* Custom config (bossbattle ฯลฯ) */}
                 {dw.configFields && (
                   <div className="space-y-4">
+                    {/* Spotify hint — แสดงเฉพาะ widget ที่ต้องการ Spotify */}
+                    {(dw.id === 'spotifyqueue') && !spotifyConnected && (
+                      <div className={clsx('rounded-xl px-4 py-3 text-xs', isDark ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-300' : 'bg-yellow-50 border border-yellow-200 text-yellow-700')}>
+                        🎵 ต้องเชื่อมต่อ Spotify ใน{' '}
+                        <button className="underline font-semibold" onClick={() => setActivePage && setActivePage('settings')}>Settings</button>
+                        {' '}ก่อนถึงจะเห็นข้อมูลจริง
+                      </div>
+                    )}
                     {dw.configFields.map(f => {
                       if (f.type === 'group') return (
                         <div key={f.key} className="flex items-center gap-2 pt-1">
