@@ -67,6 +67,7 @@ const CONTAINERS = {
   skull:     { label: 'กะโหลก',     openL: 360, openR: 440, buildWalls: buildSkullWalls      },
   wineglass: { label: 'แก้วไวน์',   openL: 305, openR: 495, buildWalls: buildWineGlassWalls },
   flowerpot: { label: 'กระถาง',     openL: 305, openR: 495, buildWalls: buildFlowerpotWalls  },
+  pandajar:  { label: 'Panda Jar',  openL: 313, openR: 487, buildWalls: buildPandaJarWalls   },
 };
 
 // ===================== Emoji fallback =====================
@@ -538,6 +539,25 @@ export default function CoinJarWidget() {
       {/* ── Container SVG overlay ─────────────────────────────────────────── */}
       <ContainerSVG type={containerType} acColor={styles.ac} offset={jarOffset} />
 
+      {/* ── Panda Jar image overlay (replaces SVG for pandajar skin) ──────── */}
+      {/* scale=270/940≈0.2872 → 310×551px | left=277, top=150                */}
+      {/* ปากขวด canvas y=288 พื้นขวด y=558 — ตรงกับ fatjar / container อื่นๆ */}
+      {containerType === 'pandajar' && (
+        <img
+          src="/jar/panda-jar.png"
+          alt=""
+          style={{
+            position:      'absolute',
+            width:         310,
+            height:        551,
+            left:          277 + jarOffset,
+            top:           150,
+            zIndex:        3,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
       <style>{`
         @keyframes jarPopIn {
           from { opacity: 0; transform: translateX(-14px) scale(0.95); }
@@ -766,6 +786,38 @@ function buildFlowerpotWalls(Bodies, ox = 0) {
     makeSeg(Bodies, 305+o,325, 345+o,558),
     makeSeg(Bodies, 495+o,325, 455+o,558),
     cFloor(Bodies, 558, 345+o, 455+o),
+    ...commonWalls(Bodies),
+  ];
+}
+
+// ===================== Physics Walls — PANDAJAR (ขวดโหลแพนด้า image overlay) =====================
+// Image: /jar/panda-jar.png (1080×1920 RGBA)
+// Scale = 270/940 ≈ 0.2872  →  display 310×551 px, left=277, top=150
+// Mapping: canvas_x = image_x × 0.2872 + 277
+//          canvas_y = image_y × 0.2872 + 150
+//
+// Key measurements (panda-free zone, image y=1000–1280):
+//   left  inner x = 124  →  canvas x = 312.6 → 313
+//   right inner x = 732  →  canvas x = 487.3 → 487
+//   center = (313+487)/2 = 400.0  ← กึ่งกลาง canvas พอดี
+//
+// Bottom curve (image y=1280→1415):
+//   left_inner:  307 → 310 → 316 → 323  (canvas y=518→531→544→556)
+//   right_inner: 493 → 491 → 484 → 477
+function buildPandaJarWalls(Bodies, ox = 0) {
+  const o  = ox;
+  const L  = 313 + o;   // left inner wall x  (image x=124, scale 0.2872, left=277)
+  const R  = 487 + o;   // right inner wall x (image x=732)
+  const tY = 288;       // ปากขวด — ตรงกับ fatjar / container อื่น
+  const bY = 518;       // จุดเริ่มโค้งก้นขวด (image y≈1280)
+  return [
+    vW(Bodies, L, tY, bY, true),              // ผนังซ้ายตรง
+    vW(Bodies, R, tY, bY, false),             // ผนังขวาตรง
+    makeSeg(Bodies, L,   bY,    L+3,  531),   // โค้งซ้าย ท่อนที่ 1
+    makeSeg(Bodies, L+3, 531,   L+10, 558),   // โค้งซ้าย ท่อนที่ 2
+    makeSeg(Bodies, R,   bY,    R-2,  531),   // โค้งขวา ท่อนที่ 1
+    makeSeg(Bodies, R-2, 531,   R-10, 558),   // โค้งขวา ท่อนที่ 2
+    cFloor(Bodies, 558, L+10, R-10),          // พื้น: x=323 → 477
     ...commonWalls(Bodies),
   ];
 }

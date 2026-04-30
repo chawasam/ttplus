@@ -4,9 +4,14 @@ require('dotenv').config();
 // ===== Error Handlers ต้อง register ก่อนทุกอย่าง =====
 // (ป้องกัน crash ตอน Firebase init หรือ module load)
 process.on('unhandledRejection', (r) => {
+  const msg = String(r?.message || r);
+  // Firestore quota exceeded — log แล้วดำเนินต่อ ไม่ต้อง crash
+  if (r?.code === 8 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota exceeded')) {
+    console.warn('[Server] Firestore quota exceeded (unhandled) — continuing');
+    return;
+  }
   console.error('[Server] UnhandledRejection:', r);
-  // storeBackendError ยังไม่ ready ตอน module load — guard ด้วย try
-  try { require('./handlers/admin/errorLog').storeBackendError(String(r?.message || r), r?.stack || ''); } catch {}
+  try { require('./handlers/admin/errorLog').storeBackendError(msg, r?.stack || ''); } catch {}
 });
 process.on('uncaughtException',  (e) => {
   console.error('[Server] UncaughtException:', e.message);
@@ -100,9 +105,21 @@ setInterval(recordHeartbeat, 5 * 60 * 1000);
 app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ===== CORS ต้องมาก่อน middleware อื่นทั้งหมด =====
+// Public widget endpoints (now-playing, queue ฯลฯ) ต้องการ origin: *
+// เพราะถูกเรียกจาก OBS Browser Source, TikTok Studio ซึ่งมี origin ต่างๆ
+const PUBLIC_CORS_PATHS = [
+  '/api/spotify/now-playing',
+  '/api/spotify/queue',
+  '/api/widget/',        // prefix match — รองรับ endpoints ใหม่ในอนาคต
+  '/api/leaderboard',
+];
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin',      process.env.FRONTEND_URL);
-  res.header('Access-Control-Allow-Credentials', 'true');
+  const isPublic = PUBLIC_CORS_PATHS.some(p =>
+    p.endsWith('/') ? req.path.startsWith(p) : req.path === p
+  );
+  const origin = isPublic ? '*' : process.env.FRONTEND_URL;
+  res.header('Access-Control-Allow-Origin',      origin);
+  if (!isPublic) res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods',     'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers',     'Content-Type, Authorization, x-csrf-token');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
@@ -666,7 +683,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
 function defaultSettings() {
   return {
-    theme: 'dark', tiktokUsername: '', alertSound: true, alertVolume: 80,
+    theme: 'dark', tiktokUsername: '', actionsEnabled: true, alertSound: true, alertVolume: 80,
     chatMaxItems: 50, goalTarget: 100, goalCurrent: 0, goalType: 'gift',
     ttsEnabled: false, ttsReadChat: true, ttsReadGift: true, ttsReadFollow: true,
     ttsRate: 1.0, ttsPitch: 1.0, ttsVolume: 1.0, ttsVoice: '',

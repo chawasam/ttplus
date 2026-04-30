@@ -8,7 +8,7 @@ const { verifyToken } = require('../middleware/auth');
 const CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI  = 'https://api.ttsam.app/api/spotify/callback';
-const SCOPES        = 'user-read-currently-playing user-read-playback-state';
+const SCOPES        = 'user-read-currently-playing user-read-playback-state user-read-playback-position';
 
 const { getUidForCid } = require('../utils/widgetToken');
 
@@ -216,6 +216,60 @@ router.get('/now-playing', async (req, res) => {
     if (e.message === 'no_token') return res.json({ playing: false, error: 'not_connected' });
     console.error('[Spotify] now-playing error:', e?.message);
     res.json({ playing: false });
+  }
+});
+
+// ── GET /api/spotify/queue?uid=xxx OR ?cid=xxx — widget เรียก (public) ──────
+// ส่งคืน currently_playing + queue (สูงสุด 20 เพลง)
+router.get('/queue', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.removeHeader('Access-Control-Allow-Credentials');
+  const { uid, cid } = req.query;
+
+  let resolvedUid = uid || null;
+  if (!resolvedUid && cid) {
+    resolvedUid = getUidForCid(String(cid)) || null;
+    if (!resolvedUid) {
+      try {
+        const doc = await db().collection('widget_cids').doc(String(cid)).get();
+        if (doc.exists) resolvedUid = doc.data().uid || null;
+      } catch { /* ignore */ }
+    }
+  }
+
+  if (!resolvedUid) return res.status(400).json({ error: 'uid or cid required' });
+
+  try {
+    const token = await getValidToken(resolvedUid);
+
+    // ดึง queue จาก Spotify
+    const qRes = await axios.get('https://api.spotify.com/v1/me/player/queue', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const mapTrack = (t) => {
+      if (!t) return null;
+      return {
+        id:         t.id || '',
+        title:      t.name || '',
+        artist:     (t.artists || []).map(a => a.name).join(', '),
+        album:      t.album?.name || '',
+        albumArt:   t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || '',
+        durationMs: t.duration_ms || 0,
+        trackUrl:   t.external_urls?.spotify || '',
+        isLocal:    t.is_local || false,
+      };
+    };
+
+    const current = mapTrack(qRes.data.currently_playing);
+    const queue   = (qRes.data.queue || []).slice(0, 20).map(mapTrack);
+
+    res.json({ current, queue });
+  } catch (e) {
+    if (e.message === 'no_token') return res.json({ current: null, queue: [], error: 'not_connected' });
+    if (e.response?.status === 204) return res.json({ current: null, queue: [] });
+    console.error('[Spotify] queue error:', e?.message);
+    res.json({ current: null, queue: [] });
   }
 });
 
