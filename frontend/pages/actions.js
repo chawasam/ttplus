@@ -1583,7 +1583,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [obsHost,     setObsHost]     = useState('localhost');
   const [obsPort,     setObsPort]     = useState(4455);
   const [obsPassword, setObsPassword] = useState('');
-  const [obsStatus,   setObsStatus]   = useState('ยังไม่เชื่อม'); // ยังไม่เชื่อม / กำลังเชื่อม / เชื่อมแล้ว / error
+  const [obsStatus,        setObsStatus]        = useState('ยังไม่เชื่อม'); // ยังไม่เชื่อม / กำลังเชื่อม / เชื่อมแล้ว / error
+  const [socketConnected, setSocketConnected]  = useState(false); // Socket.IO connection status
   const obsWsRef      = useRef(null);
   // คิว OBS: identity key (scene__source) → { isPlaying, items[] }
   const obsQueueRef   = useRef({});
@@ -2151,7 +2152,19 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     // หรือ React StrictMode double-invoke) แล้วค่อย register ใหม่
     socket.off('obs_action');
     socket.on('obs_action', handleObsAction);
-    return () => socket.off('obs_action');
+
+    // ── ติดตาม Socket.IO connection status ──────────────────────────────────
+    setSocketConnected(socket.connected);
+    const onConnect    = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    socket.on('connect',    onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    return () => {
+      socket.off('obs_action');
+      socket.off('connect',    onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, obsHost, obsPort, obsSourceMap]);
 
@@ -2404,15 +2417,19 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* Tabs — scroll แนวนอนบนมือถือ */}
         <div className="flex gap-1 mb-5 bg-[#1a1f30] p-1 rounded-xl overflow-x-auto scrollbar-none">
           {[
-            { id: 'actions', label: '⚡ Actions' },
-            { id: 'events',  label: '🔗 Events' },
-            { id: 'overlay', label: '📺 Overlay' },
-            { id: 'obs',     label: '🎬 OBS' },
+            { id: 'actions', label: '⚡ Actions', connected: socketConnected,             showGreen: false },
+            { id: 'events',  label: '🔗 Events',  connected: socketConnected,             showGreen: false },
+            { id: 'overlay', label: '📺 Overlay', connected: socketConnected,             showGreen: false },
+            { id: 'obs',     label: '🎬 OBS',     connected: obsStatus.includes('✅'),    showGreen: true  },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={clsx(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0',
-                tab === t.id ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-slate-100'
+                tab === t.id ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-slate-100',
+                // กรอบบอกสถานะการเชื่อมต่อ
+                t.connected && t.showGreen  ? 'ring-2 ring-green-500' :
+                !t.connected                ? 'ring-2 ring-red-500 animate-pulse' :
+                                              ''
               )}>
               {t.label}
             </button>
@@ -2456,9 +2473,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             {(() => {
               const totalPages  = pageSize === 0 ? 1 : Math.ceil(actions.length / pageSize);
               const safePage    = Math.min(actionPage, Math.max(0, totalPages - 1));
-              // เรียง enabled ขึ้นก่อน disabled — pattern toggle สม่ำเสมอ
-              const rawSlice    = pageSize === 0 ? [...actions] : [...actions].slice(safePage * pageSize, (safePage + 1) * pageSize);
-              const sliced      = [...rawSlice].sort((a, b) => (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0));
+              // เรียงตาม createdAt ล่าสุดก่อน แล้วค่อย slice หน้า
+              const sorted      = [...actions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+              const sliced      = pageSize === 0 ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
               const disabled    = !systemEnabled;
               return (
                 <>
@@ -2901,7 +2918,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                   );
                 }
                 switch (ev.trigger) {
-                  case 'gift_min_coins':   return `🎁 ≥${ev.minCoins ?? 0} coins`;
+                  case 'gift_min_coins':   return `🪙 ≥${ev.minCoins ?? 0} coins`;
                   case 'command':          return `⌨️ "${ev.keyword || '?'}"`;
                   case 'likes':            return `👍 ${ev.likesCount ?? 0} likes`;
                   case 'join':             return '🚪 คนเข้า Live';
@@ -2956,7 +2973,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                     </div>
 
                     {/* ── Rows ── */}
-                    {events.map((ev, idx) => {
+                    {[...events].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map((ev, idx) => {
                       const linkedActions = actions.filter(a => ev.actionIds?.includes(a.id));
                       const randomActions = actions.filter(a => ev.randomActionIds?.includes(a.id));
                       const isConfirmDel  = confirmDelete?.id === ev.id && confirmDelete?.type === 'event';

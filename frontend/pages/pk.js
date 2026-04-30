@@ -28,7 +28,7 @@ function displayKey(hk) {
 // ── clsx minimal ────────────────────────────────────────────────────────────
 function cx(...args) { return args.filter(Boolean).join(' '); }
 
-// ── Pick a random checked video from category list ───────────────────────────
+// ── Pick a random checked video from list ───────────────────────────────────
 function pickVideo(list) {
   const enabled = list.filter(v => v.checked);
   if (enabled.length === 0) return null;
@@ -38,26 +38,31 @@ function pickVideo(list) {
 export default function PKPage({ theme, user, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const isDark = theme === 'dark';
 
-  const [enabled,     setEnabled]     = useState(true);
-  const [activeTab,   setActiveTab]   = useState('taptap');
-  const [hotkeys,     setHotkeys]     = useState(DEFAULT_HOTKEYS);
-  const [categories,  setCategories]  = useState({
+  const [enabled,       setEnabled]       = useState(true);
+  const [activeTab,     setActiveTab]     = useState('taptap');
+  const [hotkeys,       setHotkeys]       = useState(DEFAULT_HOTKEYS);
+  const [categories,    setCategories]    = useState({
     taptap: [], nwm: [], x2: [], x3: [], mvp: [],
   });
-  const [cid,         setCid]         = useState(null);
-  const [saving,      setSaving]      = useState(false);
-  const [uploading,   setUploading]   = useState(false);
-  const [urlInput,    setUrlInput]    = useState('');
-  const [urlName,     setUrlName]     = useState('');
-  const [urlType,     setUrlType]     = useState('mp4');
-  const [settingKey,  setSettingKey]  = useState(null); // catId ที่กำลังตั้ง hotkey
+  // presets: { catId: [{ filename, name, url, type }] }
+  const [presets,       setPresets]       = useState({ taptap: [], nwm: [], x2: [], x3: [], mvp: [] });
+  // presetChecked: { catId: { filename: boolean } }
+  const [presetChecked, setPresetChecked] = useState({});
+
+  const [cid,           setCid]           = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [uploading,     setUploading]     = useState(false);
+  const [urlInput,      setUrlInput]      = useState('');
+  const [urlName,       setUrlName]       = useState('');
+  const [urlType,       setUrlType]       = useState('mp4');
+  const [settingKey,    setSettingKey]    = useState(null);
 
   const fileRef     = useRef(null);
   const saveTimer   = useRef(null);
   const socketRef   = useRef(null);
   const importRef   = useRef(null);
 
-  // ─── Load config from backend ───────────────────────────────────────────
+  // ─── Load config + presets from backend ─────────────────────────────────
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -65,14 +70,19 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
         const { data } = await api.get('/api/pk/config');
         if (data.config) {
           setHotkeys(data.config.hotkeys || DEFAULT_HOTKEYS);
-          setCategories(data.config.categories || {
-            taptap: [], nwm: [], x2: [], x3: [], mvp: [],
-          });
+          setCategories(data.config.categories || { taptap: [], nwm: [], x2: [], x3: [], mvp: [] });
           if (typeof data.config.enabled === 'boolean') setEnabled(data.config.enabled);
+          if (data.config.presetChecked) setPresetChecked(data.config.presetChecked);
         }
       } catch { /* config not set yet */ }
 
-      // Get widget CID — ใช้ cache ก่อน ไม่ hit API ซ้ำ
+      // โหลด presets จาก server
+      try {
+        const { data } = await api.get('/api/pk/presets');
+        if (data.presets) setPresets(data.presets);
+      } catch { /* presets unavailable */ }
+
+      // Get widget CID
       try {
         const cacheKey = `ttplus_cid_${user.uid}`;
         const cached   = localStorage.getItem(cacheKey);
@@ -105,13 +115,18 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   }, [user]);
 
   // ─── Auto-save config (debounce 800ms) ──────────────────────────────────
-  const autoSave = useCallback((newHotkeys, newCategories, newEnabled) => {
+  const autoSave = useCallback((newHotkeys, newCategories, newEnabled, newPresetChecked) => {
     if (!user) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         setSaving(true);
-        await api.post('/api/pk/config', { hotkeys: newHotkeys, categories: newCategories, enabled: newEnabled });
+        await api.post('/api/pk/config', {
+          hotkeys:       newHotkeys,
+          categories:    newCategories,
+          enabled:       newEnabled,
+          presetChecked: newPresetChecked,
+        });
       } catch {
         toast.error('บันทึกไม่สำเร็จ');
       } finally {
@@ -122,45 +137,43 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
   function updateCategories(newCats) {
     setCategories(newCats);
-    autoSave(hotkeys, newCats, enabled);
+    autoSave(hotkeys, newCats, enabled, presetChecked);
   }
 
   function updateHotkeys(newHk) {
     setHotkeys(newHk);
-    autoSave(newHk, categories, enabled);
+    autoSave(newHk, categories, enabled, presetChecked);
+  }
+
+  function updatePresetChecked(newPc) {
+    setPresetChecked(newPc);
+    autoSave(hotkeys, categories, enabled, newPc);
   }
 
   function toggleEnabled() {
     const next = !enabled;
     setEnabled(next);
-    autoSave(hotkeys, categories, next);
+    autoSave(hotkeys, categories, next, presetChecked);
     toast(next ? '✅ PK Panel เปิดใช้งานแล้ว' : '⏸ PK Panel ปิดอยู่', { duration: 1800 });
   }
 
   // ─── Keyboard shortcut listener ─────────────────────────────────────────
   useEffect(() => {
     function onKeyDown(e) {
-      // ไม่เปิด hotkey ขณะพิมพ์ใน input/textarea
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
-      // ขณะกำลังตั้งค่า hotkey — จับ key แล้ว set
       if (settingKey !== null) {
         e.preventDefault();
-        // ถ้าเป็น Numpad ใช้ e.code (เช่น "Numpad1") เพื่อแยกจากแถวตัวเลขปกติ
         const key = e.code.startsWith('Numpad') ? e.code : (e.key.length === 1 ? e.key.toUpperCase() : e.key);
         setSettingKey(null);
         const newHk = { ...hotkeys, [settingKey]: key };
         updateHotkeys(newHk);
         return;
       }
-      // ถ้า panel ปิดอยู่ ไม่ทำงาน
       if (!enabled) return;
-      // เช็ค hotkey ของแต่ละ category (รองรับทั้ง Numpad code และ key ปกติ)
       for (const cat of CATEGORIES) {
         const hk = hotkeys[cat.id];
         if (!hk) continue;
-        const match = hk.startsWith('Numpad')
-          ? e.code === hk
-          : e.key.toUpperCase() === hk.toUpperCase();
+        const match = hk.startsWith('Numpad') ? e.code === hk : e.key.toUpperCase() === hk.toUpperCase();
         if (match) {
           e.preventDefault();
           triggerCategory(cat.id);
@@ -170,12 +183,23 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hotkeys, categories, settingKey, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hotkeys, categories, presets, presetChecked, settingKey, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Trigger: pick random checked video + emit socket ───────────────────
+  // ─── Build combined pool (user videos + checked presets) ────────────────
+  function buildPool(catId) {
+    const userVideos   = (categories[catId] || []).filter(v => v.checked);
+    const catPresets   = (presets[catId]    || []);
+    const checkedMap   = presetChecked[catId] || {};
+    const presetVideos = catPresets
+      .filter(p => checkedMap[p.filename])
+      .map(p => ({ ...p, id: `preset__${p.filename}`, checked: true }));
+    return [...userVideos, ...presetVideos];
+  }
+
+  // ─── Trigger: pick random from combined pool ─────────────────────────────
   function triggerCategory(catId) {
-    const list  = categories[catId] || [];
-    const video = pickVideo(list);
+    const pool  = buildPool(catId);
+    const video = pickVideo(pool);
     if (!video) {
       toast(`ไม่มีวิดีโอที่เลือกใน ${CATEGORIES.find(c => c.id === catId)?.label}`, { icon: '⚠️' });
       return;
@@ -185,9 +209,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
       toast.error('Socket ไม่ได้เชื่อมต่อ — รีเฟรชหน้าเว็บ');
       return;
     }
-    const videoUrl = video.url.startsWith('/')
-      ? `${BACKEND}${video.url}`
-      : video.url;
+    const videoUrl = video.url.startsWith('/') ? `${BACKEND}${video.url}` : video.url;
     socket.emit('pk_trigger', { videoUrl, videoType: video.type, category: catId });
     toast.success(`▶ ${CATEGORIES.find(c => c.id === catId)?.label} — ${video.name}`, { duration: 2000 });
   }
@@ -198,10 +220,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     if (!url) return;
     const name = urlName.trim() || url.split('/').pop().slice(0, 60) || 'video';
     const newVideo = { id: uuidv4(), name, url, type: urlType, checked: true };
-    const newCats  = {
-      ...categories,
-      [activeTab]: [...(categories[activeTab] || []), newVideo],
-    };
+    const newCats  = { ...categories, [activeTab]: [...(categories[activeTab] || []), newVideo] };
     updateCategories(newCats);
     setUrlInput('');
     setUrlName('');
@@ -211,38 +230,26 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   async function uploadFile(e) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!['webm', 'mp4'].includes(ext)) {
       toast.error('รองรับเฉพาะ .webm และ .mp4 เท่านั้น');
       return;
     }
-
     setUploading(true);
     try {
       const idToken = await user.getIdToken();
       const csrf    = await api.get('/api/csrf-token').then(r => r.data.token).catch(() => null);
-
-      const form = new FormData();
+      const form    = new FormData();
       form.append('video', file);
-
-      const res = await fetch(`${BACKEND}/api/pk/upload`, {
+      const res  = await fetch(`${BACKEND}/api/pk/upload`, {
         method:  'POST',
-        headers: {
-          Authorization:    `Bearer ${idToken}`,
-          ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
-        },
-        body: form,
+        headers: { Authorization: `Bearer ${idToken}`, ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+        body:    form,
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-
       const newVideo = { id: uuidv4(), name: data.name, url: data.url, type: data.type, checked: true };
-      const newCats  = {
-        ...categories,
-        [activeTab]: [...(categories[activeTab] || []), newVideo],
-      };
+      const newCats  = { ...categories, [activeTab]: [...(categories[activeTab] || []), newVideo] };
       updateCategories(newCats);
       toast.success(`✅ อัพโหลด ${data.name} สำเร็จ`);
     } catch (err) {
@@ -253,40 +260,36 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     }
   }
 
-  // ─── Toggle checked ────────────────────────────────────────────────────
+  // ─── Toggle preset checked ─────────────────────────────────────────────
+  function togglePreset(catId, filename) {
+    const catMap  = presetChecked[catId] || {};
+    const current = catMap[filename] ?? false;
+    const newPc   = { ...presetChecked, [catId]: { ...catMap, [filename]: !current } };
+    updatePresetChecked(newPc);
+  }
+
+  // ─── Toggle user video checked ─────────────────────────────────────────
   function toggleChecked(catId, videoId) {
     const newCats = {
       ...categories,
-      [catId]: categories[catId].map(v =>
-        v.id === videoId ? { ...v, checked: !v.checked } : v
-      ),
+      [catId]: categories[catId].map(v => v.id === videoId ? { ...v, checked: !v.checked } : v),
     };
     updateCategories(newCats);
   }
 
-  // ─── Delete video ───────────────────────────────────────────────────────
+  // ─── Delete user video ─────────────────────────────────────────────────
   async function deleteVideo(catId, video) {
-    // ถ้า URL เป็น server upload → ลบไฟล์ด้วย
-    if (video.url.startsWith('/uploads/pk/')) {
+    if (video.url.startsWith('/uploads/pk/') && !video.url.includes('/_shared/')) {
       const filename = video.url.split('/').pop();
       try { await api.delete(`/api/pk/video/${filename}`); } catch {}
     }
-    const newCats = {
-      ...categories,
-      [catId]: categories[catId].filter(v => v.id !== video.id),
-    };
+    const newCats = { ...categories, [catId]: categories[catId].filter(v => v.id !== video.id) };
     updateCategories(newCats);
   }
 
   // ─── Export / Import ─────────────────────────────────────────────────────
   const handleExport = useCallback(() => {
-    const data = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      tab: 'pk',
-      hotkeys,
-      categories,
-    };
+    const data = { version: 2, exportedAt: new Date().toISOString(), tab: 'pk', hotkeys, categories, presetChecked };
     const json     = JSON.stringify(data, null, 2);
     const filename = `ttplus-pk-backup-${new Date().toISOString().slice(0, 10)}.json`;
     const uri      = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
@@ -295,7 +298,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     toast.success('⬇ Export PK เรียบร้อย');
-  }, [hotkeys, categories]);
+  }, [hotkeys, categories, presetChecked]);
 
   const handleImport = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -306,14 +309,16 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
       const text = await file.text();
       const data = JSON.parse(text);
       if (!data.hotkeys && !data.categories) throw new Error('ไฟล์ไม่ถูกต้อง (ไม่พบ hotkeys/categories)');
-      const newHotkeys    = data.hotkeys    || hotkeys;
-      const newCategories = data.categories || categories;
+      const newHotkeys      = data.hotkeys      || hotkeys;
+      const newCategories   = data.categories   || categories;
+      const newPresetChecked = data.presetChecked || presetChecked;
       setHotkeys(newHotkeys);
       setCategories(newCategories);
-      await api.post('/api/pk/config', { config: { hotkeys: newHotkeys, categories: newCategories } });
+      setPresetChecked(newPresetChecked);
+      await api.post('/api/pk/config', { hotkeys: newHotkeys, categories: newCategories, enabled, presetChecked: newPresetChecked });
       toast.success('⬆ Import PK เรียบร้อย', { id: toastId });
     } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
-  }, [hotkeys, categories]);
+  }, [hotkeys, categories, presetChecked, enabled]);
 
   // ─── Widget URL ──────────────────────────────────────────────────────────
   const widgetUrl = cid
@@ -331,9 +336,22 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   const border  = isDark ? '#2d2d3d' : '#e5e7eb';
   const txt     = isDark ? '#f1f1f1' : '#111827';
   const muted   = isDark ? '#9ca3af' : '#6b7280';
-  const accent  = '#f97316'; // orange — PK theme
+  const accent  = '#f97316';
 
-  const curList = categories[activeTab] || [];
+  const curList        = categories[activeTab] || [];
+  const curPresets     = presets[activeTab]    || [];
+  const curPresetCheck = presetChecked[activeTab] || {};
+
+  // นับ checked รวม (user + preset) สำหรับ badge บน tab
+  function countChecked(catId) {
+    const userChecked   = (categories[catId] || []).filter(v => v.checked).length;
+    const pcMap         = presetChecked[catId] || {};
+    const presetCheckedN = (presets[catId] || []).filter(p => pcMap[p.filename]).length;
+    return userChecked + presetCheckedN;
+  }
+  function countTotal(catId) {
+    return (categories[catId] || []).length + (presets[catId] || []).length;
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: bg, fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -368,112 +386,42 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                 padding: '10px 18px', borderRadius: 12, border: 'none', cursor: 'pointer',
                 background: enabled ? '#16a34a' : (isDark ? '#374151' : '#d1d5db'),
                 boxShadow: enabled ? '0 0 16px #16a34a66' : 'none',
-                transition: 'all 0.2s',
-                flexShrink: 0,
+                transition: 'all 0.2s', flexShrink: 0,
               }}>
-              {/* toggle knob */}
-              <div style={{
-                width: 42, height: 24, borderRadius: 12,
-                background: enabled ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
-                position: 'relative', flexShrink: 0,
-              }}>
-                <div style={{
-                  position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
-                  background: '#fff',
-                  left: enabled ? 21 : 3,
-                  transition: 'left 0.2s',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
-                }} />
+              <div style={{ width: 42, height: 24, borderRadius: 12, background: enabled ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)', position: 'relative', flexShrink: 0 }}>
+                <div style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', left: enabled ? 21 : 3, transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }} />
               </div>
-              <span style={{
-                fontSize: 14, fontWeight: 800,
-                color: enabled ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
-              }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: enabled ? '#fff' : (isDark ? '#9ca3af' : '#6b7280') }}>
                 {enabled ? '🟢 เปิดใช้งาน' : '⏸ ปิดอยู่'}
               </span>
             </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={() => importRef.current?.click()}
-              title="Import PK config จากไฟล์ Backup"
-              style={{
-                padding: '6px 12px', borderRadius: 8, border: `1px solid ${border}`,
-                background: isDark ? '#1e1e2e' : '#f3f4f6',
-                color: isDark ? '#9ca3af' : '#6b7280',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              ⬆ Import
-            </button>
-            <button
-              onClick={handleExport}
-              title="Export PK config เป็นไฟล์ Backup"
-              style={{
-                padding: '6px 12px', borderRadius: 8, border: `1px solid ${border}`,
-                background: isDark ? '#1e1e2e' : '#f3f4f6',
-                color: isDark ? '#9ca3af' : '#6b7280',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              ⬇ Export
-            </button>
-            <span style={{ fontSize: 12, color: saving ? accent : muted }}>
-              {saving ? '💾 กำลังบันทึก...' : '✓ บันทึกแล้ว'}
-            </span>
+            <button onClick={() => importRef.current?.click()} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${border}`, background: isDark ? '#1e1e2e' : '#f3f4f6', color: isDark ? '#9ca3af' : '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>⬆ Import</button>
+            <button onClick={handleExport} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${border}`, background: isDark ? '#1e1e2e' : '#f3f4f6', color: isDark ? '#9ca3af' : '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>⬇ Export</button>
+            <span style={{ fontSize: 12, color: saving ? accent : muted }}>{saving ? '💾 กำลังบันทึก...' : '✓ บันทึกแล้ว'}</span>
           </div>
         </div>
 
         {/* ── Widget URL ── */}
-        <div style={{
-          background: card, border: `1px solid ${border}`, borderRadius: 14,
-          padding: '14px 16px', marginBottom: 20,
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        }}>
+        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: muted, flexShrink: 0 }}>🎬 Widget URL (วาง OBS/TikTok Studio):</span>
-          <span style={{
-            flex: 1, minWidth: 200, background: isDark ? '#111' : '#f9f9f9',
-            border: `1px solid ${border}`, borderRadius: 8,
-            padding: '5px 10px', fontSize: 12, color: txt,
-            fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <span style={{ flex: 1, minWidth: 200, background: isDark ? '#111' : '#f9f9f9', border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px', fontSize: 12, color: txt, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {widgetUrl || 'กำลังโหลด...'}
           </span>
-          <button
-            onClick={copyUrl}
-            disabled={!widgetUrl}
-            style={{
-              padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-              background: accent, color: '#fff', fontSize: 13, fontWeight: 600, flexShrink: 0,
-            }}>
-            📋 Copy
-          </button>
+          <button onClick={copyUrl} disabled={!widgetUrl} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: accent, color: '#fff', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>📋 Copy</button>
           <span style={{ fontSize: 11, color: muted }}>ขนาด 720×1280 · 9:16 portrait</span>
         </div>
 
         {/* ── Category Sub-Tabs ── */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
           {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveTab(cat.id)}
-              style={{
-                padding: '9px 18px', borderRadius: 10, border: `1.5px solid`,
-                borderColor: activeTab === cat.id ? accent : border,
-                background:  activeTab === cat.id ? accent : card,
-                color:       activeTab === cat.id ? '#fff' : txt,
-                fontWeight:  700, fontSize: 14, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}>
+            <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{ padding: '9px 18px', borderRadius: 10, border: `1.5px solid`, borderColor: activeTab === cat.id ? accent : border, background: activeTab === cat.id ? accent : card, color: activeTab === cat.id ? '#fff' : txt, fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span>{cat.emoji}</span>
               <span>{cat.label}</span>
-              <span style={{
-                background: activeTab === cat.id ? 'rgba(0,0,0,0.2)' : (isDark ? '#333' : '#eee'),
-                borderRadius: 10, fontSize: 10, padding: '1px 6px',
-                color: activeTab === cat.id ? '#fff' : muted,
-              }}>
-                {(categories[cat.id] || []).filter(v => v.checked).length} / {(categories[cat.id] || []).length}
+              <span style={{ background: activeTab === cat.id ? 'rgba(0,0,0,0.2)' : (isDark ? '#333' : '#eee'), borderRadius: 10, fontSize: 10, padding: '1px 6px', color: activeTab === cat.id ? '#fff' : muted }}>
+                {countChecked(cat.id)} / {countTotal(cat.id)}
               </span>
             </button>
           ))}
@@ -483,43 +431,19 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
         <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 16, overflow: 'hidden' }}>
 
           {/* Panel Header: hotkey + trigger button */}
-          <div style={{
-            padding: '16px 20px', borderBottom: `1px solid ${border}`,
-            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-          }}>
+          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 20 }}>{CATEGORIES.find(c => c.id === activeTab)?.emoji}</span>
-            <span style={{ color: txt, fontWeight: 700, fontSize: 16 }}>
-              {CATEGORIES.find(c => c.id === activeTab)?.label}
-            </span>
+            <span style={{ color: txt, fontWeight: 700, fontSize: 16 }}>{CATEGORIES.find(c => c.id === activeTab)?.label}</span>
 
             {/* Hotkey setter */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
               <span style={{ color: muted, fontSize: 12 }}>คีย์ลัด:</span>
-              <button
-                onClick={() => setSettingKey(activeTab)}
-                style={{
-                  minWidth: 52, padding: '5px 12px', borderRadius: 8,
-                  border: `2px solid ${settingKey === activeTab ? accent : border}`,
-                  background: settingKey === activeTab ? `${accent}22` : (isDark ? '#222' : '#f5f5f5'),
-                  color:  settingKey === activeTab ? accent : txt,
-                  fontWeight: 800, fontSize: 15, cursor: 'pointer',
-                  fontFamily: 'monospace', letterSpacing: 0,
-                }}>
+              <button onClick={() => setSettingKey(activeTab)} style={{ minWidth: 52, padding: '5px 12px', borderRadius: 8, border: `2px solid ${settingKey === activeTab ? accent : border}`, background: settingKey === activeTab ? `${accent}22` : (isDark ? '#222' : '#f5f5f5'), color: settingKey === activeTab ? accent : txt, fontWeight: 800, fontSize: 15, cursor: 'pointer', fontFamily: 'monospace' }}>
                 {settingKey === activeTab ? '...' : displayKey(hotkeys[activeTab])}
               </button>
-              {settingKey === activeTab && (
-                <span style={{ fontSize: 12, color: accent }}>กดคีย์ที่ต้องการ</span>
-              )}
+              {settingKey === activeTab && <span style={{ fontSize: 12, color: accent }}>กดคีย์ที่ต้องการ</span>}
               {settingKey !== activeTab && (
-                <button
-                  onClick={() => setSettingKey(activeTab)}
-                  style={{
-                    padding: '4px 10px', borderRadius: 6,
-                    border: `1px solid ${border}`, background: 'transparent',
-                    color: muted, fontSize: 11, cursor: 'pointer',
-                  }}>
-                  เปลี่ยน
-                </button>
+                <button onClick={() => setSettingKey(activeTab)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${border}`, background: 'transparent', color: muted, fontSize: 11, cursor: 'pointer' }}>เปลี่ยน</button>
               )}
             </div>
 
@@ -527,25 +451,74 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
             <button
               onClick={() => enabled && triggerCategory(activeTab)}
               title={!enabled ? 'เปิด PK Panel ก่อน' : undefined}
-              style={{
-                marginLeft: 'auto', padding: '9px 20px', borderRadius: 10, border: 'none',
-                background: enabled ? accent : (isDark ? '#374151' : '#d1d5db'),
-                color: enabled ? '#fff' : muted,
-                fontWeight: 700, fontSize: 14,
-                cursor: enabled ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', gap: 6,
-                opacity: enabled ? 1 : 0.6,
-                transition: 'all 0.2s',
-              }}>
+              style={{ marginLeft: 'auto', padding: '9px 20px', borderRadius: 10, border: 'none', background: enabled ? accent : (isDark ? '#374151' : '#d1d5db'), color: enabled ? '#fff' : muted, fontWeight: 700, fontSize: 14, cursor: enabled ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 6, opacity: enabled ? 1 : 0.6, transition: 'all 0.2s' }}>
               ▶ เล่นเลย
             </button>
           </div>
 
-          {/* Video List */}
-          <div style={{ padding: '12px 0' }}>
-            {curList.length === 0 && (
+          {/* ── Section: จาก Server ── */}
+          {curPresets.length > 0 && (
+            <div>
+              {/* Section header */}
+              <div style={{ padding: '10px 20px 6px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#f97316', letterSpacing: '0.05em', textTransform: 'uppercase' }}>📦 จาก Server</span>
+                <span style={{ fontSize: 10, color: muted }}>({curPresets.filter(p => curPresetCheck[p.filename]).length}/{curPresets.length} เลือกอยู่)</span>
+              </div>
+              {curPresets.map(preset => {
+                const isChecked = !!curPresetCheck[preset.filename];
+                return (
+                  <div
+                    key={preset.filename}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 20px',
+                      background: isChecked ? (isDark ? '#1f1a10' : '#fff8f0') : 'transparent',
+                      borderLeft: `3px solid ${isChecked ? '#f97316' : 'transparent'}`,
+                    }}>
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => togglePreset(activeTab, preset.filename)}
+                      style={{ width: 16, height: 16, accentColor: '#f97316', cursor: 'pointer', flexShrink: 0 }}
+                    />
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6, flexShrink: 0, background: preset.type === 'webm' ? '#22c55e22' : '#3b82f622', color: preset.type === 'webm' ? '#22c55e' : '#3b82f6', border: `1px solid ${preset.type === 'webm' ? '#22c55e44' : '#3b82f644'}` }}>
+                      {preset.type.toUpperCase()}
+                    </span>
+                    <span style={{ flex: 1, color: txt, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {preset.name}
+                    </span>
+                    <span style={{ color: muted, fontSize: 10, flexShrink: 0 }}>📦 server</span>
+                    {/* Test play */}
+                    <button
+                      onClick={() => {
+                        const socket = socketRef.current || getSocket();
+                        const vUrl   = `${BACKEND}${preset.url}`;
+                        socket?.emit('pk_trigger', { videoUrl: vUrl, videoType: preset.type, category: activeTab });
+                        toast(`▶ ทดสอบ: ${preset.name}`, { duration: 1500 });
+                      }}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${border}`, background: 'transparent', color: muted, fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
+                      ▶ Test
+                    </button>
+                  </div>
+                );
+              })}
+              {/* Divider */}
+              {curList.length > 0 && (
+                <div style={{ margin: '4px 20px', borderTop: `1px solid ${border}` }} />
+              )}
+            </div>
+          )}
+
+          {/* ── Section: ของฉัน (user videos) ── */}
+          <div style={{ padding: curList.length > 0 ? '4px 0' : '0' }}>
+            {curPresets.length > 0 && curList.length > 0 && (
+              <div style={{ padding: '10px 20px 6px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: muted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>👤 ของฉัน</span>
+              </div>
+            )}
+            {curList.length === 0 && curPresets.length === 0 && (
               <p style={{ textAlign: 'center', color: muted, fontSize: 13, padding: '24px 0' }}>
-                ยังไม่มีวิดีโอ — เพิ่มด้านล่าง
+                ยังไม่มีวิดีโอ
               </p>
             )}
             {curList.map(video => (
@@ -557,58 +530,32 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                   background: video.checked ? (isDark ? '#1f1f2e' : '#fef9f0') : 'transparent',
                   borderLeft: `3px solid ${video.checked ? accent : 'transparent'}`,
                 }}>
-                {/* Checkbox */}
-                <input
-                  type="checkbox"
-                  checked={video.checked}
-                  onChange={() => toggleChecked(activeTab, video.id)}
-                  style={{ width: 16, height: 16, accentColor: accent, cursor: 'pointer', flexShrink: 0 }}
-                />
-                {/* Type badge */}
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6, flexShrink: 0,
-                  background: video.type === 'webm' ? '#22c55e22' : '#3b82f622',
-                  color:      video.type === 'webm' ? '#22c55e'   : '#3b82f6',
-                  border:     `1px solid ${video.type === 'webm' ? '#22c55e44' : '#3b82f644'}`,
-                }}>
+                <input type="checkbox" checked={video.checked} onChange={() => toggleChecked(activeTab, video.id)} style={{ width: 16, height: 16, accentColor: accent, cursor: 'pointer', flexShrink: 0 }} />
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6, flexShrink: 0, background: video.type === 'webm' ? '#22c55e22' : '#3b82f622', color: video.type === 'webm' ? '#22c55e' : '#3b82f6', border: `1px solid ${video.type === 'webm' ? '#22c55e44' : '#3b82f644'}` }}>
                   {video.type.toUpperCase()}
                 </span>
-                {/* Name */}
-                <span style={{ flex: 1, color: txt, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {video.name}
-                </span>
-                {/* URL preview */}
+                <span style={{ flex: 1, color: txt, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.name}</span>
                 <span style={{ color: muted, fontSize: 10, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {video.url.startsWith('/') ? '📁 server' : video.url.slice(0, 30) + '...'}
                 </span>
-                {/* Test play */}
                 <button
                   onClick={() => {
                     const socket = socketRef.current || getSocket();
-                    const vUrl = video.url.startsWith('/') ? `${BACKEND}${video.url}` : video.url;
+                    const vUrl   = video.url.startsWith('/') ? `${BACKEND}${video.url}` : video.url;
                     socket?.emit('pk_trigger', { videoUrl: vUrl, videoType: video.type, category: activeTab });
                     toast(`▶ ทดสอบ: ${video.name}`, { duration: 1500 });
                   }}
-                  style={{
-                    padding: '4px 10px', borderRadius: 6, border: `1px solid ${border}`,
-                    background: 'transparent', color: muted, fontSize: 11, cursor: 'pointer', flexShrink: 0,
-                  }}>
+                  style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${border}`, background: 'transparent', color: muted, fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
                   ▶ Test
                 </button>
-                {/* Delete */}
                 <button
                   onClick={() => deleteVideo(activeTab, video)}
-                  style={{
-                    padding: '4px 8px', borderRadius: 6, border: `1px solid #ef444433`,
-                    background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer', flexShrink: 0,
-                  }}>
+                  style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid #ef444433`, background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
                   🗑
                 </button>
               </div>
             ))}
           </div>
-
-          {/* Add video section — hidden, เตรียมไว้สำหรับอนาคต */}
         </div>
 
         {/* ── Hotkey summary ── */}
@@ -620,11 +567,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {CATEGORIES.map(cat => (
               <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: enabled ? 1 : 0.4 }}>
-                <span style={{
-                  background: isDark ? '#222' : '#f3f4f6',
-                  border: `1.5px solid ${border}`, borderRadius: 7,
-                  padding: '3px 10px', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: txt,
-                }}>
+                <span style={{ background: isDark ? '#222' : '#f3f4f6', border: `1.5px solid ${border}`, borderRadius: 7, padding: '3px 10px', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: txt }}>
                   {displayKey(hotkeys[cat.id])}
                 </span>
                 <span style={{ color: muted, fontSize: 12 }}>{cat.emoji} {cat.label}</span>
@@ -639,14 +582,16 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
             💡 WebM — โปร่งใสจริง (ต้องเป็นไฟล์ที่ encode มา alpha channel) &nbsp;|&nbsp;
             MP4 — ต้องตั้ง Chroma Key ใน OBS &nbsp;|&nbsp;
             ติ๊กหลายวิดีโอ = สุ่มเล่น &nbsp;|&nbsp;
-            ติ๊กอันเดียว = เล่นอันนั้นเสมอ
+            ติ๊กอันเดียว = เล่นอันนั้นเสมอ &nbsp;|&nbsp;
+            📦 Server = วิดีโอจากทีมงาน ใช้ได้เลย
           </p>
         </div>
       </div>{/* /maxWidth */}
       </>)}
 
-      {/* Hidden import input */}
+      {/* Hidden inputs */}
       <input ref={importRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleImport} />
+      <input ref={fileRef}   type="file" accept=".webm,.mp4"            style={{ display: 'none' }} onChange={uploadFile} />
       </main>
     </div>
   );

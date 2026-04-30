@@ -157,8 +157,7 @@ async function queueAction(vjUid, action, context) {
       // Context
       username:   context.username  || '',
       giftname:   context.giftname  || '',
-      // Queue state
-      played:    false,
+      // Queue state — ไม่ต้องเก็บ played เพราะ doc ถูกลบทันทีหลัง overlay อ่าน
       queuedAt:  Date.now(),
     });
   } catch (err) {

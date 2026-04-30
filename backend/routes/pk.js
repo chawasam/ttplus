@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const { verifyToken }           = require('../middleware/auth');
 const { generalLimiter }        = require('../middleware/rateLimiter');
-const { getConfig, saveConfig, uploadVideo, deleteVideo, ensureUserDir, MAX_SIZE } = require('../handlers/pk');
+const { getConfig, saveConfig, getPresets, uploadVideo, deleteVideo, ensureUserDir, MAX_SIZE } = require('../handlers/pk');
 
 // ─── Auth required for all PK routes ────────────────────────────────────────
 router.use(verifyToken);
@@ -36,9 +36,10 @@ const upload = multer({
 });
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
-router.get('/config',            generalLimiter, getConfig);
-router.post('/config',           generalLimiter, saveConfig);
-router.post('/upload',           upload.single('video'), uploadVideo);
+router.get('/config',             generalLimiter, getConfig);
+router.post('/config',            generalLimiter, saveConfig);
+router.get('/presets',            generalLimiter, getPresets);
+router.post('/upload',            upload.single('video'), uploadVideo);
 router.delete('/video/:filename', generalLimiter, deleteVideo);
 
 module.exports = router;

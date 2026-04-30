@@ -329,18 +329,24 @@ async function getOverlayQueue(req, res) {
   if (!vjId) return res.status(400).json({ error: 'ต้องระบุ cid หรือ vjId' });
 
   try {
+    // Query เฉพาะ vjUid (single-field index — Firestore auto-create ไม่ต้องสร้างเอง)
+    // sort + filter screen ใน JS เพื่อหลีกเลี่ยง composite index
     const snap = await db().collection('tt_action_queue')
       .where('vjUid', '==', vjId)
-      .where('screen', '==', screen)
-      .where('played', '==', false)
-      .orderBy('queuedAt', 'asc')
-      .limit(1)
+      .limit(20)
       .get();
-    trackRead('myactions.overlayQueue', 1);
+    trackRead('myactions.overlayQueue', snap.size);
 
     if (snap.empty) return res.json({ item: null });
 
-    const doc = snap.docs[0];
+    // filter screen แล้ว sort queuedAt asc → เอาอันเก่าสุด
+    const matching = snap.docs
+      .filter(d => (d.data().screen ?? 1) === screen)
+      .sort((a, b) => (a.data().queuedAt || 0) - (b.data().queuedAt || 0));
+
+    if (matching.length === 0) return res.json({ item: null });
+
+    const doc  = matching[0];
     const item = { id: doc.id, ...doc.data() };
 
     // Delete immediately — keeps Firestore clean (no need for played/cleanup jobs)

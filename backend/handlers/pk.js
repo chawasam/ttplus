@@ -1,6 +1,7 @@
-// handlers/pk.js — PK Panel: Video Config + Upload
-// GET  /api/pk/config          — โหลด config ของ user (hotkeys + video lists)
+// handlers/pk.js — PK Panel: Video Config + Upload + Server Presets
+// GET  /api/pk/config          — โหลด config ของ user (hotkeys + video lists + presetChecked)
 // POST /api/pk/config          — บันทึก config
+// GET  /api/pk/presets         — ดึงรายการวิดีโอ preset จาก _shared/{cat}/
 // POST /api/pk/upload          — อัพโหลดไฟล์วิดีโอ (multer)
 // DELETE /api/pk/video/:name   — ลบไฟล์
 
@@ -9,6 +10,7 @@ const path   = require('path');
 const fs     = require('fs');
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'pk');
+const SHARED_DIR = path.join(UPLOAD_DIR, '_shared');
 const MAX_SIZE   = 200 * 1024 * 1024; // 200 MB per file
 const ALLOWED    = ['.webm', '.mp4'];
 
@@ -17,14 +19,9 @@ const CATEGORIES = ['taptap', 'nwm', 'x2', 'x3', 'mvp'];
 // ── Default config structure ────────────────────────────────────────────────
 function defaultConfig() {
   return {
-    hotkeys:    { taptap: 'Q', nwm: 'W', x2: 'E', x3: 'R', mvp: 'T' },
-    categories: {
-      taptap: [],
-      nwm:    [],
-      x2:     [],
-      x3:     [],
-      mvp:    [],
-    },
+    hotkeys:      { taptap: 'Q', nwm: 'W', x2: 'E', x3: 'R', mvp: 'T' },
+    categories:   { taptap: [], nwm: [], x2: [], x3: [], mvp: [] },
+    presetChecked: {},   // { catId: { filename: boolean } }
   };
 }
 
@@ -41,6 +38,8 @@ async function getConfig(req, res) {
     const db  = admin.firestore();
     const doc = await db.collection('pk_config').doc(req.user.uid).get();
     const cfg = doc.exists ? doc.data() : defaultConfig();
+    // ensure presetChecked field exists (backward compat)
+    if (!cfg.presetChecked) cfg.presetChecked = {};
     return res.json({ config: cfg });
   } catch (err) {
     console.error('[PK] getConfig:', err.message);
@@ -50,7 +49,7 @@ async function getConfig(req, res) {
 
 // ── POST config ──────────────────────────────────────────────────────────────
 async function saveConfig(req, res) {
-  const { hotkeys, categories } = req.body || {};
+  const { hotkeys, categories, presetChecked, enabled } = req.body || {};
   // Validate
   if (!hotkeys || typeof hotkeys !== 'object') return res.status(400).json({ error: 'hotkeys required' });
   if (!categories || typeof categories !== 'object') return res.status(400).json({ error: 'categories required' });
@@ -75,17 +74,61 @@ async function saveConfig(req, res) {
     }));
   }
 
+  // Sanitize presetChecked — { catId: { safeFilename: boolean } }
+  const cleanPresetChecked = {};
+  if (presetChecked && typeof presetChecked === 'object') {
+    for (const cat of CATEGORIES) {
+      const catMap = presetChecked[cat];
+      if (!catMap || typeof catMap !== 'object') continue;
+      cleanPresetChecked[cat] = {};
+      for (const [filename, val] of Object.entries(catMap)) {
+        // ห้าม path traversal, ต้อง ext ที่ allowed, ความยาวสมเหตุสมผล
+        if (
+          typeof filename !== 'string' ||
+          filename.length > 120 ||
+          /[/\\]/.test(filename) ||
+          filename.startsWith('.')
+        ) continue;
+        const ext = path.extname(filename).toLowerCase();
+        if (!ALLOWED.includes(ext)) continue;
+        cleanPresetChecked[cat][filename] = !!val;
+      }
+    }
+  }
+
   try {
-    await admin.firestore().collection('pk_config').doc(req.user.uid).set({
-      hotkeys:    cleanHotkeys,
-      categories: cleanCats,
-      updatedAt:  Date.now(),
-    });
+    const doc = {
+      hotkeys:       cleanHotkeys,
+      categories:    cleanCats,
+      presetChecked: cleanPresetChecked,
+      updatedAt:     Date.now(),
+    };
+    if (typeof enabled === 'boolean') doc.enabled = enabled;
+    await admin.firestore().collection('pk_config').doc(req.user.uid).set(doc);
     return res.json({ success: true });
   } catch (err) {
     console.error('[PK] saveConfig:', err.message);
     return res.status(500).json({ error: 'Server error' });
   }
+}
+
+// ── GET presets — อ่านไฟล์จาก _shared/{catId}/ ──────────────────────────────
+async function getPresets(_req, res) {
+  const result = {};
+  for (const cat of CATEGORIES) {
+    const dir = path.join(SHARED_DIR, cat);
+    if (!fs.existsSync(dir)) { result[cat] = []; continue; }
+    const files = fs.readdirSync(dir)
+      .filter(f => ALLOWED.includes(path.extname(f).toLowerCase()))
+      .sort(); // alphabetical
+    result[cat] = files.map(f => ({
+      filename: f,
+      name:     f.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '),
+      url:      `/uploads/pk/_shared/${cat}/${f}`,
+      type:     path.extname(f).slice(1).toLowerCase(), // 'webm' or 'mp4'
+    }));
+  }
+  return res.json({ presets: result });
 }
 
 // ── POST upload (multer file already on req.file) ────────────────────────────
@@ -94,13 +137,12 @@ async function uploadVideo(req, res) {
 
   const ext = path.extname(req.file.originalname).toLowerCase();
   if (!ALLOWED.includes(ext)) {
-    // ลบไฟล์ที่อัพโหลดมาแล้วถ้า ext ไม่ถูก
     try { fs.unlinkSync(req.file.path); } catch {}
     return res.status(400).json({ error: 'รองรับเฉพาะ .webm และ .mp4 เท่านั้น' });
   }
 
   const type     = ext === '.webm' ? 'webm' : 'mp4';
-  const filename = req.file.filename; // multer กำหนดชื่อแล้ว (uid-timestamp-random.ext)
+  const filename = req.file.filename;
   const url      = `/uploads/pk/${req.user.uid}/${filename}`;
 
   return res.json({
@@ -115,7 +157,6 @@ async function uploadVideo(req, res) {
 // ── DELETE video ─────────────────────────────────────────────────────────────
 async function deleteVideo(req, res) {
   const { filename } = req.params;
-  // Sanitize: ห้ามมี path traversal
   if (!filename || /[/\\]/.test(filename) || filename.startsWith('.')) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
@@ -132,4 +173,4 @@ async function deleteVideo(req, res) {
   }
 }
 
-module.exports = { getConfig, saveConfig, uploadVideo, deleteVideo, ensureUserDir, UPLOAD_DIR, MAX_SIZE };
+module.exports = { getConfig, saveConfig, getPresets, uploadVideo, deleteVideo, ensureUserDir, UPLOAD_DIR, SHARED_DIR, MAX_SIZE };
