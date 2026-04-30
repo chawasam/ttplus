@@ -14,6 +14,7 @@ const admin = require('firebase-admin');
 const { v4: uuidv4 } = require('uuid');
 const { getUidForCid, registerCid } = require('../../utils/widgetToken');
 const { trackRead } = require('../../utils/readTracker');
+const { fillTemplate } = require('./eventProcessor');
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -364,33 +365,48 @@ async function importBackup(req, res) {
 
   try {
     const firestore = db();
-    const batch = firestore.batch();
+
+    // Firestore batch limit = 500 ops — แบ่ง ops ออกเป็น chunks ป้องกัน overflow
+    // helper: commit batch แล้วสร้างใหม่
+    const BATCH_LIMIT = 490; // safety margin
+    let currentBatch = firestore.batch();
+    let opCount = 0;
+
+    async function flushIfNeeded() {
+      if (opCount >= BATCH_LIMIT) {
+        await currentBatch.commit();
+        currentBatch = firestore.batch();
+        opCount = 0;
+      }
+    }
 
     // ลบ actions เดิม
-    const oldActions = await firestore.collection('tt_actions').where('uid', '==', uid).get();
-    oldActions.docs.forEach(d => batch.delete(d.ref));
-
-    // ลบ events เดิม
-    const oldEvents = await firestore.collection('tt_events').where('uid', '==', uid).get();
-    oldEvents.docs.forEach(d => batch.delete(d.ref));
+    const [oldActions, oldEvents] = await Promise.all([
+      firestore.collection('tt_actions').where('uid', '==', uid).get(),
+      firestore.collection('tt_events').where('uid', '==', uid).get(),
+    ]);
+    for (const d of oldActions.docs) { currentBatch.delete(d.ref); opCount++; await flushIfNeeded(); }
+    for (const d of oldEvents.docs)  { currentBatch.delete(d.ref); opCount++; await flushIfNeeded(); }
 
     // เพิ่ม actions ใหม่
     // ลบ field 'id' ออกก่อนบันทึก — 'id' ไม่ใช่ Firestore field แต่เป็น doc ID
     // ถ้าไม่ลบ getActions จะส่ง id เก่าจาก backup ไปให้ frontend แทน Firestore doc ID ใหม่
-    for (const a of importedActions.slice(0, 200)) { // limit 200
+    for (const a of importedActions.slice(0, 200)) {
       const { id: _id, ...aData } = a; // eslint-disable-line no-unused-vars
       const ref = firestore.collection('tt_actions').doc();
-      batch.set(ref, { ...aData, uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      currentBatch.set(ref, { ...aData, uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      opCount++; await flushIfNeeded();
     }
 
     // เพิ่ม events ใหม่
-    for (const e of importedEvents.slice(0, 200)) { // limit 200
+    for (const e of importedEvents.slice(0, 200)) {
       const { id: _id, ...eData } = e; // eslint-disable-line no-unused-vars
       const ref = firestore.collection('tt_events').doc();
-      batch.set(ref, { ...eData, uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      currentBatch.set(ref, { ...eData, uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      opCount++; await flushIfNeeded();
     }
 
-    await batch.commit();
+    if (opCount > 0) await currentBatch.commit();
     return res.json({ ok: true, actions: importedActions.length, events: importedEvents.length });
   } catch (err) {
     console.error('[Actions] importBackup:', err.message);
@@ -411,14 +427,7 @@ async function fireAction(req, res) {
       return res.status(404).json({ error: 'ไม่พบ Action' });
     }
     const action = { id: snap.id, ...snap.data() };
-    const context = { username: 'ทดสอบ', giftname: 'Rose', coins: '100', likeCount: '0' };
-
-    // Queue to overlay (same format as eventProcessor)
-    const fillTemplate = (text) => (text || '')
-      .replace(/\{username\}/gi, context.username)
-      .replace(/\{giftname\}/gi, context.giftname)
-      .replace(/\{coins\}/gi,    context.coins)
-      .replace(/\{likecount\}/gi, context.likeCount);
+    const context = { username: 'ทดสอบ', giftname: 'Rose', coins: 100, likeCount: 0 };
 
     await db().collection('tt_action_queue').add({
       vjUid:          uid,

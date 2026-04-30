@@ -575,26 +575,53 @@ async function loadCharacter(req, res) {
     if (!charDoc.exists) return res.json({ hasCharacter: false });
 
     const char = charDoc.data();
-    // Regen stamina: 1 ต่อ 5 นาที (12/ชม) — เต็มจาก 0 ใช้เวลา ~16 ชั่วโมง
-    const lastActive = char.lastActiveAt?.toMillis?.() || Date.now();
-    const minutesPassed = Math.floor((Date.now() - lastActive) / 60000);
-    const staminaRegen = Math.min(Math.floor(minutesPassed / 5), char.staminaMax - char.stamina);
+    const now = Date.now();
+
+    // ── Regen stamina: 1 ต่อ 5 นาที (12/ชม) — เต็มจาก 0 ใช้เวลา ~16 ชั่วโมง ──
+    const lastActive   = char.lastActiveAt?.toMillis?.() || now;
+    const minutesPassed = Math.floor((now - lastActive) / 60000);
+    const staminaRegen  = Math.min(Math.floor(minutesPassed / 5), char.staminaMax - char.stamina);
+
+    // ── Passive farming: 3 gold/ชม, cap 12 ชม = max 36 gold/รอบ ──
+    // สายฟรีหรือสายที่หมด stamina ยังได้สะสม gold ตลอดเวลา
+    const PASSIVE_GOLD_RATE  = 3;   // gold ต่อชั่วโมง
+    const PASSIVE_GOLD_CAP_H = 12;  // สะสมสูงสุด 12 ชั่วโมง
+    const lastPassive    = char.lastPassiveAt?.toMillis?.() || lastActive;
+    const hoursPassed    = Math.min((now - lastPassive) / 3_600_000, PASSIVE_GOLD_CAP_H);
+    const passiveGold    = Math.floor(hoursPassed * PASSIVE_GOLD_RATE);
+
+    // อัปเดต character doc: stamina + lastPassiveAt (ถ้ามีอะไรต้องอัปเดต)
+    const charUpdate = {};
     if (staminaRegen > 0) {
-      await db.collection('game_characters').doc(characterId).update({
-        stamina: char.stamina + staminaRegen,
-        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      charUpdate.stamina    = char.stamina + staminaRegen;
+      charUpdate.lastActiveAt = admin.firestore.FieldValue.serverTimestamp();
       char.stamina += staminaRegen;
+    }
+    if (passiveGold > 0) {
+      charUpdate.lastPassiveAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+    if (Object.keys(charUpdate).length > 0) {
+      await db.collection('game_characters').doc(characterId).update(charUpdate);
+    }
+
+    // เพิ่ม gold เข้า account (ถ้าได้ passive gold)
+    let currentGold = gold || 0;
+    if (passiveGold > 0) {
+      await db.collection('game_accounts').doc(uid).update({
+        gold: admin.firestore.FieldValue.increment(passiveGold),
+      });
+      currentGold += passiveGold;
     }
 
     return res.json({
       hasCharacter: true,
       character: {
         ...char,
-        gold:         gold || 0,
+        gold:         currentGold,
         realmPoints:  realmPoints || 0,
       },
-      equipment: equipDoc.exists ? equipDoc.data() : {},
+      equipment:    equipDoc.exists ? equipDoc.data() : {},
+      passiveGold:  passiveGold > 0 ? passiveGold : 0,  // frontend แสดง toast ถ้า > 0
     });
   } catch (err) {
     console.error('[Game/Account] loadCharacter:', err.message);

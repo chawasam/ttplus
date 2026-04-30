@@ -2243,8 +2243,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         actions: data.actions || [],
         events:  data.events  || [],
       });
-      if (data.actions) setActions(data.actions);
-      if (data.events)  setEvents(data.events);
+      // Refetch จาก backend เพื่อให้ได้ Firestore document IDs ใหม่
+      // (import สร้าง IDs ใหม่ทั้งหมด — ใช้ IDs จากไฟล์ backup ตรงๆ จะทำให้ edit/delete 404)
+      const [aRes, eRes] = await Promise.all([
+        api.get('/api/actions'),
+        api.get('/api/actions/events'),
+      ]);
+      setActions(aRes.data.actions || []);
+      setEvents(eRes.data.events   || []);
       toast.success(`⬆ Import Actions เรียบร้อย (${(data.actions||[]).length} actions, ${(data.events||[]).length} events)`, { id: toastId });
     } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
   }, []);

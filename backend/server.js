@@ -101,13 +101,11 @@ setOnlineGetter(() => userSockets.size);
 // ── Admin heartbeat: บันทึกทุก 5 นาที เพื่อแสดง uptime history ──
 setInterval(recordHeartbeat, 5 * 60 * 1000);
 
-// ===== Health check — ต้องมาก่อนทุก middleware =====
-app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
-
 // ===== CORS ต้องมาก่อน middleware อื่นทั้งหมด =====
 // Public widget endpoints (now-playing, queue ฯลฯ) ต้องการ origin: *
 // เพราะถูกเรียกจาก OBS Browser Source, TikTok Studio ซึ่งมี origin ต่างๆ
 const PUBLIC_CORS_PATHS = [
+  '/health',             // health check — เรียกจาก browser ข้าม origin ได้
   '/api/spotify/now-playing',
   '/api/spotify/queue',
   '/api/widget/',        // prefix match — รองรับ endpoints ใหม่ในอนาคต
@@ -125,6 +123,9 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+// ===== Health check — หลัง CORS เพื่อให้ browser ข้าม origin เรียกได้ =====
+app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ===== Security Middleware =====
 app.use(helmet({

@@ -4982,8 +4982,8 @@ function SystemTab() {
       // ── Public ────────────────────────────────────────────────────
       { group:'🌐 Public', method:'GET', path:'/health',                       auth:false, label:'Health ping' },
       { group:'🌐 Public', method:'GET', path:'/api/gifts/public',              auth:false, label:'Gift catalog (public)' },
-      { group:'🌐 Public', method:'GET', path:'/api/actions/overlay?cid=0',     auth:false, label:'Overlay queue (no auth)' },
-      { group:'🌐 Public', method:'GET', path:'/api/leaderboard',               auth:false, label:'Leaderboard' },
+      { group:'🌐 Public', method:'GET', path:'/api/actions/overlay?cid=0000',   auth:false, label:'Overlay queue (no auth)' },
+      { group:'🌐 Public', method:'GET', path:'/api/leaderboard?cid=0000',       auth:false, label:'Leaderboard' },
       // ── Auth Required ─────────────────────────────────────────────
       { group:'🔐 Auth',   method:'GET', path:'/api/actions',                   auth:true,  label:'Actions list' },
       { group:'🔐 Auth',   method:'GET', path:'/api/actions/events',            auth:true,  label:'Events list' },
@@ -5002,11 +5002,14 @@ function SystemTab() {
     ];
 
     const out = [];
+    let csrfToken = '';
     for (const t of tests) {
       const t0 = Date.now();
       let status = 0, note = '', ok = false;
       try {
-        const headers = { 'Content-Type': 'application/json', ...(t.auth ? authHdr : {}) };
+        const extraHdr = {};
+        if (t.method !== 'GET' && csrfToken) extraHdr['x-csrf-token'] = csrfToken;
+        const headers = { 'Content-Type': 'application/json', ...(t.auth ? authHdr : {}), ...extraHdr };
         const res = await fetch(`${BACKEND}${t.path}`, {
           method: t.method,
           headers,
@@ -5021,7 +5024,7 @@ function SystemTab() {
           else if (Array.isArray(data.events))          note = `${data.events.length} events`;
           else if (Array.isArray(data.gifts))           note = `${data.gifts.length} gifts`;
           else if (Array.isArray(data.errors))          note = `${data.errors.length} errors`;
-          else if (data.token)                          note = 'token OK';
+          else if (data.token)                          { note = 'token OK'; if (!csrfToken) csrfToken = data.token; }
           else if (data.cid)                            note = `cid:${data.cid}`;
           else if (data.status)                         note = data.status;
           else if (data.connected != null)              note = data.connected ? 'connected' : 'idle';

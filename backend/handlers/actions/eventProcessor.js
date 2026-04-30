@@ -247,20 +247,19 @@ async function processEvent(vjUid, eventType, data) {
     // ป้องกันกรณีที่ action เดียวกันอยู่ใน 2 events ที่ match พร้อมกัน
     // เช่น specific_gift + gift_min_coins ชน → ยิง action เดิม 2 ครั้ง
     const firedActionIds = new Set();
+    const queues = []; // รวม promises ของ queueAction ทั้งหมด — fire พร้อมกันใน Promise.all
 
     for (const ev of prioritized) {
       const actionsMap = ev._actions || {};
 
       // Trigger all actions
       for (const actionId of [...new Set(ev.actionIds || [])]) {
-        if (firedActionIds.has(actionId)) {
-          continue;
-        }
+        if (firedActionIds.has(actionId)) continue;
         const action = actionsMap[actionId];
         if (!action) continue;
         if (!checkCooldown(vjUid, actionId, data.uniqueId, action)) continue;
         firedActionIds.add(actionId);
-        await queueAction(vjUid, action, context);
+        queues.push(queueAction(vjUid, action, context));
       }
 
       // Trigger one random action
@@ -271,11 +270,14 @@ async function processEvent(vjUid, eventType, data) {
           const action = actionsMap[pick];
           if (action && checkCooldown(vjUid, pick, data.uniqueId, action)) {
             firedActionIds.add(pick);
-            await queueAction(vjUid, action, context);
+            queues.push(queueAction(vjUid, action, context));
           }
         }
       }
     }
+
+    // Fire ทุก action พร้อมกัน แทนที่จะรอทีละอัน
+    await Promise.all(queues);
   } catch (err) {
     console.error('[EventProcessor] processEvent:', err.message);
   }
@@ -363,4 +365,4 @@ async function simulateEventWithResult(vjUid, eventType, data) {
   }
 }
 
-module.exports = { processEvent, simulateEventWithResult, invalidateCache, clearVjCooldowns };
+module.exports = { processEvent, simulateEventWithResult, invalidateCache, clearVjCooldowns, fillTemplate };

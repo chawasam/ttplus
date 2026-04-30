@@ -71,6 +71,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   const [testWebText, setTestWebText]         = useState('สวัสดีค่ะ');
   const saveTimerRef  = useRef(null);
   const mountedRef    = useRef(true);
+  const importRef     = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -279,13 +280,27 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     setSimpleMode(toSimple);
   }, []);
 
-  // ── Export Backup (TTS Settings) ──
+  // ── Export Backup (TTS Settings + Engine Config) ──
   const handleExport = useCallback(() => {
     const data = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       tab: 'tts',
       tts,
+      // Engine config (ไม่รวม API keys เพราะ sensitive)
+      engines: {
+        googleVoice,
+        geminiVoice,
+        geminiPersona,
+        geminiShuffle,
+        gemini25Linked,
+        gemini25Voice,
+        gemini25Persona,
+        gemini25Shuffle,
+        enabledEngines,
+        engineOrder,
+        customPersonas,
+      },
     };
     const json     = JSON.stringify(data, null, 2);
     const filename = `ttplus-tts-backup-${new Date().toISOString().slice(0, 10)}.json`;
@@ -295,7 +310,72 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     toast.success('⬇ Export TTS เรียบร้อย');
-  }, [tts]);
+  }, [tts, googleVoice, geminiVoice, geminiPersona, geminiShuffle,
+      gemini25Linked, gemini25Voice, gemini25Persona, gemini25Shuffle,
+      enabledEngines, engineOrder, customPersonas]);
+
+  // ── Import Backup (TTS Settings + Engine Config) ──
+  const handleImport = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const toastId = toast.loading('กำลัง Import...');
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.tts && !data.engines) throw new Error('ไฟล์ไม่ถูกต้อง (ไม่พบ tts settings)');
+
+      const patch = {};
+
+      // ── Restore basic TTS settings ──
+      if (data.tts) {
+        const t = data.tts;
+        setTts(t);
+        configureTTS(t);
+        Object.assign(patch, {
+          ttsEnabled:    t.enabled,
+          ttsReadChat:   t.readChat,
+          ttsReadGift:   t.readGift,
+          ttsReadFollow: t.readFollow,
+          ttsRate:       t.rate,
+          ttsPitch:      t.pitch,
+          ttsVolume:     t.volume,
+          ttsVoice:      t.voice,
+        });
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ttplus-tts', { detail: { enabled: t.enabled } }));
+        }
+      }
+
+      // ── Restore engine config (ไม่แตะ API keys) ──
+      if (data.engines) {
+        const eng = data.engines;
+        if (eng.googleVoice)                { setGoogleVoice(eng.googleVoice);   localStorage.setItem('ttplus_google_tts_voice', eng.googleVoice);  patch.ttsGoogleVoice   = eng.googleVoice; }
+        if (eng.geminiVoice)                { setGeminiVoice(eng.geminiVoice);   localStorage.setItem('ttplus_gemini_voice',     eng.geminiVoice);   patch.ttsGeminiVoice   = eng.geminiVoice; }
+        if (eng.geminiPersona !== undefined) { setGeminiPersona(eng.geminiPersona); localStorage.setItem('ttplus_gemini_persona', eng.geminiPersona); patch.ttsGeminiPersona  = eng.geminiPersona; }
+        if (eng.geminiShuffle !== undefined) { setGeminiShuffle(eng.geminiShuffle); saveGeminiShuffle(eng.geminiShuffle);                            patch.ttsGeminiShuffle  = eng.geminiShuffle; }
+        if (eng.gemini25Linked !== undefined){ setGemini25Linked(eng.gemini25Linked); saveGemini25Linked(eng.gemini25Linked);                        patch.ttsGemini25Linked = eng.gemini25Linked; }
+        if (eng.gemini25Voice)              { setGemini25Voice(eng.gemini25Voice);   saveGemini25Voice(eng.gemini25Voice);                           patch.ttsGemini25Voice  = eng.gemini25Voice; }
+        if (eng.gemini25Persona !== undefined){ setGemini25Persona(eng.gemini25Persona); saveGemini25Persona(eng.gemini25Persona);                   patch.ttsGemini25Persona= eng.gemini25Persona; }
+        if (eng.gemini25Shuffle !== undefined){ setGemini25Shuffle(eng.gemini25Shuffle); saveGemini25Shuffle(eng.gemini25Shuffle);                   patch.ttsGemini25Shuffle= eng.gemini25Shuffle; }
+        if (Array.isArray(eng.enabledEngines) && eng.enabledEngines.length) { setEnabledEngines(eng.enabledEngines); saveEnabledEngines(eng.enabledEngines); patch.ttsEnabledEngines = eng.enabledEngines; }
+        if (Array.isArray(eng.engineOrder)   && eng.engineOrder.length)    { setEngineOrder(eng.engineOrder);    saveEngineOrder(eng.engineOrder);    patch.ttsEngineOrder    = eng.engineOrder; }
+        if (Array.isArray(eng.customPersonas) && eng.customPersonas.length >= 2) {
+          const cp = eng.customPersonas.slice(0, 2);
+          setCustomPersonas(cp);
+          localStorage.setItem('ttplus_custom_personas', JSON.stringify(cp));
+        }
+      }
+
+      // บันทึกลง Firestore
+      if (user && Object.keys(patch).length > 0) {
+        await api.post('/api/settings', { settings: patch });
+        setCachedSettings({ ...(getCachedSettings() || {}), ...patch });
+      }
+
+      toast.success('⬆ Import TTS เรียบร้อย', { id: toastId });
+    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
+  }, [user]);
 
   const isDark   = theme === 'dark';
   const card     = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
@@ -322,7 +402,15 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           </div>
           <div className="flex items-center gap-2">
             {saving && <span className="text-xs text-gray-500">💾 กำลังบันทึก...</span>}
-            {user && (
+            {user && (<>
+              <button
+                onClick={() => importRef.current?.click()}
+                title="Import TTS Settings จากไฟล์ Backup"
+                className={clsx('flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
+                  isDark ? 'bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
+              >
+                ⬆ Import
+              </button>
               <button
                 onClick={handleExport}
                 title="Export TTS Settings เป็นไฟล์ Backup"
@@ -331,7 +419,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               >
                 ⬇ Export
               </button>
-            )}
+            </>)}
             <button onClick={() => setTheme(isDark ? 'light' : 'dark')}
               className="p-2 rounded-lg text-gray-400 text-lg">{isDark ? '☀️' : '🌙'}</button>
           </div>
@@ -1289,6 +1377,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
         </div>
       </main>
+
+      {/* Hidden file input for Import */}
+      <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
 
       {/* Login Modal */}
       {showLoginModal && (

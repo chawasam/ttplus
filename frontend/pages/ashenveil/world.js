@@ -358,6 +358,11 @@ export default function GameWorld() {
         setZone(data.character.location || 'town_square');
         addLog(`👤 ${data.character.name} (${data.character.race} ${data.character.class} Lv.${data.character.level})`);
         addLog(`📍 ${getZoneName(data.character.location || 'town_square')}`);
+        // Passive farming reward — แจ้งเตือนถ้าสะสม gold ระหว่างออฟไลน์
+        if (data.passiveGold > 0) {
+          addLog(`🌾 สะสม Gold ระหว่างออกไป: +${data.passiveGold} Gold`);
+          toast.success(`🌾 +${data.passiveGold} Gold (passive farming)`, { duration: 4000 });
+        }
         // Auto-load daily quests + quest log (for progression visibility + badge)
         loadQuests().catch(() => {});
         loadQuestLog().catch(() => {});
@@ -648,7 +653,7 @@ export default function GameWorld() {
       // Refresh list + char profile (สำหรับ stamina/stone count)
       await loadRPShop();
       if ((data.granted || []).some(g => g.consumableType === 'stamina_refill')) {
-        try { const { data: cd } = await loadCharacter(); setChar(cd); } catch {}
+        try { const { data: cd } = await loadCharacter(); setChar(cd.character); } catch {}
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'ซื้อไม่ได้');
@@ -1394,7 +1399,7 @@ export default function GameWorld() {
 
         // Sync char state จาก server ใน background หลังทุก victory
         // เพื่อให้ level/xp/xpToNext ถูกต้องแม้ rewards.levelUp มาไม่ครบ
-        loadCharacter().then(r => { if (r?.data) setChar(r.data); }).catch(() => {});
+        loadCharacter().then(r => { if (r?.data?.character) setChar(r.data.character); }).catch(() => {});
 
         // Pending loot (inventory overflow) — show modal
         if (rewards.pendingDrops?.length) {
