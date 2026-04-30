@@ -55,7 +55,7 @@ import LiveFeed from '../components/LiveFeed';
 const MAX_EVENTS = 100;
 
 // user, authLoading มาจาก _app.js (global auth state)
-export default function Dashboard({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
+export default function Dashboard({ theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const router = useRouter();
 
   const [tiktokUsername, setTiktokUsername] = useState('');
@@ -489,9 +489,9 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   return (
     <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} onSignOut={handleSignOut} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} onSignOut={handleSignOut} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className="ml-16 md:ml-56 p-4 md:p-6">
+      <main className={clsx('p-4 md:p-6', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
 
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">

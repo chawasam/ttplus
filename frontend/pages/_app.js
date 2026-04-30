@@ -165,6 +165,7 @@ export default function App({ Component, pageProps }) {
 
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // activePage — เริ่มจาก URL ปัจจุบัน
   const [activePage, setActivePageState] = useState('dashboard');
@@ -196,6 +197,10 @@ export default function App({ Component, pageProps }) {
     if (saved && saved !== theme) {
       setThemeState(saved);
     }
+    try {
+      const col = localStorage.getItem('ttplus_sidebar_col');
+      if (col !== null) setSidebarCollapsed(col === '1');
+    } catch {}
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -205,6 +210,14 @@ export default function App({ Component, pageProps }) {
   function setTheme(t) {
     localStorage.setItem('theme', t);
     setThemeState(t);
+  }
+
+  function toggleSidebar() {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('ttplus_sidebar_col', next ? '1' : '0'); } catch {}
+      return next;
+    });
   }
 
   // Widget pages และหน้าอื่นที่ไม่ใช่ main app — render ตามปกติ
@@ -274,7 +287,7 @@ export default function App({ Component, pageProps }) {
   }
 
   // Main app — render ทุกหน้าพร้อมกัน ซ่อน/แสดงด้วย display
-  const sharedProps = { theme, setTheme, user, authLoading, activePage, setActivePage };
+  const sharedProps = { theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar };
 
   // ── Single-tab overlay (แสดงเฉพาะเมื่อ tabRole !== null) ──────────────────
   if (tabRole) {

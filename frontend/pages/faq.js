@@ -73,7 +73,7 @@ const TAG_COLORS = {
   'ทั่วไป':   'bg-gray-500/20 text-gray-400',
 };
 
-export default function FaqPage({ theme, user, activePage, setActivePage }) {
+export default function FaqPage({ theme, user, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const isDark  = theme === 'dark';
   const isOwner = user?.email === OWNER_EMAIL;
   const [stats, setStats]       = useState(null);
@@ -95,9 +95,9 @@ export default function FaqPage({ theme, user, activePage, setActivePage }) {
 
   return (
     <div className={clsx('flex min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900')}>
-      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className="flex-1 ml-16 md:ml-56 p-4 md:p-8 max-w-3xl">
+      <main className={clsx('flex-1 p-4 md:p-8 max-w-3xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
         {/* Header */}
         <div className="mb-8">
           <h1 className={clsx('text-2xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>

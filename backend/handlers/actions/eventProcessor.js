@@ -2,12 +2,14 @@
 // เรียกจาก tiktok.js ทุกครั้งที่รับ event จาก TikTok Live
 
 const admin = require('firebase-admin');
+const { emitToUser } = require('../../lib/emitter');
 
 function db() { return admin.firestore(); }
 
 // Cache events ต่อ VJ (refresh ทุก 60 วินาที)
 const eventsCache = new Map(); // vjUid → { events, loadedAt }
 const CACHE_TTL   = 60_000;
+
 
 // Cooldown tracking: globalCooldown + userCooldown
 const globalCooldowns = new Map(); // `${vjUid}_${actionId}` → lastFiredAt
@@ -39,7 +41,9 @@ setInterval(() => {
 
 async function getVjEvents(vjUid) {
   const cached = eventsCache.get(vjUid);
-  if (cached && Date.now() - cached.loadedAt < CACHE_TTL) return cached.events;
+  if (cached && Date.now() - cached.loadedAt < CACHE_TTL) {
+    return { events: cached.events, actionsEnabled: cached.actionsEnabled };
+  }
 
   // Lazy cleanup: ลบ entry ที่เก่า >10 นาที ป้องกัน Map โตขึ้นเรื่อยๆ สำหรับ VJ ที่หยุด stream แล้ว
   const STALE_TTL = CACHE_TTL * 10; // 10 นาที
@@ -48,17 +52,20 @@ async function getVjEvents(vjUid) {
     if (now - val.loadedAt >= STALE_TTL) eventsCache.delete(key);
   }
 
-  const [evSnap, acSnap] = await Promise.all([
+  const [evSnap, acSnap, settingsDoc] = await Promise.all([
     db().collection('tt_events').where('uid', '==', vjUid).where('enabled', '==', true).get(),
     db().collection('tt_actions').where('uid', '==', vjUid).where('enabled', '==', true).get(),
+    db().collection('user_settings').doc(vjUid).get(),
   ]);
 
   const actions = {};
   acSnap.docs.forEach(d => { actions[d.id] = { id: d.id, ...d.data() }; });
 
   const events = evSnap.docs.map(d => ({ id: d.id, ...d.data(), _actions: actions }));
-  eventsCache.set(vjUid, { events, loadedAt: Date.now() });
-  return events;
+  const actionsEnabled = settingsDoc.exists ? (settingsDoc.data().actionsEnabled ?? true) : true;
+
+  eventsCache.set(vjUid, { events, actionsEnabled, loadedAt: Date.now() });
+  return { events, actionsEnabled };
 }
 
 // Invalidate cache เมื่อ VJ แก้ actions/events
@@ -100,6 +107,28 @@ function canTrigger(event, data) {
 
 // ── Queue action to Firestore (overlay widget จะ poll ดึงไป) ───────────────
 async function queueAction(vjUid, action, context) {
+  const OBS_TYPES = ['switch_obs_scene', 'activate_obs_source'];
+  const hasObs = action.types?.some(t => OBS_TYPES.includes(t));
+
+  // ── Direct OBS path: ส่งผ่าน Socket.IO ตรงไปยัง dashboard ของ user ──
+  // dashboard/actions page รับแล้วยิง OBS WebSocket โดยไม่ต้องผ่าน overlay widget
+  // คืนค่า true ถ้า dashboard connected (มี socket) — ใช้ flag ป้องกัน overlay ยิง OBS ซ้ำ
+  let obsHandledBySocket = false;
+  if (hasObs) {
+    obsHandledBySocket = emitToUser(vjUid, 'obs_action', {
+      types:           action.types,
+      obsScene:        action.obsScene        || '',
+      obsSceneReturn:  action.obsSceneReturn  ?? false,
+      obsSource:       action.obsSource       || '',
+      obsSourceReturn: action.obsSourceReturn ?? false,
+      displayDuration: action.displayDuration ?? 5,
+      name:            action.name || '',
+    });
+  }
+
+  // ── Firestore queue: overlay widget ใช้สำหรับ visual/audio เสมอ
+  // obsHandledBySocket = true  → overlay จะข้าม OBS commands (dashboard ยิงแล้วผ่าน socket)
+  // obsHandledBySocket = false → overlay เป็น fallback ยิง OBS แทน (กรณี dashboard ไม่ได้เปิด)
   try {
     await db().collection('tt_action_queue').add({
       vjUid,
@@ -115,10 +144,11 @@ async function queueAction(vjUid, action, context) {
       // TTS
       ttsText:    fillTemplate(action.ttsText   || '', context),
       // OBS
-      obsScene:        action.obsScene        || '',
-      obsSceneReturn:  action.obsSceneReturn  ?? false,
-      obsSource:       action.obsSource       || '',
-      obsSourceReturn: action.obsSourceReturn ?? false,
+      obsScene:          action.obsScene        || '',
+      obsSceneReturn:    action.obsSceneReturn  ?? false,
+      obsSource:         action.obsSource       || '',
+      obsSourceReturn:   action.obsSourceReturn ?? false,
+      obsHandledBySocket,   // overlay เช็คค่านี้ก่อนยิง OBS
       // Display
       displayDuration: action.displayDuration ?? 5,
       fadeInOut:       action.fadeInOut        ?? true,
@@ -146,8 +176,12 @@ function fillTemplate(text, ctx) {
 async function processEvent(vjUid, eventType, data) {
   if (!vjUid) return;
 
+
+
   try {
-    const events = await getVjEvents(vjUid);
+    const { events, actionsEnabled } = await getVjEvents(vjUid);
+    // ── Master switch: ถ้า VJ ปิดระบบ Actions → ไม่ทำอะไรเลย ──
+    if (!actionsEnabled) return;
     if (!events.length) return;
 
     // หา events ที่ตรงกับ trigger
@@ -183,13 +217,17 @@ async function processEvent(vjUid, eventType, data) {
 
     if (!matching.length) return;
 
-    // ── gift_min_coins priority: ยิงเฉพาะ threshold สูงสุดที่ match ──
-    // ถ้ามีหลาย event เช่น ≥1, ≥10, ≥100 และ gift=150 → ยิงแค่ ≥100
-    const giftCoinEvents = matching.filter(ev => ev.trigger === 'gift_min_coins');
-    const otherEvents    = matching.filter(ev => ev.trigger !== 'gift_min_coins');
+    // ── gift_min_coins priority ──────────────────────────────────────────────
+    // 1. ถ้ามี specific_gift match → specific_gift ชนะ, ข้าม gift_min_coins ทั้งหมด
+    // 2. ถ้าไม่มี specific_gift → ยิงเฉพาะ gift_min_coins threshold สูงสุดที่ match อันเดียว
+    //    เช่น ≥1, ≥10, ≥100 และ gift=150 → ยิงแค่ ≥100
+    const giftCoinEvents    = matching.filter(ev => ev.trigger === 'gift_min_coins');
+    const otherEvents       = matching.filter(ev => ev.trigger !== 'gift_min_coins');
+    const specificGiftHit   = otherEvents.some(ev => ev.trigger === 'specific_gift');
     const prioritized = [
       ...otherEvents,
-      ...(giftCoinEvents.length > 0
+      // ถ้า specific_gift match อยู่แล้ว → ไม่ยิง gift_min_coins เลย
+      ...(!specificGiftHit && giftCoinEvents.length > 0
         ? [giftCoinEvents.reduce((best, ev) =>
             (ev.minCoins || 0) > (best.minCoins || 0) ? ev : best
           )]
@@ -203,24 +241,34 @@ async function processEvent(vjUid, eventType, data) {
       likeCount: data.likeCount || 0,
     };
 
+    // firedActionIds: dedup ข้าม events ทั้งหมด
+    // ป้องกันกรณีที่ action เดียวกันอยู่ใน 2 events ที่ match พร้อมกัน
+    // เช่น specific_gift + gift_min_coins ชน → ยิง action เดิม 2 ครั้ง
+    const firedActionIds = new Set();
+
     for (const ev of prioritized) {
       const actionsMap = ev._actions || {};
 
       // Trigger all actions
-      for (const actionId of (ev.actionIds || [])) {
+      for (const actionId of [...new Set(ev.actionIds || [])]) {
+        if (firedActionIds.has(actionId)) {
+          continue;
+        }
         const action = actionsMap[actionId];
         if (!action) continue;
         if (!checkCooldown(vjUid, actionId, data.uniqueId, action)) continue;
+        firedActionIds.add(actionId);
         await queueAction(vjUid, action, context);
       }
 
       // Trigger one random action
       if (ev.randomActionIds?.length) {
-        const pool   = ev.randomActionIds.filter(id => actionsMap[id]);
+        const pool = ev.randomActionIds.filter(id => actionsMap[id] && !firedActionIds.has(id));
         if (pool.length) {
           const pick   = pool[Math.floor(Math.random() * pool.length)];
           const action = actionsMap[pick];
           if (action && checkCooldown(vjUid, pick, data.uniqueId, action)) {
+            firedActionIds.add(pick);
             await queueAction(vjUid, action, context);
           }
         }
@@ -231,4 +279,86 @@ async function processEvent(vjUid, eventType, data) {
   }
 }
 
-module.exports = { processEvent, invalidateCache, clearVjCooldowns };
+// ── Simulate: fire event + return list of matched events/actions (for test UI) ──
+async function simulateEventWithResult(vjUid, eventType, data) {
+  if (!vjUid) return { matched: [] };
+  // Simulate ยังใช้ได้แม้ระบบจะปิด — ช่วย debug โดยไม่ต้อง toggle กลับมาเปิด
+  try {
+    const { events } = await getVjEvents(vjUid);
+    if (!events.length) return { matched: [] };
+
+    const matching = events.filter(ev => {
+      if (!canTrigger(ev, data)) return false;
+      switch (ev.trigger) {
+        case 'join':           return eventType === 'join';
+        case 'first_activity': return eventType === 'first_activity';
+        case 'share':          return eventType === 'share';
+        case 'follow':         return eventType === 'follow';
+        case 'subscribe':      return eventType === 'subscribe';
+        case 'chat':           return eventType === 'chat';
+        case 'command':
+          return eventType === 'chat' &&
+            data.comment?.trim().toLowerCase().startsWith((ev.keyword || '').toLowerCase());
+        case 'likes':
+          return eventType === 'like' && (data.likeCount || 0) >= (ev.likesCount || 1);
+        case 'gift_min_coins':
+          return eventType === 'gift' && (data.diamondCount || 0) >= (ev.minCoins || 1);
+        case 'specific_gift':
+          return eventType === 'gift' &&
+            data.giftName?.toLowerCase() === (ev.specificGiftName || '').toLowerCase();
+        case 'subscriber_emote': return eventType === 'chat' && data.isSubscriberEmote;
+        case 'fan_club_sticker': return eventType === 'chat' && data.isFanClubSticker;
+        case 'tiktok_shop':      return eventType === 'shop_purchase';
+        default: return false;
+      }
+    });
+
+    // gift_min_coins priority
+    const giftCoinEvents = matching.filter(ev => ev.trigger === 'gift_min_coins');
+    const otherEvents    = matching.filter(ev => ev.trigger !== 'gift_min_coins');
+    const prioritized = [
+      ...otherEvents,
+      ...(giftCoinEvents.length > 0
+        ? [giftCoinEvents.reduce((best, ev) =>
+            (ev.minCoins || 0) > (best.minCoins || 0) ? ev : best
+          )]
+        : []),
+    ];
+
+    const context = {
+      username:  data.uniqueId || data.nickname || 'ทดสอบ',
+      giftname:  data.giftName || '',
+      coins:     data.diamondCount || 0,
+      likeCount: data.likeCount || 0,
+    };
+
+    // สร้าง summary ก่อน fire จริง
+    const matched = prioritized.map(ev => {
+      const actionsMap = ev._actions || {};
+      const firedActions = (ev.actionIds || [])
+        .map(id => actionsMap[id])
+        .filter(Boolean)
+        .map(a => ({ id: a.id, name: a.name }));
+      const randomPool = (ev.randomActionIds || [])
+        .map(id => actionsMap[id])
+        .filter(Boolean)
+        .map(a => ({ id: a.id, name: a.name }));
+      return {
+        eventId:    ev.id,
+        trigger:    ev.trigger,
+        actions:    firedActions,
+        randomPool: randomPool,
+      };
+    });
+
+    // fire จริง
+    await processEvent(vjUid, eventType, data);
+
+    return { matched };
+  } catch (err) {
+    console.error('[EventProcessor] simulateEventWithResult:', err.message);
+    return { matched: [], error: err.message };
+  }
+}
+
+module.exports = { processEvent, simulateEventWithResult, invalidateCache, clearVjCooldowns };

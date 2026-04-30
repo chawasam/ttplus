@@ -10,7 +10,7 @@ import { showError } from '../lib/errorHandler';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 
-export default function SettingsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
+export default function SettingsPage({ theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const [saving, setSaving]       = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading, setLoginLoading]     = useState(false);
@@ -130,8 +130,8 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
 
   return (
     <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
-      <main className="ml-16 md:ml-56 p-4 md:p-6 max-w-2xl">
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <main className={clsx('p-4 md:p-6 max-w-2xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>⚙️ Settings</h1>
           <div className="flex items-center gap-2">

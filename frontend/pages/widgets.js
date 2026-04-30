@@ -253,7 +253,7 @@ const WIDGET_GROUPS = [
 ];
 
 // user, authLoading มาจาก _app.js
-export default function WidgetsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
+export default function WidgetsPage({ theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const [widgetCid, setWidgetCid]     = useState(''); // channel ID สั้น เช่น "10001"
   const [tokenLoading, setTokenLoading] = useState(false);
   const [baseUrl, setBaseUrl]         = useState('');
@@ -264,10 +264,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   );
   // drawer: widgetId ที่กำลัง customize | null = ปิด
   const [drawerWidget, setDrawerWidget] = useState(null);
-  // howto: collapsed/expanded — จำไว้ใน localStorage
-  const [howtoOpen, setHowtoOpen] = useState(() => {
-    try { return localStorage.getItem('ttplus_howto') !== '0'; } catch { return true; }
-  });
+  // howto: collapsed/expanded — default true (SSR safe), sync จาก localStorage ใน useEffect
+  const [howtoOpen, setHowtoOpen] = useState(true);
   // group collapse state — default เปิดทั้งหมด
   const [groupOpen, setGroupOpen] = useState({ chat: true, gifts: true, obs: true, music: true });
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -282,7 +280,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     )
   );
 
-  const socketRef = useRef(null);
+  const socketRef    = useRef(null);
+  const importRef    = useRef(null);
   const [spotifyConnected, setSpotifyConnected] = useState(null); // null=unknown, true, false
   const [coinjarSimulating, setCoinjarSimulating] = useState(false);
 
@@ -295,6 +294,9 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   useEffect(() => {
     try {
       if (localStorage.getItem('ttplus_widgets_audio') === '1') setAudioEnabled(true);
+    } catch {}
+    try {
+      if (localStorage.getItem('ttplus_howto') === '0') setHowtoOpen(false);
     } catch {}
   }, []);
 
@@ -339,9 +341,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
     let mounted = true;
 
+    let cleanupListeners = () => {};
+
     if (user) {
       // Connect socket for real-time style push + audio alerts
-      let cleanupListeners = () => {};
       user.getIdToken().then(token => {
         if (!mounted) return;
         const socket = connectSocket(token);
@@ -420,12 +423,24 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   const fetchWidgetToken = useCallback(async (forceUser) => {
     const u = forceUser ?? user;
     if (!u) { setShowLoginModal(true); return; }
+
+    // ── Cache CID ใน localStorage ต่อ uid — ไม่ต้อง request ทุก refresh ──
+    const cacheKey = `ttplus_cid_${u.uid}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached && /^\d{4,8}$/.test(cached)) {
+        setWidgetCid(cached);
+        return; // ใช้ cache — ไม่ hit API
+      }
+    } catch {}
+
     setTokenLoading(true);
     try {
       const res = await api.post('/api/widget-token');
       const cid = res.data?.cid;
       if (typeof cid === 'string' && /^\d{4,8}$/.test(cid)) {
         setWidgetCid(cid);
+        try { localStorage.setItem(cacheKey, cid); } catch {} // เก็บ cache
       } else {
         toast.error('Widget ID ไม่ถูกต้อง กรุณาลองใหม่');
       }
@@ -603,6 +618,27 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   const tokenReady = !!widgetCid && !tokenLoading;
 
+  // ── Import Backup ──────────────────────────────────────────────────────────
+  const handleImport = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const toastId = toast.loading('กำลัง Import...');
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.widgetStyles) throw new Error('ไฟล์ไม่ถูกต้อง (ไม่พบ widgetStyles)');
+      // restore styles
+      setStyles(data.widgetStyles);
+      if (data.customConfigs) setCustomConfigs(data.customConfigs);
+      // save to backend
+      if (user) {
+        await api.post('/api/settings', { settings: { widgetStyles: data.widgetStyles } });
+      }
+      toast.success('⬆ Import Widgets เรียบร้อย', { id: toastId });
+    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
+  }, [user]);
+
   const isDark  = theme === 'dark';
   const bg      = isDark ? 'bg-gray-950 text-white'       : 'bg-gray-100 text-gray-900';
   const card    = isDark ? 'bg-gray-900 border-gray-800'  : 'bg-white border-gray-200 shadow-sm';
@@ -614,9 +650,9 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
 
   return (
     <div className={clsx('min-h-screen', bg)}>
-      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className="ml-16 md:ml-56 p-4 md:p-6">
+      <main className={clsx('p-4 md:p-6', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
@@ -629,8 +665,15 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Export Backup */}
-            {user && (
+            {/* Export / Import Backup */}
+            {user && (<>
+              <button
+                onClick={() => importRef.current?.click()}
+                title="Import Widget Settings จากไฟล์ Backup"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80"
+              >
+                ⬆ Import
+              </button>
               <button
                 onClick={() => {
                   const data = {
@@ -654,29 +697,8 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
               >
                 ⬇ Export
               </button>
-            )}
-            {/* ฟังเสียง Alert ใน Browser — default OFF */}
-            {user && (
-              <button
-                onClick={() => {
-                  unlockAudio(); // unlock AudioContext ด้วย user gesture ก่อนเสมอ
-                  const next = !audioEnabled;
-                  setAudioEnabled(next);
-                  try { localStorage.setItem('ttplus_widgets_audio', next ? '1' : '0'); } catch {}
-                  if (next) setTimeout(() => playDing('gift'), 50); // ทดสอบเสียงหลัง unlock
-                }}
-                title={audioEnabled ? 'ปิดเสียง Alert บนเบราว์เซอร์นี้' : 'เปิดเสียง Alert บนเบราว์เซอร์นี้'}
-                className={clsx(
-                  'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
-                  audioEnabled
-                    ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                    : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
-                )}
-              >
-                {audioEnabled ? '🔊' : '🔇'}
-                <span className="hidden sm:inline">{audioEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
-              </button>
-            )}
+            </>)}
+            {/* audio toggle — removed */}
             {!user && (
               <button onClick={() => setShowLoginModal(true)}
                 className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-semibold transition">
@@ -1278,6 +1300,9 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
           </div>
         </div>
       )}
+
+      {/* Hidden import input */}
+      <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
     </div>
   );
 }

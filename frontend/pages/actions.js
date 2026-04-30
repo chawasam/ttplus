@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
 import { speak } from '../lib/tts';
+import { getSocket } from '../lib/socket';
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 
@@ -19,6 +20,25 @@ const ACTION_TYPES = [
   { id: 'read_tts',           icon: '🗣',  label: 'อ่านออกเสียง (TTS)' },
   { id: 'switch_obs_scene',   icon: '🎬',  label: 'สลับ Scene OBS' },
   { id: 'activate_obs_source',icon: '👁',  label: 'เปิด/ปิด OBS Source' },
+];
+
+// ── Column definitions for the resizable Action table ────────────────────────
+const COL_DEFS = [
+  { id: 'toggle', label: '',            defaultW: 52,  minW: 52  },
+  { id: 'name',   label: 'ชื่อ Action', defaultW: 210, minW: 100 },
+  { id: 'scr',    label: 'scr',         defaultW: 58,  minW: 48  },
+  { id: 'dur',    label: 'เวลา',        defaultW: 64,  minW: 48  },
+  { id: 'types',  label: 'ประเภท',      defaultW: 100, minW: 60  },
+  { id: 'desc',   label: 'รายละเอียด', defaultW: 340, minW: 100 },
+  { id: 'btns',   label: '',            defaultW: 190, minW: 190 },
+];
+
+const EVT_COL_DEFS = [
+  { id: 'toggle',  label: '',           defaultW: 48,  minW: 48  },
+  { id: 'cond',    label: 'เงื่อนไข',   defaultW: 220, minW: 120 },
+  { id: 'who',     label: 'ใครทำได้',   defaultW: 110, minW: 80  },
+  { id: 'linked',  label: 'Actions',    defaultW: 320, minW: 120 },
+  { id: 'btns',    label: '',           defaultW: 140, minW: 140 },
 ];
 
 const TRIGGER_LIST = [
@@ -204,7 +224,7 @@ function Input({ label, value, onChange, placeholder, type = 'text', min, step, 
       <input
         type={type} value={value} onChange={e => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
         placeholder={placeholder} min={min} step={step}
-        className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+        className="bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none w-full"
       />
     </div>
   );
@@ -268,7 +288,7 @@ function GiftPicker({ value, onChange, giftList }) {
       <input
         value={search} onChange={e => setSearch(e.target.value)}
         placeholder="ค้นหาของขวัญ..."
-        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none placeholder-gray-600"
+        className="w-full bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none placeholder-slate-600"
       />
 
       {/* Price filter tabs */}
@@ -280,7 +300,7 @@ function GiftPicker({ value, onChange, giftList }) {
               'text-[11px] px-2.5 py-0.5 rounded-full border transition-colors',
               priceFilter === f.id
                 ? 'bg-brand-700/50 border-brand-600 text-brand-200'
-                : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'
+                : 'bg-[#161b28] border-[#2d3550] text-slate-400 hover:border-slate-500'
             )}>
             {f.label}
           </button>
@@ -288,7 +308,7 @@ function GiftPicker({ value, onChange, giftList }) {
       </div>
 
       {/* Chip grid */}
-      <div className="h-40 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 p-1.5">
+      <div className="h-40 overflow-y-auto rounded-lg border border-[#2d3550] bg-[#161b28] p-1.5">
         {visible.length === 0 ? (
           <div className="h-full flex items-center justify-center text-gray-600 text-xs">
             {search ? `ไม่พบ "${search}"` : 'ไม่มีของขวัญในช่วงราคานี้'}
@@ -424,7 +444,7 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
         <select
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+          className="bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none w-full"
         >
           <option value="">— เลือก {label} —</option>
           {items.map(name => (
@@ -437,7 +457,7 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none w-full"
+          className="bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none w-full"
         />
       )}
     </div>
@@ -509,7 +529,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
             <div>
               <label className="text-xs text-gray-400">Overlay Screen</label>
               <select value={form.overlayScreen} onChange={e => set('overlayScreen', Number(e.target.value))}
-                className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:border-brand-500 focus:outline-none">
+                className="mt-1 w-full bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Screen 1</option>
                 <option value={2}>Screen 2</option>
               </select>
@@ -635,7 +655,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-[#1a1f30] border border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
@@ -954,7 +974,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-[#1a1f30] border border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
@@ -1029,7 +1049,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
 
 // ── OBS command executor (one-shot, keeps socket open until return fires) ────
 // onStatus(msg) — callback ส่ง feedback กลับไป UI (optional)
-function fireObsCommands(host, port, action, onStatus) {
+function fireObsCommands(host, port, action, onStatus, sourceMap = {}) {
   const notify = (msg) => { if (onStatus) onStatus(msg); };
 
   let ws;
@@ -1042,19 +1062,18 @@ function fireObsCommands(host, port, action, onStatus) {
     closeTimer = setTimeout(() => { try { ws.close(); } catch {} }, delayMs);
   };
 
-  // Timeout กรณี OBS ไม่ตอบ
   const connectTimeout = setTimeout(() => {
     notify('❌ OBS ไม่ตอบสนอง — ตรวจสอบว่า OBS เปิดอยู่และ WebSocket Server เปิดใช้งาน');
     try { ws.close(); } catch {}
   }, 5000);
 
-  // Track pending request types by requestId so we can route op=7 responses
+  // pending[requestId] = { type, meta } — meta พก context เพิ่มเติมสำหรับ response handler
   const pending = {};
 
-  const send = (requestType, requestData = {}) => {
+  const send = (requestType, requestData = {}, meta = {}) => {
     if (ws.readyState !== 1) return;
     const requestId = `${requestType}_${Date.now()}_${Math.random()}`;
-    pending[requestId] = requestType;
+    pending[requestId] = { type: requestType, meta };
     ws.send(JSON.stringify({ op: 6, d: { requestType, requestId, requestData } }));
     return requestId;
   };
@@ -1063,84 +1082,128 @@ function fireObsCommands(host, port, action, onStatus) {
     let msg; try { msg = JSON.parse(evt.data); } catch { return; }
 
     if (msg.op === 0) {
-      // Hello → Identify
       clearTimeout(connectTimeout);
       ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
 
     } else if (msg.op === 2) {
-      // Identified — kick off initial requests
       notify('🔌 เชื่อมต่อ OBS สำเร็จ กำลังส่งคำสั่ง...');
       const hasReturn   = !!(action.obsSceneReturn || action.obsSourceReturn);
       const returnDelay = (action.displayDuration || 5) * 1000;
 
+      const obsScene  = action.obsScene?.trim()  || '';
+      const obsSource = action.obsSource?.trim() || '';
+      const hasScene  = action.types?.includes('switch_obs_scene')    && obsScene;
+      const hasSource = action.types?.includes('activate_obs_source') && obsSource;
+
       // Switch scene
-      if (action.types?.includes('switch_obs_scene') && action.obsScene) {
+      if (hasScene) {
         if (action.obsSceneReturn) {
-          send('GetCurrentProgramScene', {});
+          // ต้องรู้ current scene ก่อนเพื่อกลับ
+          send('GetCurrentProgramScene', {}, { purpose: 'scene_return' });
         } else {
-          send('SetCurrentProgramScene', { sceneName: action.obsScene });
-          notify(`✅ สลับไป Scene "${action.obsScene}"`);
+          send('SetCurrentProgramScene', { sceneName: obsScene });
+          notify(`✅ สลับไป Scene "${obsScene}"`);
         }
       }
 
-      // Activate source — OBS WS v5 requires sceneItemId (integer), not sceneItemName
-      // ถ้าไม่มี obsScene ให้ดึง current scene ก่อน แล้วค่อย GetSceneItemList
-      if (action.types?.includes('activate_obs_source') && action.obsSource) {
-        if (action.obsScene) {
-          send('GetSceneItemList', { sceneName: action.obsScene });
+      // Activate source
+      if (hasSource) {
+        if (obsScene) {
+          // รู้ scene อยู่แล้ว → ดึง item list ได้เลย (ส่ง sceneName ใน meta ด้วย)
+          send('GetSceneItemList', { sceneName: obsScene }, { purpose: 'source', sceneName: obsScene });
         } else {
-          // ไม่ได้ระบุ scene → ดึง current scene ก่อน
-          send('GetCurrentProgramScene', {});
+          // ไม่รู้ scene → ดึง current scene ก่อน (แยก purpose จาก scene_return)
+          send('GetCurrentProgramScene', {}, { purpose: 'source_scene' });
         }
       }
 
-      // Keep socket alive long enough for any return command to fire
       scheduleClose(hasReturn ? returnDelay + 3000 : 4000);
 
     } else if (msg.op === 7) {
-      // Route response by original requestType
       const reqId   = msg.d?.requestId || '';
-      const reqType = pending[reqId] || '';
+      const entry   = pending[reqId] || {};
+      const reqType = entry.type || '';
+      const meta    = entry.meta || {};
       delete pending[reqId];
 
-      // ตรวจสอบ status OBS — ถ้า request ล้มเหลวให้แจ้ง
       const status = msg.d?.requestStatus;
       if (status && !status.result) {
+        // GetSceneItemList ล้มเหลว (scene ไม่มีใน OBS หรือชื่อผิด) → ลอง sourceMap fallback ก่อน
+        if (reqType === 'GetSceneItemList' && action.obsSource?.trim()) {
+          const obsSource  = action.obsSource.trim();
+          const srcLower   = obsSource.toLowerCase();
+          const mapKey     = Object.keys(sourceMap).find(k => k === obsSource || k.toLowerCase() === srcLower);
+          const locations  = mapKey ? sourceMap[mapKey] : [];
+          if (locations.length) {
+            const loc = locations[0];
+            notify(`▶ เปิด Source "${obsSource}" ใน Scene "${loc.sceneName}" (พื้นหลัง)${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`);
+            send('SetSceneItemEnabled', { sceneName: loc.sceneName, sceneItemId: loc.sceneItemId, sceneItemEnabled: true });
+            if (action.obsSourceReturn) {
+              const dur = (action.displayDuration || 5) * 1000;
+              setTimeout(() => send('SetSceneItemEnabled', { sceneName: loc.sceneName, sceneItemId: loc.sceneItemId, sceneItemEnabled: false }), dur);
+            }
+            return;
+          }
+        }
         notify(`❌ OBS ตอบกลับ error: ${status.comment || 'unknown error'} (code ${status.code})`);
         return;
       }
 
       if (reqType === 'GetCurrentProgramScene') {
         const current = msg.d.responseData?.currentProgramSceneName;
+        if (!current) return;
 
-        // กรณี switch scene with return
-        if (action.types?.includes('switch_obs_scene') && action.obsScene && action.obsSceneReturn && current) {
-          send('SetCurrentProgramScene', { sceneName: action.obsScene });
-          notify(`✅ สลับไป "${action.obsScene}" · กลับ "${current}" ใน ${action.displayDuration}s`);
+        if (meta.purpose === 'scene_return') {
+          // สลับไป target scene แล้วกลับมา current หลัง displayDuration
+          const obsScene = action.obsScene.trim();
+          send('SetCurrentProgramScene', { sceneName: obsScene });
+          notify(`✅ สลับไป "${obsScene}" · กลับ "${current}" ใน ${action.displayDuration}s`);
           const dur = (action.displayDuration || 5) * 1000;
           setTimeout(() => send('SetCurrentProgramScene', { sceneName: current }), dur);
         }
 
-        // กรณี activate source ไม่มี scene → ใช้ current scene แทน
-        if (action.types?.includes('activate_obs_source') && action.obsSource && current) {
-          send('GetSceneItemList', { sceneName: current });
+        if (meta.purpose === 'source_scene') {
+          // ได้ current scene แล้ว → ดึง item list โดยส่ง sceneName ไปใน meta
+          send('GetSceneItemList', { sceneName: current }, { purpose: 'source', sceneName: current });
         }
 
       } else if (reqType === 'GetSceneItemList') {
-        const items = msg.d.responseData?.sceneItems || [];
-        // ค้นหาแบบ case-insensitive เพื่อลด user error
-        const srcLower = action.obsSource.toLowerCase();
-        const item = items.find(i =>
-          i.sourceName === action.obsSource ||
-          i.sourceName?.toLowerCase() === srcLower
+        const items      = msg.d.responseData?.sceneItems || [];
+        const obsSource  = action.obsSource.trim();
+        const srcLower   = obsSource.toLowerCase();
+        const item       = items.find(i =>
+          i.sourceName === obsSource || i.sourceName?.toLowerCase() === srcLower
         );
         if (!item) {
-          const names = items.map(i => `"${i.sourceName}"`).join(', ');
-          notify(`❌ ไม่พบ Source "${action.obsSource}" ใน scene นี้\nมี source: ${names || '(ว่าง)'}`);
+          // ไม่พบใน scene นี้ — ดึงจาก sourceMap (สร้างตอน connect OBS)
+          const srcLowerFb = obsSource.toLowerCase();
+          const mapKey = Object.keys(sourceMap).find(k => k === obsSource || k.toLowerCase() === srcLowerFb);
+          const locations = mapKey ? sourceMap[mapKey] : [];
+          if (!locations.length) {
+            const names = items.map(i => `"${i.sourceName}"`).join(', ');
+            notify(`❌ ไม่พบ Source "${obsSource}" ในทุก Scene\nScene นี้มี: ${names || '(ว่าง)'}`);
+            return;
+          }
+          // ใช้ location แรกที่พบจาก Map (เล่นในพื้นหลัง ไม่ต้องอยู่ใน scene ปัจจุบัน)
+          const loc = locations[0];
+          notify(`▶ เปิด Source "${obsSource}" ใน Scene "${loc.sceneName}" (พื้นหลัง)${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`);
+          send('SetSceneItemEnabled', { sceneName: loc.sceneName, sceneItemId: loc.sceneItemId, sceneItemEnabled: true });
+          if (action.obsSourceReturn) {
+            const dur = (action.displayDuration || 5) * 1000;
+            setTimeout(() => send('SetSceneItemEnabled', { sceneName: loc.sceneName, sceneItemId: loc.sceneItemId, sceneItemEnabled: false }), dur);
+          }
           return;
         }
-        const sceneItemId  = item.sceneItemId; // integer required by WS v5
-        const sceneName    = action.obsScene || msg.d.responseData?.sceneName || '';
+
+        // sceneName มาจาก meta ที่ส่งไปกับ GetSceneItemList — ไม่พึ่ง responseData
+        const sceneName   = meta.sceneName || '';
+        const sceneItemId = item.sceneItemId;
+
+        if (!sceneName) {
+          notify('❌ ไม่ทราบชื่อ Scene สำหรับ SetSceneItemEnabled');
+          return;
+        }
+
         send('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true });
         notify(`✅ เปิด Source "${item.sourceName}"${action.obsSourceReturn ? ` · ปิดใน ${action.displayDuration}s` : ''}`);
 
@@ -1161,7 +1224,7 @@ function fireObsCommands(host, port, action, onStatus) {
 }
 
 // ── Preview / Test Modal ─────────────────────────────────────────────────────
-function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled }) {
+function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled, obsSourceMap }) {
   const [visible, setVisible] = useState(false);
   const [obsMsg,  setObsMsg]  = useState('');
   const audioRef = useRef(null);
@@ -1196,7 +1259,7 @@ function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled }) {
     const hasObs = action.types?.includes('switch_obs_scene') || action.types?.includes('activate_obs_source');
     if (hasObs) {
       setObsMsg('🔌 กำลังส่งคำสั่ง OBS...');
-      fireObsCommands(obsHost || 'localhost', obsPort || 4455, action, (msg) => setObsMsg(msg));
+      fireObsCommands(obsHost || 'localhost', obsPort || 4455, action, (msg) => setObsMsg(msg), obsSourceMap || {});
     }
 
     // Auto-close after displayDuration
@@ -1385,7 +1448,49 @@ function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled }) {
 }
 
 // ── Main Page ────────────────────────────────────────────────────────────────
-export default function ActionsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
+// ── Helper: สร้างคำอธิบายสั้นของ Action ──────────────────────────────────────
+// ── actionDescParts — คืน array ของ {prefix, value, bold} สำหรับ render inline ──
+// bold=true สำหรับค่าที่เป็น "source" (ไฟล์/ชื่อซอส/วิดีโอ/เสียง)
+// bold=false สำหรับซีน/TTS/Alert (ข้อความทั่วไป)
+function actionDescParts(a) {
+  const parts = [];
+  const t = a.types || [];
+  if (t.includes('switch_obs_scene')    && a.obsScene)
+    parts.push({ prefix: 'สลับซีน:', value: a.obsScene,   bold: false });
+  if (t.includes('activate_obs_source') && a.obsSource)
+    parts.push({ prefix: 'ซอร์ส:',   value: a.obsSource,  bold: true  });
+  if (t.includes('show_picture')        && a.pictureUrl)
+    parts.push({ prefix: 'รูป:',     value: a.pictureUrl.split('/').pop() || a.pictureUrl, bold: true });
+  if (t.includes('play_video')          && a.videoUrl)
+    parts.push({ prefix: 'วิดีโอ:',  value: a.videoUrl.split('/').pop()  || a.videoUrl,   bold: true });
+  if (t.includes('play_audio')          && a.audioUrl)
+    parts.push({ prefix: 'เสียง:',   value: a.audioUrl.split('/').pop()  || a.audioUrl,   bold: true });
+  if (t.includes('read_tts')            && a.ttsText)
+    parts.push({ prefix: 'TTS:',     value: a.ttsText.slice(0, 40) + (a.ttsText.length > 40 ? '…' : ''),    bold: false });
+  if (t.includes('show_alert')          && a.alertText)
+    parts.push({ prefix: 'Alert:',   value: a.alertText.slice(0, 40) + (a.alertText.length > 40 ? '…' : ''), bold: false });
+  return parts;
+}
+// ── renderDesc — JSX inline สำหรับ 1 บรรทัด ──
+function renderDesc(parts) {
+  if (!parts.length) return null;
+  return (
+    <span className="text-[13px] text-slate-500 whitespace-nowrap">
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 && <span className="mx-1.5 text-slate-700">·</span>}
+          <span className="text-slate-500">{p.prefix} </span>
+          {p.bold
+            ? <strong className="font-semibold text-slate-300">{p.value}</strong>
+            : <span className="text-slate-400">{p.value}</span>
+          }
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export default function ActionsPage({ theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const [actions,  setActions]  = useState([]);
   const [events,   setEvents]   = useState([]);
   const [loading,  setLoading]  = useState(false);
@@ -1393,6 +1498,81 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [confirmDelete, setConfirmDelete] = useState(null);
   const confirmTimerRef = useRef(null);
   const [tab,      setTab]      = useState('actions'); // actions | events | overlay | obs
+
+  // ── Pagination ──
+  const PAGE_SIZE_OPTIONS = [20, 50, 100, 0]; // 0 = ทั้งหมด
+  const [pageSize,    setPageSize]    = useState(20);
+  const [actionPage,  setActionPage]  = useState(0); // 0-indexed
+
+  // ── Master enable/disable — master switch ของทั้งระบบ Actions ──
+  const [systemEnabled, setSystemEnabled] = useState(true);
+  const [systemSaving,  setSystemSaving]  = useState(false);
+  const toggleSystem = useCallback(async () => {
+    if (systemSaving) return;
+    setSystemSaving(true);
+    setSystemEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem('ttplus_actions_system', next ? '1' : '0'); } catch {}
+      // Persist ไป Firestore — backend จะ pick up ใน 5 วิ
+      api.post('/api/settings', { settings: { actionsEnabled: next } }).catch(() => {});
+      return next;
+    });
+    setTimeout(() => setSystemSaving(false), 600); // prevent rapid double-tap
+  }, [systemSaving]);
+
+  // ── Resizable columns (Actions) ──
+  const [colWidths, setColWidths] = useState(COL_DEFS.map(c => c.defaultW));
+
+  const startColResize = useCallback((e, colIdx) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = colWidths[colIdx];
+    const minW   = COL_DEFS[colIdx].minW;
+    const onMove = (ev) => {
+      const next = Math.max(minW, startW + ev.clientX - startX);
+      setColWidths(prev => prev.map((w, i) => i === colIdx ? next : w));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      setColWidths(prev => {
+        try { localStorage.setItem('ttplus_action_cols', JSON.stringify(prev)); } catch {}
+        return prev;
+      });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  }, [colWidths]);
+
+  // ── Resizable columns (Events) ──
+  const [evtColWidths, setEvtColWidths] = useState(() => {
+    try {
+      const s = localStorage.getItem('ttplus_evt_cols');
+      if (s) { const p = JSON.parse(s); if (p.length === EVT_COL_DEFS.length) return p; }
+    } catch {}
+    return EVT_COL_DEFS.map(c => c.defaultW);
+  });
+
+  const startEvtColResize = useCallback((e, colIdx) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = evtColWidths[colIdx];
+    const minW   = EVT_COL_DEFS[colIdx].minW;
+    const onMove = (ev) => {
+      const next = Math.max(minW, startW + ev.clientX - startX);
+      setEvtColWidths(prev => prev.map((w, i) => i === colIdx ? next : w));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      setEvtColWidths(prev => {
+        try { localStorage.setItem('ttplus_evt_cols', JSON.stringify(prev)); } catch {}
+        return prev;
+      });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  }, [evtColWidths]);
 
   // Modals
   const [actionModal,   setActionModal]  = useState(null); // null | { data }
@@ -1404,7 +1584,96 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [obsPort,     setObsPort]     = useState(4455);
   const [obsPassword, setObsPassword] = useState('');
   const [obsStatus,   setObsStatus]   = useState('ยังไม่เชื่อม'); // ยังไม่เชื่อม / กำลังเชื่อม / เชื่อมแล้ว / error
-  const obsWsRef = useRef(null);
+  const obsWsRef      = useRef(null);
+  // คิว OBS: identity key (scene__source) → { isPlaying, items[] }
+  const obsQueueRef   = useRef({});
+  // enqueue function — set โดย obs_action useEffect ให้ firePreview เรียกได้
+  const obsEnqueueRef = useRef(null);
+  // ── Queue settings (global) ──────────────────────────────────────────────
+  const obsGapRef      = useRef(300);  // หน่วง ms ระหว่าง action (global)
+  const obsMaxQueueRef = useRef(100);  // จำนวน items สูงสุดใน queue รวมทุก key
+  const [obsGap,       setObsGap]       = useState(300);
+  const [obsMaxQueue,  setObsMaxQueue]  = useState(100);
+  const [queueDisplay, setQueueDisplay] = useState([]); // snapshot สำหรับ UI
+
+  // ── Right panel (OBS Queue Monitor) resize ──────────────────────────────
+  const [rightPanelWidth, setRightPanelWidth] = useState(280);
+  const rightPanelWidthRef = useRef(280);
+  // ป้องกัน firePreview ยิง API ซ้ำขณะกำลัง fire อยู่ (per action id)
+  const firingSetRef  = useRef(new Set());
+
+  // ── OBS Source Map — สร้างตอน connect ครั้งแรก ──────────────────────────
+  // { sourceName: [{ sceneName, sceneItemId }, ...], ... }
+  const [obsSourceMap,  setObsSourceMap]  = useState({});
+  const [obsScanStatus, setObsScanStatus] = useState('');
+
+  // hostArg/portArg — ใช้เมื่อเรียกก่อน state จะอัปเดต (เช่น ทันทีหลัง loadData)
+  const scanObsSources = useCallback((hostArg, portArg) => {
+    const host = hostArg || obsHost || 'localhost';
+    const port = portArg || obsPort || 4455;
+    setObsScanStatus('🔍 กำลัง scan...');
+    let ws;
+    try { ws = new WebSocket(`ws://${host}:${port}`); }
+    catch { setObsScanStatus('❌ เชื่อม OBS ไม่ได้'); return; }
+
+    const pending = {};
+    const send = (type, data = {}, meta = {}) => {
+      if (ws.readyState !== 1) return;
+      const id = `${type}_${Date.now()}_${Math.random()}`;
+      pending[id] = { type, meta };
+      ws.send(JSON.stringify({ op: 6, d: { requestType: type, requestId: id, requestData: data } }));
+    };
+
+    const map = {};          // sourceName → [{ sceneName, sceneItemId }]
+    let totalScenes   = 0;
+    let doneScenesCount = 0;
+
+    const finish = () => {
+      setObsSourceMap(map);
+      const srcCount = Object.keys(map).length;
+      setObsScanStatus(`✅ ${srcCount} source จาก ${totalScenes} scene`);
+      try { ws.close(); } catch {}
+    };
+
+    const scanTimeout = setTimeout(() => {
+      setObsScanStatus('❌ Scan timeout — OBS ไม่ตอบสนอง');
+      try { ws.close(); } catch {}
+    }, 15000);
+
+    ws.onmessage = (evt) => {
+      let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+
+      if (msg.op === 0) {
+        ws.send(JSON.stringify({ op: 1, d: { rpcVersion: 1 } }));
+      } else if (msg.op === 2) {
+        send('GetSceneList', {});
+      } else if (msg.op === 7) {
+        const id    = msg.d?.requestId || '';
+        const entry = pending[id] || {};
+        delete pending[id];
+        if (!msg.d?.requestStatus?.result) return;
+
+        if (entry.type === 'GetSceneList') {
+          const scenes = msg.d.responseData?.scenes || [];
+          totalScenes = scenes.length;
+          if (totalScenes === 0) { clearTimeout(scanTimeout); finish(); return; }
+          for (const s of scenes) send('GetSceneItemList', { sceneName: s.sceneName }, { sceneName: s.sceneName });
+
+        } else if (entry.type === 'GetSceneItemList') {
+          const sceneName = entry.meta?.sceneName || '';
+          const items     = msg.d.responseData?.sceneItems || [];
+          for (const item of items) {
+            if (!item.sourceName) continue;
+            if (!map[item.sourceName]) map[item.sourceName] = [];
+            map[item.sourceName].push({ sceneName, sceneItemId: item.sceneItemId });
+          }
+          doneScenesCount++;
+          if (doneScenesCount >= totalScenes) { clearTimeout(scanTimeout); finish(); }
+        }
+      }
+    };
+    ws.onerror = () => { clearTimeout(scanTimeout); setObsScanStatus('❌ Scan ล้มเหลว'); };
+  }, [obsHost, obsPort]);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginLoading,   setLoginLoading]   = useState(false);
@@ -1413,32 +1682,52 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [dynamicGifts, setDynamicGifts] = useState([]);
 
   // Gift simulation panel
-  const [simGiftName, setSimGiftName]   = useState('');
-  const [simulating,  setSimulating]    = useState(false);
+  const [simGiftName,  setSimGiftName]  = useState('');
+  const [simGiftCoins, setSimGiftCoins] = useState(1);   // diamond ของ gift ที่เลือก (row 1)
+  const [simulating,   setSimulating]   = useState(false);
+  const simulatingRef = useRef(false); // guard แบบ sync — ป้องกัน double-fire ก่อน React re-render
+
+  const importRef = useRef(null);
 
   // ── ฟังเสียงทดสอบ TTS ใน Browser (default OFF) ──
-  const [audioEnabled, setAudioEnabled] = useState(() => {
-    try { return localStorage.getItem('ttplus_actions_audio') === '1'; } catch { return false; }
-  });
+  const [audioEnabled, setAudioEnabled] = useState(false);
+
+  // ── Widget CID (numeric ID สำหรับ Overlay URLs) ──
+  const [widgetCid, setWidgetCid] = useState('');
+
+  // ── Inline name editing ──
+  const [inlineEdit, setInlineEdit] = useState(null); // { id, name } | null
+  const inlineInputRef = useRef(null);
 
   // ── Load data ──
   const loadData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [aRes, eRes, obsRes, giftRes] = await Promise.all([
+      const [aRes, eRes, obsRes, giftRes, settingsRes] = await Promise.all([
         api.get('/api/actions'),
         api.get('/api/actions/events'),
         api.get('/api/actions/obs-settings'),
         api.get('/api/actions/gift-catalog').catch(() => ({ data: { gifts: [] } })),
+        api.get('/api/settings').catch(() => ({ data: { settings: {} } })),
       ]);
       setActions(aRes.data.actions || []);
       setEvents(eRes.data.events   || []);
       const obs = obsRes.data.settings || {};
-      setObsHost(obs.host || 'localhost');
-      setObsPort(obs.port || 4455);
+      const h = obs.host || 'localhost';
+      const p = obs.port || 4455;
+      setObsHost(h);
+      setObsPort(p);
       setObsPassword(obs.password || '');
       setDynamicGifts(giftRes.data.gifts || []);
+      // โหลด actionsEnabled จาก Firestore (ชนะ localStorage)
+      const srv = settingsRes.data.settings || {};
+      if (typeof srv.actionsEnabled === 'boolean') {
+        setSystemEnabled(srv.actionsEnabled);
+        try { localStorage.setItem('ttplus_actions_system', srv.actionsEnabled ? '1' : '0'); } catch {}
+      }
+      // Auto-scan OBS source map ทันทีหลังโหลด settings
+      scanObsSources(h, p);
     } catch (err) {
       toast.error('โหลดข้อมูลไม่ได้');
     } finally {
@@ -1447,6 +1736,45 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Fetch Widget CID (ใช้ cache เหมือน widgets.js) ──
+  useEffect(() => {
+    if (!user) return;
+    const cacheKey = `ttplus_cid_${user.uid}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached && /^\d{4,8}$/.test(cached)) { setWidgetCid(cached); return; }
+    } catch {}
+    api.post('/api/widget-token')
+      .then(res => {
+        const cid = res.data?.cid;
+        if (typeof cid === 'string' && /^\d{4,8}$/.test(cid)) {
+          setWidgetCid(cid);
+          try { localStorage.setItem(cacheKey, cid); } catch {}
+        }
+      })
+      .catch(() => {}); // fail silently — overlay URLs fallback to vjId
+  }, [user]);
+
+  // ── อ่าน localStorage หลัง mount (client-only) เพื่อหลีกเลี่ยง hydration mismatch ──
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('ttplus_actions_system') === '0') setSystemEnabled(false);
+    } catch {}
+    try {
+      if (localStorage.getItem('ttplus_actions_audio') === '1') setAudioEnabled(true);
+    } catch {}
+    try {
+      const s = localStorage.getItem('ttplus_action_cols');
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) && parsed.length === COL_DEFS.length) setColWidths(parsed);
+      }
+    } catch {}
+  }, []);
+
+  // ── Cleanup confirmDelete timer เมื่อ unmount ──
+  useEffect(() => () => { clearTimeout(confirmTimerRef.current); }, []);
 
   // ── Login ──
   const handleGoogleLogin = useCallback(async () => {
@@ -1514,6 +1842,162 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     } catch { toast.error('เกิดข้อผิดพลาด'); }
   }, []);
 
+  // ── Fire Action Preview (ไม่เปิด popup — ส่งไป overlay + ยิง audio/TTS/OBS โดยตรง) ──
+  const firePreview = useCallback(async (a) => {
+    if (firingSetRef.current.has(a.id)) return; // กำลัง fire อยู่ — ไม่ยิงซ้ำ
+    firingSetRef.current.add(a.id);
+    // ใช้ action id เป็น toast key — กดซ้ำจะทับ toast เดิมแทนที่จะซ้อน
+    const tid = `fire_${a.id}`;
+    toast.loading(`▶ กำลังยิง "${a.name}"...`, { id: tid });
+    try {
+      // 1) Queue to overlay widget
+      await api.post(`/api/actions/${a.id}/fire`);
+
+      // 2) Audio — เล่นในเบราว์เซอร์ทันที
+      if (a.types?.includes('play_audio') && a.audioUrl && audioEnabled) {
+        try { new Audio(a.audioUrl).play(); } catch {}
+      }
+
+      // 3) TTS — อ่านทันที
+      if (audioEnabled && a.types?.includes('read_tts') && a.ttsText) {
+        const text = a.ttsText
+          .replace(/\{username\}/gi, 'ทดสอบ')
+          .replace(/\{giftname\}/gi, 'Rose')
+          .replace(/\{coins\}/gi, '100');
+        speak(text);
+      }
+
+      // 4) OBS commands — ผ่าน queue (ไม่ยิงตรง)
+      const hasObs = a.types?.includes('switch_obs_scene') || a.types?.includes('activate_obs_source');
+      if (hasObs) {
+        obsEnqueueRef.current?.(a);
+      }
+
+      // Summary
+      const parts = [];
+      if (a.types?.includes('show_picture') || a.types?.includes('play_video') || a.types?.includes('show_alert')) parts.push('Overlay');
+      if (a.types?.includes('play_audio'))          parts.push('เสียง');
+      if (a.types?.includes('read_tts'))            parts.push('TTS');
+      if (a.types?.includes('switch_obs_scene'))    parts.push(`Scene: ${a.obsScene}`);
+      if (a.types?.includes('activate_obs_source')) parts.push(`Source: ${a.obsSource}`);
+
+      toast.success(`✅ ${a.name} → ${parts.join(' · ') || 'ส่งแล้ว'}`, { id: tid, duration: 3000 });
+    } catch (err) {
+      toast.error('ยิงไม่สำเร็จ: ' + (err.response?.data?.error || err.message), { id: tid });
+    } finally {
+      firingSetRef.current.delete(a.id);
+    }
+  }, [audioEnabled]);
+
+  // ── Duplicate Action — ถามยืนยัน → clone ใส่ใต้ต้นฉบับ ──
+  const duplicateAction = useCallback(async (a) => {
+    // Toast ยืนยัน (ใช้ 2 toast: question + dismiss)
+    const confirmed = await new Promise((resolve) => {
+      const toastId = toast(
+        (t) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Duplicate &ldquo;{a.name}&rdquo;?</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
+              สร้าง Action ใหม่พร้อมชื่อ (duplicate N) ใต้บรรทัดนี้
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { toast.dismiss(t.id); resolve(true); }}
+                style={{ flex: 1, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 0', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                ✅ ใช่ Duplicate เลย
+              </button>
+              <button
+                onClick={() => { toast.dismiss(t.id); resolve(false); }}
+                style={{ flex: 0, background: '#1e2638', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        ),
+        { duration: 10000, style: { background: '#1a1f30', border: '1px solid #334155', color: '#e2e8f0', minWidth: 280 } }
+      );
+    });
+
+    if (!confirmed) return;
+
+    // คำนวณ duplicate number
+    const baseName = a.name.replace(/\s*\(duplicate \d+\)$/, '');
+    const existing = actions.filter(x => x.name.startsWith(`${baseName} (duplicate `));
+    const nextNum  = existing.length + 1;
+    const newName  = `${baseName} (duplicate ${nextNum})`;
+
+    try {
+      const { id: _id, ...rest } = a;
+      const res = await api.post('/api/actions', { ...rest, name: newName });
+      const newAction = res.data.action || { ...rest, name: newName, id: res.data.id };
+
+      // แทรกใต้ต้นฉบับใน local state
+      setActions(prev => {
+        const idx = prev.findIndex(x => x.id === a.id);
+        if (idx === -1) return [...prev, newAction];
+        const next = [...prev];
+        next.splice(idx + 1, 0, newAction);
+        return next;
+      });
+      toast.success(`✅ Duplicate แล้ว: "${newName}"`);
+    } catch (err) {
+      toast.error('Duplicate ไม่สำเร็จ: ' + (err.response?.data?.error || err.message));
+    }
+  }, [actions]);
+
+  // ── Inline name save ──
+  const saveInlineName = useCallback(async (id, newName) => {
+    const trimmed = newName.trim();
+    setInlineEdit(null);
+    if (!trimmed) return; // ถ้า blank ไม่ save
+    const prev = actions.find(a => a.id === id);
+    if (!prev || prev.name === trimmed) return; // ไม่เปลี่ยน
+    setActions(all => all.map(a => a.id === id ? { ...a, name: trimmed } : a));
+    try {
+      await api.put(`/api/actions/${id}`, { ...prev, name: trimmed });
+    } catch (err) {
+      // rollback
+      setActions(all => all.map(a => a.id === id ? { ...a, name: prev.name } : a));
+      toast.error('แก้ชื่อไม่สำเร็จ: ' + (err.response?.data?.error || err.message));
+    }
+  }, [actions]);
+
+  // ── Duplicate Event ──
+  const duplicateEvent = useCallback(async (ev) => {
+    const confirmed = await new Promise((resolve) => {
+      toast(
+        (t) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Duplicate Event นี้?</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>สร้าง Event ใหม่เหมือนกันทุกอย่าง</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { toast.dismiss(t.id); resolve(true); }}
+                style={{ flex: 1, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 0', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                ✅ ใช่ Duplicate เลย
+              </button>
+              <button
+                onClick={() => { toast.dismiss(t.id); resolve(false); }}
+                style={{ flex: 0, background: '#1e2638', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        ),
+        { duration: 10000, style: { background: '#1a1f30', border: '1px solid #334155', color: '#e2e8f0', minWidth: 280 } }
+      );
+    });
+    if (!confirmed) return;
+    try {
+      const { id: _id, ...rest } = ev;
+      await api.post('/api/actions/events', rest);
+      toast.success('✅ Duplicate Event แล้ว');
+      loadData();
+    } catch (err) {
+      toast.error('Duplicate ไม่สำเร็จ: ' + (err.response?.data?.error || err.message));
+    }
+  }, [loadData]);
+
   // ── Events CRUD ──
   const saveEvent = useCallback(async (form) => {
     if (!form.actionIds.length && !form.randomActionIds.length) return toast.error('ต้องเลือก Action อย่างน้อย 1 อัน');
@@ -1542,19 +2026,43 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   }, []);
 
   // ── Gift Simulation ──
-  const simulateGift = useCallback(async (giftName) => {
-    if (simulating) return;
+  // ── Simulate event state ──
+  const [simType,    setSimType]    = useState('gift');   // gift|coins|follow|like|chat|share|join
+  const [simCoins,   setSimCoins]   = useState(100);
+  const [simComment, setSimComment] = useState('');
+  const [simLikes,   setSimLikes]   = useState(50);
+  const [simResult,  setSimResult]  = useState(null); // { matched, type, payload }
+
+  // simulateEvent — 'coins' tab ส่งเป็น type:gift+diamondCount, 'gift' tab ส่งด้วยชื่อ
+  const simulateEvent = useCallback(async () => {
+    if (simulatingRef.current) return;
+    simulatingRef.current = true; // lock ทันที (sync) ก่อน React re-render
     setSimulating(true);
+    setSimResult(null);
     try {
-      const res = await api.post('/api/coinjar/simulate', giftName ? { giftName } : {});
-      const { gift, diamonds } = res.data;
-      toast.success(`🎁 จำลอง: ${gift} (💎${diamonds})`);
-    } catch {
-      toast.error('ส่ง gift จำลองไม่สำเร็จ');
+      // 'coins' tab → backend รับเป็น type:'gift' พร้อม diamondCount เท่านั้น
+      const body = { type: simType === 'coins' ? 'gift' : simType, nickname: 'ทดสอบ' };
+      if (simType === 'gift') {
+        // เลือกของขวัญชิ้นนั้น — ใช้ diamond จาก catalog
+        body.giftName     = simGiftName || '';
+        body.diamondCount = simGiftCoins;
+      }
+      if (simType === 'coins') {
+        // ระบุเหรียญโดยตรง — ไม่ผูก giftName
+        body.diamondCount = simCoins;
+      }
+      if (simType === 'like')  body.likeCount = simLikes;
+      if (simType === 'chat')  body.comment   = simComment || 'ทดสอบ';
+
+      const res = await api.post('/api/actions/simulate-event', body);
+      setSimResult(res.data);
+    } catch (err) {
+      toast.error('Simulate ไม่สำเร็จ: ' + (err.response?.data?.error || err.message));
     } finally {
+      simulatingRef.current = false;
       setSimulating(false);
     }
-  }, [simulating]);
+  }, [simType, simGiftName, simGiftCoins, simCoins, simComment, simLikes]);
 
   // ── OBS WebSocket ──
   const connectObs = useCallback(() => {
@@ -1563,11 +2071,15 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     try {
       const ws = new WebSocket(`ws://${obsHost}:${obsPort}`);
       obsWsRef.current = ws;
-      ws.onopen = () => setObsStatus('✅ เชื่อมแล้ว');
+      ws.onopen = () => {
+        setObsStatus('✅ เชื่อมแล้ว');
+        // Scan ทุก Scene/Source หลัง connect สำเร็จ
+        scanObsSources();
+      };
       ws.onerror = () => setObsStatus('❌ เชื่อมไม่ได้ — เปิด OBS WebSocket Server ก่อน');
       ws.onclose = () => setObsStatus('ยังไม่เชื่อม');
     } catch { setObsStatus('❌ เชื่อมไม่ได้'); }
-  }, [obsHost, obsPort]);
+  }, [obsHost, obsPort, scanObsSources]);
 
   const saveObsSettings = useCallback(async () => {
     try {
@@ -1575,6 +2087,167 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       toast.success('บันทึก OBS settings แล้ว');
     } catch { toast.error('บันทึกไม่ได้'); }
   }, [obsHost, obsPort, obsPassword]);
+
+  // ── OBS Direct Bridge: รับ obs_action จาก server ผ่าน Socket.IO ───────────
+  // ทำงานตลอดเวลาไม่ว่าจะเปิดแถบไหน (เพราะ _app.js mount ทุกหน้าพร้อมกัน)
+  useEffect(() => {
+    if (!user) return;
+
+    const socket = getSocket();
+
+    const queues = obsQueueRef.current;
+
+    // นับ items รอทั้งหมดใน queue (ไม่นับ isPlaying)
+    function totalQueueSize() {
+      return Object.values(queues).reduce((sum, q) => sum + q.items.length, 0);
+    }
+
+    function processQueue(key) {
+      const q = queues[key];
+      if (!q || q.items.length === 0) {
+        if (q) q.isPlaying = false;
+        return;
+      }
+      q.isPlaying = true;
+      const action = q.items.shift();
+      const duration = (action.displayDuration ?? 5) * 1000;
+
+      fireObsCommands(
+        obsHost || 'localhost',
+        obsPort || 4455,
+        action,
+        (msg) => {
+          if (msg.startsWith('✅') || msg.startsWith('❌')) {
+            toast(msg, { duration: 2500, icon: msg.startsWith('✅') ? undefined : '⚠️' });
+          }
+        },
+        obsSourceMap,
+      );
+      setTimeout(() => processQueue(key), duration + obsGapRef.current);
+    }
+
+    // enqueue ใช้ได้จากทุกที่ผ่าน obsEnqueueRef
+    const enqueue = (action) => {
+      // ตรวจ global queue cap (นับเฉพาะ items ที่รอ ไม่นับที่กำลังเล่นอยู่)
+      if (totalQueueSize() >= obsMaxQueueRef.current) {
+        toast.error(`⛔ คิวเต็ม (สูงสุด ${obsMaxQueueRef.current})`, { id: 'queue-full', duration: 2000 });
+        return;
+      }
+      const key = `${action.obsScene || ''}__${action.obsSource || ''}`;
+      if (!queues[key]) queues[key] = { isPlaying: false, items: [] };
+      queues[key].items.push(action);
+      if (!queues[key].isPlaying) processQueue(key);
+    };
+    obsEnqueueRef.current = enqueue;
+
+    const handleObsAction = (action) => {
+      const hasObsType = action.types?.includes('switch_obs_scene') ||
+                         action.types?.includes('activate_obs_source');
+      if (!hasObsType) return;
+      enqueue(action);
+    };
+
+    // ถอด listener เก่าทั้งหมดก่อน (ป้องกัน handler ซ้ำเมื่อ effect re-run
+    // หรือ React StrictMode double-invoke) แล้วค่อย register ใหม่
+    socket.off('obs_action');
+    socket.on('obs_action', handleObsAction);
+    return () => socket.off('obs_action');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, obsHost, obsPort, obsSourceMap]);
+
+  // ── Queue display: snapshot obsQueueRef ทุก 500ms → setQueueDisplay ──────
+  useEffect(() => {
+    const id = setInterval(() => {
+      const queues = obsQueueRef.current;
+      const snapshot = [];
+      for (const [key, q] of Object.entries(queues)) {
+        if (q.isPlaying) {
+          snapshot.push({ key, name: '▶ กำลังเล่น…', playing: true, id: `${key}__playing` });
+        }
+        q.items.forEach((action, idx) => {
+          snapshot.push({
+            key,
+            name: action.name || action.obsSource || action.obsScene || key,
+            idx,
+            id: `${key}__${idx}`,
+          });
+        });
+      }
+      setQueueDisplay(snapshot);
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Queue helpers ────────────────────────────────────────────────────────
+  const clearObsQueue = useCallback(() => {
+    const queues = obsQueueRef.current;
+    for (const key of Object.keys(queues)) {
+      queues[key].items = [];
+      // isPlaying ที่กำลังทำงานอยู่จะจบเองตาม setTimeout — ไม่บังคับหยุด
+    }
+    setQueueDisplay([]);
+    toast.success('🗑 ล้างคิวแล้ว', { duration: 1500 });
+  }, []);
+
+  const skipQueueItem = useCallback((key, idx) => {
+    const q = obsQueueRef.current[key];
+    if (q) q.items.splice(idx, 1);
+  }, []);
+
+  // โหลดความกว้าง right panel จาก localStorage
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem('ttplus_queue_w'));
+      if (saved >= 180 && saved <= 600) {
+        setRightPanelWidth(saved);
+        rightPanelWidthRef.current = saved;
+      }
+    } catch {}
+  }, []);
+
+  // Drag handler สำหรับ resize right panel
+  const handleRightDragStart = useCallback((e) => {
+    e.preventDefault();
+    const startX    = e.clientX;
+    const startW    = rightPanelWidthRef.current;
+
+    const onMove = (ev) => {
+      const newW = Math.max(180, Math.min(600, startW + (startX - ev.clientX)));
+      rightPanelWidthRef.current = newW;
+      setRightPanelWidth(newW);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem('ttplus_queue_w', String(rightPanelWidthRef.current)); } catch {}
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor     = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  // ── Import Backup (Actions & Events) ──
+  const handleImport = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const toastId = toast.loading('กำลัง Import...');
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.actions && !data.events) throw new Error('ไฟล์ไม่ถูกต้อง (ไม่พบ actions/events)');
+      await api.post('/api/actions/import', {
+        actions: data.actions || [],
+        events:  data.events  || [],
+      });
+      if (data.actions) setActions(data.actions);
+      if (data.events)  setEvents(data.events);
+      toast.success(`⬆ Import Actions เรียบร้อย (${(data.actions||[]).length} actions, ${(data.events||[]).length} events)`, { id: toastId });
+    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
+  }, []);
 
   // ── Export Backup (Actions & Events) ──
   const handleExport = useCallback(() => {
@@ -1595,35 +2268,59 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     toast.success(`⬇ Export Actions เรียบร้อย (${actions.length} actions, ${events.length} events)`);
   }, [actions, events]);
 
-  // ── Overlay URLs ──
+  // ── Overlay URLs — ใช้ ?cid= (ถ้าได้ widgetCid) หรือ fallback ?vjId= ──
   const vjId = user?.uid || '';
-  const overlayUrls = [1, 2].map(s => `${BACKEND.replace('api.', '')}/widget/myactions?vjId=${vjId}&screen=${s}`);
+  const baseWidgetUrl = BACKEND.replace('api.', '');
+  const overlayUrls = [1, 2].map(s =>
+    widgetCid
+      ? `${baseWidgetUrl}/widget/myactions?cid=${widgetCid}&screen=${s}`
+      : `${baseWidgetUrl}/widget/myactions?vjId=${vjId}&screen=${s}`
+  );
 
   // ── Render ──
   const requireLogin = !authLoading && !user;
 
   return (
-    <div className={clsx('min-h-screen flex', theme === 'dark' ? 'bg-gray-950 text-gray-200' : 'bg-white text-gray-900')}>
-      <Sidebar theme={theme} setTheme={setTheme} activePage={activePage} setActivePage={setActivePage} />
+    <div
+      className={clsx('flex overflow-hidden', theme === 'dark' ? 'bg-[#111520] text-slate-200' : 'bg-white text-gray-900')}
+      style={{ height: 'calc(100vh - 26px)' }}
+    >
+      <Sidebar
+        theme={theme} setTheme={setTheme}
+        activePage={activePage} setActivePage={setActivePage}
+        collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}
+      />
 
-      <main className="flex-1 ml-16 md:ml-56 p-4 md:p-6 max-w-4xl mx-auto pb-24 md:pb-6">
+      {/* ── Content area (main + right panel) ── */}
+      <div
+        className={clsx('flex flex-1 min-w-0', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}
+      >
+      {/* ── Main scrollable area ── */}
+      <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold text-white">⚡ Actions and Events</h1>
-            <p className="text-xs text-gray-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-yellow-500/80">ข้อมูลของขวัญยังไม่ครบในช่วงแรก — ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
+            <h1 className="text-xl font-bold text-slate-100">⚡ Actions and Events</h1>
+            <p className="text-xs text-slate-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-yellow-500/70">ข้อมูลของขวัญยังไม่ครบในช่วงแรก — ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Export Backup */}
-            {user && (
+            {/* Export / Import Backup */}
+            {user && (<>
+              <button
+                onClick={() => importRef.current?.click()}
+                title="Import Actions & Events จากไฟล์ Backup"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80"
+              >
+                ⬆ Import
+              </button>
               <button
                 onClick={handleExport}
                 title="Export Actions & Events เป็นไฟล์ Backup"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80"
               >
                 ⬇ Export
               </button>
-            )}
+            </>)}
             {/* ฟังเสียง TTS ทดสอบ ใน Browser */}
             <button
               onClick={() => {
@@ -1636,7 +2333,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
                 audioEnabled
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                  : 'bg-gray-800/80 text-gray-500 hover:text-gray-400'
+                  : 'bg-slate-800/80 text-slate-500 hover:text-slate-400'
               )}
             >
               {audioEnabled ? '🔊' : '🔇'}
@@ -1651,8 +2348,55 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           </div>
         </div>
 
+        {/* ── MASTER SYSTEM TOGGLE — เหนือ tab bar ── */}
+        {user && (
+          <div className={clsx(
+            'flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border transition-colors mb-3',
+            systemEnabled
+              ? 'bg-green-950/25 border-green-800/40'
+              : 'bg-red-950/25 border-red-900/40'
+          )}>
+            {/* LED + status */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className={clsx(
+                'w-2 h-2 rounded-full shrink-0 transition-colors',
+                systemEnabled ? 'bg-green-400 shadow-[0_0_5px_#4ade80]' : 'bg-red-500'
+              )} />
+              <p className={clsx('text-sm font-semibold', systemEnabled ? 'text-green-300' : 'text-red-400')}>
+                {systemEnabled ? 'ระบบ Actions — เปิดอยู่' : 'ระบบ Actions — ปิดอยู่'}
+              </p>
+              <span className="hidden sm:inline text-slate-500 text-xs">·</span>
+              <span className="hidden sm:inline text-slate-400 text-xs">
+                {systemEnabled ? 'Events trigger Actions ตามปกติ' : 'หยุด fire ทุก Action แล้ว — กด "เปิด" เพื่อเริ่มใหม่'}
+              </span>
+            </div>
+            {/* Toggle button */}
+            <button
+              onClick={toggleSystem}
+              disabled={systemSaving}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors shrink-0',
+                systemSaving ? 'opacity-50 cursor-not-allowed' :
+                systemEnabled
+                  ? 'bg-green-900/30 border-green-700/60 text-green-300 hover:bg-red-950/40 hover:border-red-800 hover:text-red-400'
+                  : 'bg-red-900/30 border-red-800/60 text-red-300 hover:bg-green-950/40 hover:border-green-700 hover:text-green-400'
+              )}>
+              <div className={clsx(
+                'w-7 h-3.5 rounded-full flex items-center transition-colors px-0.5',
+                systemEnabled ? 'bg-green-500' : 'bg-slate-700'
+              )}>
+                <div className={clsx(
+                  'w-2.5 h-2.5 rounded-full bg-white transition-transform',
+                  systemEnabled ? 'translate-x-3.5' : 'translate-x-0'
+                )} />
+              </div>
+              {systemEnabled ? 'ปิด' : 'เปิด'}
+            </button>
+          </div>
+        )}
+
         {/* Tabs — scroll แนวนอนบนมือถือ */}
-        <div className="flex gap-1 mb-5 bg-gray-900 p-1 rounded-xl overflow-x-auto scrollbar-none">
+        <div className="flex gap-1 mb-5 bg-[#1a1f30] p-1 rounded-xl overflow-x-auto scrollbar-none">
           {[
             { id: 'actions', label: '⚡ Actions' },
             { id: 'events',  label: '🔗 Events' },
@@ -1662,7 +2406,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             <button key={t.id} onClick={() => setTab(t.id)}
               className={clsx(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0',
-                tab === t.id ? 'bg-brand-600 text-white' : 'text-gray-400 hover:text-white'
+                tab === t.id ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-slate-100'
               )}>
               {t.label}
             </button>
@@ -1670,7 +2414,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         </div>
 
         {loading && (
-          <div className="flex items-center gap-2 py-8 justify-center text-gray-500 text-sm">
+          <div className="flex items-center gap-2 py-8 justify-center text-slate-500 text-sm">
             <span className="animate-spin">⏳</span> กำลังโหลด...
           </div>
         )}
@@ -1678,146 +2422,435 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* ── Tab: Actions ── */}
         {tab === 'actions' && (
           <div className="space-y-3">
-            {/* Description + desktop create button */}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-gray-400 leading-snug">
-                Actions คือสิ่งที่เกิดขึ้นบน stream เมื่อมี event trigger
-              </p>
-              <button onClick={() => setActionModal({ data: null })}
-                className="hidden md:flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg font-medium shrink-0 transition-colors">
+
+            {/* ── Create Action button ── */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => systemEnabled && setActionModal({ data: null })}
+                disabled={!systemEnabled}
+                className={clsx(
+                  'flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg font-medium transition-colors',
+                  systemEnabled
+                    ? 'bg-brand-600 hover:bg-brand-500 text-white'
+                    : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                )}>
                 + สร้าง Action
               </button>
             </div>
 
             {actions.length === 0 && !loading && (
-              <div className="text-center py-14 text-gray-600 border border-dashed border-gray-800 rounded-xl">
+              <div className="text-center py-14 text-slate-600 border border-dashed border-slate-700/40 rounded-xl">
                 <p className="text-4xl mb-3">⚡</p>
-                <p className="text-sm font-medium text-gray-500">ยังไม่มี Actions</p>
-                <p className="text-xs text-gray-600 mt-1">กดปุ่ม "+ สร้าง Action" เพื่อเริ่ม</p>
+                <p className="text-sm font-medium text-slate-500">ยังไม่มี Actions</p>
+                <p className="text-xs text-slate-600 mt-1">กดปุ่ม "+ สร้าง" เพื่อเริ่ม</p>
               </div>
             )}
 
-            {/* Action cards */}
-            <div className="space-y-2">
-              {actions.map((a) => {
-                const typeIcons = (a.types || [])
-                  .map(t => ACTION_TYPES.find(x => x.id === t))
-                  .filter(Boolean);
-                const isConfirmDel = confirmDelete?.id === a.id && confirmDelete?.type === 'action';
-                return (
-                  <div key={a.id} className={clsx(
-                    'border rounded-xl transition-colors',
-                    a.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-55'
-                  )}>
-                    {/* Main row */}
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      {/* Toggle pill */}
-                      <button
-                        onClick={() => toggleAction(a)}
-                        className={clsx(
-                          'shrink-0 w-10 h-6 rounded-full transition-colors flex items-center px-0.5',
-                          a.enabled ? 'bg-green-600' : 'bg-gray-700'
-                        )}
-                      >
-                        <div className={clsx(
-                          'w-5 h-5 rounded-full bg-white transition-transform',
-                          a.enabled ? 'translate-x-4' : 'translate-x-0'
-                        )} />
-                      </button>
-
-                      {/* Name + type icons */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-100 truncate">{a.name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          {typeIcons.map(t => (
-                            <span key={t.id} className="text-[11px] bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">
-                              {t.icon} {t.label}
-                            </span>
-                          ))}
-                          <span className="text-[11px] text-gray-600">{a.displayDuration}s · S{a.overlayScreen}</span>
-                        </div>
-                      </div>
-
-                      {/* Desktop buttons — hidden on mobile */}
-                      <div className="hidden md:flex items-center gap-1.5 shrink-0">
-                        <button onClick={() => setPreviewAction(a)}
-                          className="text-xs text-brand-400 hover:text-brand-300 px-3 py-1.5 rounded-lg bg-brand-900/30 hover:bg-brand-900/60 border border-brand-800/50 transition-colors font-medium">
-                          ▶ ทดสอบ
-                        </button>
-                        <button onClick={() => setActionModal({ data: { ...a } })}
-                          className="text-xs text-gray-300 hover:text-white px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors">
-                          แก้ไข
-                        </button>
-                        <button onClick={() => deleteAction(a.id)}
-                          className={clsx(
-                            'text-xs px-3 py-1.5 rounded-lg transition-colors',
-                            isConfirmDel
-                              ? 'bg-red-600 text-white animate-pulse'
-                              : 'text-red-500 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
-                          )}>
-                          {isConfirmDel ? 'ยืนยันลบ?' : 'ลบ'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Mobile buttons row */}
-                    <div className="flex md:hidden border-t border-gray-800">
-                      <button onClick={() => setPreviewAction(a)}
-                        className="flex-1 flex items-center justify-center gap-1 py-2.5 text-sm text-brand-400 hover:bg-brand-900/20 transition-colors border-r border-gray-800">
-                        ▶ ทดสอบ
-                      </button>
-                      <button onClick={() => setActionModal({ data: { ...a } })}
-                        className="flex-1 flex items-center justify-center py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors border-r border-gray-800">
-                        แก้ไข
-                      </button>
-                      <button onClick={() => deleteAction(a.id)}
-                        className={clsx(
-                          'flex-1 flex items-center justify-center py-2.5 text-sm transition-colors',
-                          isConfirmDel
-                            ? 'bg-red-600 text-white animate-pulse'
-                            : 'text-red-500 hover:bg-gray-800'
-                        )}>
-                        {isConfirmDel ? 'ยืนยัน?' : 'ลบ'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ── Gift Simulation Panel ── */}
-            <div className="mt-4 rounded-xl border border-violet-800/40 bg-violet-950/20 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-base">🎲</span>
-                <p className="text-sm font-semibold text-violet-300">จำลองของขวัญ — ทดสอบ Widget</p>
-              </div>
-              <p className="text-[11px] text-violet-400/70 mb-3">
-                ส่ง gift จำลองไปยัง widget (CoinJar/พลุ) ของบัญชีนี้โดยตรง เพื่อทดสอบโดยไม่ต้อง live จริง
-              </p>
-              <div className="flex gap-2">
-                <select
-                  value={simGiftName}
-                  onChange={e => setSimGiftName(e.target.value)}
-                  className="flex-1 bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition">
-                  <option value="">🎲 Random gift</option>
+            {/* Action cards + pagination bottom */}
+            {(() => {
+              const totalPages  = pageSize === 0 ? 1 : Math.ceil(actions.length / pageSize);
+              const safePage    = Math.min(actionPage, Math.max(0, totalPages - 1));
+              // เรียง enabled ขึ้นก่อน disabled — pattern toggle สม่ำเสมอ
+              const rawSlice    = pageSize === 0 ? [...actions] : [...actions].slice(safePage * pageSize, (safePage + 1) * pageSize);
+              const sliced      = [...rawSlice].sort((a, b) => (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0));
+              const disabled    = !systemEnabled;
+              return (
+                <>
+                  {/* ── Column table with resizable headers ── */}
                   {(() => {
-                    const map = new Map(TIKTOK_GIFTS.map(g => [g.name, { name: g.name, coins: g.coins }]));
-                    for (const dg of dynamicGifts) map.set(dg.name, { name: dg.name, coins: dg.diamondCount });
-                    return Array.from(map.values())
-                      .sort((a, b) => a.coins - b.coins)
-                      .map(g => (
-                        <option key={g.name} value={g.name}>{g.name} (💎{g.coins})</option>
-                      ));
+                    const gridTemplate = colWidths.map(w => `${w}px`).join(' ');
+                    const cellBase = 'flex items-center overflow-hidden px-2';
+                    return (
+                    <div className="overflow-x-auto">
+                    <div className="rounded-xl border border-[#252d42]" style={{ minWidth: colWidths.reduce((s,w) => s+w, 0) + 'px' }}>
+
+                      {/* ── Header row ── */}
+                      <div
+                        className="grid border-b border-[#2a3347] bg-[#131825] sticky top-0 z-10"
+                        style={{ gridTemplateColumns: gridTemplate }}>
+                        {COL_DEFS.map((col, ci) => (
+                          <div key={col.id} className="relative flex items-center select-none">
+                            <span className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate flex-1">
+                              {col.label}
+                            </span>
+                            {/* drag handle — ไม่แสดงที่คอลัมน์สุดท้าย */}
+                            {ci < COL_DEFS.length - 1 && (
+                              <div
+                                onMouseDown={(e) => startColResize(e, ci)}
+                                className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center cursor-col-resize group z-20"
+                                title="ลากเพื่อปรับความกว้าง">
+                                <div className="w-px h-4 bg-[#2a3347] group-hover:bg-brand-500 transition-colors" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* ── Data rows ── */}
+                      {sliced.map((a, idx) => {
+                        const typeIcons    = ACTION_TYPES.filter(def => (a.types || []).includes(def.id));
+                        const isConfirmDel = confirmDelete?.id === a.id && confirmDelete?.type === 'action';
+                        const descParts    = actionDescParts(a);
+                        const isOdd        = idx % 2 === 1;
+                        return (
+                          <div
+                            key={a.id}
+                            className={clsx(
+                              'grid border-b border-[#1e2638]/70 last:border-b-0 transition-colors',
+                              isOdd ? 'bg-[#1a1f30]' : 'bg-[#161b28]',
+                              !a.enabled && 'opacity-50'
+                            )}
+                            style={{ gridTemplateColumns: gridTemplate }}>
+
+                            {/* col: toggle */}
+                            <div className={clsx(cellBase, 'justify-center')}>
+                              <button
+                                onClick={() => !disabled && toggleAction(a)}
+                                disabled={disabled}
+                                title={a.enabled ? 'ปิด Action นี้' : 'เปิด Action นี้'}
+                                className={clsx(
+                                  'shrink-0 w-9 h-5 rounded-full transition-colors flex items-center px-0.5',
+                                  disabled ? 'cursor-not-allowed opacity-30 bg-slate-700' :
+                                  a.enabled ? 'bg-green-600' : 'bg-slate-700'
+                                )}>
+                                <div className={clsx('w-4 h-4 rounded-full bg-white transition-transform shadow-sm', a.enabled ? 'translate-x-4' : 'translate-x-0')} />
+                              </button>
+                            </div>
+
+                            {/* col: name — คลิกเพื่อแก้ไขชื่อ inline */}
+                            <div className={clsx(cellBase, 'py-2')}>
+                              {inlineEdit?.id === a.id ? (
+                                <input
+                                  ref={inlineInputRef}
+                                  autoFocus
+                                  value={inlineEdit.name}
+                                  onChange={e => setInlineEdit(prev => ({ ...prev, name: e.target.value }))}
+                                  onBlur={() => saveInlineName(a.id, inlineEdit.name)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') { e.target.blur(); }
+                                    if (e.key === 'Escape') { setInlineEdit(null); }
+                                  }}
+                                  className="w-full bg-[#0d1120] border border-brand-600 rounded px-2 py-0.5 text-[15px] font-semibold text-slate-100 outline-none focus:ring-1 focus:ring-brand-500"
+                                />
+                              ) : (
+                                <span
+                                  onClick={() => !disabled && setInlineEdit({ id: a.id, name: a.name })}
+                                  title="คลิกเพื่อแก้ไขชื่อ"
+                                  className={clsx(
+                                    'text-[15px] font-semibold text-slate-100 leading-snug truncate',
+                                    !disabled && 'cursor-text hover:text-white hover:underline decoration-dotted decoration-slate-500 underline-offset-2'
+                                  )}
+                                >{a.name}</span>
+                              )}
+                            </div>
+
+                            {/* col: scr */}
+                            <div className={clsx(cellBase, 'justify-center')}>
+                              <span className="text-[12px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-900/60 border border-brand-700/60 text-brand-300 leading-none whitespace-nowrap">
+                                scr{a.overlayScreen ?? 1}
+                              </span>
+                            </div>
+
+                            {/* col: dur */}
+                            <div className={clsx(cellBase, 'justify-center')}>
+                              <span className="text-[12px] font-mono px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-800/50 text-amber-400 leading-none whitespace-nowrap">
+                                {a.displayDuration ?? 5}s
+                              </span>
+                            </div>
+
+                            {/* col: types */}
+                            <div className={clsx(cellBase, 'gap-0.5 flex-wrap py-1')}>
+                              {typeIcons.map(t => (
+                                <span key={t.id} className="text-[15px] text-slate-400 leading-none" title={t.label}>{t.icon}</span>
+                              ))}
+                            </div>
+
+                            {/* col: desc */}
+                            <div className={clsx(cellBase, 'py-2')}>
+                              {renderDesc(descParts)}
+                            </div>
+
+                            {/* col: buttons */}
+                            <div className={clsx(cellBase, 'justify-end gap-1.5 pr-3 py-1.5')}>
+                              {/* ▶ Fire */}
+                              <button
+                                onClick={() => !disabled && firePreview(a)}
+                                disabled={disabled}
+                                title="ยิง Action ทันที (Overlay + เสียง + OBS)"
+                                className={clsx(
+                                  'text-xs px-2.5 py-1.5 rounded border font-bold transition-colors whitespace-nowrap',
+                                  disabled ? 'opacity-25 cursor-not-allowed border-slate-800 text-slate-600' :
+                                  'border-brand-700/60 text-brand-400 hover:bg-brand-900/40 hover:border-brand-600'
+                                )}>▶</button>
+                              {/* ⧉ Duplicate */}
+                              <button
+                                onClick={() => duplicateAction(a)}
+                                title="Duplicate — สร้าง Action ใหม่จากอันนี้"
+                                className="text-xs px-2.5 py-1.5 rounded border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-400 transition-colors whitespace-nowrap">
+                                ⧉
+                              </button>
+                              {/* ✎ Edit */}
+                              <button
+                                onClick={() => !disabled && setActionModal({ data: { ...a } })}
+                                disabled={disabled}
+                                title="แก้ไข"
+                                className={clsx(
+                                  'text-xs px-2.5 py-1.5 rounded border transition-colors whitespace-nowrap',
+                                  disabled ? 'opacity-25 cursor-not-allowed border-slate-800 text-slate-600' :
+                                  'border-slate-600 text-slate-400 hover:text-white hover:border-slate-400'
+                                )}>✎</button>
+                              {/* ✕ Delete */}
+                              <button
+                                onClick={() => !disabled && deleteAction(a.id)}
+                                disabled={disabled}
+                                title="ลบ"
+                                className={clsx(
+                                  'text-xs px-2.5 py-1.5 rounded border transition-colors whitespace-nowrap',
+                                  disabled ? 'opacity-25 cursor-not-allowed border-slate-800 text-slate-600' :
+                                  isConfirmDel ? 'bg-red-600 border-red-600 text-white animate-pulse' :
+                                  'border-slate-700 text-red-500 hover:border-red-700 hover:bg-red-950/30'
+                                )}>
+                                {isConfirmDel ? '?' : '✕'}
+                              </button>
+                            </div>
+
+                          </div>
+                        );
+                      })}
+
+                    </div>
+                    </div>
+                    );
                   })()}
-                </select>
-                <button
-                  onClick={() => simulateGift(simGiftName || '')}
-                  disabled={simulating || !user}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition disabled:opacity-50 shrink-0">
-                  {simulating ? <span className="animate-spin">⏳</span> : '▶'} ส่ง
-                </button>
-              </div>
-            </div>
+
+                  {/* ── Pagination — bottom ── */}
+                  {actions.length > 0 && (
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 pt-1">
+                      {/* Page size selector */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-600">แสดง:</span>
+                        {PAGE_SIZE_OPTIONS.map(s => (
+                          <button key={s}
+                            onClick={() => { setPageSize(s); setActionPage(0); }}
+                            className={clsx(
+                              'px-2 py-0.5 rounded border transition-colors',
+                              pageSize === s
+                                ? 'border-brand-600 bg-brand-900/40 text-brand-300'
+                                : 'border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500'
+                            )}>
+                            {s === 0 ? `ทั้งหมด${actions.length > 500 ? ' ⚠️' : ''}` : s}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Page nav */}
+                      {pageSize > 0 && (() => {
+                        // สร้าง window ของหมายเลขหน้า: first, ...ellipsis, current±2, ...ellipsis, last
+                        const pages = [];
+                        const delta = 2; // หน้าซ้าย/ขวาของหน้าปัจจุบัน
+                        for (let i = 0; i < totalPages; i++) {
+                          if (
+                            i === 0 ||
+                            i === totalPages - 1 ||
+                            (i >= safePage - delta && i <= safePage + delta)
+                          ) {
+                            pages.push(i);
+                          }
+                        }
+                        // แทรก null เป็น ellipsis
+                        const withEllipsis = [];
+                        let prev = -1;
+                        for (const p of pages) {
+                          if (prev !== -1 && p - prev > 1) withEllipsis.push(null);
+                          withEllipsis.push(p);
+                          prev = p;
+                        }
+                        return (
+                          <div className="flex items-center gap-1">
+                            {/* ‹ */}
+                            <button onClick={() => setActionPage(p => Math.max(0, p - 1))}
+                              disabled={safePage === 0}
+                              className="px-2 py-0.5 rounded border border-slate-700 text-slate-400 disabled:opacity-30 hover:text-white hover:border-slate-500 transition-colors">
+                              ‹
+                            </button>
+                            {/* Page numbers */}
+                            {withEllipsis.map((p, i) =>
+                              p === null ? (
+                                <span key={`e${i}`} className="px-1 text-slate-600 select-none">…</span>
+                              ) : (
+                                <button key={p}
+                                  onClick={() => setActionPage(p)}
+                                  className={clsx(
+                                    'min-w-[28px] px-1.5 py-0.5 rounded border font-medium transition-colors',
+                                    p === safePage
+                                      ? 'border-brand-600 bg-brand-900/50 text-brand-300'
+                                      : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                                  )}>
+                                  {p + 1}
+                                </button>
+                              )
+                            )}
+                            {/* › */}
+                            <button onClick={() => setActionPage(p => Math.min(totalPages - 1, p + 1))}
+                              disabled={safePage >= totalPages - 1}
+                              className="px-2 py-0.5 rounded border border-slate-700 text-slate-400 disabled:opacity-30 hover:text-white hover:border-slate-500 transition-colors">
+                              ›
+                            </button>
+                            <span className="ml-1 text-slate-600">{actions.length} รายการ</span>
+                          </div>
+                        );
+                      })()}
+                      {pageSize === 0 && <span>{actions.length} รายการ</span>}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* ── Event Simulation Panel ── */}
+            {user && (() => {
+              const SIM_TYPES = [
+                { id: 'gift',    label: '🎁 Gift' },
+                { id: 'coins',   label: '💎 Coins' },
+                { id: 'follow',  label: '❤️ Follow' },
+                { id: 'like',    label: '👍 Like' },
+                { id: 'chat',    label: '💬 Chat/คำสั่ง' },
+                { id: 'share',   label: '🔗 Share' },
+                { id: 'join',    label: '🚪 Join' },
+              ];
+              const giftMap = new Map(TIKTOK_GIFTS.map(g => [g.name, { name: g.name, coins: g.coins, pictureUrl: '' }]));
+              for (const dg of dynamicGifts) giftMap.set(dg.name, { name: dg.name, coins: dg.diamondCount, pictureUrl: dg.pictureUrl || '' });
+              const giftList = Array.from(giftMap.values()).sort((a, b) => a.coins - b.coins);
+
+              return (
+                <div className="mt-4 rounded-xl border border-violet-700/40 bg-violet-950/20 p-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🧪</span>
+                      <p className="text-sm font-semibold text-violet-300">จำลอง Event — ทดสอบ Events &amp; Actions</p>
+                    </div>
+                    <span className="text-[11px] text-violet-500/60">ไม่ต้อง Live จริง</span>
+                  </div>
+
+                  {/* Type selector */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {SIM_TYPES.map(t => (
+                      <button key={t.id} onClick={() => { setSimType(t.id); setSimResult(null); }}
+                        className={clsx(
+                          'px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
+                          simType === t.id
+                            ? 'bg-violet-700/60 border-violet-500 text-violet-200'
+                            : 'bg-[#1a1f30] border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                        )}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Inputs */}
+                  {simType === 'gift' ? (
+                    /* ── Gift: เลือก gift จาก catalog (specific_gift / gift_min_coins) ── */
+                    <div className="mb-3 space-y-2">
+                      <GiftPicker
+                        value={simGiftName}
+                        onChange={name => {
+                          setSimGiftName(name);
+                          const g = giftList.find(x => x.name === name);
+                          setSimGiftCoins(g ? g.coins : 1);
+                        }}
+                        giftList={giftList}
+                      />
+                      <button onClick={() => simulateEvent()} disabled={simulating}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition disabled:opacity-50">
+                        {simulating ? <span className="inline-block animate-spin">⏳</span> : '▶'} ยิง{simGiftName ? ` "${simGiftName}"` : ' (Random)'}
+                      </button>
+                    </div>
+                  ) : simType === 'coins' ? (
+                    /* ── Coins: ระบุจำนวนเหรียญโดยตรง (gift_min_coins) ── */
+                    <div className="flex gap-2 items-center mb-3">
+                      <div className="relative flex-1">
+                        <input type="number" min={1} value={simCoins} onChange={e => setSimCoins(Math.max(1, parseInt(e.target.value) || 1))}
+                          placeholder="จำนวนเหรียญ"
+                          className="w-full bg-[#1a1f30] border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 pr-9 outline-none focus:border-violet-500 transition" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">💎</span>
+                      </div>
+                      <button onClick={() => simulateEvent()} disabled={simulating}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition disabled:opacity-50 shrink-0">
+                        {simulating ? <span className="inline-block animate-spin">⏳</span> : '▶'} ยิง
+                      </button>
+                    </div>
+                  ) : (
+                    /* ── Non-gift types: แถวเดียว ── */
+                    <div className="flex gap-2 mb-3">
+                      {simType === 'like' && (
+                        <div className="relative w-40">
+                          <input type="number" min={1} value={simLikes} onChange={e => setSimLikes(Math.max(1, parseInt(e.target.value) || 1))}
+                            placeholder="จำนวน Like"
+                            className="w-full bg-[#1a1f30] border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition" />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">likes</span>
+                        </div>
+                      )}
+                      {simType === 'chat' && (
+                        <input value={simComment} onChange={e => setSimComment(e.target.value)}
+                          placeholder="พิมพ์ข้อความ เช่น !สุ่ม หรือ สวัสดี"
+                          className="flex-1 bg-[#1a1f30] border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition" />
+                      )}
+                      {['follow','share','join'].includes(simType) && (
+                        <span className="flex-1 text-sm text-slate-500 py-2">
+                          {simType === 'follow' ? 'ผู้ใช้ "ทดสอบ" กด Follow' : simType === 'share' ? 'ผู้ใช้ "ทดสอบ" กด Share' : 'ผู้ใช้ "ทดสอบ" เข้า Live'}
+                        </span>
+                      )}
+                      <button onClick={() => simulateEvent()} disabled={simulating}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition disabled:opacity-50 shrink-0">
+                        {simulating ? <span className="inline-block animate-spin">⏳</span> : '▶'} ยิง
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Result log */}
+                  {simResult && (
+                    <div className={clsx(
+                      'rounded-lg border p-3 text-xs',
+                      simResult.matched?.length
+                        ? 'border-green-700/50 bg-green-950/30'
+                        : 'border-slate-700/50 bg-[#1a1f30]'
+                    )}>
+                      {simResult.matched?.length ? (<>
+                        <p className="font-semibold text-green-400 mb-2">
+                          ✅ {simResult.matched.length} Event match
+                        </p>
+                        <div className="space-y-2">
+                          {simResult.matched.map((m, i) => (
+                            <div key={i} className="border-l-2 border-green-700/60 pl-2">
+                              <span className="text-slate-400">Event </span>
+                              <span className="text-green-300 font-mono text-[10px]">{m.trigger}</span>
+                              <span className="text-slate-500"> →</span>
+                              {m.actions.map(a => (
+                                <span key={a.id} className="ml-1.5 px-1.5 py-0.5 rounded bg-brand-900/60 border border-brand-700/40 text-brand-300">{a.name}</span>
+                              ))}
+                              {m.randomPool.length > 0 && (
+                                <span className="ml-1.5 text-amber-400">
+                                  🎲 random จาก [{m.randomPool.map(a => a.name).join(', ')}]
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </>) : (
+                        <p className="text-slate-500">
+                          🔍 ไม่มี Event ที่ match —{' '}
+                          {simResult.type === 'gift'
+                            ? (simResult.payload?.giftName
+                                ? `ลองเพิ่ม Event "specific_gift = ${simResult.payload.giftName}" หรือ "gift_min_coins ≤ ${simResult.payload.diamondCount}"`
+                                : `ลองเพิ่ม Event "gift_min_coins ≤ ${simResult.payload?.diamondCount}"`)
+                            : `ลองเพิ่ม Event trigger "${simResult.type}"`}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1825,151 +2858,226 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {tab === 'events' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-gray-400 leading-snug">
+              <p className="text-sm text-slate-400 leading-snug">
                 Events คือตัว trigger ที่จะเรียก Actions เมื่อเกิดเหตุการณ์ใน Live
               </p>
               <button onClick={() => setEventModal({ data: null })}
-                className="hidden md:flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg font-medium shrink-0 transition-colors">
+                className="hidden md:flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm px-3 py-1.5 rounded-lg font-medium shrink-0 transition-colors">
                 + สร้าง Event
               </button>
             </div>
 
             {events.length === 0 && !loading && (
-              <div className="text-center py-14 text-gray-600 border border-dashed border-gray-800 rounded-xl">
+              <div className="text-center py-14 text-slate-600 border border-dashed border-slate-700/40 rounded-xl">
                 <p className="text-4xl mb-3">🔗</p>
-                <p className="text-sm font-medium text-gray-500">ยังไม่มี Events</p>
-                <p className="text-xs text-gray-600 mt-1">กดปุ่ม "+ สร้าง Event" เพื่อเริ่ม</p>
+                <p className="text-sm font-medium text-slate-500">ยังไม่มี Events</p>
+                <p className="text-xs text-slate-600 mt-1">กดปุ่ม "+ สร้าง Event" เพื่อเริ่ม</p>
               </div>
             )}
 
-            <div className="space-y-2">
-              {events.map(ev => {
-                const trigger      = TRIGGER_LIST.find(t => t.id === ev.trigger);
-                const linkedActions = actions.filter(a => ev.actionIds?.includes(a.id));
-                const randomActions = actions.filter(a => ev.randomActionIds?.includes(a.id));
-                const isConfirmDel  = confirmDelete?.id === ev.id && confirmDelete?.type === 'event';
+            {events.length > 0 && (() => {
+              // ── gift lookup map ───────────────────────────────────────────
+              const giftMap2 = new Map(TIKTOK_GIFTS.map(g => [g.name, { pictureUrl: '' }]));
+              for (const dg of dynamicGifts) giftMap2.set(dg.name, { pictureUrl: dg.pictureUrl || '' });
 
-                // param string
-                let param = '';
-                if (ev.trigger === 'command')        param = `"${ev.keyword}"`;
-                if (ev.trigger === 'gift_min_coins') param = `≥${ev.minCoins} coins`;
-                if (ev.trigger === 'specific_gift')  param = ev.specificGiftName;
-                if (ev.trigger === 'likes')          param = `${ev.likesCount} likes`;
+              // ── helpers ──────────────────────────────────────────────────
+              const getEventTitle = (ev) => {
+                if (ev.trigger === 'specific_gift') {
+                  const gInfo = giftMap2.get(ev.specificGiftName || '');
+                  return (
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      {gInfo?.pictureUrl
+                        ? <img src={gInfo.pictureUrl} alt="" className="w-5 h-5 rounded object-cover shrink-0" onError={e => { e.target.style.display='none'; }} />
+                        : <span className="shrink-0 text-base leading-none">🎁</span>
+                      }
+                      <span className="font-semibold text-slate-100 truncate">{ev.specificGiftName || '?'}</span>
+                    </span>
+                  );
+                }
+                switch (ev.trigger) {
+                  case 'gift_min_coins':   return `🎁 ≥${ev.minCoins ?? 0} coins`;
+                  case 'command':          return `⌨️ "${ev.keyword || '?'}"`;
+                  case 'likes':            return `👍 ${ev.likesCount ?? 0} likes`;
+                  case 'join':             return '🚪 คนเข้า Live';
+                  case 'follow':           return '❤️ กด Follow';
+                  case 'share':            return '🔗 กด Share';
+                  case 'subscribe':        return '⭐ Subscribe';
+                  case 'chat':             return '💬 ทุก comment';
+                  case 'subscriber_emote': return '😄 Subscriber Emote';
+                  case 'fan_club_sticker': return '🏅 Fan Club Sticker';
+                  case 'tiktok_shop':      return '🛒 TikTok Shop';
+                  case 'first_activity':   return '👤 Activity แรก';
+                  default:                 return ev.trigger;
+                }
+              };
+              // tag บอก trigger type เฉพาะ trigger ที่มี param พิเศษ
+              const getEventTypeTag = (ev) => {
+                switch (ev.trigger) {
+                  case 'specific_gift':    return 'Gift ชิ้นนั้นๆ';
+                  case 'gift_min_coins':   return 'Gift ≥ X coins';
+                  case 'command':          return 'Keyword';
+                  case 'likes':            return 'Like ครบ X';
+                  default:                 return null;
+                }
+              };
 
-                return (
-                  <div key={ev.id} className={clsx(
-                    'border rounded-xl transition-colors',
-                    ev.enabled ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-950 opacity-55'
-                  )}>
-                    {/* Main row */}
-                    <div className="flex items-start gap-3 px-4 py-3">
-                      {/* Toggle */}
-                      <button
-                        onClick={() => toggleEvent(ev)}
-                        className={clsx(
-                          'shrink-0 mt-0.5 w-10 h-6 rounded-full transition-colors flex items-center px-0.5',
-                          ev.enabled ? 'bg-green-600' : 'bg-gray-700'
-                        )}
-                      >
-                        <div className={clsx(
-                          'w-5 h-5 rounded-full bg-white transition-transform',
-                          ev.enabled ? 'translate-x-4' : 'translate-x-0'
-                        )} />
-                      </button>
+              const gridTemplate = evtColWidths.map(w => `${w}px`).join(' ');
+              const minTotalW = evtColWidths.reduce((s, w) => s + w, 0);
+              const cellBase = 'flex items-center overflow-hidden px-2';
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        {/* Trigger label */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold text-gray-100">{trigger?.label || ev.trigger}</p>
-                          {param && (
-                            <span className="text-xs bg-gray-800 text-brand-400 px-2 py-0.5 rounded font-mono">
-                              {param}
-                            </span>
+              return (
+                <div className="overflow-x-auto">
+                  <div className="rounded-xl border border-[#252d42]" style={{ minWidth: minTotalW + 'px' }}>
+
+                    {/* ── Header ── */}
+                    <div className="grid border-b border-[#2a3347] bg-[#131825] sticky top-0 z-10"
+                      style={{ gridTemplateColumns: gridTemplate }}>
+                      {EVT_COL_DEFS.map((col, ci) => (
+                        <div key={col.id} className="relative flex items-center select-none">
+                          <span className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate flex-1">
+                            {col.label}
+                          </span>
+                          {ci < EVT_COL_DEFS.length - 1 && (
+                            <div
+                              onMouseDown={(e) => startEvtColResize(e, ci)}
+                              className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center cursor-col-resize group z-20"
+                              title="ลากเพื่อปรับความกว้าง">
+                              <div className="w-px h-4 bg-[#2a3347] group-hover:bg-brand-500 transition-colors" />
+                            </div>
                           )}
                         </div>
-                        {/* Who */}
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          👤 {WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label || ev.whoCanTrigger}
-                        </p>
-                        {/* Linked actions */}
-                        {(linkedActions.length > 0 || randomActions.length > 0) && (
-                          <div className="flex flex-wrap gap-1 mt-2">
+                      ))}
+                    </div>
+
+                    {/* ── Rows ── */}
+                    {events.map((ev, idx) => {
+                      const linkedActions = actions.filter(a => ev.actionIds?.includes(a.id));
+                      const randomActions = actions.filter(a => ev.randomActionIds?.includes(a.id));
+                      const isConfirmDel  = confirmDelete?.id === ev.id && confirmDelete?.type === 'event';
+                      const isOdd         = idx % 2 === 1;
+                      const typeTag       = getEventTypeTag(ev);
+
+                      return (
+                        <div
+                          key={ev.id}
+                          className={clsx(
+                            'grid border-b border-[#1e2638]/70 last:border-b-0 transition-colors',
+                            isOdd ? 'bg-[#1a1f30]' : 'bg-[#161b28]',
+                            !ev.enabled && 'opacity-50'
+                          )}
+                          style={{ gridTemplateColumns: gridTemplate }}>
+
+                          {/* col: toggle */}
+                          <div className={clsx(cellBase, 'justify-center')}>
+                            <button
+                              onClick={() => toggleEvent(ev)}
+                              className={clsx(
+                                'shrink-0 w-9 h-5 rounded-full transition-colors flex items-center px-0.5',
+                                ev.enabled ? 'bg-green-600' : 'bg-slate-700'
+                              )}>
+                              <div className={clsx('w-4 h-4 rounded-full bg-white transition-transform shadow-sm', ev.enabled ? 'translate-x-4' : 'translate-x-0')} />
+                            </button>
+                          </div>
+
+                          {/* col: condition / title */}
+                          <div className={clsx(cellBase, 'py-2 gap-2 min-w-0')}>
+                            <span className="flex items-center gap-1.5 min-w-0 flex-1 text-sm font-semibold text-slate-100 leading-snug">
+                              {getEventTitle(ev)}
+                            </span>
+                            {typeTag && (
+                              <span className="shrink-0 text-[10px] bg-[#1e2638] text-brand-400 px-1.5 py-0.5 rounded border border-brand-800/40 font-mono whitespace-nowrap">
+                                {typeTag}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* col: who */}
+                          <div className={clsx(cellBase, 'py-1')}>
+                            <span className="text-xs text-slate-500 truncate">
+                              {WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label || ev.whoCanTrigger}
+                            </span>
+                          </div>
+
+                          {/* col: linked actions */}
+                          <div className={clsx(cellBase, 'py-1.5 gap-1 flex-wrap')}>
                             {linkedActions.map(a => (
-                              <span key={a.id} className="text-[11px] bg-brand-900/40 border border-brand-800/50 text-brand-300 px-2 py-0.5 rounded-full">
+                              <span key={a.id} className="text-[11px] bg-brand-900/40 border border-brand-700/50 text-brand-300 px-1.5 py-0.5 rounded-full whitespace-nowrap">
                                 ✅ {a.name}
                               </span>
                             ))}
                             {randomActions.map(a => (
-                              <span key={a.id} className="text-[11px] bg-purple-900/40 border border-purple-800/50 text-purple-300 px-2 py-0.5 rounded-full">
+                              <span key={a.id} className="text-[11px] bg-purple-900/40 border border-purple-700/50 text-purple-300 px-1.5 py-0.5 rounded-full whitespace-nowrap">
                                 🎲 {a.name}
                               </span>
                             ))}
+                            {linkedActions.length === 0 && randomActions.length === 0 && (
+                              <span className="text-[11px] text-slate-700 italic">ยังไม่ผูก Action</span>
+                            )}
                           </div>
-                        )}
-                      </div>
 
-                      {/* Desktop buttons */}
-                      <div className="hidden md:flex items-center gap-1.5 shrink-0">
-                        <button onClick={() => setEventModal({ data: { ...ev } })}
-                          className="text-xs text-gray-300 hover:text-white px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors">
-                          แก้ไข
-                        </button>
-                        <button onClick={() => deleteEvent(ev.id)}
-                          className={clsx(
-                            'text-xs px-3 py-1.5 rounded-lg transition-colors',
-                            isConfirmDel
-                              ? 'bg-red-600 text-white animate-pulse'
-                              : 'text-red-500 hover:text-red-400 bg-gray-800 hover:bg-gray-700'
-                          )}>
-                          {isConfirmDel ? 'ยืนยันลบ?' : 'ลบ'}
-                        </button>
-                      </div>
-                    </div>
+                          {/* col: buttons */}
+                          <div className={clsx(cellBase, 'justify-end gap-1.5 pr-3 py-1.5')}>
+                            {/* edit */}
+                            <button
+                              onClick={() => setEventModal({ data: { ...ev } })}
+                              title="แก้ไข"
+                              className="text-xs px-2.5 py-1.5 rounded border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition-colors">
+                              ✎
+                            </button>
+                            {/* duplicate */}
+                            <button
+                              onClick={() => duplicateEvent(ev)}
+                              title="Duplicate"
+                              className="text-xs px-2.5 py-1.5 rounded border border-slate-700 text-slate-400 hover:text-violet-300 hover:border-violet-600 transition-colors">
+                              ⧉
+                            </button>
+                            {/* delete */}
+                            <button
+                              onClick={() => deleteEvent(ev.id)}
+                              title="ลบ"
+                              className={clsx(
+                                'text-xs px-2.5 py-1.5 rounded border transition-colors',
+                                isConfirmDel
+                                  ? 'bg-red-600 border-red-600 text-white animate-pulse'
+                                  : 'border-slate-700 text-red-500 hover:border-red-700 hover:bg-red-950/30'
+                              )}>
+                              {isConfirmDel ? '?' : '✕'}
+                            </button>
+                          </div>
 
-                    {/* Mobile buttons */}
-                    <div className="flex md:hidden border-t border-gray-800">
-                      <button onClick={() => setEventModal({ data: { ...ev } })}
-                        className="flex-1 flex items-center justify-center py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors border-r border-gray-800">
-                        แก้ไข
-                      </button>
-                      <button onClick={() => deleteEvent(ev.id)}
-                        className={clsx(
-                          'flex-1 flex items-center justify-center py-2.5 text-sm transition-colors',
-                          isConfirmDel ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 hover:bg-gray-800'
-                        )}>
-                        {isConfirmDel ? 'ยืนยัน?' : 'ลบ'}
-                      </button>
-                    </div>
+                        </div>
+                      );
+                    })}
+
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
         {/* ── Tab: Overlay URL ── */}
         {tab === 'overlay' && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-slate-400">
               Copy URL ด้านล่างไปวางใน OBS Browser Source เพื่อให้ Actions แสดงบน stream
             </p>
             {!user && <p className="text-yellow-500 text-sm">⚠️ Login ก่อนเพื่อดู URL</p>}
             {user && overlayUrls.map((url, i) => (
-              <div key={i} className="border border-gray-700 rounded-lg p-4 space-y-2">
+              <div key={i} className="border border-[#252d42] rounded-lg p-4 space-y-2 bg-[#1a1f30]">
                 <p className="text-sm font-medium text-white">Screen {i + 1}</p>
-                <p className="text-xs text-gray-500">แนะนำ: Width 800, Height 600 ใน OBS</p>
+                <p className="text-xs text-slate-500">แนะนำ: Width 800, Height 600 ใน OBS</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs text-brand-400 bg-gray-950 rounded px-2 py-1.5 break-all">{url}</code>
+                  <code className="flex-1 text-xs text-brand-400 bg-[#111520] rounded px-2 py-1.5 break-all">{url}</code>
                   <button onClick={() => { navigator.clipboard.writeText(url); toast.success('Copy แล้ว!'); }}
-                    className="shrink-0 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded">
+                    className="shrink-0 bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded">
                     Copy
                   </button>
                 </div>
               </div>
             ))}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-xs text-gray-500 space-y-1">
-              <p className="font-medium text-gray-400">วิธีใช้ใน OBS:</p>
+            <div className="bg-[#1a1f30] border border-[#252d42] rounded-lg p-4 text-xs text-slate-500 space-y-1">
+              <p className="font-medium text-slate-400">วิธีใช้ใน OBS:</p>
               <p>1. Add Source → Browser</p>
               <p>2. วาง URL ด้านบน → ตั้ง Width: 800, Height: 600</p>
               <p>3. Actions จะแสดงอัตโนมัติเมื่อมี Event trigger</p>
@@ -1980,11 +3088,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* ── Tab: OBS Settings ── */}
         {tab === 'obs' && (
           <div className="space-y-4 max-w-md">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-slate-400">
               เชื่อมต่อ OBS WebSocket เพื่อให้ Actions สลับ Scene / เปิดปิด Source ได้
             </p>
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-xs text-gray-500 space-y-1">
-              <p className="font-medium text-gray-400 text-sm">วิธีเปิด OBS WebSocket:</p>
+            <div className="bg-[#1a1f30] border border-[#252d42] rounded-lg p-4 text-xs text-slate-500 space-y-1">
+              <p className="font-medium text-slate-400 text-sm">วิธีเปิด OBS WebSocket:</p>
               <p>1. OBS → Tools → WebSocket Server Settings</p>
               <p>2. ✅ Enable WebSocket server</p>
               <p>3. ปิด Authentication ได้ (ไม่ต้องใส่ password)</p>
@@ -2004,23 +3112,40 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 obsStatus.includes('✅') ? 'bg-green-900/30 text-green-400' :
                 obsStatus.includes('❌') ? 'bg-red-900/30 text-red-400' :
                 obsStatus.includes('กำลัง') ? 'bg-yellow-900/30 text-yellow-400' :
-                'bg-gray-800 text-gray-500')}>
+                'bg-slate-800 text-slate-500')}>
               สถานะ: {obsStatus}
             </div>
 
             <div className="flex gap-2">
               <button onClick={connectObs}
-                className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg py-2 text-sm font-medium">
-                🔌 ทดสอบเชื่อมต่อ
+                className="flex-1 bg-brand-600 hover:bg-brand-500 text-white rounded-lg py-2 text-sm font-medium">
+                🔌 เชื่อมต่อ + Scan
               </button>
               <button onClick={saveObsSettings}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2 text-sm">
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2 text-sm">
                 💾 บันทึก
               </button>
             </div>
+
+            {/* Source Map status */}
+            {(obsScanStatus || Object.keys(obsSourceMap).length > 0) && (
+              <div className="flex items-center gap-2">
+                <div className={clsx('flex-1 text-xs px-3 py-2 rounded-lg',
+                  obsScanStatus.startsWith('✅') ? 'bg-green-900/20 text-green-400' :
+                  obsScanStatus.startsWith('❌') ? 'bg-red-900/20 text-red-400' :
+                  'bg-slate-800/60 text-slate-400')}>
+                  {obsScanStatus || `✅ ${Object.keys(obsSourceMap).length} source พร้อมใช้`}
+                </div>
+                <button
+                  onClick={scanObsSources}
+                  title="Scan Scene/Source ใหม่ (ถ้าเพิ่ม Scene หรือ Source ใน OBS)"
+                  className="text-xs px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:border-slate-400 transition-colors whitespace-nowrap">
+                  🔄 Refresh
+                </button>
+              </div>
+            )}
           </div>
         )}
-      </main>
 
       {/* Modals */}
       {actionModal && (
@@ -2061,14 +3186,15 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           obsHost={obsHost}
           obsPort={obsPort}
           audioEnabled={audioEnabled}
+          obsSourceMap={obsSourceMap}
         />
       )}
 
       {/* Login Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 space-y-4">
-            <h3 className="text-white font-bold">Login เพื่อใช้งาน</h3>
+          <div className="bg-[#1a1f30] border border-[#252d42] rounded-xl p-6 w-80 space-y-4">
+            <h3 className="text-slate-100 font-bold">Login เพื่อใช้งาน</h3>
             <button onClick={handleGoogleLogin} disabled={loginLoading}
               className="w-full bg-white text-gray-900 rounded-lg py-2 text-sm font-medium hover:bg-gray-100">
               {loginLoading ? 'กำลัง Login...' : '🔑 Login ด้วย Google'}
@@ -2088,6 +3214,118 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           +
         </button>
       )}
+
+      {/* Hidden import input */}
+      <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
+      </main>{/* /main */}
+
+      {/* ── Drag handle ── */}
+      <div
+        onMouseDown={handleRightDragStart}
+        className="hidden md:flex flex-shrink-0 w-1.5 cursor-col-resize items-center justify-center group hover:bg-brand-600/30 transition-colors"
+        title="ลากเพื่อปรับขนาด"
+      >
+        <div className="w-px h-full bg-slate-700/60 group-hover:bg-brand-500/70 transition-colors" />
+      </div>
+
+      {/* ── Right panel: OBS Queue Monitor ── */}
+      <div
+        className={clsx(
+          'hidden md:flex flex-col flex-shrink-0 overflow-hidden border-l',
+          theme === 'dark' ? 'border-slate-800 bg-[#0d1120]' : 'border-gray-200 bg-gray-50'
+        )}
+        style={{ width: rightPanelWidth }}
+      >
+        {/* OBS Queue Monitor — เต็ม panel */}
+        {user ? (
+          <div className="flex flex-col h-full overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-700/40 bg-[#1a1f30] flex-shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-semibold text-slate-200 whitespace-nowrap">🎬 OBS Queue Monitor</span>
+                {queueDisplay.length > 0 && (
+                  <span className="text-[11px] font-mono bg-brand-900/60 border border-brand-700/50 text-brand-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                    {queueDisplay.filter(i => !i.playing).length} รอ
+                  </span>
+                )}
+                {queueDisplay.length === 0 && (
+                  <span className="text-[11px] text-slate-600">ว่าง</span>
+                )}
+              </div>
+              {queueDisplay.length > 0 && (
+                <button
+                  onClick={clearObsQueue}
+                  className="shrink-0 text-xs text-red-400 hover:text-red-300 border border-red-800/50 hover:border-red-600/60 px-2 py-1 rounded-lg transition-colors">
+                  🗑 Clear
+                </button>
+              )}
+            </div>
+
+            {/* Queue list */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+              {queueDisplay.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-slate-600">ไม่มี Action ในคิว</div>
+              ) : (
+                queueDisplay.map((item) => (
+                  <div key={item.id} className={clsx(
+                    'flex items-center justify-between gap-2 px-3 py-2 text-xs',
+                    item.playing ? 'bg-green-950/20 text-green-400' : 'text-slate-400 hover:bg-slate-800/30'
+                  )}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {item.playing
+                        ? <span className="shrink-0 animate-pulse">▶</span>
+                        : <span className="shrink-0 text-slate-600">◦</span>
+                      }
+                      <span className="truncate font-medium">{item.name}</span>
+                    </div>
+                    {!item.playing && (
+                      <button
+                        onClick={() => skipQueueItem(item.key, item.idx)}
+                        className="shrink-0 text-slate-600 hover:text-red-400 transition-colors px-1">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Settings footer */}
+            <div className="flex flex-col gap-2.5 px-3 py-3 border-t border-slate-700/40 bg-[#1a1f30] flex-shrink-0">
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="shrink-0 text-slate-500">⏱ Gap:</span>
+                <input
+                  type="number" min={0} max={5000} step={50} value={obsGap}
+                  onChange={e => {
+                    const v = Math.max(0, Math.min(5000, Number(e.target.value) || 0));
+                    setObsGap(v); obsGapRef.current = v;
+                  }}
+                  className="flex-1 min-w-0 bg-[#111520] border border-slate-700 rounded px-2 py-0.5 text-slate-200 text-xs text-right focus:outline-none focus:border-brand-500"
+                />
+                <span className="shrink-0 text-slate-600">ms</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="shrink-0 text-slate-500">🔢 Max:</span>
+                <input
+                  type="number" min={1} max={1000} step={1} value={obsMaxQueue}
+                  onChange={e => {
+                    const v = Math.max(1, Math.min(1000, Number(e.target.value) || 1));
+                    setObsMaxQueue(v); obsMaxQueueRef.current = v;
+                  }}
+                  className="flex-1 min-w-0 bg-[#111520] border border-slate-700 rounded px-2 py-0.5 text-slate-200 text-xs text-right focus:outline-none focus:border-brand-500"
+                />
+                <span className="shrink-0 text-slate-600">items</span>
+              </label>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-xs text-slate-600">
+            Login เพื่อใช้งาน
+          </div>
+        )}
+      </div>
+
+      </div>{/* /content area */}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
 import { getSocket, setTokenRefresher } from '../lib/socket';
 import api from '../lib/api';
+import Sidebar from '../components/Sidebar';
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
 
@@ -15,7 +16,7 @@ const CATEGORIES = [
   { id: 'mvp',    label: 'MVP',      emoji: '🏆' },
 ];
 
-const DEFAULT_HOTKEYS = { taptap: 'Q', nwm: 'W', x2: 'E', x3: 'R', mvp: 'T' };
+const DEFAULT_HOTKEYS = { taptap: '', nwm: '', x2: '', x3: '', mvp: '' };
 
 // ── clsx minimal ────────────────────────────────────────────────────────────
 function cx(...args) { return args.filter(Boolean).join(' '); }
@@ -27,7 +28,7 @@ function pickVideo(list) {
   return enabled[Math.floor(Math.random() * enabled.length)];
 }
 
-export default function PKPage({ theme, user }) {
+export default function PKPage({ theme, user, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const isDark = theme === 'dark';
 
   const [activeTab,   setActiveTab]   = useState('taptap');
@@ -46,6 +47,7 @@ export default function PKPage({ theme, user }) {
   const fileRef     = useRef(null);
   const saveTimer   = useRef(null);
   const socketRef   = useRef(null);
+  const importRef   = useRef(null);
 
   // ─── Load config from backend ───────────────────────────────────────────
   useEffect(() => {
@@ -61,10 +63,19 @@ export default function PKPage({ theme, user }) {
         }
       } catch { /* config not set yet */ }
 
-      // Get widget CID
+      // Get widget CID — ใช้ cache ก่อน ไม่ hit API ซ้ำ
       try {
-        const { data } = await api.post('/api/widget-token');
-        setCid(data.cid);
+        const cacheKey = `ttplus_cid_${user.uid}`;
+        const cached   = localStorage.getItem(cacheKey);
+        if (cached && /^\d{4,8}$/.test(cached)) {
+          setCid(cached);
+        } else {
+          const { data } = await api.post('/api/widget-token');
+          if (data.cid) {
+            setCid(data.cid);
+            try { localStorage.setItem(cacheKey, data.cid); } catch {}
+          }
+        }
       } catch {}
     })();
   }, [user]);
@@ -244,6 +255,43 @@ export default function PKPage({ theme, user }) {
     updateCategories(newCats);
   }
 
+  // ─── Export / Import ─────────────────────────────────────────────────────
+  const handleExport = useCallback(() => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tab: 'pk',
+      hotkeys,
+      categories,
+    };
+    const json     = JSON.stringify(data, null, 2);
+    const filename = `ttplus-pk-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const uri      = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+    const a        = document.createElement('a');
+    a.href = uri; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    toast.success('⬇ Export PK เรียบร้อย');
+  }, [hotkeys, categories]);
+
+  const handleImport = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const toastId = toast.loading('กำลัง Import...');
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.hotkeys && !data.categories) throw new Error('ไฟล์ไม่ถูกต้อง (ไม่พบ hotkeys/categories)');
+      const newHotkeys    = data.hotkeys    || hotkeys;
+      const newCategories = data.categories || categories;
+      setHotkeys(newHotkeys);
+      setCategories(newCategories);
+      await api.post('/api/pk/config', { config: { hotkeys: newHotkeys, categories: newCategories } });
+      toast.success('⬆ Import PK เรียบร้อย', { id: toastId });
+    } catch (err) { toast.error('Import ไม่สำเร็จ: ' + err.message, { id: toastId }); }
+  }, [hotkeys, categories]);
+
   // ─── Widget URL ──────────────────────────────────────────────────────────
   const widgetUrl = cid
     ? `${typeof window !== 'undefined' ? window.location.origin : ''}/widget/pk?cid=${cid}`
@@ -262,18 +310,18 @@ export default function PKPage({ theme, user }) {
   const muted   = isDark ? '#9ca3af' : '#6b7280';
   const accent  = '#f97316'; // orange — PK theme
 
-  if (!user) {
-    return (
-      <div style={{ minHeight: '100vh', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: muted, fontSize: 15 }}>กรุณา Login เพื่อใช้งาน PK Panel</p>
-      </div>
-    );
-  }
-
   const curList = categories[activeTab] || [];
 
   return (
-    <div style={{ minHeight: '100vh', background: bg, padding: '20px 16px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: bg, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <main className={sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56'} style={{ padding: '20px 16px' }}>
+      {!user && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <p style={{ color: muted, fontSize: 15 }}>กรุณา Login เพื่อใช้งาน PK Panel</p>
+        </div>
+      )}
+      {user && (<>
 
       {/* ── Header ── */}
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -286,9 +334,35 @@ export default function PKPage({ theme, user }) {
               เล่นวิดีโอทับ OBS ระหว่าง PK — กดคีย์ลัดหรือคลิกปุ่มเพื่อเปิดใช้งาน
             </p>
           </div>
-          <span style={{ fontSize: 12, color: saving ? accent : muted }}>
-            {saving ? '💾 กำลังบันทึก...' : '✓ บันทึกแล้ว'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => importRef.current?.click()}
+              title="Import PK config จากไฟล์ Backup"
+              style={{
+                padding: '6px 12px', borderRadius: 8, border: `1px solid ${border}`,
+                background: isDark ? '#1e1e2e' : '#f3f4f6',
+                color: isDark ? '#9ca3af' : '#6b7280',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              ⬆ Import
+            </button>
+            <button
+              onClick={handleExport}
+              title="Export PK config เป็นไฟล์ Backup"
+              style={{
+                padding: '6px 12px', borderRadius: 8, border: `1px solid ${border}`,
+                background: isDark ? '#1e1e2e' : '#f3f4f6',
+                color: isDark ? '#9ca3af' : '#6b7280',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              ⬇ Export
+            </button>
+            <span style={{ fontSize: 12, color: saving ? accent : muted }}>
+              {saving ? '💾 กำลังบันทึก...' : '✓ บันทึกแล้ว'}
+            </span>
+          </div>
         </div>
 
         {/* ── Widget URL ── */}
@@ -468,84 +542,7 @@ export default function PKPage({ theme, user }) {
             ))}
           </div>
 
-          {/* ── Add video section ── */}
-          <div style={{ padding: '16px 20px', borderTop: `1px solid ${border}` }}>
-            <p style={{ color: muted, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>
-              ➕ เพิ่มวิดีโอ
-            </p>
-
-            {/* By URL */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-              <input
-                type="text"
-                placeholder="ชื่อแสดง (ไม่บังคับ)"
-                value={urlName}
-                onChange={e => setUrlName(e.target.value)}
-                style={{
-                  width: 160, padding: '8px 12px', borderRadius: 8,
-                  border: `1px solid ${border}`, background: isDark ? '#111' : '#fff',
-                  color: txt, fontSize: 13, outline: 'none',
-                }}
-              />
-              <input
-                type="text"
-                placeholder="https://... หรือ URL วิดีโอ"
-                value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addVideoUrl()}
-                style={{
-                  flex: 1, minWidth: 200, padding: '8px 12px', borderRadius: 8,
-                  border: `1px solid ${border}`, background: isDark ? '#111' : '#fff',
-                  color: txt, fontSize: 13, outline: 'none',
-                }}
-              />
-              <select
-                value={urlType}
-                onChange={e => setUrlType(e.target.value)}
-                style={{
-                  padding: '8px 10px', borderRadius: 8,
-                  border: `1px solid ${border}`, background: isDark ? '#111' : '#fff',
-                  color: txt, fontSize: 13, cursor: 'pointer',
-                }}>
-                <option value="mp4">MP4</option>
-                <option value="webm">WebM</option>
-              </select>
-              <button
-                onClick={addVideoUrl}
-                disabled={!urlInput.trim()}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, border: 'none',
-                  background: urlInput.trim() ? accent : (isDark ? '#333' : '#e5e7eb'),
-                  color: urlInput.trim() ? '#fff' : muted,
-                  fontSize: 13, fontWeight: 600, cursor: urlInput.trim() ? 'pointer' : 'default',
-                }}>
-                เพิ่ม URL
-              </button>
-            </div>
-
-            {/* Upload file */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".webm,.mp4"
-                onChange={uploadFile}
-                style={{ display: 'none' }}
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                style={{
-                  padding: '8px 16px', borderRadius: 8,
-                  border: `1.5px dashed ${isDark ? '#444' : '#ccc'}`,
-                  background: 'transparent', color: muted,
-                  fontSize: 13, cursor: uploading ? 'default' : 'pointer',
-                }}>
-                {uploading ? '⏳ กำลังอัพโหลด...' : '📤 อัพโหลดไฟล์ (.webm / .mp4)'}
-              </button>
-              <span style={{ fontSize: 11, color: muted }}>สูงสุด 200 MB ต่อไฟล์</span>
-            </div>
-          </div>
+          {/* Add video section — hidden, เตรียมไว้สำหรับอนาคต */}
         </div>
 
         {/* ── Hotkey summary ── */}
@@ -576,7 +573,12 @@ export default function PKPage({ theme, user }) {
             ติ๊กอันเดียว = เล่นอันนั้นเสมอ
           </p>
         </div>
-      </div>
+      </div>{/* /maxWidth */}
+      </>)}
+
+      {/* Hidden import input */}
+      <input ref={importRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={handleImport} />
+      </main>
     </div>
   );
 }

@@ -32,7 +32,7 @@ const DEFAULT_TTS = {
   voice:      '',
 };
 
-export default function TtsPage({ theme, setTheme, user, authLoading, activePage, setActivePage }) {
+export default function TtsPage({ theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const [tts, setTts]               = useState(DEFAULT_TTS);
   const [voices, setVoices]         = useState([]);
   const [saving, setSaving]         = useState(false);
@@ -306,9 +306,9 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
   return (
     <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
-      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} />
+      <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className="ml-16 md:ml-56 p-4 md:p-6 max-w-xl">
+      <main className={clsx('p-4 md:p-6 max-w-xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

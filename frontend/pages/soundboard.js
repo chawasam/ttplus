@@ -319,7 +319,7 @@ function PadLayout({
 }
 
 // ===== Main =====
-export default function SoundboardPage({ theme, user, activePage: navPage, setActivePage }) {
+export default function SoundboardPage({ theme, user, activePage: navPage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const [store,          setStore]          = useState(null);
   const [names,          setNames]          = useState({});
   const [page,           setPage]           = useState(1);
@@ -846,9 +846,9 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
 
   return (
     <div className={clsx('flex h-screen overflow-hidden', isDark ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900')}>
-      <Sidebar theme={theme} user={user} activePage={navPage} setActivePage={setActivePage} />
+      <Sidebar theme={theme} user={user} activePage={navPage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className="flex-1 ml-16 md:ml-56 overflow-y-auto">
+      <main className={clsx('flex-1 overflow-y-auto', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
         <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
 
           {/* ===== Header ===== */}
