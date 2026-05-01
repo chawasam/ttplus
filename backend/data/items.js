@@ -10,7 +10,7 @@ const ITEMS = {
     grade: 'UNCOMMON', type: 'MAIN_HAND',
     classReq: ['WARRIOR', 'PALADIN', 'BERSERKER'],
     levelReq: 1,
-    base: { atk: 18 },
+    base: { atk: 12 },
     rolls: { crit_rate: [1, 4] },
     sockets: 1,
     desc: 'ดาบเหล็กธรรมดาที่ตีขึ้นในหมู่บ้าน คมพอประมาณ',

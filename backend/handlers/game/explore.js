@@ -57,7 +57,10 @@ async function explore(req, res) {
     const charRef = db.collection('game_characters').doc(charId);
 
     // ── 4. Transaction: ตรวจ + หัก stamina แบบ atomic ────────────────────
+    // ถ้ามีสตามิน่า (≥20) → หักปกติ + สุ่ม event ทุกประเภท
+    // ถ้าไม่มีสตามิน่า (<20) → ไม่หัก + เจอแค่ encounter
     let charSnapshot;
+    let hasStamina;
     await db.runTransaction(async (t) => {
       const charDoc = await t.get(charRef);
       if (!charDoc.exists) throw new Error('Character ไม่พบ');
@@ -69,32 +72,37 @@ async function explore(req, res) {
         throw Object.assign(new Error(`ต้องการ Level ${minLv} ขึ้นไป`), { status: 400 });
       }
 
-      // ตรวจ stamina
-      if ((char.stamina || 0) < STAMINA_COST) {
-        throw Object.assign(
-          new Error(`Stamina ไม่พอ (${char.stamina}/${STAMINA_COST}) รอ regen หรือกด Rest`),
-          { status: 400 }
-        );
-      }
+      // ตรวจสตามิน่า — มีพอ → หัก; ไม่พอ → ยังสำรวจได้แต่เจอแค่มอนสเตอร์
+      hasStamina = (char.stamina || 0) >= STAMINA_COST;
 
-      // หัก stamina + stamp timestamp แบบ atomic
-      t.update(charRef, {
-        stamina:          char.stamina - STAMINA_COST,
+      const updateData = {
         lastActiveAt:     admin.firestore.FieldValue.serverTimestamp(),
         lastExploreAt:    admin.firestore.FieldValue.serverTimestamp(),
         explorationCount: admin.firestore.FieldValue.increment(1),
-      });
+      };
+      if (hasStamina) {
+        updateData.stamina = char.stamina - STAMINA_COST;
+      }
+      t.update(charRef, updateData);
 
       charSnapshot = char; // ส่งออกมาใช้นอก transaction
     });
 
     const char = charSnapshot;
+    const staminaAfter = hasStamina ? char.stamina - STAMINA_COST : (char.stamina || 0);
 
     // ── 5. สุ่ม event ─────────────────────────────────────────────────────
-    const event = getExploreEvent(zone);
-    if (!event) return res.status(500).json({ error: 'ไม่พบ event' });
+    // มีสตามิน่า → สุ่ม event ทุกประเภท (item / gold / encounter / nothing)
+    // ไม่มีสตามิน่า → encounter เท่านั้น (ไม่สุ่ม)
+    let result;
+    if (hasStamina) {
+      const event = getExploreEvent(zone);
+      if (!event) return res.status(500).json({ error: 'ไม่พบ event' });
+      result = event.result;
+    } else {
+      result = { type: 'encounter', msg: 'ร่างกายอ่อนล้า แต่มอนสเตอร์ไม่ยอมปล่อยผ่าน...' };
+    }
 
-    const { result } = event;
     const response = {
       zone,
       zoneName:   zoneDef.nameTH,
@@ -104,8 +112,9 @@ async function explore(req, res) {
       items:      [],
       gold:       0,
       encounter:  null,
-      stamina:    char.stamina - STAMINA_COST,
+      stamina:    staminaAfter,
       staminaMax: char.staminaMax,
+      noStamina:  !hasStamina,
     };
 
     // ── 6. Process event ──────────────────────────────────────────────────
@@ -231,9 +240,8 @@ async function getZoneInfo(req, res) {
       name:     bossDef.name,
       level:    bossDef.level,
       hp:       bossDef.hp,
-      type:     bossDef.type,
-      xpReward: bossDef.xpReward,
-      goldReward: bossDef.goldReward,
+        xpReward: bossDef.xpReward,
+        goldReward: bossDef.goldReward,
     } : null;
 
     // Tier drop info

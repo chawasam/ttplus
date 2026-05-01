@@ -39,7 +39,7 @@ const CLASSES_BY_RACE = {
 
 // Class base stats
 const CLASS_BASE_STATS = {
-  WARRIOR:    { hp: 150, mp: 40,  atk: 22, def: 18, spd: 8,  mag: 5  },
+  WARRIOR:    { hp: 150, mp: 40,  atk: 18, def: 22, spd: 8,  mag: 5  },
   ROGUE:      { hp: 110, mp: 60,  atk: 20, def: 12, spd: 16, mag: 8  },
   CLERIC:     { hp: 120, mp: 100, atk: 14, def: 14, spd: 8,  mag: 20 },
   RANGER:     { hp: 115, mp: 70,  atk: 20, def: 12, spd: 14, mag: 10 },

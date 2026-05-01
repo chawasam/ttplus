@@ -9,14 +9,25 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
-  skip: (req) => req.path === '/health',
+  // skip overlay endpoint — ไม่มี rate limit (Socket.IO push, HTTP เรียกแค่ตอน connect)
+  skip: (req) => req.path === '/health' || req.originalUrl.startsWith('/api/actions/overlay'),
+});
+
+// Widget polling limiter — สำหรับ OBS Browser Source ที่ poll ทุก 1.5s
+// 2400 req / 15 min = 160 req/min รองรับ widget หลายหน้าต่างพร้อมกัน
+const widgetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2400,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Widget polling rate exceeded.' },
 });
 
 // Tight limiter สำหรับ unauthenticated endpoints (login, csrf-token, widget-styles)
 // ป้องกัน flood ก่อน auth โดยไม่กระทบ game routes ที่มี verifyToken แล้ว
 const unauthLimiter = rateLimit({
   windowMs: 60 * 1000,  // 1 นาที
-  max: 20,              // 20 req / min per IP — เพียงพอสำหรับ login/widget load
+  max: 60,              // 60 req / min — รองรับ page load หลายหน้า + CSRF prefetch
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Slow down.' },
@@ -28,6 +39,18 @@ const connectLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many connect attempts. Please wait 15 minutes.' },
+});
+
+// Upload limiter — นับต่อ user (uid จาก JWT) ไม่ใช่ IP
+// ป้องกันสแปม external file hosting (catbox / litterbox / uguu)
+// 20 ไฟล์ / ชั่วโมง — ใช้งานปกติได้สบาย แต่สแปมไม่ได้
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 ชั่วโมง
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.uid || req.ip, // per-user หลัง verifyToken
+  message: { error: 'อัปโหลดเกินกำหนด (20 ไฟล์/ชั่วโมง) กรุณารอแล้วลองใหม่' },
 });
 
 const settingsLimiter = rateLimit({
@@ -118,7 +141,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 module.exports = {
-  generalLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter,
+  generalLimiter, widgetLimiter, unauthLimiter, connectLimiter, settingsLimiter, tokenLimiter, uploadLimiter,
   socketRateLimit, socketRateLimitByUser, socketRateLimitByIp,
   clearSocketLimit, clearUserLimit,
 };

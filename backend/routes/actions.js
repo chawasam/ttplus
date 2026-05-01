@@ -2,6 +2,7 @@
 const express = require('express');
 const router  = express.Router();
 const { verifyToken } = require('../middleware/auth');
+const { widgetLimiter } = require('../middleware/rateLimiter');
 const h = require('../handlers/actions/actionsHandler');
 const { getGiftCatalog } = require('../handlers/tiktok');
 const { simulateEventWithResult } = require('../handlers/actions/eventProcessor');
@@ -80,7 +81,9 @@ router.post('/simulate-event', verifyToken, async (req, res) => {
 // Overlay queue — ไม่ต้อง auth (OBS Browser Source เรียกเอง)
 // format ใหม่: /overlay?cid=12345&screen=1
 // format เก่า: /overlay/:vjId?screen=1   (backward compat)
-router.get('/overlay',      h.getOverlayQueue);   // ?cid=
-router.get('/overlay/:vjId', h.getOverlayQueue);  // legacy
+// ไม่ใส่ rate limiter — Socket.IO push ทำงานแล้ว endpoint นี้ถูกเรียกแค่ครั้งเดียวตอน connect/reconnect
+// cid token check ใน handler เป็น protection เพียงพอ
+router.get('/overlay',       h.getOverlayQueue);   // ?cid=
+router.get('/overlay/:vjId', h.getOverlayQueue);   // legacy
 
 module.exports = router;
