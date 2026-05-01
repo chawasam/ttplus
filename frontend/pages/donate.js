@@ -4,12 +4,12 @@ import Sidebar from '../components/Sidebar';
 
 export default function DonatePage({ theme, setTheme, user, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const isDark = theme === 'dark';
-  const card = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
+  const card = isDark ? 'bg-gray-900 border-gray-800' : 'bg-[#fff5fb] border-pink-200 shadow-sm';
 
   return (
-    <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
+    <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-[#fdf0f7] text-gray-900')}>
       <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
-      <main className={clsx('p-4 md:p-6 max-w-xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
+      <main className={clsx('p-4 md:p-6 max-w-xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -19,8 +19,6 @@ export default function DonatePage({ theme, setTheme, user, activePage, setActiv
               TTsam ฟรี ถ้าชอบช่วยสนับสนุนได้นะครับ 🙏
             </p>
           </div>
-          <button onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className="p-2 rounded-lg text-gray-400 text-lg">{isDark ? '☀️' : '🌙'}</button>
         </div>
 
         <div className="space-y-4">

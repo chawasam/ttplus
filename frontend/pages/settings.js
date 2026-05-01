@@ -10,6 +10,31 @@ import { showError } from '../lib/errorHandler';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 
+// ── Tooltip icon ⓘ ───────────────────────────────────────────────────────────
+function InfoTip({ text, isDark, wide }) {
+  const dark = isDark;
+  return (
+    <span className="relative inline-flex items-center group" style={{ verticalAlign: 'middle', marginLeft: 5 }}>
+      <span className={clsx(
+        'inline-flex items-center justify-center rounded-full border text-[10px] font-medium cursor-default select-none leading-none',
+        'w-[16px] h-[16px]',
+        dark ? 'border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-300'
+             : 'border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600'
+      )}>i</span>
+      <span className={clsx(
+        'absolute bottom-full left-0 mb-2 z-50',
+        wide ? 'w-72' : 'w-max max-w-[280px]',
+        'invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+        'bg-gray-900 text-gray-100 text-[13px] leading-relaxed rounded-xl px-3 py-2.5 shadow-xl',
+        'pointer-events-none whitespace-pre-line'
+      )}>
+        {text}
+        <span className="absolute top-full left-3 border-[5px] border-transparent border-t-gray-900" />
+      </span>
+    </span>
+  );
+}
+
 export default function SettingsPage({ theme, setTheme, user, authLoading, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const [saving, setSaving]       = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -129,9 +154,9 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   );
 
   return (
-    <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
+    <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-[#fdf0f7] text-gray-900')}>
       <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
-      <main className={clsx('p-4 md:p-6 max-w-2xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
+      <main className={clsx('p-4 md:p-6 max-w-2xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}>
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>⚙️ Settings</h1>
           <div className="flex items-center gap-2">
@@ -167,13 +192,14 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
                 ⬇ Full Backup
               </button>
             )}
-            <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-400 text-lg">{theme === 'dark' ? '☀️' : '🌙'}</button>
           </div>
         </div>
         <div className="space-y-4">
           {/* Spotify — แสดงเสมอ (login หรือไม่ก็ตาม) */}
-          <Section title="🎵 Spotify — Now Playing Widget" theme={theme}>
-            <Label theme={theme}>เชื่อมต่อ Spotify เพื่อให้ widget แสดงเพลงที่กำลังฟังอยู่ใน OBS / TikTok Studio</Label>
+          <Section
+            title="🎵 Spotify — Now Playing Widget"
+            tip={"เชื่อมต่อ Spotify เพื่อให้ widget แสดงเพลงที่กำลังฟังอยู่ใน OBS / TikTok Studio\nจะโชว์ชื่อเพลง อัลบั้ม และอาร์ตเวิร์คแบบ real-time"}
+            theme={theme}>
 
             {!user ? (
               /* ยังไม่ login */
@@ -205,9 +231,10 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
                     ยกเลิก
                   </button>
                 </div>
-                <p className={clsx('text-[10px]', theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
-                  Copy Widget URL ได้ที่แถบ <strong>Widgets</strong> → Now Playing
-                </p>
+                <InfoTip
+                  isDark={theme === 'dark'}
+                  text={"Copy Widget URL ได้ที่แถบ Widgets → Now Playing\nแล้วนำ URL ไปวางใน OBS Browser Source"}
+                />
               </div>
             ) : (
               /* ยัง connect ไม่ได้ */
@@ -221,26 +248,31 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
                   </svg>
                   เชื่อมต่อ Spotify
                 </button>
-                <p className={clsx('text-[10px]', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
-                  หน้าต่าง Spotify จะเปิดขึ้นมา — อนุญาตแล้วปิดหน้าต่างได้เลย
-                </p>
+                <InfoTip
+                  isDark={theme === 'dark'}
+                  text={"หน้าต่าง Spotify จะเปิดขึ้นมา\nกด Agree/อนุญาต แล้วปิดหน้าต่างได้เลย — ระบบจะ connect อัตโนมัติ"}
+                />
               </div>
             )}
           </Section>
 
-          <Section title="TikTok" theme={theme}>
-            <Label theme={theme}>Default TikTok Username</Label>
+          <Section
+            title="TikTok"
+            tip={"ใส่ชื่อ TikTok ของคุณ (ไม่ต้องมี @)\nระบบจะใช้เป็นค่า default เมื่อเชื่อมต่อ TikTok LIVE"}
+            theme={theme}>
             <input className={inputClass} value={settings.tiktokUsername || ''} onChange={e => set('tiktokUsername', e.target.value)} placeholder="@username" />
           </Section>
           {/* Browser Tab RAM */}
           {heapMB !== null && (
-            <Section title="🖥 การใช้งาน RAM (Browser Tab นี้)" theme={theme}>
-              <Label theme={theme}>RAM ที่ ttsam.app ใช้อยู่ใน browser tab นี้ — อัพเดตทุก 5 วินาที</Label>
-              <div className={clsx('rounded-lg p-3 mt-1 flex items-center gap-4', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100')}>
+            <Section
+              title="🖥 RAM Browser Tab นี้"
+              tip={"JS Heap ที่ ttsam.app ใช้จริงใน tab นี้ — อัพเดตทุก 5 วินาที\nวัดเฉพาะ tab นี้เท่านั้น (รองรับเฉพาะ Chrome)\n🟢 ปกติ < 150 MB  🟡 เริ่มสูง > 150 MB  🔴 สูงมาก > 300 MB"}
+              theme={theme}>
+              <div className={clsx('rounded-lg px-4 py-3 flex items-center gap-3', theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100')}>
                 <p className={clsx('text-3xl font-bold tabular-nums', heapMB > 300 ? 'text-red-400' : heapMB > 150 ? 'text-yellow-400' : 'text-green-400')}>
-                  {heapMB}<span className="text-sm font-normal text-gray-500"> MB</span>
+                  {heapMB}
                 </p>
-                <p className="text-[10px] text-gray-500 leading-relaxed">JS Heap ที่ใช้จริง<br/>วัดเฉพาะ tab นี้เท่านั้น<br/>(รองรับเฉพาะ Chrome)</p>
+                <span className={clsx('text-sm font-medium', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>MB</span>
               </div>
             </Section>
           )}
@@ -267,7 +299,7 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={e => e.target === e.currentTarget && setShowLoginModal(false)}>
-          <div className={clsx('w-full max-w-sm mx-4 rounded-2xl p-8 shadow-2xl', theme === 'dark' ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200')}>
+          <div className={clsx('w-full max-w-sm mx-4 rounded-2xl p-8 shadow-2xl', theme === 'dark' ? 'bg-gray-900 border border-gray-800' : 'bg-[#fff5fb] border border-pink-200')}>
             <div className="text-center mb-6">
               <h2 className="text-xl font-bold">เข้าสู่ระบบ</h2>
               <p className={clsx('text-sm mt-1', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>Login เพื่อบันทึก Settings</p>
@@ -285,10 +317,13 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   );
 }
 
-function Section({ title, children, theme }) {
+function Section({ title, tip, children, theme }) {
   return (
-    <div className={clsx('rounded-xl p-4 space-y-3', theme === 'dark' ? 'bg-gray-900 border border-gray-800' : 'bg-white border border-gray-200 shadow-sm')}>
-      <h3 className={clsx('font-semibold text-sm', theme === 'dark' ? 'text-white' : 'text-gray-900')}>{title}</h3>
+    <div className={clsx('rounded-xl p-4 space-y-3', theme === 'dark' ? 'bg-gray-900 border border-gray-800' : 'bg-[#fff5fb] border border-pink-200 shadow-sm')}>
+      <h3 className={clsx('font-semibold text-sm flex items-center', theme === 'dark' ? 'text-white' : 'text-gray-900')}>
+        {title}
+        {tip && <InfoTip text={tip} isDark={theme === 'dark'} wide />}
+      </h3>
       {children}
     </div>
   );

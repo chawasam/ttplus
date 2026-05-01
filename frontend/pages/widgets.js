@@ -13,6 +13,102 @@ import { WIDGET_DEFAULTS, styleToParams } from '../lib/widgetStyles';
 
 const BOSS_EMOJIS    = ['🐉','👾','💀','🦁','🤖','🐙','👹','🦂','🐺','🦊','🐲','🦅'];
 
+// ── Widget Preview Card ─────────────────────────────────────────────────────
+// แสดง iframe preview ข้างๆ widget info card (desktop xl+ เท่านั้น)
+// IntersectionObserver: iframe mount เฉพาะตอนการ์ดอยู่ใน viewport
+// → max ~4 iframes active พร้อมกัน ไม่ว่าจะมีกี่ widget
+// ───────────────────────────────────────────────────────────────────────────
+
+function _parseWidgetSize(sizeStr) {
+  const m = (sizeStr || '').match(/(\d+)\s*[×x]\s*(\d+)/);
+  return m ? { w: parseInt(m[1], 10), h: parseInt(m[2], 10) } : { w: 400, h: 300 };
+}
+
+function WidgetPreviewCard({ widgetId, widgetIcon, previewUrl, widgetSize, isDark }) {
+  const containerRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  const PANEL_W = 260;
+  const dims    = _parseWidgetSize(widgetSize);
+  // scale ให้พอดีกรอบ 260×360 รักษา aspect ratio
+  const scale   = Math.min(PANEL_W / dims.w, 360 / dims.h, 0.65);
+  const panelH  = Math.max(100, Math.round(dims.h * scale));
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // fallback: ถ้า browser ไม่ support IntersectionObserver → แสดงเลย
+    if (typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const obs = new IntersectionObserver(
+      ([entry]) => setVisible(entry.isIntersecting),
+      { rootMargin: '120px 0px', threshold: 0.05 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        width:        PANEL_W,
+        height:       panelH,
+        flexShrink:   0,
+        overflow:     'hidden',
+        borderRadius: 10,
+        border:       isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.1)',
+        background:   isDark ? '#0a0a0a' : '#f4f4f5',
+        position:     'relative',
+      }}
+    >
+      {visible ? (
+        /* iframe จะถูก destroy เมื่อ visible=false → browser unloads JS/socket */
+        <div style={{
+          width:           dims.w,
+          height:          dims.h,
+          transform:       `scale(${scale})`,
+          transformOrigin: 'top left',
+          pointerEvents:   'none',
+        }}>
+          <iframe
+            key={widgetId}
+            src={previewUrl}
+            width={dims.w}
+            height={dims.h}
+            style={{ border: 'none', display: 'block', background: 'transparent' }}
+            sandbox="allow-scripts allow-same-origin"
+            title={`preview-${widgetId}`}
+          />
+        </div>
+      ) : (
+        /* placeholder ตอนนอก viewport — ไม่โหลด JS */
+        <div style={{
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+          height:         '100%',
+          fontSize:       36,
+          opacity:        0.18,
+          userSelect:     'none',
+        }}>
+          {widgetIcon}
+        </div>
+      )}
+      {/* PREVIEW label */}
+      <span style={{
+        position:      'absolute',
+        bottom:        5,
+        right:         7,
+        fontSize:      9,
+        color:         'rgba(255,255,255,0.3)',
+        fontFamily:    'monospace',
+        letterSpacing: '0.08em',
+        pointerEvents: 'none',
+      }}>PREVIEW</span>
+    </div>
+  );
+}
+
 const NP_STYLE_CATEGORIES = [
   {
     id: 'classic', label: '⭐ Classic', styles: [
@@ -189,7 +285,7 @@ const WIDGETS = [
   { id: 'chat',        icon: '💬', name: 'Chat Overlay',    desc: 'แสดงแผงคอมเม้น',                                  size: '400 × 600' },
   { id: 'pinchat',     icon: '📌', name: 'Pin Chat',        desc: 'แสดงข้อความที่ Pin จาก Chat Overlay',             size: '500 × 100' },
   { id: 'pinprofile',  icon: '👤', name: 'Pin Profile Card', desc: 'แสดงโปรไฟล์ TikTok ของข้อความที่ Pin',           size: '400×150 / 240×320' },
-  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true },
+  { id: 'ttsmonitor',  icon: '🔊', name: 'TTS Monitor',     desc: 'แสดง engine/เสียง/persona ที่กำลังพูด — เห็นแค่ผู้ใช้ · ฟังก์ชันเฉพาะทาง', size: '400 × 200', noStyle: true, adminOnly: true },
   {
     id: 'likes-leaderboard', icon: '👍', name: 'Likes Leaderboard',
     desc: 'Top 10 ผู้ที่ Like มากที่สุด ตอนไลฟ์', size: '300 × 520',
@@ -243,7 +339,7 @@ const WIDGETS = [
       { key: 'vol', label: '🔊 ระดับเสียง', type: 'volume', default: 80 },
     ],
   },
-  { id: 'myactions',         icon: '🎬', name: 'Actions Overlay',   desc: 'แสดง GIF/วิดีโอ/Alert จากระบบ ลูกเล่น TT บน OBS', size: '1920 × 1080', noStyle: true },
+  { id: 'myactions',         icon: '🎬', name: 'Actions Overlay',   desc: 'แสดง GIF/วิดีโอ/Alert จากระบบ ลูกเล่น TT บน OBS', size: '1920 × 1080', noStyle: true, adminOnly: true },
   {
     id: 'nowplaying', icon: '🎶', name: 'Now Playing',
     desc: 'แสดงเพลงที่กำลังฟังจาก Spotify — 10 สไตล์ให้เลือก เชื่อมต่อ Spotify ได้ที่ Settings',
@@ -308,10 +404,10 @@ const WIDGETS = [
 
 // ── Widget groups — ลำดับและสมาชิกในแต่ละหมวด ──────────────────────────────
 const WIDGET_GROUPS = [
-  { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
   { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard', 'gift-carousel'] },
-  { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
   { id: 'music', label: '🎵 Music',                   ids: ['nowplaying', 'spotifyqueue'] },
+  { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
+  { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
 ];
 
 // user, authLoading มาจาก _app.js
@@ -349,11 +445,6 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   // select field ที่กำลัง "ขยาย" สกินอื่นๆ — key = f.key, value = boolean
   const [expandedSelects, setExpandedSelects] = useState({});
 
-  // ── Hover Preview (desktop only) ──
-  // hoverPreview = { id, previewUrl, panelStyle, iframeW, iframeH, scale } | null
-  const [hoverPreview, setHoverPreview]   = useState(null);
-  const hoverEnterTimer = useRef(null);
-  const hoverLeaveTimer = useRef(null);
 
 
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
@@ -649,50 +740,6 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     return styleQ ? `${base}&${styleQ}` : base;
   }, [baseUrl, widgetCid, styles, buildCustomParams, customConfigs]);
 
-  // ── Hover Preview helpers ──
-  // Parse "300 × 400" → { w: 300, h: 400 }
-  function parseWidgetSize(sizeStr) {
-    const m = (sizeStr || '').match(/(\d+)\s*[×x]\s*(\d+)/);
-    return m ? { w: parseInt(m[1], 10), h: parseInt(m[2], 10) } : { w: 400, h: 300 };
-  }
-
-  function handleCardEnter(e, w) {
-    // desktop only — ไม่ทำงานบน touch device หรือ viewport แคบ
-    if (typeof window !== 'undefined' && window.innerWidth < 1200) return;
-    clearTimeout(hoverLeaveTimer.current);
-    clearTimeout(hoverEnterTimer.current);
-    const cardEl = e.currentTarget;
-    hoverEnterTimer.current = setTimeout(() => {
-      const rect  = cardEl.getBoundingClientRect();
-      const pUrl  = getPreviewUrl(w.id);
-      const dims  = parseWidgetSize(w.size);
-
-      // Scale ให้พอดีในกรอบ max 300×400 — รักษา aspect ratio
-      const PANEL_MAX_W = 300;
-      const PANEL_MAX_H = 400;
-      const scale   = Math.min(PANEL_MAX_W / dims.w, PANEL_MAX_H / dims.h, 0.65);
-      const panelW  = Math.round(dims.w * scale);
-      const panelH  = Math.round(dims.h * scale);
-
-      // วางทางขวาของ card ก่อน ถ้าออกนอก viewport ให้ย้ายซ้าย
-      let left = rect.right + 14;
-      if (left + panelW > window.innerWidth - 8) left = rect.left - panelW - 14;
-      left = Math.max(8, left);
-
-      // top align กับ card แต่ clamp ไม่ให้เกิน viewport
-      let top = rect.top;
-      top = Math.min(top, window.innerHeight - panelH - 8);
-      top = Math.max(8, top);
-
-      setHoverPreview({ id: w.id, previewUrl: pUrl, iframeW: dims.w, iframeH: dims.h, scale, panelW, panelH, left, top });
-    }, 280); // delay 280ms ป้องกัน trigger จาก cursor ผ่าน
-  }
-
-  function handleCardLeave() {
-    clearTimeout(hoverEnterTimer.current);
-    hoverLeaveTimer.current = setTimeout(() => setHoverPreview(null), 180);
-  }
-
   const saveStyleForWidget = useCallback(async (widgetId, style) => {
     if (!user) { setShowLoginModal(true); return; }
     const newStyles = { ...styles, [widgetId]: style };
@@ -767,19 +814,19 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   }, [user]);
 
   const isDark  = theme === 'dark';
-  const bg      = isDark ? 'bg-gray-950 text-white'       : 'bg-gray-100 text-gray-900';
-  const card    = isDark ? 'bg-gray-900 border-gray-800'  : 'bg-white border-gray-200 shadow-sm';
-  const divider = isDark ? 'border-gray-800'              : 'border-gray-100';
-  const urlBox  = isDark ? 'bg-gray-800 text-gray-400'    : 'bg-gray-100 text-gray-500';
+  const bg      = isDark ? 'bg-gray-950 text-white'       : 'bg-[#fdf0f7] text-gray-900';
+  const card    = isDark ? 'bg-gray-900 border-gray-800'  : 'bg-[#fff5fb] border-pink-200 shadow-sm';
+  const divider = isDark ? 'border-gray-800'              : 'border-pink-100';
+  const urlBox  = isDark ? 'bg-gray-800 text-gray-400'    : 'bg-pink-50 text-pink-500';
   const btn2nd  = isDark
     ? 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300'
-    : 'bg-gray-100 hover:bg-gray-200 border-gray-200 text-gray-600';
+    : 'bg-pink-50 hover:bg-pink-100 border-pink-200 text-pink-700';
 
   return (
     <div className={clsx('min-h-screen', bg)}>
       <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className={clsx('p-4 md:p-6', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
+      <main className={clsx('p-4 md:p-6', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
@@ -832,10 +879,6 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                 เข้าสู่ระบบ
               </button>
             )}
-            <button onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              className="p-2 rounded-lg text-gray-400 text-lg" aria-label="Toggle theme">
-              {isDark ? '☀️' : '🌙'}
-            </button>
           </div>
         </div>
 
@@ -894,10 +937,13 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         {/* Widget Groups */}
         <div className="space-y-6">
           {WIDGET_GROUPS.map(group => {
-            const groupWidgets = WIDGET_GROUPS
-              ? group.ids.map(id => WIDGETS.find(w => w.id === id)).filter(Boolean)
-              : [];
+            const isOwner = user?.email === 'cksamg@gmail.com';
+            const groupWidgets = group.ids
+              .map(id => WIDGETS.find(w => w.id === id))
+              .filter(Boolean)
+              .filter(w => !w.adminOnly || isOwner);
             const isGroupOpen = groupOpen[group.id] !== false;
+            if (groupWidgets.length === 0) return null;
             return (
               <div key={group.id}>
                 {/* Group header */}
@@ -922,19 +968,32 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       const isDrawerOpen = drawerWidget === w.id;
                       const widgetReady  = w.noToken ? !!user?.uid : tokenReady;
                       return (
-                        <div
-                          key={w.id}
-                          className={clsx('rounded-xl border overflow-hidden', card)}
-                          onMouseEnter={(e) => handleCardEnter(e, w)}
-                          onMouseLeave={handleCardLeave}
-                        >
+                        <div key={w.id} className="flex gap-3 items-start">
+                          {/* Preview card — desktop lg+ only, lazy-mount via IntersectionObserver */}
+                          <div className="hidden lg:block flex-shrink-0">
+                            <WidgetPreviewCard
+                              widgetId={w.id}
+                              widgetIcon={w.icon}
+                              previewUrl={getPreviewUrl(w.id)}
+                              widgetSize={w.size}
+                              isDark={isDark}
+                            />
+                          </div>
+                          <div className={clsx('rounded-xl border overflow-hidden flex-1 min-w-0', card)}>
                           <div className="p-4">
                             {/* Top: icon + name + size */}
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 <span className="text-2xl">{w.icon}</span>
                                 <div>
-                                  <h3 className={clsx('font-bold text-sm', isDark ? 'text-white' : 'text-gray-900')}>{w.name}</h3>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h3 className={clsx('font-bold text-sm', isDark ? 'text-white' : 'text-gray-900')}>{w.name}</h3>
+                                    {w.adminOnly && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 leading-none">
+                                        🔐 Admin
+                                      </span>
+                                    )}
+                                  </div>
                                   <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>{w.desc}</p>
                                 </div>
                               </div>
@@ -1079,20 +1138,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                             )}
 
                             {/* Action buttons */}
-                            <div className="flex gap-2">
-                              <a
-                                href={getPreviewUrl(w.id)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={clsx('flex-1 py-2 rounded-lg text-sm font-semibold text-center transition border', btn2nd)}
-                              >
-                                ▶ ดูตัวอย่าง
-                              </a>
-                              {(!w.noStyle || w.configFields) && (
+                            {(!w.noStyle || w.configFields) && (
+                              <div className="flex gap-2">
                                 <button
                                   onClick={() => setDrawerWidget(isDrawerOpen ? null : w.id)}
                                   className={clsx(
-                                    'flex-1 py-2 rounded-lg text-sm font-semibold transition border',
+                                    'w-full py-2 rounded-lg text-sm font-semibold transition border',
                                     isDrawerOpen
                                       ? 'bg-brand-500/15 border-brand-500/50 text-brand-400'
                                       : btn2nd
@@ -1100,9 +1151,10 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                                 >
                                   ⚙️ Customize
                                 </button>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
+                          </div>{/* closes info card */}
                         </div>
                       );
                     })}
@@ -1114,57 +1166,6 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         </div>
 
       </main>
-
-      {/* ── Hover Widget Preview Panel (desktop only, 1 iframe ต่อครั้ง) ── */}
-      {hoverPreview && (
-        <div
-          style={{
-            position:     'fixed',
-            zIndex:       45,
-            left:         hoverPreview.left,
-            top:          hoverPreview.top,
-            width:        hoverPreview.panelW,
-            height:       hoverPreview.panelH,
-            pointerEvents: 'none',
-            overflow:     'hidden',
-            borderRadius: 12,
-            boxShadow:    '0 8px 32px rgba(0,0,0,0.5)',
-            border:       isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.12)',
-            background:   '#111',
-          }}
-        >
-          {/* label */}
-          <div style={{
-            position:   'absolute',
-            top: 6, left: 10,
-            zIndex:     2,
-            fontSize:   10,
-            color:      'rgba(255,255,255,0.5)',
-            fontFamily: 'monospace',
-            letterSpacing: '0.05em',
-            pointerEvents: 'none',
-          }}>
-            PREVIEW
-          </div>
-          {/* scaled iframe */}
-          <div style={{
-            width:           hoverPreview.iframeW,
-            height:          hoverPreview.iframeH,
-            transform:       `scale(${hoverPreview.scale})`,
-            transformOrigin: 'top left',
-          }}>
-            <iframe
-              key={hoverPreview.id}
-              src={hoverPreview.previewUrl}
-              width={hoverPreview.iframeW}
-              height={hoverPreview.iframeH}
-              style={{ border: 'none', background: 'transparent', display: 'block' }}
-              sandbox="allow-scripts allow-same-origin"
-              title={`Preview ${hoverPreview.id}`}
-            />
-          </div>
-        </div>
-      )}
 
       {/* ── Customize Drawer ── */}
       {drawerWidget && (() => {

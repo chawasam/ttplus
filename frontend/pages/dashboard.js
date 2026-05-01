@@ -1,5 +1,5 @@
 // pages/dashboard.js — Main Dashboard
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { signOut, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
@@ -78,6 +78,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   // ── sync refs ──
   useEffect(() => { tiktokUsernameRef.current = tiktokUsername; }, [tiktokUsername]);
   useEffect(() => { if (connected) wasConnectedRef.current = true; }, [connected]);
+
   // NOTE: audioEnabled useEffect moved below its useState declaration (TDZ fix)
 
   const [viewers, setViewers]           = useState(0);
@@ -87,7 +88,22 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   const [allTimeMembers, setAllTimeMembers] = useState([]); // ทุกคนที่เคยเข้าห้อง
   const [topViewers, setTopViewers]   = useState([]);        // top gifters จาก TikTok
   const [memberTab, setMemberTab]     = useState('members'); // 'members' | 'top'
-  const [showSilentInfo, setShowSilentInfo] = useState(false); // popup สูตร "ดูเงียบ ๆ"
+  const [connectedAt, setConnectedAt] = useState(null);      // timestamp เมื่อ connect
+  const [peakViewers, setPeakViewers] = useState(0);         // ผู้ชมสูงสุด session นี้
+  const [sessionTick, setSessionTick] = useState(0);         // tick ทุกวินาทีสำหรับ timer
+
+  // ── session timer: เริ่มนับเมื่อ connect ──
+  useEffect(() => {
+    if (connected && !connectedAt) setConnectedAt(Date.now());
+    if (!connected) return;
+    const t = setInterval(() => setSessionTick(v => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [connected]);
+
+  // ── peak viewers ──
+  useEffect(() => {
+    if (viewers > peakViewers) setPeakViewers(viewers);
+  }, [viewers]);
 
   const eventsRef       = useRef([]);
   const [events, setEvents] = useState([]);
@@ -101,9 +117,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   );
   const tiktokUsernameRef    = useRef('');    // username ล่าสุด สำหรับ auto-reconnect
   const autoConnectDoneRef   = useRef(false); // ป้องกัน auto-connect ซ้ำในรอบเดียวกัน
-  const [autoConnect, setAutoConnect] = useState(() => {
-    try { return localStorage.getItem('ttplus_ac') !== '0'; } catch { return true; }
-  });
+  const [autoConnect, setAutoConnect] = useState(true); // hydration-safe: อ่าน localStorage ใน useEffect
 
 
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -120,6 +134,8 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
     // โหลด username ที่พิมพ์ล่าสุด (client-side only — ไม่รัน SSR)
     const last = loadLastUsername();
     if (last) setTiktokUsername(last);
+    // อ่าน autoConnect จาก localStorage หลัง mount (ป้องกัน hydration mismatch)
+    try { setAutoConnect(localStorage.getItem('ttplus_ac') !== '0'); } catch {}
   }, []);
 
   // ===== addEvent / updateLeaderboard — stable refs =====
@@ -465,7 +481,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
       setViewers(0); setTotalLikes(0); setTotalComments(0);
       eventsRef.current = []; setEvents([]);
       setRecentMembers([]); setAllTimeMembers([]); setTopViewers([]);
-      setMemberTab('members'); setShowSilentInfo(false);
+      setMemberTab('members'); setConnectedAt(null); setPeakViewers(0);
       clearTTSQueue();
     } catch { /* ignore */ }
   }, []);
@@ -478,6 +494,70 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
   const toggleTheme = useCallback(() => setTheme(theme === 'dark' ? 'light' : 'dark'), [theme, setTheme]);
 
+  // ── Session timer string ──
+  const sessionTimeStr = useMemo(() => {
+    if (!connectedAt) return null;
+    const elapsed = Math.floor((Date.now() - connectedAt) / 1000);
+    const h = Math.floor(elapsed / 3600);
+    const m = Math.floor((elapsed % 3600) / 60);
+    const s = elapsed % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    return `${m}:${String(s).padStart(2,'0')}`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedAt, sessionTick]); // sessionTick ทำให้ re-compute ทุกวินาที
+
+  // ── Analytics computed จาก events ──────────────────────────────────────────
+  const analytics = useMemo(() => {
+    const now = Date.now();
+    const last60s = now - 60_000;
+
+    let followCount = 0, shareCount = 0, questionCount = 0;
+    let chatVelocity = 0; // chats ใน 60 วินาทีล่าสุด
+    const chatterCount = new Map(); // uniqueId → count
+    const gifterIds    = new Set();
+    const giftNameCount= new Map();
+
+    for (const ev of events) {
+      const ts = ev.timestamp || 0;
+      if (ev.type === 'chat') {
+        chatterCount.set(ev.uniqueId, (chatterCount.get(ev.uniqueId) || 0) + 1);
+        if (ts >= last60s) chatVelocity++;
+        if (ev.comment?.includes('?')) questionCount++;
+      } else if (ev.type === 'follow') {
+        followCount++;
+      } else if (ev.type === 'share') {
+        shareCount++;
+      } else if (ev.type === 'gift') {
+        if (ev.uniqueId) gifterIds.add(ev.uniqueId);
+        if (ev.giftName) giftNameCount.set(ev.giftName, (giftNameCount.get(ev.giftName) || 0) + (ev.repeatCount || 1));
+      }
+    }
+
+    // top chatters
+    const topChatters = [...chatterCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id, count]) => ({ uniqueId: id, count }));
+
+    // top gifts by count
+    const topGifts = [...giftNameCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name, count]) => ({ name, count }));
+
+    // engagement rate (ต้องมี viewers > 0)
+    const engRate = viewers > 0
+      ? Math.min(999, ((totalLikes + totalComments + followCount) / viewers) * 100)
+      : 0;
+
+    return {
+      followCount, shareCount, questionCount, chatVelocity,
+      uniqueChatters: chatterCount.size,
+      topChatters, gifterCount: gifterIds.size,
+      topGifts, engRate: engRate.toFixed(1),
+    };
+  }, [events, viewers, totalLikes, totalComments]);
+
   // Loading spinner ขณะรอ auth check
   if (authLoading) {
     return (
@@ -488,18 +568,15 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
   }
 
   return (
-    <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
+    <div className={clsx('min-h-screen', theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-[#fdf0f7] text-gray-900')}>
       <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} onSignOut={handleSignOut} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className={clsx('p-4 md:p-6', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
+      <main className={clsx('p-4 md:p-6', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}>
 
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
           <h1 className={clsx('text-xl font-bold', theme === 'dark' ? 'text-white' : 'text-gray-900')}>Dashboard</h1>
           <div className="flex items-center gap-2">
-            <button onClick={toggleTheme} className="p-2 rounded-lg text-gray-400 hover:text-white transition text-lg" aria-label="Toggle theme">
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
             {user ? (
               <div className="flex items-center gap-2">
                 {/* Profile picture */}
@@ -527,7 +604,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
         </div>
 
         {/* Connect Section */}
-        <div className={clsx('rounded-2xl p-4 mb-5 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
+        <div className={clsx('rounded-2xl p-4 mb-5 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-[#fff5fb] border-pink-200 shadow-sm')}>
           <h2 className={clsx('text-sm font-semibold mb-3', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>🔴 TikTok Live</h2>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -543,7 +620,7 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
                 disabled={connected || connecting}
               />
               {showHistory && !connected && !connecting && usernameHistory.length > 0 && (
-                <div className={clsx('absolute top-full left-0 right-0 mt-1 rounded-lg border shadow-lg z-20 overflow-hidden', theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}>
+                <div className={clsx('absolute top-full left-0 right-0 mt-1 rounded-lg border shadow-lg z-20 overflow-hidden', theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-[#fff5fb] border-pink-200')}>
                   {usernameHistory
                     .filter(u => !tiktokUsername || u.toLowerCase().includes(tiktokUsername.toLowerCase()))
                     .map(u => (
@@ -567,11 +644,6 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
               </button>
             )}
           </div>
-          {!user && (
-            <p className={clsx('text-xs mt-2', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
-              🔒 ต้องเข้าสู่ระบบก่อนเชื่อมต่อ TikTok
-            </p>
-          )}
           {/* Auto-connect toggle */}
           {user && !connected && (
             <label className={clsx('flex items-center gap-2 mt-2 cursor-pointer select-none w-fit', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
@@ -602,11 +674,120 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
           <StatCard label="💬 แชท"     value={totalComments} theme={theme} />
         </div>
 
+        {/* ── Analytics Section — แสดงเสมอ (dim เมื่อยังไม่ live) ── */}
+        {(() => {
+          const dk = theme === 'dark';
+          const dim = !connected; // ยังไม่ live → card จางลง
+          const card = clsx('rounded-xl border p-3', dk ? 'bg-gray-900 border-gray-800' : 'bg-[#fff5fb] border-pink-200 shadow-sm');
+          const labelCls = clsx('text-[10px] mt-0.5', dk ? 'text-gray-500' : 'text-gray-400');
+          const valCls   = clsx('text-lg font-bold tabular-nums', dk ? 'text-white' : 'text-gray-900');
+          const subCls   = clsx('text-[10px]', dk ? 'text-gray-600' : 'text-gray-400');
+          return (
+            <div className={clsx('mt-4 space-y-3 transition-opacity duration-300', dim && 'opacity-40')}>
+
+              {/* Row 1: Session + Engagement + Peak */}
+              <div className="grid grid-cols-3 gap-2">
+                {/* Session Timer */}
+                <div className={clsx(card, 'text-center')}>
+                  <p className={clsx('text-lg font-bold font-mono', dk ? 'text-brand-400' : 'text-brand-600')}>
+                    {sessionTimeStr || '0:00'}
+                  </p>
+                  <p className={labelCls}>⏱ เวลาไลฟ์</p>
+                </div>
+                {/* Engagement Rate */}
+                <div className={clsx(card, 'text-center')}>
+                  <p className={clsx('text-lg font-bold', parseFloat(analytics.engRate) >= 10 ? 'text-green-400' : parseFloat(analytics.engRate) >= 3 ? 'text-yellow-400' : dk ? 'text-white' : 'text-gray-900')}>
+                    {analytics.engRate}%
+                  </p>
+                  <p className={labelCls}>📊 Engagement</p>
+                </div>
+                {/* Peak Viewers */}
+                <div className={clsx(card, 'text-center')}>
+                  <p className={valCls}>{peakViewers.toLocaleString()}</p>
+                  <p className={labelCls}>🏔 Peak ผู้ชม</p>
+                </div>
+              </div>
+
+              {/* Row 2: Follow / Share / Chat velocity / Questions */}
+              <div className="grid grid-cols-4 gap-2">
+                <div className={clsx(card, 'text-center')}>
+                  <p className={clsx('text-base font-bold', dk ? 'text-green-400' : 'text-green-600')}>+{analytics.followCount}</p>
+                  <p className={labelCls}>👤 Follows</p>
+                </div>
+                <div className={clsx(card, 'text-center')}>
+                  <p className={valCls}>{analytics.shareCount}</p>
+                  <p className={labelCls}>🔗 Shares</p>
+                </div>
+                <div className={clsx(card, 'text-center')}>
+                  <p className={clsx('text-base font-bold', analytics.chatVelocity >= 10 ? 'text-brand-400' : dk ? 'text-white' : 'text-gray-900')}>
+                    {analytics.chatVelocity}
+                  </p>
+                  <p className={labelCls}>💬 แชท/นาที</p>
+                </div>
+                <div className={clsx(card, 'text-center')}>
+                  <p className={clsx('text-base font-bold', analytics.questionCount > 0 ? (dk ? 'text-yellow-400' : 'text-yellow-600') : dk ? 'text-white' : 'text-gray-900')}>
+                    {analytics.questionCount}
+                  </p>
+                  <p className={labelCls}>❓ คำถาม</p>
+                </div>
+              </div>
+
+              {/* Row 3: Unique Chatters + Top Chatters + Gift Diversity + Top Gifts */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* Chatters */}
+                <div className={card}>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className={clsx('text-xs font-semibold', dk ? 'text-gray-300' : 'text-gray-700')}>💬 Unique Chatters</span>
+                    <span className={clsx('text-base font-bold tabular-nums', dk ? 'text-white' : 'text-gray-900')}>{analytics.uniqueChatters}</span>
+                  </div>
+                  {analytics.topChatters.length > 0 ? (
+                    <div className="space-y-1">
+                      {analytics.topChatters.map((c, i) => (
+                        <div key={c.uniqueId} className="flex items-center justify-between">
+                          <span className={clsx('text-[10px] truncate flex-1', dk ? 'text-gray-400' : 'text-gray-600')}>
+                            <span className={clsx('mr-1', i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-400' : 'text-amber-600')}>
+                              {i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}
+                            </span>
+                            @{c.uniqueId}
+                          </span>
+                          <span className={clsx('text-[10px] font-mono flex-shrink-0 ml-1', dk ? 'text-gray-500' : 'text-gray-400')}>{c.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={subCls}>รอแชทจากผู้ชม...</p>
+                  )}
+                </div>
+
+                {/* Gift Diversity */}
+                <div className={card}>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className={clsx('text-xs font-semibold', dk ? 'text-gray-300' : 'text-gray-700')}>🎁 ผู้ให้ของขวัญ</span>
+                    <span className={clsx('text-base font-bold tabular-nums', dk ? 'text-white' : 'text-gray-900')}>{analytics.gifterCount} คน</span>
+                  </div>
+                  {analytics.topGifts.length > 0 ? (
+                    <div className="space-y-1">
+                      {analytics.topGifts.map((g) => (
+                        <div key={g.name} className="flex items-center justify-between">
+                          <span className={clsx('text-[10px] truncate flex-1', dk ? 'text-gray-400' : 'text-gray-600')}>{g.name}</span>
+                          <span className={clsx('text-[10px] font-mono flex-shrink-0 ml-1', dk ? 'text-gray-500' : 'text-gray-400')}>×{g.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={subCls}>ยังไม่มีของขวัญ...</p>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          );
+        })()}
+
         {/* ── Viewer Section ── */}
         {(allTimeMembers.length > 0 || viewers > 0) && (() => {
           const dk = theme === 'dark';
           const trackedCount = allTimeMembers.length;
-          const silentCount  = Math.max(0, viewers - trackedCount);
 
           const renderMemberRow = (m, i, arr) => (
             <div key={m.uniqueId} className={clsx(
@@ -659,75 +840,38 @@ export default function Dashboard({ theme, setTheme, user, authLoading, activePa
 
           return (
             <div className="mt-4">
-              {/* ── 3 stat chips ── */}
-              <div className={clsx('rounded-xl border p-3 mb-3 grid grid-cols-3 gap-2 text-center', dk ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm')}>
-                {/* กำลังดู */}
+              {/* ── 2 stat chips ── */}
+              <div className={clsx('rounded-xl border p-3 mb-3 grid grid-cols-2 gap-2 text-center', dk ? 'bg-gray-900 border-gray-800' : 'bg-[#fff5fb] border-pink-200 shadow-sm')}>
                 <div>
                   <p className={clsx('text-lg font-bold', dk ? 'text-white' : 'text-gray-900')}>{viewers.toLocaleString()}</p>
                   <p className={clsx('text-[10px] mt-0.5', dk ? 'text-gray-500' : 'text-gray-400')}>👁️ กำลังดู</p>
                 </div>
-                {/* เข้าร่วมแชท */}
-                <div className={clsx('border-x', dk ? 'border-gray-800' : 'border-gray-100')}>
+                <div className={clsx('border-l', dk ? 'border-gray-800' : 'border-gray-100')}>
                   <p className={clsx('text-lg font-bold', dk ? 'text-white' : 'text-gray-900')}>{trackedCount.toLocaleString()}</p>
                   <p className={clsx('text-[10px] mt-0.5', dk ? 'text-gray-500' : 'text-gray-400')}>💬 เข้าร่วมแชท</p>
-                </div>
-                {/* ดูเงียบ ๆ */}
-                <div className="relative">
-                  <p className={clsx('text-lg font-bold', dk ? 'text-orange-400' : 'text-orange-500')}>{silentCount.toLocaleString()}</p>
-                  <div className="flex items-center justify-center gap-1 mt-0.5">
-                    <p className={clsx('text-[10px]', dk ? 'text-gray-500' : 'text-gray-400')}>🔇 ดูเงียบ ๆ</p>
-                    {/* ปุ่ม i */}
-                    <button
-                      onClick={() => setShowSilentInfo(v => !v)}
-                      className={clsx(
-                        'w-3.5 h-3.5 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0 transition',
-                        showSilentInfo
-                          ? 'bg-brand-500 text-white'
-                          : dk ? 'bg-gray-700 text-gray-400 hover:bg-gray-600' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                      )}
-                    >i</button>
-                  </div>
-                  {/* Popup สูตร */}
-                  {showSilentInfo && (
-                    <div className={clsx(
-                      'absolute bottom-full right-0 mb-2 w-56 rounded-xl border p-3 text-left shadow-xl z-10',
-                      dk ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-white border-gray-200 text-gray-600'
-                    )}>
-                      <p className={clsx('text-[10px] font-bold mb-1.5', dk ? 'text-white' : 'text-gray-800')}>🔇 สูตรคำนวณ</p>
-                      <div className={clsx('rounded-lg px-2.5 py-2 font-mono text-[10px] mb-2', dk ? 'bg-gray-900 text-green-400' : 'bg-gray-50 text-green-700')}>
-                        ดูเงียบ ๆ = 👁️ กำลังดู − 💬 เข้าร่วมแชท<br/>
-                        = {viewers.toLocaleString()} − {trackedCount.toLocaleString()} = <strong>{silentCount.toLocaleString()}</strong>
-                      </div>
-                      <p className={clsx('text-[9px] leading-relaxed', dk ? 'text-gray-500' : 'text-gray-400')}>
-                        TikTok ส่งเฉพาะตัวเลข — ไม่มีรายชื่อคนที่ดูเงียบ ๆ เพราะ API ไม่เปิดเผยข้อมูลส่วนนี้
-                      </p>
-                      {/* ลูกศรชี้ */}
-                      <div className={clsx('absolute bottom-[-5px] right-4 w-2.5 h-2.5 rotate-45 border-r border-b', dk ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')} />
-                    </div>
-                  )}
                 </div>
               </div>
 
               {/* ── Tabs ── */}
-              <div className={clsx('rounded-xl border overflow-hidden', dk ? 'border-gray-800' : 'border-gray-200')}>
-                <div className={clsx('flex border-b', dk ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-gray-50')}>
+              <div className={clsx('rounded-xl border overflow-hidden', dk ? 'border-gray-800' : 'border-pink-200')}>
+                <div className={clsx('flex border-b', dk ? 'border-gray-800 bg-gray-900' : 'border-pink-200 bg-pink-50')}>
                   <button
                     onClick={() => setMemberTab('members')}
                     className={clsx(
                       'flex-1 py-2 text-xs font-semibold transition',
                       memberTab === 'members'
-                        ? dk ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
-                        : dk ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                        ? dk ? 'bg-gray-800 text-white' : 'bg-[#fff5fb] text-pink-900'
+                        : dk ? 'text-gray-500 hover:text-gray-300' : 'text-pink-400 hover:text-pink-700'
                     )}
                   >💬 เข้าร่วมแชท ({trackedCount})</button>
                   <button
                     onClick={() => setMemberTab('top')}
                     className={clsx(
                       'flex-1 py-2 text-xs font-semibold transition border-l',
-                      dk ? 'border-gray-800' : 'border-gray-200',
+                      dk ? 'border-gray-800' : 'border-pink-200',
                       memberTab === 'top'
-                        ? dk ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
-                        : dk ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                        ? dk ? 'bg-gray-800 text-white' : 'bg-[#fff5fb] text-pink-900'
+                        : dk ? 'text-gray-500 hover:text-gray-300' : 'text-pink-400 hover:text-pink-700'
                     )}
                   >🏆 Top Gifters ({topViewers.length})</button>
                 </div>

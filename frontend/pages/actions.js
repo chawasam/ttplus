@@ -2070,7 +2070,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [actionPage,  setActionPage]  = useState(0); // 0-indexed
 
   // ── Master enable/disable — master switch ของทั้งระบบ Actions ──
-  const [systemEnabled, setSystemEnabled] = useState(true);
+  const [systemEnabled, setSystemEnabled] = useState(() => {
+    try { return localStorage.getItem('ttplus_actions_system') !== '0'; } catch { return true; }
+  });
   const [systemSaving,  setSystemSaving]  = useState(false);
   const toggleSystem = useCallback(async () => {
     if (systemSaving) return;
@@ -2080,6 +2082,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       try { localStorage.setItem('ttplus_actions_system', next ? '1' : '0'); } catch {}
       // Persist ไป Firestore — backend จะ pick up ใน 5 วิ
       api.post('/api/settings', { settings: { actionsEnabled: next } }).catch(() => {});
+      window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: next } }));
       return next;
     });
     setTimeout(() => setSystemSaving(false), 600); // prevent rapid double-tap
@@ -2322,11 +2325,20 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       setObsPort(p);
       setObsPassword(obs.password || '');
       setDynamicGifts(giftRes.data.gifts || []);
-      // โหลด actionsEnabled จาก Firestore (ชนะ localStorage)
+      // โหลด actionsEnabled — localStorage ชนะ Firestore เสมอ (คือค่าที่ user toggle ไว้ล่าสุด)
+      // ใช้ Firestore เป็น fallback เฉพาะเมื่อ localStorage ไม่มีค่า (login ครั้งแรก / เปลี่ยนเบราว์เซอร์)
       const srv = settingsRes.data.settings || {};
       if (typeof srv.actionsEnabled === 'boolean') {
-        setSystemEnabled(srv.actionsEnabled);
-        try { localStorage.setItem('ttplus_actions_system', srv.actionsEnabled ? '1' : '0'); } catch {}
+        try {
+          const localVal = localStorage.getItem('ttplus_actions_system');
+          const finalEnabled = localVal !== null ? (localVal !== '0') : srv.actionsEnabled;
+          setSystemEnabled(finalEnabled);
+          localStorage.setItem('ttplus_actions_system', finalEnabled ? '1' : '0');
+          window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: finalEnabled } }));
+        } catch {
+          setSystemEnabled(srv.actionsEnabled);
+          window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: srv.actionsEnabled } }));
+        }
       }
       // Auto-scan เฉพาะเมื่อเคย connect OBS สำเร็จมาก่อน
       // ถ้า OBS ไม่ได้รันแล้ว flag จะถูกลบใน onerror → ครั้งหน้าไม่ auto-scan อีก
@@ -2364,7 +2376,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   // ── อ่าน localStorage หลัง mount (client-only) เพื่อหลีกเลี่ยง hydration mismatch ──
   useEffect(() => {
     try {
-      if (localStorage.getItem('ttplus_actions_system') === '0') setSystemEnabled(false);
+      const saved = localStorage.getItem('ttplus_actions_system');
+      if (saved === '0') {
+        setSystemEnabled(false);
+        window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: false } }));
+      }
     } catch {}
     try {
       if (localStorage.getItem('ttplus_actions_audio') === '1') setAudioEnabled(true);
@@ -2961,7 +2977,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
   return (
     <div
-      className="flex overflow-hidden bg-[#fafaf9] dark:bg-[#111520] text-gray-800 dark:text-slate-200"
+      className="flex overflow-hidden bg-[#fdf0f7] dark:bg-[#111520] text-gray-800 dark:text-slate-200"
       style={{ height: 'calc(100vh - 26px)' }}
     >
       <Sidebar
@@ -2972,7 +2988,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
       {/* ── Content area (main + right panel) ── */}
       <div
-        className={clsx('flex flex-1 min-w-0', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}
+        className={clsx('flex flex-1 min-w-0', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}
       >
       {/* ── Main scrollable area ── */}
       <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
@@ -3080,7 +3096,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             { id: 'actions', label: '⚡ Actions', connected: socketConnected,             showGreen: false },
             { id: 'events',  label: '🔗 Events',  connected: socketConnected,             showGreen: false },
             { id: 'overlay', label: '📺 Overlay', connected: socketConnected,             showGreen: false },
-            { id: 'obs',     label: '🎬 OBS',     connected: obsStatus.includes('✅'),    showGreen: true  },
+            { id: 'obs',     label: '🎬 เชื่อมต่อ OBS', connected: obsStatus.includes('✅'),    showGreen: true  },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={clsx(

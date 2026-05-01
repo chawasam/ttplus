@@ -21,6 +21,29 @@ import { showError } from '../lib/errorHandler';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
 
+// ── Tooltip icon ⓘ — hover แล้วโชว์คำอธิบาย ──────────────────────────────────
+function InfoTip({ text, isDark }) {
+  return (
+    <span className="relative inline-flex items-center group" style={{ verticalAlign: 'middle', marginLeft: 4 }}>
+      <span className={clsx(
+        'inline-flex items-center justify-center rounded-full border text-[9px] font-medium cursor-default select-none leading-none',
+        'w-[14px] h-[14px]',
+        isDark ? 'border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-300'
+               : 'border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600'
+      )}>i</span>
+      <span className={clsx(
+        'absolute bottom-full left-0 mb-2 z-50 w-max max-w-[220px]',
+        'invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+        'bg-gray-900 text-gray-100 text-[11px] leading-relaxed rounded-lg px-3 py-2 shadow-xl',
+        'pointer-events-none whitespace-normal'
+      )}>
+        {text}
+        <span className="absolute top-full left-3 border-[5px] border-transparent border-t-gray-900" />
+      </span>
+    </span>
+  );
+}
+
 const DEFAULT_TTS = {
   enabled:    false,
   readChat:   true,
@@ -171,17 +194,20 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           saveEngineOrder(s.ttsEngineOrder);
         }
 
+        // ใช้ load*() แทน React state เพื่อหลีกเลี่ยง stale closure
+        // (state ยังไม่ update ณ ตอนที่ async callback นี้รัน)
         configureTTS({
           ...loaded,
-          googleVoice:     s.ttsGoogleVoice   || loadGoogleApiKey() ? (s.ttsGoogleVoice || googleVoice) : googleVoice,
-          geminiVoice:     s.ttsGeminiVoice   || geminiVoice,
-          geminiPersona:   s.ttsGeminiPersona ?? geminiPersona,
-          geminiShuffle:   s.ttsGeminiShuffle ?? geminiShuffle,
-          gemini25Linked:  s.ttsGemini25Linked ?? gemini25Linked,
-          gemini25Voice:   s.ttsGemini25Voice  || gemini25Voice,
-          gemini25Persona: s.ttsGemini25Persona ?? gemini25Persona,
-          gemini25Shuffle: s.ttsGemini25Shuffle ?? gemini25Shuffle,
-          enabledEngines:  s.ttsEnabledEngines || enabledEngines,
+          googleVoice:     s.ttsGoogleVoice   || localStorage.getItem('ttplus_google_tts_voice') || 'th-TH-Neural2-C',
+          geminiApiKey:    loadGeminiApiKey(),
+          geminiVoice:     s.ttsGeminiVoice   || localStorage.getItem('ttplus_gemini_voice')   || 'Aoede',
+          geminiPersona:   s.ttsGeminiPersona  ?? (localStorage.getItem('ttplus_gemini_persona') || ''),
+          geminiShuffle:   s.ttsGeminiShuffle  ?? loadGeminiShuffle(),
+          gemini25Linked:  s.ttsGemini25Linked ?? loadGemini25Linked(),
+          gemini25Voice:   s.ttsGemini25Voice  || loadGemini25Voice()   || 'Aoede',
+          gemini25Persona: s.ttsGemini25Persona ?? (loadGemini25Persona() || ''),
+          gemini25Shuffle: s.ttsGemini25Shuffle ?? loadGemini25Shuffle(),
+          enabledEngines:  s.ttsEnabledEngines || loadEnabledEngines(),
         });
         // broadcast initial TTS status → StatusBar
         if (typeof window !== 'undefined') {
@@ -378,50 +404,26 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
   }, [user]);
 
   const isDark   = theme === 'dark';
-  const card     = isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-sm';
+  const card     = isDark ? 'bg-gray-900 border-gray-800' : 'bg-[#fff5fb] border-pink-200 shadow-sm';
   // การ์ด paid engine (Gemini 3.1 / 2.5 / Google Cloud) — ไฮไลสีชมพูจางๆ
-  const paidCard = isDark ? 'bg-pink-950/25 border-pink-900/50' : 'bg-rose-50 border-rose-100 shadow-sm';
+  const paidCard = isDark ? 'bg-pink-950/25 border-pink-900/50' : 'bg-pink-50 border-pink-200 shadow-sm';
   const inputCls = clsx('w-full px-3 py-2 rounded-lg text-sm outline-none border transition',
-    isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900');
+    isDark ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-pink-200 text-gray-900');
 
   return (
-    <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-900')}>
+    <div className={clsx('min-h-screen', isDark ? 'bg-gray-950 text-white' : 'bg-[#fdf0f7] text-gray-900')}>
       <Sidebar theme={theme} user={user} activePage={activePage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className={clsx('p-4 md:p-6 max-w-xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
+      <main className={clsx('p-4 md:p-6 max-w-xl', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className={clsx('text-xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>
-              🔊 TTS (สิริ)
-            </h1>
-            <p className={clsx('text-sm mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>
-              ให้สิริอ่าน Chat
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {saving && <span className="text-xs text-gray-500">💾 กำลังบันทึก...</span>}
-            {user && (<>
-              <button
-                onClick={() => importRef.current?.click()}
-                title="Import TTS Settings จากไฟล์ Backup"
-                className={clsx('flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
-                  isDark ? 'bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
-              >
-                ⬆ Import
-              </button>
-              <button
-                onClick={handleExport}
-                title="Export TTS Settings เป็นไฟล์ Backup"
-                className={clsx('flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
-                  isDark ? 'bg-gray-800/80 text-gray-400 hover:text-gray-200 hover:bg-gray-700/80' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
-              >
-                ⬇ Export
-              </button>
-            </>)}
-            <button onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              className="p-2 rounded-lg text-gray-400 text-lg">{isDark ? '☀️' : '🌙'}</button>
+          <h1 className={clsx('text-xl font-bold', isDark ? 'text-white' : 'text-gray-900')}>
+            🔊 TTS (สิริ)
+          </h1>
+          <div className="flex items-center gap-3">
+            {saving && <span className="text-xs text-gray-500">💾</span>}
+            <Toggle value={tts.enabled} onChange={v => handleChange('enabled', v)} />
           </div>
         </div>
 
@@ -436,22 +438,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
         <div className="space-y-4">
 
-          {/* ══ 1. เปิด/ปิด ══ */}
-          <div className={clsx('rounded-2xl p-4 border', card)}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
-                  เปิดใช้งาน TTS (สิริ)
-                </h2>
-                <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-400' : 'text-gray-500')}>
-                  {tts.enabled ? '✅ สิริพร้อมอ่านแล้ว' : 'ปิดอยู่ — กดเพื่อเปิด'}
-                </p>
-              </div>
-              <Toggle value={tts.enabled} onChange={v => handleChange('enabled', v)} />
-            </div>
-          </div>
-
-          {/* ══ 2. Web Speech ฟรี — เสียงและความเร็ว + ทดสอบ (รวมการ์ดเดียว) ══ */}
+          {/* ══ 1. Web Speech ฟรี — เสียงและความเร็ว + ทดสอบ (รวมการ์ดเดียว) ══ */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
 
             {/* Header + mode toggle */}
@@ -484,36 +471,35 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               /* ── Mode ง่าย ── */
               <div className="space-y-4">
                 <div>
-                  <Label isDark={isDark}>เสียงภาษาไทย ({thaiVoices.length} เสียงในเครื่องคุณ)</Label>
+                  <Label isDark={isDark}>เสียงพูดภาษาไทย</Label>
                   {thaiVoices.length === 0 ? (
                     <div className={clsx('p-3 rounded-xl border text-xs', isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500')}>
                       ไม่พบเสียงไทยในเครื่อง — ใช้เสียงเริ่มต้นของระบบ
                     </div>
                   ) : (
-                    <div className="space-y-1.5 mt-1">
-                      {thaiVoices.map(v => {
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {thaiVoices.map((v, idx) => {
                         const isSelected = tts.voice === v.name || (!tts.voice && v === thaiVoices[0]);
-                        const isOnline   = !v.localService;
+                        // Extract a short friendly name from the browser voice name
+                        const msMatch = v.name.match(/^Microsoft\s+(\S+)/i);
+                        const friendlyName = msMatch
+                          ? msMatch[1]
+                          : (v.name.split(/\s*[-( ]/)[0].trim() || v.name);
+                        const label = thaiVoices.length === 1 ? '🗣️ ' + friendlyName + ' (ภาษาไทย)' : friendlyName;
                         return (
                           <button
                             key={v.name}
                             onClick={() => handleChange('voice', v.name)}
                             className={clsx(
-                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition',
+                              'flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold transition',
                               isSelected
                                 ? 'bg-brand-500 border-brand-500 text-white'
                                 : isDark
                                   ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
                                   : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
                             )}>
-                            <span className="text-base flex-shrink-0">{isOnline ? '🌐' : '💻'}</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold truncate">{v.name}</p>
-                              <p className={clsx('text-xs', isSelected ? 'text-white/70' : isDark ? 'text-gray-500' : 'text-gray-400')}>
-                                {isOnline ? 'Online · Neural (เสียงดีกว่า)' : 'Offline · ในเครื่อง'}
-                              </p>
-                            </div>
-                            {isSelected && <span className="text-xs font-bold flex-shrink-0">✓</span>}
+                            {isSelected && <span className="text-xs">✓</span>}
+                            {label}
                           </button>
                         );
                       })}
@@ -611,41 +597,22 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   ▶
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { text: 'สวัสดีครับ ผม TTsam', label: '👋 ทักทาย' },
-                  { text: 'มีคนส่งของขวัญ 10 ชิ้น', label: '🎁 Gift' },
-                  { text: 'มีคนใหม่ติดตามแล้ว', label: '➕ Follow' },
-                ].map(({ text, label }) => (
-                  <button key={label}
-                    onClick={() => {
-                      configureTTS({ ...tts, enabled: true });
-                      speak(text, null);
-                    }}
-                    className={clsx('py-2.5 rounded-xl text-xs font-semibold transition border',
-                      isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100')}>
-                    {label}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
           {/* ══ 3. Engine Mode ══ */}
           <div className={clsx('rounded-2xl p-4 border', card)}>
-            <h2 className={clsx('font-semibold text-sm mb-1', isDark ? 'text-white' : 'text-gray-900')}>
+            <h2 className={clsx('font-semibold text-sm mb-3 flex items-center', isDark ? 'text-white' : 'text-gray-900')}>
               🎚️ เลือก Engine เสียง
+              <InfoTip text="ติ๊กเลือกได้หลายตัว · ลากเพื่อเรียงลำดับ — ระบบลองตามลำดับ ถ้าล้มเหลวข้ามถัดไปอัตโนมัติ" isDark={isDark} />
             </h2>
-            <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ติ๊กเลือกได้หลายตัว · ลากเพื่อเรียงลำดับ — ระบบลองตามลำดับ ถ้าล้มเหลวข้ามถัดไปอัตโนมัติ
-            </p>
 
             {(() => {
               const ENGINE_CONFIGS = {
-                gemini31: { icon: '✨', label: 'Gemini 3.1 Flash TTS', sub: '36 เสียง × 10 persona = 360 combo', color: 'text-purple-400', needKey: 'gemini' },
-                gemini25: { icon: '🌟', label: 'Gemini 2.5 Flash TTS', sub: '36 เสียง × 10 persona = 360 combo', color: 'text-violet-400', needKey: 'gemini' },
-                google:   { icon: '🔑', label: 'Google Cloud TTS',     sub: 'Neural Thai · เสียงดีมาก',         color: 'text-green-400',  needKey: 'google'  },
-                web:      { icon: '🔈', label: 'Web Speech',           sub: 'ฟรี · ไม่ต้อง key',               color: 'text-brand-400',  needKey: null      },
+                gemini31: { icon: '✨', label: 'Gemini 3.1 Flash TTS', badge: null,  tip: '36 เสียง × 10 persona = 360 combo · โมเดลล่าสุดจาก Google', color: 'text-purple-400', needKey: 'gemini' },
+                gemini25: { icon: '🌟', label: 'Gemini 2.5 Flash TTS', badge: null,  tip: '36 เสียง × 10 persona = 360 combo · fallback อัตโนมัติจาก 3.1', color: 'text-violet-400', needKey: 'gemini' },
+                google:   { icon: '🔑', label: 'Google Cloud TTS',     badge: null,  tip: 'Neural Thai · เสียงดีมาก · ฟรี 1M chars/เดือน',              color: 'text-green-400',  needKey: 'google'  },
+                web:      { icon: '🔈', label: 'Web Speech',           badge: 'ฟรี', tip: 'ไม่ต้อง API key · ใช้เสียงจากเบราว์เซอร์โดยตรง',             color: 'text-brand-400',  needKey: null      },
               };
 
               const onDragStart = (e, id) => {
@@ -678,7 +645,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               return engineOrder.map((id, idx) => {
                 const cfg = ENGINE_CONFIGS[id];
                 if (!cfg) return null;
-                const { icon, label, sub, color, needKey } = cfg;
+                const { icon, label, badge, tip, color, needKey } = cfg;
                 const checked    = enabledEngines.includes(id);
                 const missingKey = needKey === 'gemini' ? !geminiKey : needKey === 'google' ? !googleKey : false;
                 const priority   = checked ? engineOrder.filter(e => enabledEngines.includes(e)).indexOf(id) + 1 : null;
@@ -733,9 +700,10 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
                     <span className="text-base leading-none flex-shrink-0">{icon}</span>
 
-                    <div className="flex-1 min-w-0" onClick={toggle} style={{ cursor: 'pointer' }}>
+                    <div className="flex-1 min-w-0 flex items-center gap-1" onClick={toggle} style={{ cursor: 'pointer' }}>
                       <p className={clsx('text-xs font-semibold', isDark ? 'text-white' : 'text-gray-900')}>{label}</p>
-                      <p className={clsx('text-xs mt-0.5', color)}>{sub}</p>
+                      {badge && <span className={clsx('text-xs', color, !checked && 'opacity-60')}>{badge}</span>}
+                      <InfoTip text={tip} isDark={isDark} />
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -754,17 +722,6 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
               });
             })()}
 
-            {/* ลำดับจริง */}
-            {enabledEngines.length > 0 && (
-              <p className={clsx('text-xs mt-1', isDark ? 'text-gray-600' : 'text-gray-400')}>
-                ลำดับ:{' '}
-                {engineOrder
-                  .filter(e => enabledEngines.includes(e))
-                  .map(e => ({ gemini31:'Gemini 3.1', gemini25:'Gemini 2.5', google:'Google Cloud', web:'Web Speech' }[e]))
-                  .join(' → ')
-                }
-              </p>
-            )}
           </div>
 
           {/* Advanced toggle */}
@@ -783,33 +740,30 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
 
           {showGoogleSection && (<>
 
+          {/* Trust notice — แสดงครั้งเดียว ครอบคลุมทุก paid engine */}
+          <div className={clsx('flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs border',
+            isDark ? 'bg-green-900/20 border-green-800/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
+            <span className="mt-0.5 flex-shrink-0">🔒</span>
+            <div>
+              <span className="font-semibold">API Key เก็บในเครื่องคุณเท่านั้น</span>
+              {' '}— ไม่ส่งขึ้น server ของเรา ไม่มีใครเห็น key ของคุณได้{' '}
+              <a href="https://github.com/chawasam/ttplus" target="_blank" rel="noreferrer"
+                className={clsx('underline font-medium', isDark ? 'text-green-300 hover:text-green-200' : 'text-green-600 hover:text-green-800')}>
+                ตรวจสอบ source code
+              </a>
+            </div>
+          </div>
+
           {/* ─── Gemini 3.1 TTS ─── */}
           <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
-              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+              <h2 className={clsx('font-semibold text-sm flex items-center', isDark ? 'text-white' : 'text-gray-900')}>
                 ✨ Gemini 3.1 TTS
-                <span className="text-xs font-normal text-purple-400 ml-2">ใหม่ล่าสุด · 360 combo</span>
+                <InfoTip text="โมเดลล่าสุดจาก Google · ใช้ Google AI Studio key (มี free tier) · 36 เสียง × 10 persona = 360 combo" isDark={isDark} />
               </h2>
-              {geminiKey
+              {geminiKey && enabledEngines.includes('gemini31')
                 ? <span className="text-xs text-purple-400 font-semibold">✓ เปิดใช้งาน</span>
-                : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
-            </div>
-            <p className={clsx('text-xs mb-2', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              โมเดลใหม่ล่าสุดจาก Google — ใช้ Google AI Studio key (ฟรี)
-            </p>
-
-            {/* Trust notice */}
-            <div className={clsx('flex items-start gap-2 rounded-lg px-3 py-2 mb-3 text-xs border',
-              isDark ? 'bg-green-900/20 border-green-800/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
-              <span className="mt-0.5 flex-shrink-0">🔒</span>
-              <div>
-                <span className="font-semibold">Key เก็บในเครื่องคุณเท่านั้น</span>
-                {' '}— ไม่ส่งขึ้น server ของเรา ไม่มีใครเห็น key ของคุณได้{' '}
-                <a href="https://github.com/chawasam/ttplus" target="_blank" rel="noreferrer"
-                  className={clsx('underline font-medium', isDark ? 'text-green-300 hover:text-green-200' : 'text-green-600 hover:text-green-800')}>
-                  ตรวจสอบ source code ได้ที่นี่
-                </a>
-              </div>
+                : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>{geminiKey ? 'มี key · ไม่ได้เปิด' : 'ปิดอยู่'}</span>}
             </div>
 
             {/* Gemini API key */}
@@ -953,7 +907,7 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 : isDark ? 'bg-gray-800 border-gray-700'        : 'bg-gray-50 border-gray-200')}>
               <div>
                 <p className={clsx('text-xs font-semibold', geminiShuffle ? 'text-purple-400' : isDark ? 'text-gray-300' : 'text-gray-700')}>
-                  🎲 สุ่ม 300 combo ทุกแชท
+                  🎲 สุ่ม 360 combo ทุกแชท
                 </p>
                 <p className={clsx('text-xs mt-0.5', isDark ? 'text-gray-500' : 'text-gray-400')}>
                   {geminiShuffle
@@ -1015,24 +969,20 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                 className="text-purple-400 hover:underline">
                 aistudio.google.com/apikey
               </a>
-              {' '}— อาจมีค่าใช้จ่าย
             </p>
           </div>
 
           {/* ─── Gemini 2.5 TTS ─── */}
           <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
-              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+              <h2 className={clsx('font-semibold text-sm flex items-center', isDark ? 'text-white' : 'text-gray-900')}>
                 🌟 Gemini 2.5 TTS
-                <span className="text-xs font-normal text-violet-400 ml-2">สำรอง · 360 combo</span>
+                <InfoTip text="ใช้ key เดียวกับ Gemini 3.1 · fallback อัตโนมัติเมื่อ 3.1 ล้มเหลว · 36 เสียง × 10 persona = 360 combo" isDark={isDark} />
               </h2>
-              {geminiKey
+              {geminiKey && enabledEngines.includes('gemini25')
                 ? <span className="text-xs text-violet-400 font-semibold">✓ เปิดใช้งาน</span>
-                : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>ปิดอยู่</span>}
+                : <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>{geminiKey ? 'มี key · ไม่ได้เปิด' : 'ปิดอยู่'}</span>}
             </div>
-            <p className={clsx('text-xs mb-3', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ใช้ key เดียวกับ Gemini 3.1 — fallback อัตโนมัติเมื่อ 3.1 ล้มเหลว
-            </p>
 
             {/* แสดง key status */}
             <div className={clsx('flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 text-xs',
@@ -1126,55 +1076,29 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
                   ))}
                 </div>
 
-                {/* Custom Personas — 2 ช่องกรอกเอง */}
-                <div className="space-y-2 mt-2">
-                  <p className={clsx('text-xs font-semibold', isDark ? 'text-violet-400' : 'text-violet-600')}>✏️ Custom Persona (กรอกเอง)</p>
-                  {customPersonas.map((cp, i) => (
-                    <div key={i} className={clsx('rounded-xl border p-2.5 space-y-1.5', isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200')}>
-                      <input
-                        type="text"
-                        placeholder={`ชื่อ Custom ${i + 1} (เช่น น่ารัก, ร้ายกาจ)`}
-                        value={cp.label}
-                        onChange={e => {
-                          const updated = customPersonas.map((x, j) => j === i ? { ...x, label: e.target.value } : x);
-                          setCustomPersonas(updated);
-                          try { localStorage.setItem('ttplus_custom_personas', JSON.stringify(updated)); } catch {}
-                        }}
-                        maxLength={30}
-                        className={clsx('w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none transition focus:ring-1 focus:ring-violet-400', isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
-                      />
-                      <textarea
-                        placeholder={`Instruction เช่น "พูดเหมือนผู้หญิงสดใส ร่าเริง น่ารัก ใช้คำลงท้าย ค่ะ จ้ะ นะ"`}
-                        value={cp.instruction}
-                        onChange={e => {
-                          const updated = customPersonas.map((x, j) => j === i ? { ...x, instruction: e.target.value } : x);
-                          setCustomPersonas(updated);
-                          try { localStorage.setItem('ttplus_custom_personas', JSON.stringify(updated)); } catch {}
-                        }}
-                        rows={3}
-                        maxLength={500}
-                        className={clsx('w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none resize-none transition focus:ring-1 focus:ring-violet-400', isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400')}
-                      />
-                      <button
-                        onClick={() => {
-                          if (!cp.instruction.trim()) { toast.error('กรุณากรอก instruction ก่อน'); return; }
-                          setGemini25Persona(cp.instruction);
-                          saveGemini25Persona(cp.instruction);
-                          configureTTS({ gemini25Persona: cp.instruction });
-                          saveEngineConfig({ ttsGemini25Persona: cp.instruction });
-                          toast.success(`✏️ ใช้ Custom ${i + 1}${cp.label ? ` "${cp.label}"` : ''} แล้ว`);
-                        }}
-                        className={clsx(
-                          'w-full py-1.5 rounded-lg text-xs font-semibold transition border',
-                          gemini25Persona === cp.instruction && cp.instruction
-                            ? 'bg-violet-600 border-violet-600 text-white'
-                            : isDark ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-violet-900/30 hover:border-violet-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-violet-50 hover:border-violet-300'
-                        )}
-                      >
-                        {gemini25Persona === cp.instruction && cp.instruction ? '✓ ใช้งานอยู่' : `ใช้ Custom ${i + 1}`}
-                      </button>
-                    </div>
-                  ))}
+                {/* Custom Personas — ใช้ชุดเดียวกับ Gemini 3.1 */}
+                <div className="mt-2">
+                  {customPersonas.map((cp, i) => cp.instruction ? (
+                    <button key={i}
+                      onClick={() => {
+                        setGemini25Persona(cp.instruction);
+                        saveGemini25Persona(cp.instruction);
+                        configureTTS({ gemini25Persona: cp.instruction });
+                        saveEngineConfig({ ttsGemini25Persona: cp.instruction });
+                        toast.success(`✏️ ใช้ Custom ${i + 1}${cp.label ? ` "${cp.label}"` : ''} แล้ว`);
+                      }}
+                      className={clsx(
+                        'w-full mb-1.5 px-3 py-2 rounded-xl border text-left text-xs font-semibold transition',
+                        gemini25Persona === cp.instruction
+                          ? 'bg-violet-600 border-violet-600 text-white'
+                          : isDark ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                      )}>
+                      ✏️ {cp.label || `Custom ${i + 1}`}
+                    </button>
+                  ) : null)}
+                  <p className={clsx('text-xs mt-1', isDark ? 'text-gray-600' : 'text-gray-400')}>
+                    แก้ไข Custom Persona ได้ที่การ์ด Gemini 3.1 ด้านบน
+                  </p>
                 </div>
               </div>
 
@@ -1246,30 +1170,13 @@ export default function TtsPage({ theme, setTheme, user, authLoading, activePage
           {/* ─── Google Cloud TTS ─── */}
           <div className={clsx('rounded-2xl p-4 border', paidCard)}>
             <div className="flex items-center justify-between mb-1">
-              <h2 className={clsx('font-semibold text-sm', isDark ? 'text-white' : 'text-gray-900')}>
+              <h2 className={clsx('font-semibold text-sm flex items-center', isDark ? 'text-white' : 'text-gray-900')}>
                 🔑 Google Cloud TTS
-                <span className="text-xs font-normal text-green-400 ml-1">น่าจะเสียงดีกว่าตัวฟรี</span>
+                <InfoTip text="Neural Thai · เสียงดีกว่า Web Speech · ฟรี 1M chars/เดือน · ใส่ API key จาก Google Cloud Console" isDark={isDark} />
               </h2>
-              {googleKey && (
-                <span className="text-xs text-green-400 font-semibold">✓ เปิดใช้งาน</span>
-              )}
-            </div>
-            <p className={clsx('text-xs mb-2', isDark ? 'text-gray-500' : 'text-gray-400')}>
-              ใส่ API key ของคุณเองเพื่อใช้เสียง Neural ภาษาไทย ฟรี 1M chars/เดือน
-            </p>
-
-            {/* Trust notice */}
-            <div className={clsx('flex items-start gap-2 rounded-lg px-3 py-2 mb-3 text-xs border',
-              isDark ? 'bg-green-900/20 border-green-800/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700')}>
-              <span className="mt-0.5 flex-shrink-0">🔒</span>
-              <div>
-                <span className="font-semibold">Key เก็บในเครื่องคุณเท่านั้น</span>
-                {' '}— ไม่ส่งขึ้น server ของเรา ไม่มีใครเห็น key ของคุณได้{' '}
-                <a href="https://github.com/chawasam/ttplus" target="_blank" rel="noreferrer"
-                  className={clsx('underline font-medium', isDark ? 'text-green-300 hover:text-green-200' : 'text-green-600 hover:text-green-800')}>
-                  ตรวจสอบ source code ได้ที่นี่
-                </a>
-              </div>
+              {googleKey && enabledEngines.includes('google')
+                ? <span className="text-xs text-green-400 font-semibold">✓ เปิดใช้งาน</span>
+                : googleKey ? <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>มี key · ไม่ได้เปิด</span> : null}
             </div>
 
             {/* API Key input */}

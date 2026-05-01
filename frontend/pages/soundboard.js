@@ -15,6 +15,30 @@ import {
 } from '../lib/soundboardStore';
 import { KB_ROWS } from '../lib/soundSynth';
 
+// ── Tooltip icon ⓘ — hover แล้วโชว์คำอธิบาย (ตัวอักษรใหญ่อ่านง่าย) ──────────
+function InfoTip({ text, isDark, wide }) {
+  return (
+    <span className="relative inline-flex items-center group" style={{ verticalAlign: 'middle', marginLeft: 4 }}>
+      <span className={clsx(
+        'inline-flex items-center justify-center rounded-full border text-[10px] font-medium cursor-default select-none leading-none',
+        'w-[16px] h-[16px]',
+        isDark ? 'border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-300'
+               : 'border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600'
+      )}>i</span>
+      <span className={clsx(
+        'absolute bottom-full left-0 mb-2 z-50',
+        wide ? 'w-72' : 'w-max max-w-[280px]',
+        'invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+        'bg-gray-900 text-gray-100 text-[13px] leading-relaxed rounded-xl px-3 py-2.5 shadow-xl',
+        'pointer-events-none whitespace-normal'
+      )}>
+        {text}
+        <span className="absolute top-full left-3 border-[5px] border-transparent border-t-gray-900" />
+      </span>
+    </span>
+  );
+}
+
 const KEY_BASE_PX   = 68;
 const KEY_MIN_SCALE = 0.55;
 const KEY_MAX_SCALE = 1.45;
@@ -387,10 +411,21 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   }, []);
 
   // Poll getPlayingKeys + getPlayingProgress ทุก 80 ms
+  // ใช้ด้วยสำหรับ audio indicator ใน Sidebar
+  const sbAudioActiveRef = useRef(false);
   useEffect(() => {
     const id = setInterval(() => {
-      setPlayingKeys(getPlayingKeys());
+      const keys  = getPlayingKeys();
+      const isOn  = keys.size > 0;
+      setPlayingKeys(keys);
       setPlayingProgress(getPlayingProgress());
+      // dispatch เฉพาะเมื่อ state เปลี่ยน (ลด noise)
+      if (isOn !== sbAudioActiveRef.current) {
+        sbAudioActiveRef.current = isOn;
+        window.dispatchEvent(new CustomEvent('ttplus-audio-tab', {
+          detail: { tab: 'soundboard', active: isOn },
+        }));
+      }
     }, 80);
     return () => clearInterval(id);
   }, []);
@@ -845,10 +880,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
   };
 
   return (
-    <div className={clsx('flex h-screen overflow-hidden', isDark ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900')}>
+    <div className={clsx('flex h-screen overflow-hidden', isDark ? 'bg-gray-950 text-white' : 'bg-[#fdf0f7] text-gray-900')}>
       <Sidebar theme={theme} user={user} activePage={navPage} setActivePage={setActivePage} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
 
-      <main className={clsx('flex-1 overflow-y-auto', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-56')}>
+      <main className={clsx('flex-1 overflow-y-auto', sidebarCollapsed ? 'ml-16' : 'ml-16 md:ml-48')}>
         <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
 
           {/* ===== Header ===== */}
@@ -977,9 +1012,12 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 })()}
               </button>
             ))}
-            <span className={clsx('text-xs ml-1', isDark ? 'text-gray-600' : 'text-gray-400')}>
-              Tab / 1–4 = สลับ Page {isMobile ? '| ปัดซ้าย/ขวา' : ''}
-            </span>
+            <InfoTip
+              isDark={isDark}
+              text={isMobile
+                ? 'กด Tab หรือปุ่ม 1–4 บนคีย์บอร์ดเพื่อสลับ Page\nปัดซ้าย/ขวาบนหน้าจอก็สลับ Page ได้เช่นกัน'
+                : 'กด Tab หรือปุ่ม 1–4 บนคีย์บอร์ดเพื่อสลับ Page ได้อย่างรวดเร็ว'}
+            />
           </div>
 
           {/* ===== Backup Warning Banner ===== */}
@@ -1020,20 +1058,24 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             </div>
           )}
 
-          {/* Edit mode hint */}
+          {/* Edit mode hint — badge + tooltip */}
           {editMode && (
             <div className={clsx(
-              'flex items-start gap-2 px-4 py-3 rounded-xl text-sm border',
+              'inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm border',
               isDark ? 'bg-yellow-900/20 border-yellow-700/40 text-yellow-300' : 'bg-yellow-50 border-yellow-200 text-yellow-700'
             )}>
-              <span className="mt-0.5">✏️</span>
-              <div className="space-y-0.5 text-xs">
-                <p className="font-semibold text-sm">โหมดแก้ไข — Page {page} ({LAYOUT_LABEL[curLayout]})</p>
-                <p><b>กดที่ปุ่ม</b> = เปิดเมนูแก้ไขรวม (อัปโหลด / ตั้งชื่อ / สี / ความเร็ว / โหมด / คัดลอก)</p>
-                {!isPadMode && <p><b>กดค้าง</b> ที่ปุ่ม = ฟัง preview เสียง</p>}
-                {isDesktop && <p>🖱️ <b>Right-click</b> ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด, คัดลอก)</p>}
-                {!isMobile && <p>🎵 <b>ลากไฟล์</b>จาก File Explorer มาวางบนปุ่มได้โดยตรง</p>}
-              </div>
+              <span>✏️</span>
+              <span className="font-semibold text-sm">โหมดแก้ไข — Page {page}</span>
+              <InfoTip
+                isDark={isDark}
+                wide
+                text={[
+                  `กดที่ปุ่ม = เปิดเมนูแก้ไข (อัปโหลด / ตั้งชื่อ / สี / ระดับเสียง / โหมด / คัดลอก)`,
+                  !isPadMode ? `กดค้างที่ปุ่ม = ฟัง preview เสียง` : null,
+                  isDesktop ? `🖱️ Right-click ปุ่ม = เมนูด่วน (สี, ระดับเสียง, โหมด)` : null,
+                  !isMobile ? `🎵 ลากไฟล์จาก File Explorer มาวางบนปุ่มได้โดยตรง` : null,
+                ].filter(Boolean).join('\n')}
+              />
             </div>
           )}
 
@@ -1118,14 +1160,10 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
                 )}
               </div>
               {(page === 1 || page === 2) && (
-                <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
-                  Page {page} มีเสียง default ครบ — อัปโหลดทับได้
-                </span>
+                <InfoTip isDark={isDark} text={`Page ${page} มาพร้อมเสียง default ครบทุกปุ่มแล้ว\nสามารถอัปโหลดไฟล์เสียงทับได้โดยกดโหมดแก้ไข → กดปุ่มที่ต้องการ`} />
               )}
               {(page === 3 || page === 4) && (
-                <span className={clsx('text-xs', isDark ? 'text-gray-600' : 'text-gray-400')}>
-                  Page {page} — อัปโหลดเสียงได้ (ไม่มี default)
-                </span>
+                <InfoTip isDark={isDark} text={`Page ${page} ไม่มีเสียง default — ว่างเปล่าทั้งหมด\nกดโหมดแก้ไข แล้วกดปุ่มเพื่ออัปโหลดไฟล์เสียงเองได้เลย`} />
               )}
             </div>
 
@@ -1269,7 +1307,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             onPointerDown={(e) => e.stopPropagation()}
             className={clsx(
               'w-full max-w-sm mx-auto mb-4 rounded-2xl shadow-2xl border p-4 space-y-3',
-              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-[#fff5fb] border-pink-200'
             )}
           >
             {/* Header */}
@@ -1438,7 +1476,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
         >
           <div className={clsx(
             'w-56 rounded-xl shadow-2xl border p-3 space-y-2.5',
-            isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            isDark ? 'bg-gray-900 border-gray-700' : 'bg-[#fff5fb] border-pink-200'
           )}>
             {/* Header */}
             <div className={clsx('flex items-center gap-2 pb-1.5 border-b', isDark ? 'border-gray-800' : 'border-gray-100')}>
@@ -1583,7 +1621,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
           <div
             className={clsx(
               'w-full max-w-sm mb-6 rounded-2xl shadow-2xl border p-4 space-y-3',
-              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-[#fff5fb] border-pink-200'
             )}
             onClick={e => e.stopPropagation()}
           >
@@ -1628,7 +1666,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
             onClick={() => setExportPending(null)} />
           <div className={clsx(
             'relative w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4',
-            isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            isDark ? 'bg-gray-900 border-gray-700' : 'bg-[#fff5fb] border-pink-200'
           )}>
             <div className="flex items-center justify-between">
               <span className={clsx('font-semibold text-base', isDark ? 'text-gray-100' : 'text-gray-800')}>
@@ -1683,7 +1721,7 @@ export default function SoundboardPage({ theme, user, activePage: navPage, setAc
           <div
             className={clsx(
               'relative w-full max-w-sm rounded-2xl shadow-2xl border p-4 space-y-3',
-              isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+              isDark ? 'bg-gray-900 border-gray-700' : 'bg-[#fff5fb] border-pink-200'
             )}
           >
             <div className="flex items-center justify-between">
