@@ -34,4 +34,11 @@ function emitToWidgetRoom(uid, event, data) {
   _io.to(`widget_${uid}`).emit(event, data);
 }
 
-module.exports = { setIO, emitToUser, broadcastAll, emitToWidgetRoom };
+// Ping overlay room (overlay_${uid}) เพื่อให้ frontend re-fetch state ทันที
+// ใช้ lightweight ping — ไม่ส่งข้อมูล (frontend fetch HTTP endpoint เอง)
+function emitOverlayRefresh(uid) {
+  if (!_io || !uid) return;
+  _io.to(`overlay_${uid}`).emit('overlay_refresh', { ts: Date.now() });
+}
+
+module.exports = { setIO, emitToUser, broadcastAll, emitToWidgetRoom, emitOverlayRefresh };

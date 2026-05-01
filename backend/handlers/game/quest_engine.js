@@ -1,5 +1,6 @@
 // handlers/game/quest_engine.js — Story & Side Quest progression engine
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { STORY_QUESTS, getStoryQuest } = require('../../data/story_quests');
 const { SIDE_QUESTS, getSideQuest, getAvailableSideQuests } = require('../../data/side_quests');
 const { getItem, rollItem } = require('../../data/items');
@@ -87,12 +88,12 @@ async function getQuestLog(req, res) {
 
     // Character level for side quest availability
     let charLevel = 1;
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (accountDoc.exists) {
-      const charId = accountDoc.data().characterId;
+    const acct = await gameCache.getAccount(uid, db);
+    if (acct) {
+      const charId = acct.characterId;
       if (charId) {
-        const charDoc = await db.collection('game_characters').doc(charId).get();
-        if (charDoc.exists) charLevel = charDoc.data().level || 1;
+        const charData = await gameCache.getCharacter(charId, db);
+        if (charData) charLevel = charData.level || 1;
       }
     }
 
@@ -243,12 +244,12 @@ async function acceptSideQuest(req, res) {
 
     // Check level
     let charLevel = 1;
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (accountDoc.exists) {
-      const charId = accountDoc.data().characterId;
+    const acctData = await gameCache.getAccount(uid, db);
+    if (acctData) {
+      const charId = acctData.characterId;
       if (charId) {
-        const charDoc = await db.collection('game_characters').doc(charId).get();
-        if (charDoc.exists) charLevel = charDoc.data().level || 1;
+        const charData = await gameCache.getCharacter(charId, db);
+        if (charData) charLevel = charData.level || 1;
       }
     }
     if ((quest.minLevel || 1) > charLevel) {
@@ -464,27 +465,29 @@ async function completeQuestInternal(uid, quest, type, db) {
 
     // XP
     if (xp > 0) {
-      const accountDoc = await db.collection('game_accounts').doc(uid).get();
-      if (accountDoc.exists) {
-        const charId = accountDoc.data().characterId;
+      const questAcct = await gameCache.getAccount(uid, db);
+      if (questAcct) {
+        const charId = questAcct.characterId;
         if (charId) {
-          const charRef = db.collection('game_characters').doc(charId);
-          const charDoc = await charRef.get();
-          const char    = charDoc.data();
-          const newXp   = (char.xp || 0) + xp;
-          const updates = { xp: newXp };
-          if (newXp >= (char.xpToNext || 100)) {
-            updates.level      = (char.level || 1) + 1;
-            updates.xp         = newXp - (char.xpToNext || 100);
-            updates.xpToNext   = Math.floor(200 * Math.pow(updates.level, 1.9)); // lv50≈9เดือน, lv99≈2ปี
-            updates.hpMax      = char.hpMax + 10;
-            updates.hp         = char.hpMax + 10;
-            updates.mpMax      = char.mpMax + 5;
-            updates.mp         = char.mpMax + 5;
-            updates.statPoints  = (char.statPoints  || 0) + 3;
-            updates.skillPoints = (char.skillPoints || 0) + 1;
+          const char = await gameCache.getCharacter(charId, db);
+          if (char) {
+            const charRef = db.collection('game_characters').doc(charId);
+            const newXp   = (char.xp || 0) + xp;
+            const updates = { xp: newXp };
+            if (newXp >= (char.xpToNext || 100)) {
+              updates.level      = (char.level || 1) + 1;
+              updates.xp         = newXp - (char.xpToNext || 100);
+              updates.xpToNext   = Math.floor(200 * Math.pow(updates.level, 1.9)); // lv50≈9เดือน, lv99≈2ปี
+              updates.hpMax      = char.hpMax + 10;
+              updates.hp         = char.hpMax + 10;
+              updates.mpMax      = char.mpMax + 5;
+              updates.mp         = char.mpMax + 5;
+              updates.statPoints  = (char.statPoints  || 0) + 3;
+              updates.skillPoints = (char.skillPoints || 0) + 1;
+            }
+            await charRef.update(updates);
+            gameCache.invalidateChar(charId);
           }
-          await charRef.update(updates);
         }
       }
     }
@@ -494,6 +497,7 @@ async function completeQuestInternal(uid, quest, type, db) {
       const instance = rollItem(itemId);
       if (instance) {
         await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+        gameCache.adjustInventoryCount(uid, 1, db);
       }
     }
 

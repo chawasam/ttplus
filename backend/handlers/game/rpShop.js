@@ -1,5 +1,6 @@
 // handlers/game/rpShop.js — Realm Points shop handler
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { RP_SHOP_ITEMS, getRPShopItem } = require('../../data/rp_shop');
 const { getItem, rollItem } = require('../../data/items');
 const { getClassSkills } = require('../../data/skills');
@@ -11,10 +12,8 @@ async function getRPShop(req, res) {
 
   try {
     // Load player's purchased one-time items
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-
-    const data    = accountDoc.data();
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
     const rp      = data.realmPoints || 0;
     const bought  = data.rpOneTimePurchases || [];
     const unlocked = data.unlockedRaces || ['human'];
@@ -68,10 +67,9 @@ async function buyRPItem(req, res) {
 
   try {
     const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
 
-    const data    = accountDoc.data();
     const rp      = data.realmPoints || 0;
     const bought  = data.rpOneTimePurchases || [];
 
@@ -111,6 +109,7 @@ async function buyRPItem(req, res) {
 
     // Apply account-level updates first
     await accountRef.update(updates);
+    gameCache.invalidateAccount(uid);
 
     // ── Bundle items ──
     if (shopItem.bundle) {
@@ -119,6 +118,7 @@ async function buyRPItem(req, res) {
           const instance = rollItem(entry.itemId);
           if (instance) {
             await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+            gameCache.adjustInventoryCount(uid, 1, db);
             const def = getItem(entry.itemId);
             granted.push({ type: 'item', itemId: entry.itemId, name: def?.name || entry.itemId, emoji: def?.emoji || '📦' });
           }
@@ -133,6 +133,7 @@ async function buyRPItem(req, res) {
         const instance = rollItem(shopItem.itemId);
         if (instance) {
           await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}_${i}`).set({ uid, ...instance });
+          gameCache.adjustInventoryCount(uid, 1, db);
           const def = getItem(shopItem.itemId);
           granted.push({ type: 'item', itemId: shopItem.itemId, name: def?.name || shopItem.itemId, emoji: def?.emoji || '📦' });
         }
@@ -145,6 +146,7 @@ async function buyRPItem(req, res) {
       const instance = rollItem(poolItemId);
       if (instance) {
         await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+        gameCache.adjustInventoryCount(uid, 1, db);
         const def = getItem(poolItemId);
         granted.push({ type: 'item', itemId: poolItemId, name: def?.name || poolItemId, emoji: def?.emoji || '📦', fromBox: true });
       }
@@ -185,13 +187,15 @@ async function buyRPItem(req, res) {
         }
         const charId = data.characterId;
         if (charId) {
-          const charSnap = await db.collection('game_characters').doc(charId).get();
-          const currentLimit = charSnap.exists ? (charSnap.data().inventoryLimit || 30) : 30;
+          const charData = await gameCache.getCharacter(charId, db);
+          const currentLimit = charData ? (charData.inventoryLimit || 30) : 30;
           await db.collection('game_characters').doc(charId).update({
             inventoryLimit: currentLimit + (ef.amount || 10),
           });
+          gameCache.invalidateChar(charId);
         }
         await accountRef.set({ rpInventoryExpands: admin.firestore.FieldValue.increment(1) }, { merge: true });
+        gameCache.invalidateAccount(uid);
         granted.push({ type: 'upgrade', upgradeType: 'inventory_expand', amount: ef.amount || 10, name: shopItem.name });
 
       } else if (ef.type === 'resurrection_stone') {
@@ -204,10 +208,11 @@ async function buyRPItem(req, res) {
         // เติม stamina เต็ม
         const charId = data.characterId;
         if (charId) {
-          const charDoc = await db.collection('game_characters').doc(charId).get();
-          if (charDoc.exists) {
-            const staminaMax = charDoc.data().staminaMax || 100;
+          const charData = await gameCache.getCharacter(charId, db);
+          if (charData) {
+            const staminaMax = charData.staminaMax || 100;
             await db.collection('game_characters').doc(charId).update({ stamina: staminaMax });
+            gameCache.invalidateChar(charId);
           }
         }
         granted.push({ type: 'consumable', consumableType: 'stamina_refill', name: shopItem.name });
@@ -292,9 +297,8 @@ async function executeClassChange(req, res) {
   const db = admin.firestore();
   try {
     const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-    const data = accountDoc.data();
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
 
     if (!data.pendingClassChange) {
       return res.status(400).json({ error: 'คุณไม่มี Class Change token — ซื้อจาก RP Shop ก่อน' });
@@ -308,7 +312,9 @@ async function executeClassChange(req, res) {
       class:          newClass_normalized.toUpperCase(), // เก็บ uppercase ให้ตรงกับ account.js
       unlockedSkills: [],   // Skills ต้อง unlock ใหม่
     });
+    gameCache.invalidateChar(charId);
     await accountRef.update({ pendingClassChange: admin.firestore.FieldValue.delete() });
+    gameCache.invalidateAccount(uid);
 
     console.log(`[RPShop] 🔄 uid=${uid} changed class to ${newClass_normalized}`);
     return res.json({ success: true, newClass: newClass_normalized, msg: `เปลี่ยน Class เป็น ${newClass_normalized} สำเร็จ! Skills ต้อง unlock ใหม่` });
@@ -339,9 +345,8 @@ async function executeNameChange(req, res) {
   const db = admin.firestore();
   try {
     const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-    const data = accountDoc.data();
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
 
     if (!data.pendingNameChange) {
       return res.status(400).json({ error: 'คุณไม่มี Name Change token — ซื้อจาก RP Shop ก่อน' });
@@ -355,7 +360,9 @@ async function executeNameChange(req, res) {
     if (!taken.empty) return res.status(400).json({ error: 'ชื่อนี้ถูกใช้ไปแล้ว' });
 
     await db.collection('game_characters').doc(charId).update({ name });
+    gameCache.invalidateChar(charId);
     await accountRef.update({ pendingNameChange: admin.firestore.FieldValue.delete() });
+    gameCache.invalidateAccount(uid);
 
     console.log(`[RPShop] ✏️ uid=${uid} renamed to "${name}"`);
     return res.json({ success: true, newName: name, msg: `เปลี่ยนชื่อเป็น "${name}" สำเร็จ!` });
@@ -371,9 +378,8 @@ async function executeSkillReset(req, res) {
   const db  = admin.firestore();
   try {
     const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-    const data = accountDoc.data();
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
 
     if (!data.pendingSkillReset) {
       return res.status(400).json({ error: 'ไม่มี Skill Reset token — ซื้อจาก RP Shop ก่อน' });
@@ -392,9 +398,8 @@ async function executeSkillReset(req, res) {
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     const charRef = db.collection('game_characters').doc(charId);
-    const charDoc = await charRef.get();
-    if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
-    const char = charDoc.data();
+    const char = await gameCache.getCharacter(charId, db);
+    if (!char) return res.status(404).json({ error: 'Character ไม่พบ' });
 
     // คำนวณ SP ที่ใช้ไปทั้งหมดจาก unlockedSkills
     const className   = char.class?.toLowerCase() || 'warrior';
@@ -411,10 +416,12 @@ async function executeSkillReset(req, res) {
       skillPoints:    currentSP + spRefund,
       unlockedSkills: [],
     });
+    gameCache.invalidateChar(charId);
     await accountRef.update({
       pendingSkillReset: admin.firestore.FieldValue.delete(),
       lastSkillReset:    Date.now(),
     });
+    gameCache.invalidateAccount(uid);
 
     console.log(`[RPShop] 🔄 uid=${uid} skill reset — refunded ${spRefund} SP, cleared ${unlockedIds.length} skills`);
     return res.json({
@@ -443,9 +450,8 @@ async function executeStatReset(req, res) {
   const db  = admin.firestore();
   try {
     const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-    const data = accountDoc.data();
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
 
     if (!data.pendingStatReset) {
       return res.status(400).json({ error: 'ไม่มี Stat Reset token — ซื้อจาก RP Shop ก่อน' });
@@ -464,9 +470,8 @@ async function executeStatReset(req, res) {
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     const charRef = db.collection('game_characters').doc(charId);
-    const charDoc = await charRef.get();
-    if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
-    const char = charDoc.data();
+    const char = await gameCache.getCharacter(charId, db);
+    if (!char) return res.status(404).json({ error: 'Character ไม่พบ' });
 
     const allocated = char.allocatedStats || { str: 0, int: 0, agi: 0, vit: 0 };
     const totalPointsSpent = (allocated.str || 0) + (allocated.int || 0) + (allocated.agi || 0) + (allocated.vit || 0);
@@ -491,6 +496,7 @@ async function executeStatReset(req, res) {
     }
 
     await charRef.update(updates);
+    gameCache.invalidateChar(charId);
 
     // หลัง update ต้อง clamp hp/mp ไม่ให้ต่ำกว่า 1
     const updated = (await charRef.get()).data();
@@ -503,6 +509,7 @@ async function executeStatReset(req, res) {
       pendingStatReset: admin.firestore.FieldValue.delete(),
       lastStatReset:    Date.now(),
     });
+    gameCache.invalidateAccount(uid);
 
     const final = (await charRef.get()).data();
     console.log(`[RPShop] ↩️ uid=${uid} stat reset — refunded ${totalPointsSpent} stat points`);
@@ -527,9 +534,8 @@ async function getActiveBoosts(req, res) {
   const uid = req.user.uid;
   const db  = admin.firestore();
   try {
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-    const data = accountDoc.data();
+    const data = await gameCache.getAccount(uid, db);
+    if (!data) return res.status(404).json({ error: 'Account ไม่พบ' });
     const boosts = data.activeBoosts || {};
     const now = Date.now();
     // Filter expired

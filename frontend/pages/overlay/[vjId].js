@@ -5,9 +5,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { io } from 'socket.io-client';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
-const POLL_INTERVAL = 5000; // refresh ทุก 5 วินาที
+const POLL_INTERVAL = 30000; // fallback เท่านั้น — socket push trigger ก่อน
 
 const ZONE_NAMES = {
   town_square:    '🏘️ Town Square',
@@ -65,12 +66,26 @@ export default function OverlayPage() {
     }
   }, [vjId]);
 
-  // Start polling
+  // Initial fetch + fallback polling + socket push
   useEffect(() => {
     if (!vjId) return;
+
     fetchState();
     pollRef.current = setInterval(fetchState, POLL_INTERVAL);
-    return () => clearInterval(pollRef.current);
+
+    // Socket: join overlay room → listen for push ping → re-fetch immediately
+    const sock = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
+    sock.on('connect', () => {
+      sock.emit('join_overlay', { tiktokId: vjId });
+    });
+    sock.on('overlay_refresh', () => {
+      fetchState();
+    });
+
+    return () => {
+      clearInterval(pollRef.current);
+      sock.disconnect();
+    };
   }, [vjId, fetchState]);
 
   // Auto-remove old events after 8 seconds

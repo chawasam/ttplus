@@ -1,6 +1,7 @@
 // handlers/game/xp.js — Shared XP + Level-up utility
 // ใช้ทุกที่ที่ต้องให้ XP เพื่อให้ level-up ทำงานถูกต้องเสมอ
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { pushGameEvent, checkAchievements } = require('./achievements');
 
 /**
@@ -16,15 +17,14 @@ async function giveXP(uid, xpAmount, db) {
   if (!db) db = admin.firestore();
 
   // หา characterId จาก game_accounts
-  const accountDoc = await db.collection('game_accounts').doc(uid).get();
-  if (!accountDoc.exists) return { levelUp: null };
-  const charId = accountDoc.data().characterId;
+  const acctData = await gameCache.getAccount(uid, db);
+  if (!acctData) return { levelUp: null };
+  const charId = acctData.characterId;
   if (!charId) return { levelUp: null };
 
+  const char = await gameCache.getCharacter(charId, db);
+  if (!char) return { levelUp: null };
   const charRef = db.collection('game_characters').doc(charId);
-  const charDoc = await charRef.get();
-  if (!charDoc.exists) return { levelUp: null };
-  const char = charDoc.data();
 
   const currentXp  = char.xp       || 0;
   const currentLv  = char.level     || 1;
@@ -63,6 +63,7 @@ async function giveXP(uid, xpAmount, db) {
   }
 
   await charRef.update(updates);
+  gameCache.invalidateChar(charId);
 
   return {
     levelUp,

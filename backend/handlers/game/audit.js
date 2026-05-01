@@ -28,32 +28,24 @@ async function getFlags(req, res) {
       .limit(parseInt(lim, 10));
 
     const snap  = await query.get();
-    const flags = snap.docs.map(doc => ({
-      id:       doc.id,
-      uid:      doc.data().uid,
-      reason:   doc.data().reason,
-      data:     doc.data().data,
-      resolved: doc.data().resolved,
-      ts:       doc.data().ts?.toDate?.()?.toISOString() || null,
-    }));
 
-    // แนบ TikTok username ถ้ามี (สะดวกอ่าน)
-    const accounts = await Promise.all(
-      [...new Set(flags.map(f => f.uid))].map(async uid => {
-        const doc = await db.collection('game_accounts').doc(uid).get();
-        return { uid, tiktokId: doc.data()?.tiktokUniqueId || '—', charName: doc.data()?.characterName || '—' };
-      })
-    );
-    const accountMap = Object.fromEntries(accounts.map(a => [a.uid, a]));
-
-    return res.json({
-      total: flags.length,
-      flags: flags.map(f => ({
-        ...f,
-        tiktokId:  accountMap[f.uid]?.tiktokId  || '—',
-        charName:  accountMap[f.uid]?.charName   || '—',
-      })),
+    // tiktokUniqueId + charName ถูก denormalize ไว้ใน flag doc แล้ว (ตั้งแต่ anticheat.js)
+    // → ไม่ต้อง join game_accounts อีก (ลด N reads เหลือ 0)
+    const flags = snap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id:       doc.id,
+        uid:      d.uid,
+        reason:   d.reason,
+        data:     d.data,
+        resolved: d.resolved,
+        tiktokId: d.tiktokUniqueId || '—',
+        charName: d.charName       || '—',
+        ts:       d.ts?.toDate?.()?.toISOString() || null,
+      };
     });
+
+    return res.json({ total: flags.length, flags });
   } catch (err) {
     console.error('[Audit] getFlags:', err.message);
     return res.status(500).json({ error: 'Server error' });

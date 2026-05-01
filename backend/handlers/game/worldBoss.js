@@ -4,6 +4,7 @@
 // POST /api/game/world-boss/spawn    — spawn Boss (VJ trigger ด้วยมือ, auth required)
 
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { getRandomBoss, getBoss } = require('../../data/world_bosses');
 const { pushGameEvent } = require('./achievements');
 const { broadcastAll } = require('../../lib/emitter');
@@ -96,10 +97,9 @@ async function attackWorldBoss(req, res) {
     }
 
     // Get player's character for damage calc
-    const acctDoc = await db.collection('game_accounts').doc(uid).get();
-    const charId  = acctDoc.data()?.characterId;
-    const charDoc = charId ? await db.collection('game_characters').doc(charId).get() : null;
-    const char    = charDoc?.data() || {};
+    const acctData = await gameCache.getAccount(uid, db);
+    const charId   = acctData?.characterId;
+    const char     = charId ? (await gameCache.getCharacter(charId, db) || {}) : {};
 
     // Damage = player ATK + MAG + level bonus, ±30% variance
     const base   = (char.atk || 20) + (char.mag || 0) + (char.level || 1) * 5;
@@ -263,8 +263,8 @@ async function attackWorldBoss(req, res) {
 
       // Grant title if first place and there's a title reward
       if (i === 0 && reward.title) {
-        const pCharSnap = await db.collection('game_accounts').doc(p.uid).get();
-        const pCharId   = pCharSnap.data()?.characterId;
+        const pAcctData = await gameCache.getAccount(p.uid, db);
+        const pCharId   = pAcctData?.characterId;
         if (pCharId) {
           batch.update(db.collection('game_characters').doc(pCharId), { title: reward.title });
         }
@@ -272,6 +272,8 @@ async function attackWorldBoss(req, res) {
     }
 
     await batch.commit();
+    // Invalidate all participants since gold was updated via batch
+    for (const p of sorted) gameCache.invalidateAccount(p.uid);
 
     // Find my reward
     const myRank = sorted.findIndex(p => p.uid === uid);

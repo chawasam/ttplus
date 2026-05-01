@@ -10,6 +10,7 @@ const { trackWeeklyProgress }   = require('./weeklyQuests');
 const { getSkill, getClassSkills } = require('../../data/skills');
 const { checkAchievements, pushGameEvent } = require('./achievements');
 const { logReward } = require('../../utils/anticheat');
+const gameCache = require('../../utils/gameCache');
 
 // ── Equipment bonus cache — ลด Firestore reads จาก 14 → 1 ต่อ battle ──────────
 // invalidateEquipCache(uid) ต้องเรียกทุกครั้งที่ equip/unequip ใน inventory.js
@@ -136,6 +137,15 @@ async function startBattle(req, res) {
   const db = admin.firestore();
   let monster;
 
+  // ── อ่าน account + character ครั้งเดียวที่นี่ ใช้ร่วมกันทั้ง function ──────
+  // (เดิมอ่านซ้ำ 3 ครั้ง: zone validation + zone_boss check + main battle)
+  const accountData = await gameCache.getAccount(uid, db);
+  if (!accountData) return res.status(404).json({ error: 'Account ไม่พบ' });
+  const charId = accountData.characterId;
+  if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
+  const char = await gameCache.getCharacter(charId, db);
+  if (!char) return res.status(404).json({ error: 'Character ไม่พบ' });
+
   if (dungeonRunId) {
     // ── Dungeon battle: load room + monster from Firestore (server-side) ─────
     const runDoc = await db.collection('game_dungeons').doc(dungeonRunId).get();
@@ -165,17 +175,10 @@ async function startBattle(req, res) {
     const { getZone } = require('../../data/maps');
 
     let validationZone = zone || null;     // zone จาก explore result
-    let charLevelForZone = 1;
-
-    const acctForZone = await db.collection('game_accounts').doc(uid).get();
-    const charIdForZone = acctForZone.data()?.characterId;
-    if (charIdForZone) {
-      const charForZone = await db.collection('game_characters').doc(charIdForZone).get();
-      charLevelForZone = charForZone.data()?.level || 1;
-      if (!validationZone) {
-        // ไม่มี zone ใน request — fallback to stored location
-        validationZone = charForZone.data()?.location || 'town_outskirts';
-      }
+    const charLevelForZone = char.level || 1;
+    if (!validationZone) {
+      // ไม่มี zone ใน request — fallback to stored location
+      validationZone = char.location || 'town_outskirts';
     }
 
     if (validationZone) {
@@ -201,8 +204,7 @@ async function startBattle(req, res) {
 
   // ── Zone Boss cooldown check ────────────────────────────────────────────
   if (monster.special === 'zone_boss') {
-    const acct2 = await db.collection('game_accounts').doc(uid).get();
-    const kills = acct2.data()?.zoneBossKills || {};
+    const kills = accountData.zoneBossKills || {};
     const lastKill = kills[monster.monsterId] || 0;
     const cooldownMs = (monster.cooldownHours || 24) * 3600 * 1000;
     const elapsed = Date.now() - lastKill;
@@ -217,16 +219,6 @@ async function startBattle(req, res) {
   // ─────────────────────────────────────────────────────────────────────────
 
   try {
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-
-    const charId  = accountDoc.data().characterId;
-    if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
-
-    const charDoc = await db.collection('game_characters').doc(charId).get();
-    if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
-
-    const char = charDoc.data();
     if (char.hp <= 0) return res.status(400).json({ error: 'Character หมดพลัง ต้อง Rest ก่อน' });
 
     // ── Equipment bonuses ──────────────────────────────────────────────────
@@ -1559,11 +1551,10 @@ async function grantRewards(uid, state) {
   const log     = [];
   const rewards = { xp: state.enemy.xpReward, gold: 0, items: [] };
 
-  // Load account (needed for active boosts + charId)
-  const accountDoc    = await db.collection('game_accounts').doc(uid).get();
-  const accountData   = accountDoc.data() || {};
-  const activeBoosts  = accountData.activeBoosts || {};
-  const now           = Date.now();
+  // Load account (needed for active boosts + charId) — ใช้ gameCache ลด reads
+  const accountData  = await gameCache.getAccount(uid, db) || {};
+  const activeBoosts = accountData.activeBoosts || {};
+  const now          = Date.now();
 
   // Gold reward (with optional boost)
   const [minG, maxG] = state.enemy.goldReward || [0, 0];
@@ -1575,6 +1566,7 @@ async function grantRewards(uid, state) {
   }
   if (gold > 0) {
     await addGold(uid, gold, 'combat_drop');
+    gameCache.invalidateAccount(uid); // gold เปลี่ยน → invalidate
     rewards.gold = gold;
     log.push(`💰 ได้รับ ${gold} Gold`);
   }
@@ -1591,8 +1583,7 @@ async function grantRewards(uid, state) {
     rewards.xp = xpGained;
 
     const charRef = db.collection('game_characters').doc(charId);
-    const charDoc = await charRef.get();
-    const char    = charDoc.data();
+    const char    = await gameCache.getCharacter(charId, db);
     const newXp   = (char.xp || 0) + xpGained;
     log.push(`⭐ ได้รับ ${xpGained} XP`);
 
@@ -1632,6 +1623,7 @@ async function grantRewards(uid, state) {
       // ──────────────────────────────────────────────────────────────────────
     }
     await charRef.update(updates);
+    gameCache.invalidateChar(charId); // char เปลี่ยน (xp/hp/level) → invalidate
   }
 
   // Zone Boss kill record
@@ -1641,22 +1633,15 @@ async function grantRewards(uid, state) {
         { zoneBossKills: { [state.enemy.monsterId]: Date.now() } },
         { merge: true }
       );
+      gameCache.invalidateAccount(uid);
     } catch {}
   }
 
   // ── Inventory capacity check ──────────────────────────────────────────────
+  // ใช้ inventoryCount field จาก account doc แทน full collection scan (ลด 200 reads → 0)
   const BASE_INV_LIMIT = 30;
-  let inventoryLimit   = BASE_INV_LIMIT;
-  if (charId) {
-    // char is already loaded above (inside the charId block)
-    // Re-fetch if charId block was skipped (edge case)
-    try {
-      const cSnap = await db.collection('game_characters').doc(charId).get();
-      inventoryLimit = (cSnap.exists ? cSnap.data().inventoryLimit : null) || BASE_INV_LIMIT;
-    } catch {}
-  }
-  const invCountSnap = await db.collection('game_inventory').where('uid', '==', uid).get();
-  let slotsUsed      = invCountSnap.size;
+  const inventoryLimit = (charId ? (await gameCache.getCharacter(charId, db))?.inventoryLimit : null) || BASE_INV_LIMIT;
+  let slotsUsed      = await gameCache.getInventoryCount(uid, db);
   const pendingDrops = [];
 
   // Item drops (from monster's individual drop table)
@@ -1668,6 +1653,7 @@ async function grantRewards(uid, state) {
         const def = getItem(drop.itemId);
         if (slotsUsed < inventoryLimit) {
           await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+          gameCache.adjustInventoryCount(uid, 1, db);
           rewards.items.push(drop.itemId);
           log.push(`📦 ได้รับ ${def?.name || drop.itemId}`);
           slotsUsed++;
@@ -1693,6 +1679,7 @@ async function grantRewards(uid, state) {
         const def = getItem(tierItemId);
         if (slotsUsed < inventoryLimit) {
           await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+          gameCache.adjustInventoryCount(uid, 1, db);
           rewards.items.push(tierItemId);
           log.push(`✨ Zone Drop! ได้รับ ${def?.name || tierItemId} (Tier ${instance.quality || 'Normal'})`);
           slotsUsed++;
@@ -1741,9 +1728,8 @@ async function grantRewards(uid, state) {
 async function handlePlayerDeath(uid, state) {
   const db = admin.firestore();
   try {
-    const accountRef = db.collection('game_accounts').doc(uid);
-    const accountDoc = await accountRef.get();
-    const accountData = accountDoc.data() || {};
+    const accountRef  = db.collection('game_accounts').doc(uid);
+    const accountData = await gameCache.getAccount(uid, db) || {};
     const charId      = accountData.characterId;
     if (!charId) return { goldLost: 0, xpLost: 0, stoneUsed: false };
 
@@ -1751,10 +1737,10 @@ async function handlePlayerDeath(uid, state) {
     const stones = accountData.resurrectionStones || 0;
     if (stones > 0) {
       await accountRef.update({ resurrectionStones: stones - 1 });
-      // respawn full HP/MP ที่ town ต้องทำเหมือนกัน
+      gameCache.invalidateAccount(uid);
+      // respawn full HP/MP ที่ town
       const charRef2 = db.collection('game_characters').doc(charId);
-      const charDoc2 = await charRef2.get();
-      const char2    = charDoc2.data();
+      const char2    = await gameCache.getCharacter(charId, db);
       await charRef2.update({
         hp:         char2.hpMax,
         mp:         char2.mpMax,
@@ -1762,6 +1748,7 @@ async function handlePlayerDeath(uid, state) {
         status:     [],
         deathCount: admin.firestore.FieldValue.increment(1),
       });
+      gameCache.invalidateChar(charId);
       console.log(`[Combat] 💎 Resurrection Stone used uid=${uid} stones left: ${stones - 1}`);
       return { goldLost: 0, xpLost: 0, stoneUsed: true, stonesLeft: stones - 1 };
     }
@@ -1772,25 +1759,26 @@ async function handlePlayerDeath(uid, state) {
     const goldLoss      = Math.min(rawGoldLoss, Math.min(currentGold, 2000));
 
     const charRef = db.collection('game_characters').doc(charId);
-    const charDoc = await charRef.get();
-    const char    = charDoc.data();
+    const char    = await gameCache.getCharacter(charId, db);
 
     // เสีย 10% XP ของ XP ที่มีในระดับปัจจุบัน
     const xpLoss = Math.floor((char.xp || 0) * 0.1);
 
     await charRef.update({
-      hp:         char.hpMax,     // respawn full HP
+      hp:         char.hpMax,
       mp:         char.mpMax,
       xp:         Math.max(0, (char.xp || 0) - xpLoss),
-      location:   'town_square',  // respawn ที่ town
+      location:   'town_square',
       status:     [],
       deathCount: admin.firestore.FieldValue.increment(1),
     });
+    gameCache.invalidateChar(charId);
 
     if (goldLoss > 0) {
       await accountRef.update({
         gold: admin.firestore.FieldValue.increment(-goldLoss),
       });
+      gameCache.invalidateAccount(uid);
     }
 
     return { goldLost: goldLoss, xpLost: xpLoss, stoneUsed: false };
@@ -1875,13 +1863,12 @@ async function rest(req, res) {
   const db  = admin.firestore();
 
   try {
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    const charId     = accountDoc.data()?.characterId;
+    const accountData = await gameCache.getAccount(uid, db);
+    const charId      = accountData?.characterId;
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
     const charRef = db.collection('game_characters').doc(charId);
-    const charDoc = await charRef.get();
-    const char    = charDoc.data();
+    const char    = await gameCache.getCharacter(charId, db);
 
     const restCost = calcRestCost(char.level || 1);
 
@@ -1892,6 +1879,8 @@ async function rest(req, res) {
     }
 
     await charRef.update({ hp: char.hpMax, mp: char.mpMax });
+    gameCache.invalidateChar(charId);
+    gameCache.invalidateAccount(uid); // gold เปลี่ยนหลัง deductGold
     trackQuestProgress(uid, 'rest', 1).catch(() => {});
     trackWeeklyProgress(uid, 'rest', 1).catch(() => {});
     return res.json({
@@ -1961,16 +1950,15 @@ async function claimPendingLoot(req, res) {
       await Promise.all(trashPromises);
     }
 
-    // 3. Re-check inventory size + limit
-    const accountDoc   = await db.collection('game_accounts').doc(uid).get();
-    const charId       = accountDoc.data()?.characterId;
+    // 3. Re-check inventory size + limit — ใช้ gameCache ลด reads
+    const accountData2  = await gameCache.getAccount(uid, db) || {};
+    const charId2       = accountData2.characterId;
     let   inventoryLimit = 30;
-    if (charId) {
-      const charSnap   = await db.collection('game_characters').doc(charId).get();
-      inventoryLimit   = (charSnap.exists ? charSnap.data().inventoryLimit : null) || 30;
+    if (charId2) {
+      const charData2  = await gameCache.getCharacter(charId2, db);
+      inventoryLimit   = charData2?.inventoryLimit || 30;
     }
-    const invSnap    = await db.collection('game_inventory').where('uid', '==', uid).get();
-    let   slotsUsed  = invSnap.size;
+    let slotsUsed = await gameCache.getInventoryCount(uid, db);
 
     // 4. Save as many pending items as possible
     const saved    = [];
@@ -1979,6 +1967,7 @@ async function claimPendingLoot(req, res) {
       if (slotsUsed < inventoryLimit) {
         const { itemName, itemEmoji, zoneDrop, ...instance } = drop;
         await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+        gameCache.adjustInventoryCount(uid, 1, db);
         saved.push({ itemName, itemEmoji });
         slotsUsed++;
       } else {

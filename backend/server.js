@@ -105,11 +105,13 @@ setInterval(recordHeartbeat, 5 * 60 * 1000);
 // Public widget endpoints (now-playing, queue ฯลฯ) ต้องการ origin: *
 // เพราะถูกเรียกจาก OBS Browser Source, TikTok Studio ซึ่งมี origin ต่างๆ
 const PUBLIC_CORS_PATHS = [
-  '/health',             // health check — เรียกจาก browser ข้าม origin ได้
+  '/health',                  // health check — เรียกจาก browser ข้าม origin ได้
   '/api/spotify/now-playing',
   '/api/spotify/queue',
-  '/api/widget/',        // prefix match — รองรับ endpoints ใหม่ในอนาคต
+  '/api/widget/',             // prefix match — รองรับ endpoints ใหม่ในอนาคต
   '/api/leaderboard',
+  '/api/actions/overlay',     // myactions widget — เรียกจาก OBS/localhost ได้ ไม่ใช้ credentials
+  '/api/pk/presets',          // PK presets — public read
 ];
 app.use((req, res, next) => {
   const isPublic = PUBLIC_CORS_PATHS.some(p =>
@@ -147,8 +149,12 @@ app.use(helmet({
 
 app.use(express.json({ limit: '10kb' }));
 
+// ซ่อน high-frequency polling routes ออกจาก log เพื่อความสะอาด terminal
+const SILENT_PATHS = ['/api/actions/overlay', '/api/gifts/public', '/api/stats'];
 app.use((req, _res, next) => {
-  if (!isProd) console.log(`[HTTP] ${req.method} ${req.path}`);
+  if (!isProd && !SILENT_PATHS.some(p => req.path.startsWith(p))) {
+    console.log(`[HTTP] ${req.method} ${req.path}`);
+  }
   next();
 });
 
@@ -157,7 +163,11 @@ app.use(generalLimiter);
 // ===== CSRF =====
 app.use((req, res, next) => {
   const exempt = ['/health', '/api/csrf-token'];
+  // File upload endpoints ใช้ Bearer token auth ซึ่ง CSRF-safe โดยธรรมชาติ
+  // (browser ไม่สามารถ auto-send Authorization header ใน CSRF attack ได้)
+  const exemptPrefix = ['/api/filehost/'];
   if (exempt.includes(req.path)) return next();
+  if (exemptPrefix.some(p => req.path.startsWith(p))) return next();
   csrfProtection(req, res, next);
 });
 
@@ -406,6 +416,9 @@ app.use('/api/coinjar', coinjarRouter);
 const giftsRouter = require('./routes/gifts');
 app.use('/api/gifts', giftsRouter);
 
+const filehostRouter = require('./routes/filehost');
+app.use('/api/filehost', filehostRouter);
+
 
 // ===== Overlay Route (public, no auth) =====
 const { getOverlayState } = require('./handlers/game/overlay');
@@ -572,6 +585,24 @@ io.on('connection', (socket) => {
         // ส่ง recent members ด้วย
         const members = getRecentMembers(userId);
         if (members.length > 0) socket.emit('recent_members', { data: members });
+
+        // ── Preload media URLs ──
+        // ส่งเฉพาะ image + audio — วิดีโออาจใหญ่มาก (10–200MB) ไม่ preload ทั้งหมด
+        // วิดีโอใช้ video pool ใน widget แทน (เก็บ element ที่เคยเล่นแล้วไว้ใน cache)
+        try {
+          const actSnap = await admin.firestore()
+            .collection('tt_actions')
+            .where('uid', '==', userId)
+            .where('enabled', '==', true)
+            .get();
+          const urls = [];
+          actSnap.docs.forEach(d => {
+            const a = d.data();
+            if (a.pictureUrl) urls.push({ url: a.pictureUrl, type: 'image' });
+            if (a.audioUrl)   urls.push({ url: a.audioUrl,   type: 'audio' });
+          });
+          if (urls.length > 0) socket.emit('preload_media', { urls });
+        } catch {}
       } catch {}
     })();
 
@@ -593,6 +624,33 @@ io.on('connection', (socket) => {
       } catch (e) {
         console.warn('[Widget] auto-connect settings read failed:', e?.message);
       }
+    }
+  });
+
+  // ===== Overlay Room Join (public — no auth, OBS browser source) =====
+  // overlay/[vjId].js ส่ง join_overlay { tiktokId } เพื่อ subscribe overlay_${uid} room
+  // server ตอบ overlay_joined เมื่อ join สำเร็จ
+  // emitOverlayRefresh(uid) จะส่ง 'overlay_refresh' ไปยัง room นี้
+  socket.on('join_overlay', async (data) => {
+    if (!socketRateLimit(socket.id, 3, 10000)) return; // max 3 join attempts per 10s
+    const { tiktokId } = data || {};
+    if (!tiktokId || !/^[a-zA-Z0-9._]{1,50}$/.test(tiktokId)) return;
+
+    // ป้องกัน join ซ้ำ
+    const alreadyInOverlay = [...socket.rooms].some(r => r.startsWith('overlay_'));
+    if (alreadyInOverlay) return;
+
+    try {
+      const snap = await admin.firestore()
+        .collection('game_accounts')
+        .where('tiktokUniqueId', '==', tiktokId.toLowerCase())
+        .limit(1).get();
+      if (snap.empty) return;
+      const uid = snap.docs[0].id;
+      socket.join(`overlay_${uid}`);
+      socket.emit('overlay_joined', { success: true });
+    } catch (e) {
+      console.error('[Socket] join_overlay:', e.message);
     }
   });
 
@@ -681,6 +739,28 @@ server.listen(PORT, '0.0.0.0', () => {
   // ===== Cleanup stale battles every 30 minutes =====
   cleanupStaleBattles().catch(() => {});
   setInterval(() => cleanupStaleBattles().catch(() => {}), 30 * 60 * 1000);
+
+  // ===== Cleanup orphaned tt_action_queue docs (socket-delivered แต่ยังไม่ถูกลบ) =====
+  // docs ที่เก่ากว่า 60 วินาที ถือว่า widget รับแล้ว (socket) หรือ miss แล้ว — ลบทิ้ง
+  const purgeActionQueue = async () => {
+    try {
+      const cutoff = Date.now() - 60_000;
+      const snap = await admin.firestore()
+        .collection('tt_action_queue')
+        .where('queuedAt', '<', cutoff)
+        .limit(100)
+        .get();
+      if (snap.empty) return;
+      const batch = admin.firestore().batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      if (!isProd) console.log(`[Cleanup] purged ${snap.size} stale action_queue docs`);
+    } catch (e) {
+      console.error('[Cleanup] action_queue:', e.message);
+    }
+  };
+  purgeActionQueue().catch(() => {});
+  setInterval(() => purgeActionQueue().catch(() => {}), 5 * 60 * 1000); // ทุก 5 นาที
 });
 
 function defaultSettings() {

@@ -1,5 +1,6 @@
 // handlers/game/dungeon.js — Dungeon run logic for Ashenveil
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { getDungeon, listAllDungeons, getDungeonMonster, getDungeonRoom } = require('../../data/dungeons');
 const { getMonster, calcDamage } = require('../../data/monsters');
 const { getItem, rollItem } = require('../../data/items');
@@ -40,14 +41,14 @@ async function listDungeons(req, res) {
     const dungeons = listAllDungeons();
 
     // Load account for character level
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const accountData = await gameCache.getAccount(uid, db);
+    if (!accountData) return res.status(404).json({ error: 'Account ไม่พบ' });
 
-    const charId = accountDoc.data().characterId;
+    const charId = accountData.characterId;
     let charLevel = 1;
     if (charId) {
-      const charDoc = await db.collection('game_characters').doc(charId).get();
-      if (charDoc.exists) charLevel = charDoc.data().level || 1;
+      const charData = await gameCache.getCharacter(charId, db);
+      if (charData) charLevel = charData.level || 1;
     }
 
     // Load all user's dungeon docs — filter/sort in-memory (no composite index needed)
@@ -148,14 +149,13 @@ async function enterDungeon(req, res) {
     }
 
     // Check level requirement
-    const accountDoc = await db.collection('game_accounts').doc(uid).get();
-    if (!accountDoc.exists) return res.status(404).json({ error: 'Account ไม่พบ' });
-    const charId = accountDoc.data().characterId;
+    const accountData = await gameCache.getAccount(uid, db);
+    if (!accountData) return res.status(404).json({ error: 'Account ไม่พบ' });
+    const charId = accountData.characterId;
     if (!charId) return res.status(400).json({ error: 'ยังไม่มี Character' });
 
-    const charDoc = await db.collection('game_characters').doc(charId).get();
-    if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
-    const char = charDoc.data();
+    const char = await gameCache.getCharacter(charId, db);
+    if (!char) return res.status(404).json({ error: 'Character ไม่พบ' });
 
     if ((char.level || 1) < dungeon.minLevel) {
       return res.status(403).json({ error: `ต้องการ Level ${dungeon.minLevel} ขึ้นไป` });
@@ -257,9 +257,8 @@ async function roomAction(req, res) {
     if (action === 'resolve_trap') {
       if (room.type !== 'trap') return res.status(400).json({ error: 'ห้องนี้ไม่ใช่ Trap' });
 
-      const charDoc  = await db.collection('game_characters').doc(run.charId).get();
-      if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
-      const char     = charDoc.data();
+      const char = await gameCache.getCharacter(run.charId, db);
+      if (!char) return res.status(404).json({ error: 'Character ไม่พบ' });
       const statVal  = char[room.dodgeStat] || 0;
       const dodged   = statVal >= room.dodgeThreshold;
 
@@ -275,6 +274,7 @@ async function roomAction(req, res) {
           hpUpdate.mp = Math.max(0, char.mp - room.trapMpDmg);
         }
         await db.collection('game_characters').doc(run.charId).update(hpUpdate);
+        gameCache.invalidateChar(run.charId);
         log.push(room.hitMsg.replace('{dmg}', dmg));
         rewards = { dodged: false, dmgTaken: dmg };
       }
@@ -305,6 +305,7 @@ async function roomAction(req, res) {
             equipped: false,
             obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
+          gameCache.adjustInventoryCount(uid, 1, db);
           foundItem = { itemId, name: itemDef.name, emoji: itemDef.emoji };
           log.push(`📦 พบ ${itemDef.emoji} ${itemDef.name}!`);
         }
@@ -322,9 +323,8 @@ async function roomAction(req, res) {
     if (action === 'rest') {
       if (room.type !== 'rest') return res.status(400).json({ error: 'ห้องนี้ไม่ใช่ Rest' });
 
-      const charDoc = await db.collection('game_characters').doc(run.charId).get();
-      if (!charDoc.exists) return res.status(404).json({ error: 'Character ไม่พบ' });
-      const char    = charDoc.data();
+      const char = await gameCache.getCharacter(run.charId, db);
+      if (!char) return res.status(404).json({ error: 'Character ไม่พบ' });
       const healed  = Math.floor((char.hpMax || char.hp) * (room.healPercent || 0.25));
       const newHp   = Math.min(char.hpMax || 9999, char.hp + healed);
       const charUpdate = { hp: newHp };
@@ -336,6 +336,7 @@ async function roomAction(req, res) {
       }
 
       await db.collection('game_characters').doc(run.charId).update(charUpdate);
+      gameCache.invalidateChar(run.charId);
       log.push(`💚 ฟื้นฟู ${healed} HP`);
       rewards = { healed, newHp };
 
@@ -388,9 +389,8 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
     log.push(`💰 รางวัล Gold: ${goldBonus}`);
 
     // XP reward
-    const charDoc = await db.collection('game_characters').doc(run.charId).get();
-    if (!charDoc.exists) throw new Error('Character ไม่พบ');
-    const char    = charDoc.data();
+    const char = await gameCache.getCharacter(run.charId, db);
+    if (!char) throw new Error('Character ไม่พบ');
     const newXp   = (char.xp || 0) + (cr.xp || 0);
     const charUpdate = { xp: newXp };
     // Level-up check — ใช้ xpToNext เดียวกับ combat.js
@@ -421,6 +421,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
         const instance = rollItem(itemId, { normal: 50, fine: 30, superior: 16, masterwork: 4 });
         if (instance) {
           await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+          gameCache.adjustInventoryCount(uid, 1, db);
           lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji, quality: instance.quality });
           log.push(`📦 ได้รับ ${itemDef.emoji} ${itemDef.name}`);
         }
@@ -449,6 +450,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
               uid, itemId: bonusItemId, instanceId, enhancement: 0,
               equipped: false, obtainedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            gameCache.adjustInventoryCount(uid, 1, db);
             lootItems.push({ itemId: bonusItemId, name: bonusItemDef.name, emoji: bonusItemDef.emoji });
             log.push(`⭐ Featured Bonus: ${bonusItemDef.emoji} ${bonusItemDef.name}`);
           }
@@ -471,6 +473,7 @@ async function completeDungeon(uid, run, dungeon, db, log, res, prevRewards = nu
 
     // Update char (XP/level)
     await db.collection('game_characters').doc(run.charId).update(charUpdate);
+    gameCache.invalidateChar(run.charId);
 
     // Track daily + weekly + story/side + achievements
     trackQuestProgress(uid, 'dungeon_clear', 1).catch(() => {});
@@ -556,9 +559,8 @@ async function onDungeonBattleWin(uid, runId) {
       const goldBonus = Math.floor(Math.random() * (maxG - minG + 1)) + minG;
       await addGold(uid, goldBonus);
 
-      const charDoc = await db.collection('game_characters').doc(run.charId).get();
-      if (!charDoc.exists) return null;
-      const char = charDoc.data();
+      const char = await gameCache.getCharacter(run.charId, db);
+      if (!char) return null;
       const newXp = (char.xp || 0) + (cr.xp || 0);
       const charUpdate = { xp: newXp };
       let newLevel = null;
@@ -589,12 +591,14 @@ async function onDungeonBattleWin(uid, runId) {
           const instance = rollItem(itemId, { normal: 30, fine: 35, superior: 25, masterwork: 10 });
           if (instance) {
             await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+            gameCache.adjustInventoryCount(uid, 1, db);
             lootItems.push({ itemId, name: itemDef.name, emoji: itemDef.emoji, quality: instance.quality });
           }
         }
       }
 
       await db.collection('game_characters').doc(run.charId).update(charUpdate);
+      gameCache.invalidateChar(run.charId);
       await runDoc.ref.update({
         status: 'completed',
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -659,8 +663,8 @@ async function getActiveDungeonRuns(req, res) {
       // get char name
       let charName = '???'; let charClass = '';
       try {
-        const cSnap = await db.collection('game_characters').doc(run.charId).get();
-        if (cSnap.exists) { charName = cSnap.data().name || '???'; charClass = cSnap.data().class || ''; }
+        const cData = await gameCache.getCharacter(run.charId, db);
+        if (cData) { charName = cData.name || '???'; charClass = cData.class || ''; }
       } catch (_) {}
       const roomDef = dungeon?.rooms?.[run.currentRoom];
       runs.push({

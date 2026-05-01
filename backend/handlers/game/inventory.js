@@ -1,5 +1,6 @@
 // handlers/game/inventory.js — Inventory + Equipment + NPC Market
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { getItem, SLOT_NAMES, GRADE_COLOR, ITEM_QUALITY } = require('../../data/items');
 const { deductGold, addGold } = require('./currency');
 const { SHOP_INVENTORY } = require('../../data/maps');
@@ -102,9 +103,8 @@ async function equipItem(req, res) {
     }
 
     // ตรวจ class requirement
-    const charDoc = await getCharDoc(uid, db);
-    if (!charDoc || !charDoc.exists) return res.status(400).json({ error: 'ไม่พบ Character' });
-    const charData = charDoc.data();
+    const charData = await getCharData(uid, db);
+    if (!charData) return res.status(400).json({ error: 'ไม่พบ Character' });
 
     if (def.classReq?.length > 0 && !def.classReq.includes(charData.class)) {
       return res.status(400).json({ error: `${def.name} ใช้ได้เฉพาะ ${def.classReq.join(', ')}` });
@@ -206,6 +206,7 @@ async function sellItem(req, res) {
     const batch = db.batch();
     batch.delete(invDoc.ref);
     await batch.commit();
+    gameCache.adjustInventoryCount(uid, -1, db);
 
     await addGold(uid, price, 'sell_item');
 
@@ -269,6 +270,7 @@ async function buyItem(req, res) {
   if (!instance) return res.status(500).json({ error: 'สร้าง item ไม่สำเร็จ' });
 
   await db.collection('game_inventory').doc(`${uid}_${instance.instanceId}`).set({ uid, ...instance });
+  gameCache.adjustInventoryCount(uid, 1, db);
 
   // Track item economy (fire-and-forget)
   db.collection('game_item_stats').doc(itemId).set({
@@ -289,12 +291,13 @@ function isValidSlot(itemType, slot) {
   return itemType === slot;
 }
 
-async function getCharDoc(uid, db) {
-  const accountDoc = await db.collection('game_accounts').doc(uid).get();
-  if (!accountDoc.exists) return null;
-  const charId = accountDoc.data().characterId;
+// Returns character data object directly (via gameCache)
+async function getCharData(uid, db) {
+  const acct = await gameCache.getAccount(uid, db);
+  if (!acct) return null;
+  const charId = acct.characterId;
   if (!charId) return null;
-  return db.collection('game_characters').doc(charId).get();
+  return gameCache.getCharacter(charId, db);
 }
 
 module.exports = { getInventory, equipItem, unequipItem, sellItem, getShopItems, buyItem };

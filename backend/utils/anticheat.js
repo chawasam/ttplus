@@ -1,6 +1,7 @@
 // utils/anticheat.js — Anti-cheat audit logging + anomaly detection
 // เรียกใช้หลัง grantRewards ทุกครั้ง
 const admin = require('firebase-admin');
+const gameCache = require('./gameCache');
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 // ปรับได้ตามบาลานซ์เกม
@@ -82,15 +83,34 @@ async function checkHourlyLimits(uid, newXp, newGold) {
 }
 
 // ─── Flag a player as suspicious ──────────────────────────────────────────────
+// Denormalize tiktokUniqueId + charName into the flag doc so audit.js
+// doesn't have to do an N+1 join when listing flags.
 async function flagPlayer(uid, reason, data = {}) {
   const db = admin.firestore();
   console.warn(`[AntiCheat] FLAG uid=${uid} — ${reason}`);
 
   try {
+    // Fetch identity info (fire-and-forget friendly — failures fall back to '—')
+    let tiktokUniqueId = '—';
+    let charName       = '—';
+    try {
+      const acct = await gameCache.getAccount(uid, db);
+      if (acct) {
+        tiktokUniqueId = acct.tiktokUniqueId || '—';
+        const charId = acct.characterId;
+        if (charId) {
+          const char = await gameCache.getCharacter(charId, db);
+          if (char) charName = char.name || '—';
+        }
+      }
+    } catch (_) {}
+
     await db.collection('game_flags').add({
       uid,
       reason,
       data,
+      tiktokUniqueId,  // denormalized — เพื่อ audit.js ไม่ต้อง join
+      charName,        // denormalized
       resolved:   false,
       ts:         admin.firestore.FieldValue.serverTimestamp(),
     });

@@ -1,5 +1,6 @@
 // handlers/game/quests.js — Daily Quest logic
 const admin = require('firebase-admin');
+const gameCache = require('../../utils/gameCache');
 const { DAILY_QUESTS, DAILY_BONUS, getTodayKey, buildFreshQuests } = require('../../data/quests');
 const { addGold } = require('./currency');
 const { getItem, rollItem } = require('../../data/items');
@@ -81,16 +82,16 @@ async function claimReward(req, res) {
       const xpResult = await giveXP(uid, DAILY_BONUS.xp, db);
 
       // Item — check inventory capacity first
-      const accountDoc = await db.collection('game_accounts').doc(uid).get();
-      const charId = accountDoc.data()?.characterId;
+      const acct = await gameCache.getAccount(uid, db);
+      const charId = acct?.characterId;
       let item = null;
       if (DAILY_BONUS.itemId) {
         let hasSpace = true;
         if (charId) {
-          const charDoc2     = await db.collection('game_characters').doc(charId).get();
-          const inventoryLimit = (charDoc2.exists ? charDoc2.data().inventoryLimit : null) || 30;
-          const invSnap      = await db.collection('game_inventory').where('uid', '==', uid).get();
-          hasSpace           = invSnap.size < inventoryLimit;
+          const charData       = await gameCache.getCharacter(charId, db);
+          const inventoryLimit = (charData?.inventoryLimit) || 30;
+          const invCount       = await gameCache.getInventoryCount(uid, db);
+          hasSpace             = invCount < inventoryLimit;
         }
         if (!hasSpace) {
           return res.status(400).json({ error: 'กระเป๋าของเต็ม! กรุณาทิ้งหรือขายไอเทมก่อนรับรางวัล' });
@@ -98,6 +99,7 @@ async function claimReward(req, res) {
         const instance = rollItem(DAILY_BONUS.itemId);
         if (instance) {
           await db.collection('game_inventory').add({ uid, ...instance });
+          gameCache.adjustInventoryCount(uid, 1, db);
           const def = getItem(DAILY_BONUS.itemId);
           item = { name: def?.name, emoji: def?.emoji };
         }
