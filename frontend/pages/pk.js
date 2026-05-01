@@ -38,9 +38,10 @@ function pickVideo(list) {
 export default function PKPage({ theme, user, activePage, setActivePage, sidebarCollapsed, toggleSidebar }) {
   const isDark = theme === 'dark';
 
-  const [enabled,       setEnabled]       = useState(true);
-  const [activeTab,     setActiveTab]     = useState('taptap');
-  const [hotkeys,       setHotkeys]       = useState(DEFAULT_HOTKEYS);
+  const [enabled,         setEnabled]         = useState(true);
+  const [hotkeysEnabled,  setHotkeysEnabled]  = useState(true);
+  const [activeTab,       setActiveTab]       = useState('taptap');
+  const [hotkeys,         setHotkeys]         = useState(DEFAULT_HOTKEYS);
   const [categories,    setCategories]    = useState({
     taptap: [], nwm: [], x2: [], x3: [], mvp: [],
   });
@@ -71,7 +72,8 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
         if (data.config) {
           setHotkeys(data.config.hotkeys || DEFAULT_HOTKEYS);
           setCategories(data.config.categories || { taptap: [], nwm: [], x2: [], x3: [], mvp: [] });
-          if (typeof data.config.enabled === 'boolean') setEnabled(data.config.enabled);
+          if (typeof data.config.enabled         === 'boolean') setEnabled(data.config.enabled);
+          if (typeof data.config.hotkeysEnabled  === 'boolean') setHotkeysEnabled(data.config.hotkeysEnabled);
           if (data.config.presetChecked) setPresetChecked(data.config.presetChecked);
         }
       } catch { /* config not set yet */ }
@@ -115,17 +117,18 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   }, [user]);
 
   // ─── Auto-save config (debounce 800ms) ──────────────────────────────────
-  const autoSave = useCallback((newHotkeys, newCategories, newEnabled, newPresetChecked) => {
+  const autoSave = useCallback((newHotkeys, newCategories, newEnabled, newPresetChecked, newHotkeysEnabled) => {
     if (!user) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         setSaving(true);
         await api.post('/api/pk/config', {
-          hotkeys:       newHotkeys,
-          categories:    newCategories,
-          enabled:       newEnabled,
-          presetChecked: newPresetChecked,
+          hotkeys:        newHotkeys,
+          categories:     newCategories,
+          enabled:        newEnabled,
+          presetChecked:  newPresetChecked,
+          hotkeysEnabled: newHotkeysEnabled,
         });
       } catch {
         toast.error('บันทึกไม่สำเร็จ');
@@ -137,24 +140,31 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
   function updateCategories(newCats) {
     setCategories(newCats);
-    autoSave(hotkeys, newCats, enabled, presetChecked);
+    autoSave(hotkeys, newCats, enabled, presetChecked, hotkeysEnabled);
   }
 
   function updateHotkeys(newHk) {
     setHotkeys(newHk);
-    autoSave(newHk, categories, enabled, presetChecked);
+    autoSave(newHk, categories, enabled, presetChecked, hotkeysEnabled);
   }
 
   function updatePresetChecked(newPc) {
     setPresetChecked(newPc);
-    autoSave(hotkeys, categories, enabled, newPc);
+    autoSave(hotkeys, categories, enabled, newPc, hotkeysEnabled);
   }
 
   function toggleEnabled() {
     const next = !enabled;
     setEnabled(next);
-    autoSave(hotkeys, categories, next, presetChecked);
+    autoSave(hotkeys, categories, next, presetChecked, hotkeysEnabled);
     toast(next ? '✅ PK Panel เปิดใช้งานแล้ว' : '⏸ PK Panel ปิดอยู่', { duration: 1800 });
+  }
+
+  function toggleHotkeysEnabled() {
+    const next = !hotkeysEnabled;
+    setHotkeysEnabled(next);
+    autoSave(hotkeys, categories, enabled, presetChecked, next);
+    toast(next ? '⌨️ คีย์ลัดเปิดใช้งานแล้ว' : '⌨️ คีย์ลัดปิดอยู่', { duration: 1800 });
   }
 
   // ─── Keyboard shortcut listener ─────────────────────────────────────────
@@ -169,7 +179,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
         updateHotkeys(newHk);
         return;
       }
-      if (!enabled) return;
+      if (!enabled || !hotkeysEnabled) return;
       for (const cat of CATEGORIES) {
         const hk = hotkeys[cat.id];
         if (!hk) continue;
@@ -183,7 +193,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hotkeys, categories, presets, presetChecked, settingKey, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hotkeys, categories, presets, presetChecked, settingKey, enabled, hotkeysEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Build combined pool (user videos + checked presets) ────────────────
   function buildPool(catId) {
@@ -560,13 +570,44 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
         {/* ── Hotkey summary ── */}
         <div style={{ marginTop: 20, background: card, border: `1px solid ${border}`, borderRadius: 14, padding: '14px 20px' }}>
-          <p style={{ color: muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>
-            ⌨️ คีย์ลัดทั้งหมด (กดขณะอยู่ในหน้านี้)
-            {!enabled && <span style={{ color: '#f59e0b', marginLeft: 8 }}>— ปิดอยู่ คีย์ลัดไม่ทำงาน</span>}
-          </p>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <p style={{ color: muted, fontSize: 12, fontWeight: 600, margin: 0 }}>
+              ⌨️ คีย์ลัดทั้งหมด (กดขณะอยู่ในหน้านี้)
+              {(!enabled || !hotkeysEnabled) && (
+                <span style={{ color: '#f59e0b', marginLeft: 8 }}>
+                  — {!enabled ? 'panel ปิดอยู่' : 'คีย์ลัดปิดอยู่'}
+                </span>
+              )}
+            </p>
+            {/* Toggle คีย์ลัด */}
+            <button
+              onClick={toggleHotkeysEnabled}
+              title={hotkeysEnabled ? 'คลิกเพื่อปิดคีย์ลัด' : 'คลิกเพื่อเปิดคีย์ลัด'}
+              style={{
+                display:        'flex',
+                alignItems:     'center',
+                gap:            6,
+                padding:        '4px 12px',
+                borderRadius:   20,
+                border:         `1.5px solid ${hotkeysEnabled ? '#22c55e' : '#f59e0b'}`,
+                background:     hotkeysEnabled
+                  ? (isDark ? '#14532d55' : '#dcfce7')
+                  : (isDark ? '#78350f55' : '#fef3c7'),
+                color:          hotkeysEnabled ? '#22c55e' : '#f59e0b',
+                fontSize:       11,
+                fontWeight:     700,
+                cursor:         'pointer',
+                flexShrink:     0,
+                transition:     'all 0.2s',
+              }}
+            >
+              <span style={{ fontSize: 14, lineHeight: 1 }}>{hotkeysEnabled ? '⌨️' : '🚫'}</span>
+              {hotkeysEnabled ? 'เปิด' : 'ปิด'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', opacity: (enabled && hotkeysEnabled) ? 1 : 0.4 }}>
             {CATEGORIES.map(cat => (
-              <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: enabled ? 1 : 0.4 }}>
+              <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ background: isDark ? '#222' : '#f3f4f6', border: `1.5px solid ${border}`, borderRadius: 7, padding: '3px 10px', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: txt }}>
                   {displayKey(hotkeys[cat.id])}
                 </span>

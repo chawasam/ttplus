@@ -24,11 +24,32 @@ export default function LikesLeaderboardWidget() {
   const [board, setBoard] = useState([]);
   const [styles, setStyles] = useState(null);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
+  // popKeys[userId] = incrementing int — เปลี่ยนทุกครั้งที่ count เพิ่ม → force remount animated element → animation restart
+  const [popKeys, setPopKeys] = useState({});
   const stylesRef = useRef(null);
+  const prevCountsRef = useRef(new Map()); // userId → prev likeCount
 
-  // Resolve skin CSS from SKINS map
   const skinId = styles?.raw?.skin || '';
   const skinDef = skinId && SKINS[skinId] ? SKINS[skinId] : null;
+
+  // ── Detect count increases → increment popKey → trigger animation ────────
+  useEffect(() => {
+    if (board.length === 0) return;
+    const toInc = [];
+    board.forEach(user => {
+      const prev = prevCountsRef.current.get(user.uniqueId);
+      // prev === undefined = first load → ไม่ trigger animation
+      if (prev !== undefined && user.likeCount > prev) toInc.push(user.uniqueId);
+      prevCountsRef.current.set(user.uniqueId, user.likeCount);
+    });
+    if (toInc.length > 0) {
+      setPopKeys(p => {
+        const n = { ...p };
+        toInc.forEach(id => { n[id] = (n[id] || 0) + 1; });
+        return n;
+      });
+    }
+  }, [board]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -38,7 +59,6 @@ export default function LikesLeaderboardWidget() {
     setStyles(s);
     stylesRef.current = s;
 
-    // Read config toggles from URL params
     const cfg = {
       showMedal:    params.get('showMedal')    !== '0',
       showBg:       params.get('showBg')        !== '0',
@@ -69,15 +89,12 @@ export default function LikesLeaderboardWidget() {
       leaderboard_update: ({ type, data }) => {
         if (type === 'likes' && Array.isArray(data)) setBoard(data);
       },
-      // ── Real-time style update จาก Customize Drawer ──
       style_update: ({ widgetId, style }) => {
         if (widgetId !== 'likes-leaderboard') return;
         if (style?._reset) return;
-        // อัปเดต visual style (สี/font ฯลฯ)
         const next = rawToStyle(style, 'likes-leaderboard');
         stylesRef.current = next;
         setStyles(next);
-        // อัปเดต config toggles ถ้า Drawer ส่งมาด้วย (real-time toggle fix)
         setConfig(prev => {
           const u = {};
           if (style.showMedal    !== undefined) u.showMedal    = Number(style.showMedal)    !== 0;
@@ -91,7 +108,7 @@ export default function LikesLeaderboardWidget() {
       },
     });
 
-    // ── REST poll (fallback — ดึงข้อมูลเริ่มต้น + กรณี socket หลุด) ──
+    // ── REST poll (fallback) ──
     const poll = async () => {
       try {
         const isCid = /^\d{4,8}$/.test(vid);
@@ -138,14 +155,7 @@ export default function LikesLeaderboardWidget() {
 
         <div style={{ position: 'relative', zIndex: 1 }}>
           {displayBoard.length === 0 ? (
-            <p
-              style={{
-                color: styles.tc + '66',
-                textAlign: 'center',
-                fontSize: styles.fs - 2,
-                padding: 20,
-              }}
-            >
+            <p style={{ color: styles.tc + '66', textAlign: 'center', fontSize: styles.fs - 2, padding: 20 }}>
               รอข้อมูล...
             </p>
           ) : (
@@ -153,6 +163,8 @@ export default function LikesLeaderboardWidget() {
               const isTop3 = i < 3;
               const accentColor = styles.ac;
               const progressPercent = maxLikes > 0 ? (user.likeCount / maxLikes) * 100 : 0;
+              const popKey = popKeys[user.uniqueId] || 0;
+              const isPopping = popKey > 0;
 
               return (
                 <div
@@ -186,24 +198,54 @@ export default function LikesLeaderboardWidget() {
                     {config.showMedal && MEDALS[i] ? MEDALS[i] : `#${i + 1}`}
                   </span>
 
-                  {/* รูปโปรไฟล์ */}
-                  {config.showAvatar && user.profilePictureUrl && (
-                    <img
-                      src={user.profilePictureUrl}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '50%',
-                        border: `2px solid ${isTop3 ? accentColor : accentColor + '60'}`,
-                        flexShrink: 0,
-                        boxShadow: isTop3 ? `0 0 8px ${accentColor}40` : 'none',
-                      }}
-                    />
+                  {/* รูปโปรไฟล์ + มงกุฎสำหรับอันดับ 1 */}
+                  {config.showAvatar && (
+                    <div style={{ position: 'relative', flexShrink: 0, paddingTop: i === 0 ? 8 : 0 }}>
+                      {i === 0 && (
+                        <span style={{
+                          position:   'absolute',
+                          top:        0,
+                          left:       '50%',
+                          transform:  'translateX(-50%)',
+                          fontSize:   14,
+                          lineHeight: 1,
+                          zIndex:     2,
+                          pointerEvents: 'none',
+                          filter:     'drop-shadow(0 1px 3px rgba(0,0,0,0.5))',
+                        }}>👑</span>
+                      )}
+                      {user.profilePictureUrl ? (
+                        <img
+                          src={user.profilePictureUrl}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          style={{
+                            width: 36, height: 36,
+                            borderRadius: '50%',
+                            border: `2px solid ${isTop3 ? accentColor : accentColor + '60'}`,
+                            display: 'block',
+                            boxShadow: isTop3 ? `0 0 8px ${accentColor}40` : 'none',
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 36, height: 36,
+                          borderRadius: '50%',
+                          background: accentColor + '33',
+                          border: `2px solid ${isTop3 ? accentColor : accentColor + '60'}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: styles.fs - 2,
+                          fontWeight: 700,
+                          color: accentColor,
+                          boxShadow: isTop3 ? `0 0 8px ${accentColor}40` : 'none',
+                        }}>
+                          {(user.nickname || user.uniqueId || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
                   )}
 
-                  {/* ชื่อ + progress bar */}
+                  {/* ชื่อ + like count ใต้ชื่อ + progress bar */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
@@ -218,13 +260,53 @@ export default function LikesLeaderboardWidget() {
                     >
                       {user.nickname || user.uniqueId}
                     </p>
+
+                    {/* จำนวน like — ใต้ชื่อ, ❤️ กับตัวเลขแยก column */}
+                    {config.showLikes && (
+                      <div
+                        key={popKey}
+                        style={{
+                          display:     'inline-flex',
+                          alignItems:  'center',
+                          gap:         3,
+                          marginTop:   2,
+                        }}
+                      >
+                        {/* ❤️ column — fixed width, คืน opacity หลัง anim (ไม่ใช้ forwards) */}
+                        <span style={{
+                          display:         'inline-flex',
+                          alignItems:      'center',
+                          justifyContent:  'center',
+                          width:           styles.fs,
+                          flexShrink:      0,
+                          fontSize:        styles.fs - 1,
+                          animation:       isPopping ? 'heartFlash 1.5s ease' : 'none',
+                        }}>❤️</span>
+                        {/* ตัวเลข column — scale จากจุดกึ่งกลาง */}
+                        <span style={{
+                          display:         'inline-block',
+                          fontSize:        styles.fs - 1,
+                          color:           accentColor,
+                          fontWeight:      700,
+                          textShadow:      '0 0 4px rgba(0,0,0,0.3)',
+                          whiteSpace:      'nowrap',
+                          transformOrigin: 'left center',
+                          animation:       isPopping
+                            ? 'countPop 1.5s cubic-bezier(0.22,1.4,0.36,1)'
+                            : 'none',
+                        }}>
+                          {user.likeCount?.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+
                     {config.showProgress && (
                       <div
                         style={{
                           height: 4,
                           background: styles.tc + '20',
                           borderRadius: 2,
-                          marginTop: 4,
+                          marginTop: config.showLikes ? 3 : 4,
                           overflow: 'hidden',
                         }}
                       >
@@ -240,21 +322,6 @@ export default function LikesLeaderboardWidget() {
                       </div>
                     )}
                   </div>
-
-                  {/* จำนวน like */}
-                  {config.showLikes && (
-                    <span
-                      style={{
-                        color: accentColor,
-                        fontSize: styles.fs - 1,
-                        fontWeight: 700,
-                        flexShrink: 0,
-                        textShadow: '0 0 4px rgba(0,0,0,0.3)',
-                      }}
-                    >
-                      ❤️ {user.likeCount?.toLocaleString()}
-                    </span>
-                  )}
                 </div>
               );
             })
@@ -265,6 +332,26 @@ export default function LikesLeaderboardWidget() {
           @keyframes slideInUp {
             from { opacity: 0; transform: translateY(8px); }
             to   { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes countPop {
+            0%   { transform: scale(1);    }
+            8%   { transform: scale(1.5);  }
+            22%  { transform: scale(1.2);  }
+            48%  { transform: scale(1.35); }
+            68%  { transform: scale(1.08); }
+            85%  { transform: scale(1.02); }
+            100% { transform: scale(1);    }
+          }
+          /* ❤️ กระพริบ 2 ครั้ง แล้วคืน opacity 1 (ไม่ใช้ forwards) */
+          @keyframes heartFlash {
+            0%   { opacity: 1; }
+            22%  { opacity: 1; }
+            30%  { opacity: 0; }
+            48%  { opacity: 1; }
+            72%  { opacity: 1; }
+            80%  { opacity: 0; }
+            90%  { opacity: 0; }
+            100% { opacity: 1; }
           }
         `}</style>
       </div>

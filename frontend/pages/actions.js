@@ -6,7 +6,7 @@ import api from '../lib/api';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import Sidebar from '../components/Sidebar';
-import { speak } from '../lib/tts';
+import { speak, speakDirect, configureTTS } from '../lib/tts';
 import { getSocket } from '../lib/socket';
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
@@ -16,7 +16,8 @@ const ACTION_TYPES = [
   { id: 'show_picture',       icon: '🖼',  label: 'แสดงรูป / GIF' },
   { id: 'play_video',         icon: '🎬',  label: 'เล่นวิดีโอ' },
   { id: 'play_audio',         icon: '🔊',  label: 'เล่นเสียง' },
-  { id: 'show_alert',         icon: '📢',  label: 'Show Alert' },
+  // show_alert ปิดไว้ชั่วคราว — ยังไม่พร้อมใช้งาน
+  // { id: 'show_alert',      icon: '📢',  label: 'Show Alert' },
   { id: 'read_tts',           icon: '🗣',  label: 'อ่านออกเสียง (TTS)' },
   { id: 'switch_obs_scene',   icon: '🎬',  label: 'สลับ Scene OBS' },
   { id: 'activate_obs_source',icon: '👁',  label: 'เปิด/ปิด OBS Source' },
@@ -25,12 +26,13 @@ const ACTION_TYPES = [
 // ── Column definitions for the resizable Action table ────────────────────────
 const COL_DEFS = [
   { id: 'toggle', label: '',            defaultW: 52,  minW: 52  },
+  { id: 'fire',   label: '',            defaultW: 90,  minW: 90  },
   { id: 'name',   label: 'ชื่อ Action', defaultW: 210, minW: 100 },
   { id: 'scr',    label: 'scr',         defaultW: 58,  minW: 48  },
   { id: 'dur',    label: 'เวลา',        defaultW: 64,  minW: 48  },
   { id: 'types',  label: 'ประเภท',      defaultW: 100, minW: 60  },
   { id: 'desc',   label: 'รายละเอียด', defaultW: 340, minW: 100 },
-  { id: 'btns',   label: '',            defaultW: 190, minW: 190 },
+  { id: 'btns',   label: '',            defaultW: 90,  minW: 90  },
 ];
 
 const EVT_COL_DEFS = [
@@ -80,6 +82,7 @@ const DEFAULT_ACTION = {
   obsSourceReturn: false,  // ปิด source กลับหลังจบ (ใช้ displayDuration เป็น timing)
   displayDuration: 5,
   overlayScreen: 1,
+  volume: 100,           // ระดับเสียง 0-100 (apply กับ play_audio และ read_tts)
   globalCooldown: 0,
   userCooldown: 0,
   fadeInOut: true,
@@ -224,7 +227,7 @@ function Input({ label, value, onChange, placeholder, type = 'text', min, step, 
       <input
         type={type} value={value} onChange={e => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
         placeholder={placeholder} min={min} step={step}
-        className="bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none w-full"
+        className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full"
       />
     </div>
   );
@@ -235,11 +238,11 @@ function Toggle({ label, checked, onChange }) {
     <label className="flex items-center gap-2 cursor-pointer select-none">
       <div
         onClick={() => onChange(!checked)}
-        className={clsx('w-9 h-5 rounded-full transition-colors flex items-center px-0.5', checked ? 'bg-brand-600' : 'bg-gray-700')}
+        className={clsx('w-9 h-5 rounded-full transition-colors flex items-center px-0.5', checked ? 'bg-brand-600' : 'bg-gray-200 dark:bg-gray-700')}
       >
         <div className={clsx('w-4 h-4 rounded-full bg-white transition-transform', checked ? 'translate-x-4' : 'translate-x-0')} />
       </div>
-      <span className="text-sm text-gray-300">{label}</span>
+      <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
     </label>
   );
 }
@@ -288,7 +291,7 @@ function GiftPicker({ value, onChange, giftList }) {
       <input
         value={search} onChange={e => setSearch(e.target.value)}
         placeholder="ค้นหาของขวัญ..."
-        className="w-full bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none placeholder-slate-600"
+        className="w-full bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none placeholder-gray-400 dark:placeholder-slate-600"
       />
 
       {/* Price filter tabs */}
@@ -300,7 +303,7 @@ function GiftPicker({ value, onChange, giftList }) {
               'text-[11px] px-2.5 py-0.5 rounded-full border transition-colors',
               priceFilter === f.id
                 ? 'bg-brand-700/50 border-brand-600 text-brand-200'
-                : 'bg-[#161b28] border-[#2d3550] text-slate-400 hover:border-slate-500'
+                : 'bg-[#f4f4f3] dark:bg-[#161b28] border-gray-300 dark:border-[#2d3550] text-gray-500 dark:text-slate-400 hover:border-slate-500'
             )}>
             {f.label}
           </button>
@@ -308,7 +311,7 @@ function GiftPicker({ value, onChange, giftList }) {
       </div>
 
       {/* Chip grid */}
-      <div className="h-40 overflow-y-auto rounded-lg border border-[#2d3550] bg-[#161b28] p-1.5">
+      <div className="h-40 overflow-y-auto rounded-lg border border-gray-300 dark:border-[#2d3550] bg-[#f4f4f3] dark:bg-[#161b28] p-1.5">
         {visible.length === 0 ? (
           <div className="h-full flex items-center justify-center text-gray-600 text-xs">
             {search ? `ไม่พบ "${search}"` : 'ไม่มีของขวัญในช่วงราคานี้'}
@@ -322,7 +325,7 @@ function GiftPicker({ value, onChange, giftList }) {
                   'flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left transition-colors',
                   g.name === value
                     ? 'bg-brand-800/60 border-brand-600 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:bg-gray-750'
+                    : 'bg-[#ededeb] dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-500 hover:bg-gray-750'
                 )}>
                 {g.pictureUrl
                   ? <img src={g.pictureUrl} alt="" className="w-7 h-7 rounded object-cover shrink-0" onError={e => { e.target.style.display = 'none'; }} />
@@ -444,7 +447,7 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
         <select
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none w-full"
+          className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full"
         >
           <option value="">— เลือก {label} —</option>
           {items.map(name => (
@@ -457,7 +460,7 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none w-full"
+          className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full"
         />
       )}
     </div>
@@ -465,7 +468,7 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
 }
 
 // ── Action Form Modal ────────────────────────────────────────────────────────
-function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
+function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled }) {
   const [form, setForm] = useState({
     ...DEFAULT_ACTION,
     ...(initial || {}),
@@ -478,6 +481,39 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
     const t = Array.isArray(initial?.types) ? initial.types : [];
     return t.length > 0 ? t[0] : '__settings__';
   });
+
+  // Audio upload state (play_audio)
+  const [audioWarn,        setAudioWarn]        = useState(false);
+  const [audioPendingFile, setAudioPendingFile] = useState(null);
+  const [audioUploading,   setAudioUploading]   = useState(false);
+  const [audioResult,      setAudioResult]      = useState(null);
+  const [audioService,     setAudioService]     = useState('catbox');
+  const [audioLitterTime,  setAudioLitterTime]  = useState('24h');
+  const audioInputRef = useRef(null);
+
+  // Image upload state (show_picture)
+  const [imgWarn,        setImgWarn]        = useState(false);
+  const [imgPendingFile, setImgPendingFile] = useState(null);
+  const [imgUploading,   setImgUploading]   = useState(false);
+  const [imgResult,      setImgResult]      = useState(null);
+  const [imgService,     setImgService]     = useState('catbox');
+  const [imgLitterTime,  setImgLitterTime]  = useState('24h');
+  const imgInputRef = useRef(null);
+
+  // Filehost upload state (play_video)
+  const [uploadWarn,        setUploadWarn]        = useState(false);   // แสดง warning dialog
+  const [uploadPendingFile, setUploadPendingFile] = useState(null);    // ไฟล์ที่รอ confirm
+  const [uploading,         setUploading]         = useState(false);   // กำลัง upload
+  const [uploadResult,      setUploadResult]      = useState(null);    // URL ที่ได้หลัง upload สำเร็จ
+  const [uploadService,     setUploadService]     = useState('catbox'); // service ที่เลือก
+  const [litterboxTime,     setLitterboxTime]     = useState('24h');   // อายุไฟล์ของ litterbox
+  const uploadInputRef = useRef(null);
+
+  const UPLOAD_SERVICES = [
+    { id: 'catbox',    label: 'catbox.moe',  badge: '♾ ถาวร',       badgeColor: 'text-green-400',  maxMB: 200, desc: 'ฟรี ถาวร แต่ลบไม่ได้' },
+    { id: 'litterbox', label: 'Litterbox',   badge: '⏱ ชั่วคราว',   badgeColor: 'text-amber-400',  maxMB: 200, desc: 'หมดอายุได้ถึง 72ชม.' },
+    { id: 'uguu',      label: 'uguu.se',     badge: '⏱ 48ชม.',      badgeColor: 'text-orange-400', maxMB: 100, desc: 'ไม่ต้องสมัคร · ลบหลัง 48ชม.' },
+  ];
 
   // OBS dropdown state
   const [obsScenes,  setObsScenes]  = useState([]);
@@ -511,10 +547,13 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
   };
 
   const testTts = () => {
-    if (!audioEnabled) { toast('🔇 เปิดเสียงก่อนนะครับ — กดปุ่ม 🔊 มุมขวาบน', { duration: 2500 }); return; }
     const text = (form.ttsText || 'ทดสอบเสียง')
-      .replace('{username}', 'ทดสอบ').replace('{giftname}', 'Rose');
-    speak(text);
+      .replace('{username}', 'ทดสอบ').replace('{giftname}', 'Rose').replace('{coins}', '100');
+    // ใช้ speakDirect แทน speak เพื่อไม่ติด _cfg.enabled guard
+    // — ปุ่มทดสอบควรทำงานได้เสมอโดยไม่ต้องเปิด TTS หลักก่อน
+    speakDirect('web', text).catch(() => {
+      toast.error('ไม่สามารถเล่นเสียงได้ — browser อาจบล็อก autoplay');
+    });
   };
 
   // content ด้านขวาตาม activeTab
@@ -529,7 +568,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
             <div>
               <label className="text-xs text-gray-400">Overlay Screen</label>
               <select value={form.overlayScreen} onChange={e => set('overlayScreen', Number(e.target.value))}
-                className="mt-1 w-full bg-[#1a1f30] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none">
+                className="mt-1 w-full bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Screen 1</option>
                 <option value={2}>Screen 2</option>
               </select>
@@ -539,6 +578,21 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
             <Input label="User Cooldown (วิ)" value={form.userCooldown}
               onChange={v => set('userCooldown', v)} type="number" min={0} />
           </div>
+          {/* Volume slider */}
+          <div className="pt-1">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-gray-400">🔊 ระดับเสียง</label>
+              <span className="text-xs font-mono text-brand-400">{form.volume ?? 100}%</span>
+            </div>
+            <input
+              type="range" min={0} max={100} step={5}
+              value={form.volume ?? 100}
+              onChange={e => set('volume', Number(e.target.value))}
+              className="w-full accent-brand-500 cursor-pointer"
+            />
+            <p className="text-[10px] text-gray-600 mt-0.5">ใช้กับ เล่นเสียง และ อ่านออกเสียง (TTS)</p>
+          </div>
+
           <div className="space-y-2 pt-1">
             <Toggle label="Fade In/Out" checked={form.fadeInOut} onChange={v => set('fadeInOut', v)} />
             <Toggle label="Repeat กับ Gift combos" checked={form.repeatWithCombos} onChange={v => set('repeatWithCombos', v)} />
@@ -548,35 +602,544 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
     }
 
     switch (activeTab) {
-      case 'show_picture':
+      case 'show_picture': {
+        // อัปโหลดรูปภาพไปยัง service ที่เลือก
+        const doImgUpload = async (file) => {
+          setImgUploading(true);
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            const params = new URLSearchParams({ service: imgService, mediaType: 'image' });
+            if (imgService === 'litterbox') params.set('time', imgLitterTime);
+            const res = await api.post(`/api/filehost/upload?${params}`, fd, {
+              timeout: 60000,
+              headers: { 'Content-Type': undefined },
+            });
+            set('pictureUrl', res.data.url);
+            setImgResult(res.data.url);
+            toast.success('✅ อัปโหลดสำเร็จ!');
+          } catch (e) {
+            toast.error(e?.response?.data?.error || 'อัปโหลดล้มเหลว');
+          } finally {
+            setImgUploading(false);
+            setImgPendingFile(null);
+          }
+        };
+
         return (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🖼 รูป / GIF</p>
+
+            {/* URL input */}
             <Input label="URL รูปหรือ GIF" value={form.pictureUrl} onChange={v => set('pictureUrl', v)}
               placeholder="https://media.giphy.com/..." />
             <p className="text-[10px] text-gray-600">รองรับ PNG, JPG, GIF, WebP — ใช้ลิงก์ตรงถึงไฟล์</p>
+            <p className="text-[10px] text-amber-600/80">💡 แนะนำ: ไฟล์เล็กกว่า 1MB เพื่อให้โหลดได้ทันทีระหว่าง Live</p>
+
+            {/* Service selector */}
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-gray-500 font-medium">☁ อัปโหลดไฟล์ผ่าน</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {UPLOAD_SERVICES.map(svc => (
+                  <button key={svc.id} type="button" onClick={() => setImgService(svc.id)}
+                    className={clsx(
+                      'flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors text-[11px] min-w-[100px]',
+                      imgService === svc.id
+                        ? 'border-brand-500 bg-brand-900/50 text-white'
+                        : 'border-gray-300 dark:border-gray-700 bg-[#f4f4f3] dark:bg-gray-800/40 text-gray-400 hover:border-gray-500'
+                    )}>
+                    <span className="font-semibold text-[12px]">{svc.label}</span>
+                    <span className={clsx('text-[10px]', imgService === svc.id ? svc.badgeColor : 'text-gray-500')}>
+                      {svc.badge} · {svc.maxMB}MB
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-0.5">{svc.desc}</span>
+                  </button>
+                ))}
+              </div>
+              {imgService === 'litterbox' && (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="text-[11px] text-gray-500">ระยะเวลา</span>
+                  {['1h', '12h', '24h', '72h'].map(t => (
+                    <button key={t} type="button" onClick={() => setImgLitterTime(t)}
+                      className={clsx(
+                        'text-[11px] px-2.5 py-1 rounded border transition-colors',
+                        imgLitterTime === t
+                          ? 'border-amber-500 bg-amber-900/40 text-amber-300'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:border-gray-500'
+                      )}>{t}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Hidden file input */}
+            <input ref={imgInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setImgPendingFile(f);
+                setImgWarn(true);
+                e.target.value = '';
+              }} />
+
+            {/* Drag & Drop zone */}
+            <div
+              onClick={() => !imgUploading && imgInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.setAttribute('data-drag', '1'); }}
+              onDragLeave={e => e.currentTarget.removeAttribute('data-drag')}
+              onDrop={e => {
+                e.preventDefault();
+                e.currentTarget.removeAttribute('data-drag');
+                const f = e.dataTransfer.files?.[0];
+                if (!f || imgUploading) return;
+                setImgPendingFile(f);
+                setImgWarn(true);
+              }}
+              className={clsx(
+                'relative border-2 border-dashed rounded-lg px-4 py-5 text-center cursor-pointer transition-colors select-none',
+                imgUploading
+                  ? 'border-brand-600/40 bg-brand-950/20 cursor-not-allowed'
+                  : 'border-brand-700/40 hover:border-brand-500 hover:bg-brand-950/30 [&[data-drag]]:border-brand-400 [&[data-drag]]:bg-brand-900/40'
+              )}>
+              {imgUploading ? (
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-2xl animate-spin">⏳</span>
+                  <p className="text-xs text-brand-300">กำลังอัปโหลด...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1 pointer-events-none">
+                  <span className="text-2xl">🖼</span>
+                  <p className="text-xs text-gray-400">คลิกหรือลากไฟล์รูปมาวางที่นี่</p>
+                  <p className="text-[10px] text-gray-600">PNG, JPG, GIF, WebP · max {UPLOAD_SERVICES.find(s => s.id === imgService)?.maxMB}MB</p>
+                </div>
+              )}
+            </div>
+
+            {/* ผลลัพธ์หลัง upload สำเร็จ */}
+            {imgResult && !imgUploading && (
+              <div className="rounded-lg border border-green-700/50 bg-green-950/30 p-3 space-y-2">
+                <p className="text-xs font-semibold text-green-400">✅ อัปโหลดสำเร็จ — ลิงก์รูปภาพของคุณ</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={imgResult}
+                    className="flex-1 min-w-0 text-[11px] bg-[#ededeb] dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-green-700 dark:text-green-300 font-mono truncate select-all"
+                    onFocus={e => e.target.select()} />
+                  <button type="button"
+                    onClick={() => navigator.clipboard.writeText(imgResult)
+                      .then(() => toast.success('คัดลอกแล้ว!'))
+                      .catch(() => toast.error('คัดลอกไม่สำเร็จ'))}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded bg-green-700 hover:bg-green-600 text-white font-semibold transition-colors">
+                    📋 Copy
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500">ลิงก์นี้ถูกเติมใน URL รูปแล้ว สามารถ Copy ไปใช้ที่อื่นได้เลย</p>
+              </div>
+            )}
+
+            {/* Warning dialog ก่อน upload */}
+            {imgWarn && imgPendingFile && (
+              <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 space-y-2">
+                <p className="text-xs font-semibold text-amber-300">⚠ ข้อควรรู้ก่อนอัปโหลดไปยัง {UPLOAD_SERVICES.find(s => s.id === imgService)?.label}</p>
+                <ul className="text-[11px] text-amber-200/80 space-y-1 list-disc list-inside">
+                  <li>ไฟล์จะเป็น <b>สาธารณะ</b> — ใครก็เปิดลิงก์ได้</li>
+                  {imgService === 'litterbox'
+                    ? <li>ไฟล์จะหมดอายุใน <b>{imgLitterTime}</b></li>
+                    : imgService === 'uguu'
+                    ? <li>ไฟล์จะ<b>ลบอัตโนมัติหลัง 48 ชั่วโมง</b></li>
+                    : <li>ไฟล์ <b>ลบไม่ได้</b> หลังอัปโหลด</li>}
+                  <li>ห้ามอัปโหลดเนื้อหาละเมิดลิขสิทธิ์หรือกฎหมาย</li>
+                </ul>
+                <p className="text-[11px] text-gray-400">ไฟล์: <span className="text-white">{imgPendingFile.name}</span> ({(imgPendingFile.size / 1024 / 1024).toFixed(1)} MB)</p>
+                <div className="flex gap-2 pt-1">
+                  <button type="button"
+                    onClick={() => { setImgWarn(false); doImgUpload(imgPendingFile); }}
+                    className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors">
+                    ยืนยัน อัปโหลด
+                  </button>
+                  <button type="button"
+                    onClick={() => { setImgWarn(false); setImgPendingFile(null); }}
+                    className="text-xs px-3 py-1.5 rounded border border-gray-400 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors">
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
-      case 'play_video':
+      }
+      case 'play_video': {
+        // แปลง Google Drive sharing link → direct download URL
+        const convertDriveUrl = (url) => {
+          if (!url) return url;
+          const fileMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+          if (fileMatch) return `https://drive.google.com/uc?export=download&id=${fileMatch[1]}`;
+          const openMatch = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+          if (openMatch) return `https://drive.google.com/uc?export=download&id=${openMatch[1]}`;
+          return url;
+        };
+        const isDriveFolder = form.videoUrl?.includes('drive.google.com/drive');
+        const isDriveDirect = form.videoUrl?.includes('drive.google.com/uc?export=download');
+
+        // อัปโหลดไปยัง filehost หลังยืนยัน
+        const doUpload = async (file) => {
+          setUploading(true);
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            // params: service + time (litterbox เท่านั้น)
+            const params = new URLSearchParams({ service: uploadService });
+            if (uploadService === 'litterbox') params.set('time', litterboxTime);
+            const res = await api.post(`/api/filehost/upload?${params}`, fd, {
+              timeout: 120000, // 2 นาที (ไฟล์ใหญ่)
+              headers: { 'Content-Type': undefined }, // ปล่อยให้ browser set multipart/form-data; boundary=... เอง
+            });
+            set('videoUrl', res.data.url);
+            setUploadResult(res.data.url);
+            toast.success('✅ อัปโหลดสำเร็จ!');
+          } catch (e) {
+            toast.error(e?.response?.data?.error || 'อัปโหลดล้มเหลว');
+          } finally {
+            setUploading(false);
+            setUploadPendingFile(null);
+          }
+        };
+
         return (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🎬 วิดีโอ</p>
-            <Input label="URL วิดีโอ (YouTube / MP4)" value={form.videoUrl} onChange={v => set('videoUrl', v)}
-              placeholder="https://youtube.com/... หรือ https://..." />
+
+            {/* URL input — ใส่เองได้ */}
+            <Input label="URL วิดีโอ" value={form.videoUrl}
+              onChange={v => set('videoUrl', convertDriveUrl(v))}
+              placeholder="https://..." />
+
+            {/* Service selector */}
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-gray-500 font-medium">☁ อัปโหลดไฟล์ผ่าน</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {UPLOAD_SERVICES.map(svc => (
+                  <button
+                    key={svc.id}
+                    type="button"
+                    onClick={() => setUploadService(svc.id)}
+                    className={clsx(
+                      'flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors text-[11px] min-w-[100px]',
+                      uploadService === svc.id
+                        ? 'border-brand-500 bg-brand-900/50 text-white'
+                        : 'border-gray-300 dark:border-gray-700 bg-[#f4f4f3] dark:bg-gray-800/40 text-gray-400 hover:border-gray-500'
+                    )}>
+                    <span className="font-semibold text-[12px]">{svc.label}</span>
+                    <span className={clsx('text-[10px]', uploadService === svc.id ? svc.badgeColor : 'text-gray-500')}>
+                      {svc.badge} · {svc.maxMB}MB
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-0.5">{svc.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Litterbox time selector */}
+              {uploadService === 'litterbox' && (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="text-[11px] text-gray-500">ระยะเวลา</span>
+                  {['1h', '12h', '24h', '72h'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setLitterboxTime(t)}
+                      className={clsx(
+                        'text-[11px] px-2.5 py-1 rounded border transition-colors',
+                        litterboxTime === t
+                          ? 'border-amber-500 bg-amber-900/40 text-amber-300'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:border-gray-500'
+                      )}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Drag & Drop + Upload zone */}
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setUploadPendingFile(f);
+                setUploadWarn(true);
+                e.target.value = '';
+              }}
+            />
+            <div
+              onClick={() => !uploading && uploadInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.setAttribute('data-drag', '1'); }}
+              onDragLeave={e => e.currentTarget.removeAttribute('data-drag')}
+              onDrop={e => {
+                e.preventDefault();
+                e.currentTarget.removeAttribute('data-drag');
+                const f = e.dataTransfer.files?.[0];
+                if (!f || uploading) return;
+                setUploadPendingFile(f);
+                setUploadWarn(true);
+              }}
+              className={clsx(
+                'relative border-2 border-dashed rounded-lg px-4 py-5 text-center cursor-pointer transition-colors select-none',
+                uploading
+                  ? 'border-brand-600/40 bg-brand-950/20 cursor-not-allowed'
+                  : 'border-brand-700/40 hover:border-brand-500 hover:bg-brand-950/30 [&[data-drag]]:border-brand-400 [&[data-drag]]:bg-brand-900/40'
+              )}>
+              {uploading ? (
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-2xl animate-spin">⏳</span>
+                  <p className="text-xs text-brand-300">กำลังอัปโหลด...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1 pointer-events-none">
+                  <span className="text-2xl">☁</span>
+                  <p className="text-xs text-brand-300 font-medium">วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก</p>
+                  <p className="text-[10px] text-gray-600">MP4 / WebM / MOV สูงสุด 200MB</p>
+                  <p className="text-[10px] text-amber-600/80">💡 แนะนำ: ไฟล์เล็กกว่า 20MB เพื่อให้เริ่มเล่นได้เร็ว</p>
+                </div>
+              )}
+            </div>
+
+            {/* Warnings */}
+            {isDriveFolder && (
+              <p className="text-[11px] text-red-400">⚠ ลิงก์นี้เป็น Google Drive Folder — ไม่สามารถเล่นเป็นวิดีโอได้</p>
+            )}
+            {isDriveDirect && (
+              <p className="text-[11px] text-amber-400">⚠ Google Drive: ไฟล์ขนาดใหญ่อาจเล่นไม่ได้ถ้า Google แสดงหน้า virus scan</p>
+            )}
+
+            {/* Warning dialog ก่อน upload */}
+            {/* ผลลัพธ์หลัง upload สำเร็จ */}
+            {uploadResult && !uploading && (
+              <div className="rounded-lg border border-green-700/50 bg-green-950/30 p-3 space-y-2">
+                <p className="text-xs font-semibold text-green-400">✅ อัปโหลดสำเร็จ — ลิงก์วิดีโอของคุณ</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={uploadResult}
+                    className="flex-1 min-w-0 text-[11px] bg-[#ededeb] dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-green-700 dark:text-green-300 font-mono truncate select-all"
+                    onFocus={e => e.target.select()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(uploadResult)
+                        .then(() => toast.success('คัดลอกแล้ว!'))
+                        .catch(() => toast.error('คัดลอกไม่สำเร็จ'));
+                    }}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded bg-green-700 hover:bg-green-600 text-white font-semibold transition-colors">
+                    📋 Copy
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500">ลิงก์นี้ถูกเติมใน URL วิดีโอแล้ว สามารถ Copy ไปใช้ที่อื่นได้เลย</p>
+              </div>
+            )}
+
+            {uploadWarn && uploadPendingFile && (
+              <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 space-y-2">
+                <p className="text-xs font-semibold text-amber-300">⚠ ข้อควรรู้ก่อนอัปโหลดไปยัง {UPLOAD_SERVICES.find(s => s.id === uploadService)?.label}</p>
+                <ul className="text-[11px] text-amber-200/80 space-y-1 list-disc list-inside">
+                  <li>ไฟล์จะเป็น <b>Public</b> — ใครมีลิงก์ก็เข้าถึงได้</li>
+                  {uploadService === 'litterbox'
+                    ? <li>ไฟล์จะหมดอายุใน <b>{litterboxTime}</b></li>
+                    : uploadService === 'uguu'
+                    ? <li>ไฟล์จะ<b>ลบอัตโนมัติหลัง 48 ชั่วโมง</b></li>
+                    : <li>ไฟล์ <b>ลบไม่ได้</b> หลังอัปโหลด</li>}
+                  <li>ขนาดสูงสุด <b>{UPLOAD_SERVICES.find(s => s.id === uploadService)?.maxMB}MB</b></li>
+                  <li>ห้ามอัปโหลดเนื้อหาละเมิดลิขสิทธิ์หรือกฎหมาย</li>
+                </ul>
+                <p className="text-[11px] text-gray-400">ไฟล์: <span className="text-white">{uploadPendingFile.name}</span> ({(uploadPendingFile.size / 1024 / 1024).toFixed(1)} MB)</p>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setUploadWarn(false); doUpload(uploadPendingFile); }}
+                    className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors">
+                    ยืนยัน อัปโหลด
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setUploadWarn(false); setUploadPendingFile(null); }}
+                    className="text-xs px-3 py-1.5 rounded border border-gray-400 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors">
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
-      case 'play_audio':
+      }
+      case 'play_audio': {
+        const doAudioUpload = async (file) => {
+          setAudioUploading(true);
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            const params = new URLSearchParams({ service: audioService, mediaType: 'audio' });
+            if (audioService === 'litterbox') params.set('time', audioLitterTime);
+            const res = await api.post(`/api/filehost/upload?${params}`, fd, {
+              timeout: 60000,
+              headers: { 'Content-Type': undefined },
+            });
+            set('audioUrl', res.data.url);
+            setAudioResult(res.data.url);
+            toast.success('✅ อัปโหลดสำเร็จ!');
+          } catch (e) {
+            toast.error(e?.response?.data?.error || 'อัปโหลดล้มเหลว');
+          } finally {
+            setAudioUploading(false);
+            setAudioPendingFile(null);
+          }
+        };
+
         return (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🔊 เสียง</p>
-            <Input label="URL เสียง (MP3/WAV)" value={form.audioUrl} onChange={v => set('audioUrl', v)}
+            <p className="text-[10px] text-sky-600 dark:text-sky-400/80">🔈 เสียงจะออกจาก OBS Browser Source ของ <b>Screen {form.overlayScreen ?? 1}</b> — ต้องเปิด URL นั้นไว้ใน OBS</p>
+
+            <Input label="URL เสียง" value={form.audioUrl} onChange={v => set('audioUrl', v)}
               placeholder="https://..." />
+
+            {/* Service selector */}
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-gray-500 font-medium">☁ อัปโหลดไฟล์ผ่าน</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {UPLOAD_SERVICES.map(svc => (
+                  <button key={svc.id} type="button" onClick={() => setAudioService(svc.id)}
+                    className={clsx(
+                      'flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors text-[11px] min-w-[100px]',
+                      audioService === svc.id
+                        ? 'border-brand-500 bg-brand-900/50 text-white'
+                        : 'border-gray-300 dark:border-gray-700 bg-[#f4f4f3] dark:bg-gray-800/40 text-gray-400 hover:border-gray-500'
+                    )}>
+                    <span className="font-semibold text-[12px]">{svc.label}</span>
+                    <span className={clsx('text-[10px]', audioService === svc.id ? svc.badgeColor : 'text-gray-500')}>
+                      {svc.badge} · {svc.maxMB}MB
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-0.5">{svc.desc}</span>
+                  </button>
+                ))}
+              </div>
+              {audioService === 'litterbox' && (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="text-[11px] text-gray-500">ระยะเวลา</span>
+                  {['1h', '12h', '24h', '72h'].map(t => (
+                    <button key={t} type="button" onClick={() => setAudioLitterTime(t)}
+                      className={clsx(
+                        'text-[11px] px-2.5 py-1 rounded border transition-colors',
+                        audioLitterTime === t
+                          ? 'border-amber-500 bg-amber-900/40 text-amber-300'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:border-gray-500'
+                      )}>{t}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Hidden file input */}
+            <input ref={audioInputRef} type="file" accept="audio/*" className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setAudioPendingFile(f);
+                setAudioWarn(true);
+                e.target.value = '';
+              }} />
+
+            {/* Drag & Drop zone */}
+            <div
+              onClick={() => !audioUploading && audioInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.setAttribute('data-drag', '1'); }}
+              onDragLeave={e => e.currentTarget.removeAttribute('data-drag')}
+              onDrop={e => {
+                e.preventDefault();
+                e.currentTarget.removeAttribute('data-drag');
+                const f = e.dataTransfer.files?.[0];
+                if (!f || audioUploading) return;
+                setAudioPendingFile(f);
+                setAudioWarn(true);
+              }}
+              className={clsx(
+                'relative border-2 border-dashed rounded-lg px-4 py-5 text-center cursor-pointer transition-colors select-none',
+                audioUploading
+                  ? 'border-brand-600/40 bg-brand-950/20 cursor-not-allowed'
+                  : 'border-brand-700/40 hover:border-brand-500 hover:bg-brand-950/30 [&[data-drag]]:border-brand-400 [&[data-drag]]:bg-brand-900/40'
+              )}>
+              {audioUploading ? (
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-2xl animate-spin">⏳</span>
+                  <p className="text-xs text-brand-300">กำลังอัปโหลด...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1 pointer-events-none">
+                  <span className="text-2xl">🔊</span>
+                  <p className="text-xs text-gray-400">คลิกหรือลากไฟล์เสียงมาวางที่นี่</p>
+                  <p className="text-[10px] text-gray-600">MP3, WAV, OGG, AAC · max {UPLOAD_SERVICES.find(s => s.id === audioService)?.maxMB}MB</p>
+                  <p className="text-[10px] text-amber-600/80">💡 แนะนำ: ไฟล์เล็กกว่า 5MB เพื่อให้เล่นได้ทันที</p>
+                </div>
+              )}
+            </div>
+
+            {/* ผลลัพธ์หลัง upload สำเร็จ */}
+            {audioResult && !audioUploading && (
+              <div className="rounded-lg border border-green-700/50 bg-green-950/30 p-3 space-y-2">
+                <p className="text-xs font-semibold text-green-400">✅ อัปโหลดสำเร็จ — ลิงก์ไฟล์เสียงของคุณ</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={audioResult}
+                    className="flex-1 min-w-0 text-[11px] bg-[#ededeb] dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-green-700 dark:text-green-300 font-mono truncate select-all"
+                    onFocus={e => e.target.select()} />
+                  <button type="button"
+                    onClick={() => navigator.clipboard.writeText(audioResult)
+                      .then(() => toast.success('คัดลอกแล้ว!'))
+                      .catch(() => toast.error('คัดลอกไม่สำเร็จ'))}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded bg-green-700 hover:bg-green-600 text-white font-semibold transition-colors">
+                    📋 Copy
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500">ลิงก์นี้ถูกเติมใน URL เสียงแล้ว สามารถ Copy ไปใช้ที่อื่นได้เลย</p>
+              </div>
+            )}
+
+            {/* Warning dialog */}
+            {audioWarn && audioPendingFile && (
+              <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 space-y-2">
+                <p className="text-xs font-semibold text-amber-300">⚠ ข้อควรรู้ก่อนอัปโหลดไปยัง {UPLOAD_SERVICES.find(s => s.id === audioService)?.label}</p>
+                <ul className="text-[11px] text-amber-200/80 space-y-1 list-disc list-inside">
+                  <li>ไฟล์จะเป็น <b>สาธารณะ</b> — ใครก็เปิดลิงก์ได้</li>
+                  {audioService === 'litterbox'
+                    ? <li>ไฟล์จะหมดอายุใน <b>{audioLitterTime}</b></li>
+                    : audioService === 'uguu'
+                    ? <li>ไฟล์จะ<b>ลบอัตโนมัติหลัง 48 ชั่วโมง</b></li>
+                    : <li>ไฟล์ <b>ลบไม่ได้</b> หลังอัปโหลด</li>}
+                  <li>ห้ามอัปโหลดเนื้อหาละเมิดลิขสิทธิ์หรือกฎหมาย</li>
+                </ul>
+                <p className="text-[11px] text-gray-400">ไฟล์: <span className="text-white">{audioPendingFile.name}</span> ({(audioPendingFile.size / 1024 / 1024).toFixed(1)} MB)</p>
+                <div className="flex gap-2 pt-1">
+                  <button type="button"
+                    onClick={() => { setAudioWarn(false); doAudioUpload(audioPendingFile); }}
+                    className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors">
+                    ยืนยัน อัปโหลด
+                  </button>
+                  <button type="button"
+                    onClick={() => { setAudioWarn(false); setAudioPendingFile(null); }}
+                    className="text-xs px-3 py-1.5 rounded border border-gray-400 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors">
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
+      }
       case 'show_alert':
         return (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">📢 Alert</p>
+            <p className="text-[10px] text-sky-600 dark:text-sky-400/80">🔈 เสียง Alert จะออกจาก OBS Browser Source ของ <b>Screen {form.overlayScreen ?? 1}</b> — ต้องเปิด URL นั้นไว้ใน OBS</p>
             <Input label="ข้อความ Alert" value={form.alertText} onChange={v => set('alertText', v)}
               placeholder="ขอบคุณ {username}! 🎉" />
             <p className="text-[10px] text-gray-600">ใช้ {'{username}'} {'{giftname}'} {'{coins}'} ได้</p>
@@ -586,12 +1149,13 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
         return (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🗣 TTS</p>
-            <p className="text-[10px] text-purple-400/70">🔗 ใช้เสียงและ engine เดียวกับแถบ TTS สิริ — ตั้งค่าเสียงได้ที่แถบ TTS หลัก ปิด/เปิด TTS สิริ ไม่มีผลกับ Action นี้</p>
+            <p className="text-[10px] text-sky-600 dark:text-sky-400/80">🔈 เสียงจะออกจาก OBS Browser Source ของ <b>Screen {form.overlayScreen ?? 1}</b> — ต้องเปิด URL นั้นไว้ใน OBS</p>
+            <p className="text-[10px] text-purple-600 dark:text-purple-400/70">🔗 ใช้เสียงและ engine เดียวกับแถบ TTS สิริ — ตั้งค่าเสียงได้ที่แถบ TTS หลัก ปิด/เปิด TTS สิริ ไม่มีผลกับ Action นี้</p>
             <Input label="ข้อความที่จะอ่าน" value={form.ttsText} onChange={v => set('ttsText', v)}
-              placeholder="ขอบคุณ {username} ที่ส่ง {giftname}!" />
+              placeholder="พิมพ์ข้อความที่ต้องการที่จะให้ Siri พูด" />
             <p className="text-[10px] text-gray-600">ใช้ {'{username}'} {'{giftname}'} {'{coins}'} ได้</p>
             <button onClick={testTts}
-              className="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-brand-400 rounded px-3 py-1.5 transition-colors">
+              className="text-xs bg-[#ededeb] dark:bg-gray-800 hover:bg-[#e5e5e3] dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 text-brand-400 rounded px-3 py-1.5 transition-colors">
               ▶ ทดสอบเสียง
             </button>
           </div>
@@ -655,16 +1219,16 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#1a1f30] border border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <h3 className="text-white font-bold text-base">{initial?.id ? 'แก้ไข Action' : 'สร้าง Action ใหม่'}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-white text-xl leading-none">×</button>
         </div>
 
         {/* ชื่อ Action */}
-        <div className="px-5 py-3 border-b border-gray-800 shrink-0">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <Input label="ชื่อ Action *" value={form.name} onChange={v => set('name', v)} placeholder="เช่น Rose Alert" />
         </div>
 
@@ -672,7 +1236,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
         <div className="flex flex-1 min-h-0">
 
           {/* Sidebar ซ้าย — type list */}
-          <div className="w-44 shrink-0 border-r border-gray-800 flex flex-col overflow-y-auto">
+          <div className="w-44 shrink-0 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-y-auto">
             <p className="text-[10px] text-gray-600 font-medium uppercase tracking-wide px-3 pt-3 pb-1.5">
               เลือกสิ่งที่เกิดขึ้น
             </p>
@@ -685,7 +1249,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
                     'flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-colors text-sm border-l-2',
                     isActive
                       ? 'border-brand-500 bg-brand-900/30 text-white'
-                      : 'border-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
+                      : 'border-transparent text-gray-400 hover:bg-[#ededeb] dark:hover:bg-gray-800/60 hover:text-gray-800 dark:hover:text-gray-200'
                   )}
                   onClick={() => {
                     if (!isOn) {
@@ -700,7 +1264,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
                     onClick={e => { e.stopPropagation(); toggleType(t.id); }}
                     className={clsx(
                       'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
-                      isOn ? 'bg-brand-600 border-brand-500' : 'border-gray-600 hover:border-gray-400'
+                      isOn ? 'bg-brand-600 border-brand-500' : 'border-gray-400 dark:border-gray-600 hover:border-gray-500 dark:hover:border-gray-400'
                     )}
                   >
                     {isOn && <span className="text-white text-[9px] leading-none">✓</span>}
@@ -711,13 +1275,13 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
             })}
 
             {/* Divider + Settings tab */}
-            <div className="mt-auto border-t border-gray-800">
+            <div className="mt-auto border-t border-gray-200 dark:border-gray-800">
               <div
                 className={clsx(
                   'flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-colors text-sm border-l-2',
                   activeTab === '__settings__'
                     ? 'border-brand-500 bg-brand-900/30 text-white'
-                    : 'border-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
+                    : 'border-transparent text-gray-400 hover:bg-[#ededeb] dark:hover:bg-gray-800/60 hover:text-gray-800 dark:hover:text-gray-200'
                 )}
                 onClick={() => setActiveTab('__settings__')}
               >
@@ -741,13 +1305,13 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort }) {
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 px-5 py-4 border-t border-gray-800 shrink-0">
+        <div className="flex gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-800 shrink-0">
           <button onClick={() => onSave(form)}
             className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded py-2 text-sm font-medium transition-colors">
             ✓ บันทึก
           </button>
           <button onClick={onClose}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded py-2 text-sm transition-colors">
+            className="flex-1 bg-[#ededeb] dark:bg-gray-800 hover:bg-[#e5e5e3] dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded py-2 text-sm transition-colors">
             ยกเลิก
           </button>
         </div>
@@ -799,8 +1363,8 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                   form.trigger === t.id
                     ? 'border-brand-500 bg-brand-900/30 text-white'
                     : t.popular
-                      ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
-                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                      ? 'border-gray-600 text-gray-700 dark:text-gray-300 hover:border-brand-400 bg-[#f4f4f3] dark:bg-gray-800/40'
+                      : 'border-gray-300 dark:border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-700 dark:text-gray-300'
                 )}>
                   <input type="radio" name="trigger" value={t.id} checked={form.trigger === t.id}
                     onChange={() => set('trigger', t.id)} className="accent-brand-500" />
@@ -850,8 +1414,8 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                   form.whoCanTrigger === w.id
                     ? 'border-brand-500 bg-brand-900/30 text-white'
                     : w.popular
-                      ? 'border-gray-600 text-gray-300 hover:border-brand-400 bg-gray-800/40'
-                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                      ? 'border-gray-600 text-gray-700 dark:text-gray-300 hover:border-brand-400 bg-[#f4f4f3] dark:bg-gray-800/40'
+                      : 'border-gray-300 dark:border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-700 dark:text-gray-300'
                 )}>
                   <input type="radio" name="who" value={w.id} checked={form.whoCanTrigger === w.id}
                     onChange={() => set('whoCanTrigger', w.id)} className="accent-brand-500" />
@@ -899,7 +1463,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                       return (
                         <label key={a.id} className={clsx(
                           'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
-                          on ? 'border-brand-500 bg-brand-900/20 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                          on ? 'border-brand-500 bg-brand-900/20 text-white' : 'border-gray-300 dark:border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-700 dark:text-gray-300'
                         )}>
                           <span className={clsx(
                             'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
@@ -917,7 +1481,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                 </div>
 
                 {/* ── สุ่ม 1 จาก pool ── */}
-                <div className="border-t border-gray-800 pt-4">
+                <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
                   <div className="flex items-center gap-2 mb-2">
                     <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide flex-1">
                       🎲 สุ่ม 1 จาก pool
@@ -931,7 +1495,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                   <p className="text-[10px] text-gray-600 mb-2">
                     เพิ่ม action เข้า pool — ระบบจะสุ่มเลือก 1 รายการทุกครั้งที่ trigger
                     {randomCount >= 2 && (
-                      <span className="text-purple-400 ml-1">
+                      <span className="text-purple-600 dark:text-purple-400 ml-1">
                         (แต่ละรายการมีโอกาส {Math.round(100 / randomCount)}%)
                       </span>
                     )}
@@ -942,7 +1506,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                       return (
                         <label key={a.id} className={clsx(
                           'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
-                          on ? 'border-purple-500 bg-purple-900/20 text-white' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                          on ? 'border-purple-500 bg-purple-900/20 text-white' : 'border-gray-300 dark:border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-700 dark:text-gray-300'
                         )}>
                           <span className={clsx(
                             'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
@@ -954,7 +1518,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                             onChange={() => toggleActionId(a.id, 'randomActionIds')} />
                           <span className="flex-1 truncate">{a.name}</span>
                           {on && randomCount >= 2 && (
-                            <span className="text-[10px] text-purple-400 shrink-0">
+                            <span className="text-[10px] text-purple-600 dark:text-purple-400 shrink-0">
                               ~{Math.round(100 / randomCount)}%
                             </span>
                           )}
@@ -974,19 +1538,19 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#1a1f30] border border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <h3 className="text-white font-bold text-base">{initial?.id ? 'แก้ไข Event' : 'สร้าง Event ใหม่'}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-white text-xl leading-none">×</button>
         </div>
 
         {/* Body: sidebar ซ้าย + content ขวา */}
         <div className="flex flex-1 min-h-0">
 
           {/* Sidebar ซ้าย */}
-          <div className="w-36 shrink-0 border-r border-gray-800 flex flex-col pt-2">
+          <div className="w-36 shrink-0 border-r border-gray-200 dark:border-gray-800 flex flex-col pt-2">
             {EVENT_TABS.map(tab => {
               const badge = tab.id === 'actions'
                 ? (allCount + randomCount) || null
@@ -997,7 +1561,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                     'flex items-center gap-2 px-3 py-3 cursor-pointer select-none transition-colors text-sm border-l-2',
                     activeTab === tab.id
                       ? 'border-brand-500 bg-brand-900/30 text-white'
-                      : 'border-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
+                      : 'border-transparent text-gray-400 hover:bg-[#ededeb] dark:hover:bg-gray-800/60 hover:text-gray-800 dark:hover:text-gray-200'
                   )}
                   onClick={() => setActiveTab(tab.id)}
                 >
@@ -1014,7 +1578,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
 
             {/* Summary ด้านล่าง sidebar */}
             {(allCount > 0 || randomCount > 0) && (
-              <div className="mt-auto mx-2 mb-3 p-2 rounded-lg bg-gray-800/60 border border-gray-700 space-y-1">
+              <div className="mt-auto mx-2 mb-3 p-2 rounded-lg bg-[#ededeb] dark:bg-gray-800/60 border border-gray-300 dark:border-gray-700 space-y-1">
                 {allCount > 0 && (
                   <p className="text-[10px] text-gray-400">✅ ทำ {allCount} รายการ</p>
                 )}
@@ -1032,13 +1596,13 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 px-5 py-4 border-t border-gray-800 shrink-0">
+        <div className="flex gap-2 px-5 py-4 border-t border-gray-200 dark:border-gray-800 shrink-0">
           <button onClick={() => onSave(form)}
             className="flex-1 bg-brand-600 hover:bg-brand-700 text-white rounded py-2 text-sm font-medium transition-colors">
             ✓ บันทึก
           </button>
           <button onClick={onClose}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded py-2 text-sm transition-colors">
+            className="flex-1 bg-[#ededeb] dark:bg-gray-800 hover:bg-[#e5e5e3] dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded py-2 text-sm transition-colors">
             ยกเลิก
           </button>
         </div>
@@ -1252,6 +1816,7 @@ function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled, obsSour
         .replace('{username}', 'ทดสอบ')
         .replace('{giftname}', 'Rose')
         .replace('{coins}', '100');
+      configureTTS({ enabled: true, volume: Math.min(1, (action.volume ?? 100) / 100) });
       speak(text);
     }
 
@@ -1433,7 +1998,7 @@ function PreviewModal({ action, onClose, obsHost, obsPort, audioEnabled, obsSour
         )}
 
         {/* Progress bar countdown */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800 overflow-hidden rounded-b-xl">
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#ededeb] dark:bg-gray-800 overflow-hidden rounded-b-xl">
           <div
             className="h-full bg-brand-500"
             style={{
@@ -1475,14 +2040,14 @@ function actionDescParts(a) {
 function renderDesc(parts) {
   if (!parts.length) return null;
   return (
-    <span className="text-[13px] text-slate-500 whitespace-nowrap">
+    <span className="text-[13px] text-gray-400 dark:text-slate-500 whitespace-nowrap">
       {parts.map((p, i) => (
         <span key={i}>
           {i > 0 && <span className="mx-1.5 text-slate-700">·</span>}
-          <span className="text-slate-500">{p.prefix} </span>
+          <span className="text-gray-400 dark:text-slate-500">{p.prefix} </span>
           {p.bold
-            ? <strong className="font-semibold text-slate-300">{p.value}</strong>
-            : <span className="text-slate-400">{p.value}</span>
+            ? <strong className="font-semibold text-gray-600 dark:text-slate-300">{p.value}</strong>
+            : <span className="text-gray-500 dark:text-slate-400">{p.value}</span>
           }
         </span>
       ))}
@@ -1633,11 +2198,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       setObsSourceMap(map);
       const srcCount = Object.keys(map).length;
       setObsScanStatus(`✅ ${srcCount} source จาก ${totalScenes} scene`);
+      try { localStorage.setItem('ttplus_obs_was_connected', '1'); } catch {}
       try { ws.close(); } catch {}
     };
 
     const scanTimeout = setTimeout(() => {
       setObsScanStatus('❌ Scan timeout — OBS ไม่ตอบสนอง');
+      try { localStorage.removeItem('ttplus_obs_was_connected'); } catch {}
       try { ws.close(); } catch {}
     }, 15000);
 
@@ -1673,7 +2240,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         }
       }
     };
-    ws.onerror = () => { clearTimeout(scanTimeout); setObsScanStatus('❌ Scan ล้มเหลว'); };
+    ws.onerror = () => {
+      clearTimeout(scanTimeout);
+      setObsScanStatus('❌ Scan ล้มเหลว');
+      try { localStorage.removeItem('ttplus_obs_was_connected'); } catch {}
+    };
   }, [obsHost, obsPort]);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -1692,13 +2263,43 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
   // ── ฟังเสียงทดสอบ TTS ใน Browser (default OFF) ──
   const [audioEnabled, setAudioEnabled] = useState(false);
+  // ref เพื่อให้ socket handler อ่านค่าล่าสุดได้เสมอ (ไม่ติด stale closure)
+  const audioEnabledRef = useRef(false);
+  useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
+
+  // ── Active action indicator — track ว่า action ไหนกำลัง fire audio/TTS อยู่ ──
+  const [activeActionIds, setActiveActionIds] = useState(new Set());
+  // ใช้ window CustomEvent เป็น bus เพื่อหลีกเลี่ยง stale closure ใน socket handler
+  useEffect(() => {
+    const timers = {};
+    const handler = (e) => {
+      const { actionId, duration } = e.detail || {};
+      if (!actionId) return;
+      setActiveActionIds(prev => new Set([...prev, actionId]));
+      clearTimeout(timers[actionId]);
+      timers[actionId] = setTimeout(() => {
+        setActiveActionIds(prev => { const s = new Set(prev); s.delete(actionId); return s; });
+      }, duration || 7000);
+    };
+    window.addEventListener('ttplus-action-active', handler);
+    return () => {
+      window.removeEventListener('ttplus-action-active', handler);
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, []);
 
   // ── Widget CID (numeric ID สำหรับ Overlay URLs) ──
   const [widgetCid, setWidgetCid] = useState('');
 
+  // ── Overlay Queue sizes (per screen) ──
+  const [maxQueueSizes, setMaxQueueSizes] = useState([10, 10]);
+
   // ── Inline name editing ──
-  const [inlineEdit, setInlineEdit] = useState(null); // { id, name } | null
+  const [inlineEdit,    setInlineEdit]    = useState(null); // { id, name } | null
+  const [inlineDurId,   setInlineDurId]   = useState(null); // id ของ action ที่กำลังแก้ dur
+  const [inlineDurVal,  setInlineDurVal]  = useState('');   // ค่าที่พิมพ์ใน input
   const inlineInputRef = useRef(null);
+  const inlineDurRef   = useRef(null);
 
   // ── Load data ──
   const loadData = useCallback(async () => {
@@ -1727,8 +2328,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         setSystemEnabled(srv.actionsEnabled);
         try { localStorage.setItem('ttplus_actions_system', srv.actionsEnabled ? '1' : '0'); } catch {}
       }
-      // Auto-scan OBS source map ทันทีหลังโหลด settings
-      scanObsSources(h, p);
+      // Auto-scan เฉพาะเมื่อเคย connect OBS สำเร็จมาก่อน
+      // ถ้า OBS ไม่ได้รันแล้ว flag จะถูกลบใน onerror → ครั้งหน้าไม่ auto-scan อีก
+      if (localStorage.getItem('ttplus_obs_was_connected') === '1') {
+        scanObsSources(h, p);
+      }
     } catch (err) {
       toast.error('โหลดข้อมูลไม่ได้');
     } finally {
@@ -1865,7 +2469,22 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           .replace(/\{username\}/gi, 'ทดสอบ')
           .replace(/\{giftname\}/gi, 'Rose')
           .replace(/\{coins\}/gi, '100');
+        // enabled: true เพราะ audioEnabled คือ gate ของ actions page อยู่แล้ว
+        configureTTS({ enabled: true, volume: Math.min(1, (a.volume ?? 100) / 100) });
         speak(text);
+      }
+
+      // Audio indicator (manual fire)
+      const hasAudioType = a.types?.some(t => ['read_tts','play_audio'].includes(t));
+      if (audioEnabled && hasAudioType) {
+        const dur = ((a.displayDuration ?? 5) + 2) * 1000;
+        window.dispatchEvent(new CustomEvent('ttplus-audio-tab', {
+          detail: { tab: 'actions', active: true, duration: dur },
+        }));
+        // per-action indicator
+        window.dispatchEvent(new CustomEvent('ttplus-action-active', {
+          detail: { actionId: a.id, duration: dur },
+        }));
       }
 
       // 4) OBS commands — ผ่าน queue (ไม่ยิงตรง)
@@ -1947,6 +2566,19 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   }, [actions]);
 
   // ── Inline name save ──
+  // patch field เดียว — optimistic update + rollback ถ้า error
+  const patchAction = useCallback(async (id, patch) => {
+    const prev = actions.find(a => a.id === id);
+    if (!prev) return;
+    setActions(all => all.map(a => a.id === id ? { ...a, ...patch } : a));
+    try {
+      await api.put(`/api/actions/${id}`, { ...prev, ...patch });
+    } catch (err) {
+      setActions(all => all.map(a => a.id === id ? { ...a, ...prev } : a));
+      toast.error('บันทึกไม่สำเร็จ: ' + (err.response?.data?.error || err.message));
+    }
+  }, [actions]);
+
   const saveInlineName = useCallback(async (id, newName) => {
     const trimmed = newName.trim();
     setInlineEdit(null);
@@ -2144,6 +2776,32 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     const handleObsAction = (action) => {
       const hasObsType = action.types?.includes('switch_obs_scene') ||
                          action.types?.includes('activate_obs_source');
+      const hasTts     = action.types?.includes('read_tts') && !!action.ttsText;
+      const hasAudio   = action.types?.includes('play_audio') && !!action.audioUrl;
+
+      // ── TTS: เล่นใน browser ของ user โดยตรง (ได้ยินผ่านลำโพง) ──
+      // ทำงานแม้ tab ไม่ active — browser ยังรัน speechSynthesis/AudioContext ใน background ได้
+      if (hasTts && audioEnabledRef.current) {
+        const vol = Math.min(1, Math.max(0, (action.volume ?? 100) / 100));
+        // enabled: true — audioEnabledRef คือ gate แล้ว ไม่ต้องให้ _cfg.enabled block
+        configureTTS({ enabled: true, volume: vol });
+        speak(action.ttsText);
+      }
+
+      // ── Audio indicator: แจ้ง Sidebar ว่า Actions tab กำลังมีเสียง ──
+      if ((hasTts || hasAudio) && audioEnabledRef.current) {
+        const dur = ((action.displayDuration ?? 5) + 2) * 1000; // +2s buffer
+        window.dispatchEvent(new CustomEvent('ttplus-audio-tab', {
+          detail: { tab: 'actions', active: true, duration: dur },
+        }));
+        // per-action indicator
+        if (action.actionId) {
+          window.dispatchEvent(new CustomEvent('ttplus-action-active', {
+            detail: { actionId: action.actionId, duration: dur },
+          }));
+        }
+      }
+
       if (!hasObsType) return;
       enqueue(action);
     };
@@ -2287,21 +2945,23 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
     toast.success(`⬇ Export Actions เรียบร้อย (${actions.length} actions, ${events.length} events)`);
   }, [actions, events]);
 
-  // ── Overlay URLs — ใช้ ?cid= (ถ้าได้ widgetCid) หรือ fallback ?vjId= ──
+  // ── Overlay URLs — widget อยู่บน frontend domain เดียวกัน ใช้ window.location.origin
   const vjId = user?.uid || '';
-  const baseWidgetUrl = BACKEND.replace('api.', '');
-  const overlayUrls = [1, 2].map(s =>
-    widgetCid
+  const baseWidgetUrl = typeof window !== 'undefined' ? window.location.origin : `https://ttsam.app`;
+  const overlayUrls = [1, 2].map((s, i) => {
+    const base = widgetCid
       ? `${baseWidgetUrl}/widget/myactions?cid=${widgetCid}&screen=${s}`
-      : `${baseWidgetUrl}/widget/myactions?vjId=${vjId}&screen=${s}`
-  );
+      : `${baseWidgetUrl}/widget/myactions?vjId=${vjId}&screen=${s}`;
+    const mq = maxQueueSizes[i] ?? 10;
+    return mq !== 10 ? `${base}&maxq=${mq}` : base;
+  });
 
   // ── Render ──
   const requireLogin = !authLoading && !user;
 
   return (
     <div
-      className={clsx('flex overflow-hidden', theme === 'dark' ? 'bg-[#111520] text-slate-200' : 'bg-white text-gray-900')}
+      className="flex overflow-hidden bg-[#fafaf9] dark:bg-[#111520] text-gray-800 dark:text-slate-200"
       style={{ height: 'calc(100vh - 26px)' }}
     >
       <Sidebar
@@ -2319,8 +2979,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-100">⚡ Actions and Events</h1>
-            <p className="text-xs text-slate-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-yellow-500/70">ข้อมูลของขวัญยังไม่ครบในช่วงแรก — ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-slate-100">⚡ Actions and Events</h1>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">ตั้งค่า Actions &amp; Events สำหรับ TikTok Live · <span className="text-orange-600 dark:text-yellow-500/70">ข้อมูลของขวัญยังไม่ครบในช่วงแรก — ใช้ "ส่งของขวัญ ≥ X coins" แทนการระบุชื่อของขวัญเฉพาะ เพื่อรองรับทุก gift</span></p>
           </div>
           <div className="flex items-center gap-2">
             {/* Export / Import Backup */}
@@ -2328,14 +2988,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
               <button
                 onClick={() => importRef.current?.click()}
                 title="Import Actions & Events จากไฟล์ Backup"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-[#ededeb] dark:bg-slate-800/80 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 hover:bg-[#e5e5e3] dark:hover:bg-slate-700/80"
               >
                 ⬆ Import
               </button>
               <button
                 onClick={handleExport}
                 title="Export Actions & Events เป็นไฟล์ Backup"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition bg-[#ededeb] dark:bg-slate-800/80 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 hover:bg-[#e5e5e3] dark:hover:bg-slate-700/80"
               >
                 ⬇ Export
               </button>
@@ -2352,7 +3012,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition',
                 audioEnabled
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                  : 'bg-slate-800/80 text-slate-500 hover:text-slate-400'
+                  : 'bg-[#ededeb] dark:bg-slate-800/80 text-gray-400 dark:text-slate-500 hover:text-gray-500 dark:text-slate-400'
               )}
             >
               {audioEnabled ? '🔊' : '🔇'}
@@ -2381,11 +3041,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 'w-2 h-2 rounded-full shrink-0 transition-colors',
                 systemEnabled ? 'bg-green-400 shadow-[0_0_5px_#4ade80]' : 'bg-red-500'
               )} />
-              <p className={clsx('text-sm font-semibold', systemEnabled ? 'text-green-300' : 'text-red-400')}>
+              <p className={clsx('text-sm font-semibold', systemEnabled ? 'text-green-700 dark:text-green-300' : 'text-red-400')}>
                 {systemEnabled ? 'ระบบ Actions — เปิดอยู่' : 'ระบบ Actions — ปิดอยู่'}
               </p>
-              <span className="hidden sm:inline text-slate-500 text-xs">·</span>
-              <span className="hidden sm:inline text-slate-400 text-xs">
+              <span className="hidden sm:inline text-gray-400 dark:text-slate-500 text-xs">·</span>
+              <span className="hidden sm:inline text-gray-500 dark:text-slate-400 text-xs">
                 {systemEnabled ? 'Events trigger Actions ตามปกติ' : 'หยุด fire ทุก Action แล้ว — กด "เปิด" เพื่อเริ่มใหม่'}
               </span>
             </div>
@@ -2402,7 +3062,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
               )}>
               <div className={clsx(
                 'w-7 h-3.5 rounded-full flex items-center transition-colors px-0.5',
-                systemEnabled ? 'bg-green-500' : 'bg-slate-700'
+                systemEnabled ? 'bg-green-500' : 'bg-gray-200 dark:bg-slate-700'
               )}>
                 <div className={clsx(
                   'w-2.5 h-2.5 rounded-full bg-white transition-transform',
@@ -2415,7 +3075,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         )}
 
         {/* Tabs — scroll แนวนอนบนมือถือ */}
-        <div className="flex gap-1 mb-5 bg-[#1a1f30] p-1 rounded-xl overflow-x-auto scrollbar-none">
+        <div className="flex gap-1 mb-5 bg-[#efefed] dark:bg-[#1a1f30] p-1 rounded-xl overflow-x-auto scrollbar-none">
           {[
             { id: 'actions', label: '⚡ Actions', connected: socketConnected,             showGreen: false },
             { id: 'events',  label: '🔗 Events',  connected: socketConnected,             showGreen: false },
@@ -2425,7 +3085,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             <button key={t.id} onClick={() => setTab(t.id)}
               className={clsx(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0',
-                tab === t.id ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-slate-100',
+                tab === t.id ? 'bg-brand-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-100',
                 // กรอบบอกสถานะการเชื่อมต่อ
                 t.connected && t.showGreen  ? 'ring-2 ring-green-500' :
                 !t.connected                ? 'ring-2 ring-red-500 animate-pulse' :
@@ -2437,7 +3097,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         </div>
 
         {loading && (
-          <div className="flex items-center gap-2 py-8 justify-center text-slate-500 text-sm">
+          <div className="flex items-center gap-2 py-8 justify-center text-gray-400 dark:text-slate-500 text-sm">
             <span className="animate-spin">⏳</span> กำลังโหลด...
           </div>
         )}
@@ -2455,17 +3115,17 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                   'flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg font-medium transition-colors',
                   systemEnabled
                     ? 'bg-brand-600 hover:bg-brand-500 text-white'
-                    : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                    : 'bg-slate-800 text-gray-400 dark:text-slate-600 cursor-not-allowed'
                 )}>
                 + สร้าง Action
               </button>
             </div>
 
             {actions.length === 0 && !loading && (
-              <div className="text-center py-14 text-slate-600 border border-dashed border-slate-700/40 rounded-xl">
+              <div className="text-center py-14 text-gray-400 dark:text-slate-600 border border-dashed border-gray-300 dark:border-slate-700/40 rounded-xl">
                 <p className="text-4xl mb-3">⚡</p>
-                <p className="text-sm font-medium text-slate-500">ยังไม่มี Actions</p>
-                <p className="text-xs text-slate-600 mt-1">กดปุ่ม "+ สร้าง" เพื่อเริ่ม</p>
+                <p className="text-sm font-medium text-gray-400 dark:text-slate-500">ยังไม่มี Actions</p>
+                <p className="text-xs text-gray-400 dark:text-slate-600 mt-1">กดปุ่ม "+ สร้าง" เพื่อเริ่ม</p>
               </div>
             )}
 
@@ -2485,15 +3145,15 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                     const cellBase = 'flex items-center overflow-hidden px-2';
                     return (
                     <div className="overflow-x-auto">
-                    <div className="rounded-xl border border-[#252d42]" style={{ minWidth: colWidths.reduce((s,w) => s+w, 0) + 'px' }}>
+                    <div className="rounded-xl border border-gray-200 dark:border-[#252d42]" style={{ minWidth: colWidths.reduce((s,w) => s+w, 0) + 'px' }}>
 
                       {/* ── Header row ── */}
                       <div
-                        className="grid border-b border-[#2a3347] bg-[#131825] sticky top-0 z-10"
+                        className="grid border-b border-gray-200 dark:border-[#2a3347] bg-[#ededeb] dark:bg-[#131825] sticky top-0 z-10"
                         style={{ gridTemplateColumns: gridTemplate }}>
                         {COL_DEFS.map((col, ci) => (
                           <div key={col.id} className="relative flex items-center select-none">
-                            <span className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate flex-1">
+                            <span className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 truncate flex-1">
                               {col.label}
                             </span>
                             {/* drag handle — ไม่แสดงที่คอลัมน์สุดท้าย */}
@@ -2502,7 +3162,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                                 onMouseDown={(e) => startColResize(e, ci)}
                                 className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center cursor-col-resize group z-20"
                                 title="ลากเพื่อปรับความกว้าง">
-                                <div className="w-px h-4 bg-[#2a3347] group-hover:bg-brand-500 transition-colors" />
+                                <div className="w-px h-4 bg-gray-300 dark:bg-[#2a3347] group-hover:bg-brand-500 transition-colors" />
                               </div>
                             )}
                           </div>
@@ -2515,15 +3175,20 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                         const isConfirmDel = confirmDelete?.id === a.id && confirmDelete?.type === 'action';
                         const descParts    = actionDescParts(a);
                         const isOdd        = idx % 2 === 1;
+                        const isAudioActive = activeActionIds.has(a.id);
                         return (
                           <div
                             key={a.id}
                             className={clsx(
-                              'grid border-b border-[#1e2638]/70 last:border-b-0 transition-colors',
-                              isOdd ? 'bg-[#1a1f30]' : 'bg-[#161b28]',
-                              !a.enabled && 'opacity-50'
+                              'grid border-b border-gray-200/70 dark:border-[#1e2638]/70 last:border-b-0 transition-all duration-300',
+                              isOdd ? 'bg-white dark:bg-[#1a1f30]' : 'bg-[#f4f4f3] dark:bg-[#161b28]',
+                              !a.enabled && 'opacity-50',
+                              isAudioActive && 'bg-amber-50/60 dark:bg-amber-950/20'
                             )}
-                            style={{ gridTemplateColumns: gridTemplate }}>
+                            style={{
+                              gridTemplateColumns: gridTemplate,
+                              borderLeft: isAudioActive ? '3px solid #f59e0b' : '3px solid transparent',
+                            }}>
 
                             {/* col: toggle */}
                             <div className={clsx(cellBase, 'justify-center')}>
@@ -2533,15 +3198,52 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                                 title={a.enabled ? 'ปิด Action นี้' : 'เปิด Action นี้'}
                                 className={clsx(
                                   'shrink-0 w-9 h-5 rounded-full transition-colors flex items-center px-0.5',
-                                  disabled ? 'cursor-not-allowed opacity-30 bg-slate-700' :
-                                  a.enabled ? 'bg-green-600' : 'bg-slate-700'
+                                  disabled ? 'cursor-not-allowed opacity-30 bg-gray-200 dark:bg-slate-700' :
+                                  a.enabled ? 'bg-green-600' : 'bg-gray-200 dark:bg-slate-700'
                                 )}>
                                 <div className={clsx('w-4 h-4 rounded-full bg-white transition-transform shadow-sm', a.enabled ? 'translate-x-4' : 'translate-x-0')} />
                               </button>
                             </div>
 
+                            {/* col: fire + edit buttons */}
+                            <div className={clsx(cellBase, 'justify-center gap-1')}>
+                              <button
+                                onClick={() => !disabled && firePreview(a)}
+                                disabled={disabled}
+                                title="ยิง Action ทันที (Overlay + เสียง + OBS)"
+                                className={clsx(
+                                  'text-xs px-2.5 py-1.5 rounded border font-bold transition-colors whitespace-nowrap',
+                                  disabled ? 'opacity-25 cursor-not-allowed border-gray-200 dark:border-slate-800 text-gray-400 dark:text-slate-600' :
+                                  'border-brand-700/60 text-brand-400 hover:bg-brand-900/40 hover:border-brand-600'
+                                )}>▶</button>
+                              <button
+                                onClick={() => !disabled && setActionModal({ data: { ...a } })}
+                                disabled={disabled}
+                                title="แก้ไข Action"
+                                className={clsx(
+                                  'text-xs px-2.5 py-1.5 rounded border transition-colors whitespace-nowrap',
+                                  disabled ? 'opacity-25 cursor-not-allowed border-gray-200 dark:border-slate-800 text-gray-400 dark:text-slate-600' :
+                                  'border-gray-400 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:border-gray-600 dark:hover:border-slate-400'
+                                )}>✎</button>
+                            </div>
+
                             {/* col: name — คลิกเพื่อแก้ไขชื่อ inline */}
-                            <div className={clsx(cellBase, 'py-2')}>
+                            <div className={clsx(cellBase, 'py-2 gap-2')}>
+                              {/* pulsing dot เมื่อ action กำลัง fire audio/TTS */}
+                              {isAudioActive && (
+                                <span
+                                  title="กำลังเล่นเสียง/TTS"
+                                  style={{
+                                    flexShrink: 0,
+                                    display: 'inline-block',
+                                    width: 8, height: 8,
+                                    borderRadius: '50%',
+                                    background: '#f59e0b',
+                                    boxShadow: '0 0 6px #f59e0b',
+                                    animation: 'ttplus-pulse 1s ease-in-out infinite',
+                                  }}
+                                />
+                              )}
                               {inlineEdit?.id === a.id ? (
                                 <input
                                   ref={inlineInputRef}
@@ -2553,38 +3255,82 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                                     if (e.key === 'Enter') { e.target.blur(); }
                                     if (e.key === 'Escape') { setInlineEdit(null); }
                                   }}
-                                  className="w-full bg-[#0d1120] border border-brand-600 rounded px-2 py-0.5 text-[15px] font-semibold text-slate-100 outline-none focus:ring-1 focus:ring-brand-500"
+                                  className="w-full bg-gray-200 dark:bg-[#0d1120] border border-brand-600 rounded px-2 py-0.5 text-[15px] font-semibold text-gray-800 dark:text-slate-100 outline-none focus:ring-1 focus:ring-brand-500"
                                 />
                               ) : (
                                 <span
                                   onClick={() => !disabled && setInlineEdit({ id: a.id, name: a.name })}
                                   title="คลิกเพื่อแก้ไขชื่อ"
                                   className={clsx(
-                                    'text-[15px] font-semibold text-slate-100 leading-snug truncate',
-                                    !disabled && 'cursor-text hover:text-white hover:underline decoration-dotted decoration-slate-500 underline-offset-2'
+                                    'text-[15px] font-semibold text-gray-800 dark:text-slate-100 leading-snug truncate',
+                                    !disabled && 'cursor-text hover:text-gray-800 dark:hover:text-white hover:underline decoration-dotted decoration-slate-500 underline-offset-2'
                                   )}
                                 >{a.name}</span>
                               )}
                             </div>
 
-                            {/* col: scr */}
+                            {/* col: scr — คลิกสลับ 1↔2 */}
                             <div className={clsx(cellBase, 'justify-center')}>
-                              <span className="text-[12px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-900/60 border border-brand-700/60 text-brand-300 leading-none whitespace-nowrap">
+                              <button
+                                type="button"
+                                disabled={disabled}
+                                title="คลิกเพื่อสลับ Screen 1/2"
+                                onClick={() => !disabled && patchAction(a.id, { overlayScreen: (a.overlayScreen ?? 1) === 1 ? 2 : 1 })}
+                                className={clsx(
+                                  'text-[12px] font-mono font-bold px-1.5 py-0.5 rounded border leading-none whitespace-nowrap transition-colors',
+                                  disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:brightness-125 active:scale-95',
+                                  (a.overlayScreen ?? 1) === 1
+                                    ? 'bg-brand-900/60 border-brand-700/60 text-brand-300'
+                                    : 'bg-purple-900/60 border-purple-700/60 text-purple-300'
+                                )}>
                                 scr{a.overlayScreen ?? 1}
-                              </span>
+                              </button>
                             </div>
 
-                            {/* col: dur */}
+                            {/* col: dur — คลิกเพื่อพิมพ์วินาที */}
                             <div className={clsx(cellBase, 'justify-center')}>
-                              <span className="text-[12px] font-mono px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-800/50 text-amber-400 leading-none whitespace-nowrap">
-                                {a.displayDuration ?? 5}s
-                              </span>
+                              {inlineDurId === a.id ? (
+                                <input
+                                  ref={inlineDurRef}
+                                  autoFocus
+                                  type="number"
+                                  min="1"
+                                  max="3600"
+                                  value={inlineDurVal}
+                                  onChange={e => setInlineDurVal(e.target.value)}
+                                  onBlur={() => {
+                                    const n = parseInt(inlineDurVal, 10);
+                                    setInlineDurId(null);
+                                    if (!isNaN(n) && n >= 1 && n !== (a.displayDuration ?? 5)) {
+                                      patchAction(a.id, { displayDuration: n });
+                                    }
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') e.target.blur();
+                                    if (e.key === 'Escape') { setInlineDurId(null); }
+                                  }}
+                                  className="w-12 text-center text-[12px] font-mono bg-gray-200 dark:bg-[#0d1120] border border-amber-500 rounded px-1 py-0.5 text-amber-300 outline-none focus:ring-1 focus:ring-amber-500"
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={disabled}
+                                  title="คลิกเพื่อแก้ไขระยะเวลา"
+                                  onClick={() => { if (!disabled) { setInlineDurId(a.id); setInlineDurVal(String(a.displayDuration ?? 5)); } }}
+                                  className={clsx(
+                                    'text-[12px] font-mono px-1.5 py-0.5 rounded border leading-none whitespace-nowrap transition-colors',
+                                    disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:brightness-125 active:scale-95',
+                                    'bg-amber-950/50 border-amber-800/50 text-amber-400'
+                                  )}>
+                                  {a.displayDuration ?? 5}s
+                                </button>
+                              )}
                             </div>
 
                             {/* col: types */}
                             <div className={clsx(cellBase, 'gap-0.5 flex-wrap py-1')}>
                               {typeIcons.map(t => (
-                                <span key={t.id} className="text-[15px] text-slate-400 leading-none" title={t.label}>{t.icon}</span>
+                                <span key={t.id} className="text-[15px] text-gray-500 dark:text-slate-400 leading-none" title={t.label}>{t.icon}</span>
                               ))}
                             </div>
 
@@ -2595,33 +3341,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
                             {/* col: buttons */}
                             <div className={clsx(cellBase, 'justify-end gap-1.5 pr-3 py-1.5')}>
-                              {/* ▶ Fire */}
-                              <button
-                                onClick={() => !disabled && firePreview(a)}
-                                disabled={disabled}
-                                title="ยิง Action ทันที (Overlay + เสียง + OBS)"
-                                className={clsx(
-                                  'text-xs px-2.5 py-1.5 rounded border font-bold transition-colors whitespace-nowrap',
-                                  disabled ? 'opacity-25 cursor-not-allowed border-slate-800 text-slate-600' :
-                                  'border-brand-700/60 text-brand-400 hover:bg-brand-900/40 hover:border-brand-600'
-                                )}>▶</button>
                               {/* ⧉ Duplicate */}
                               <button
                                 onClick={() => duplicateAction(a)}
                                 title="Duplicate — สร้าง Action ใหม่จากอันนี้"
-                                className="text-xs px-2.5 py-1.5 rounded border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-400 transition-colors whitespace-nowrap">
+                                className="text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-100 hover:border-slate-400 transition-colors whitespace-nowrap">
                                 ⧉
                               </button>
-                              {/* ✎ Edit */}
-                              <button
-                                onClick={() => !disabled && setActionModal({ data: { ...a } })}
-                                disabled={disabled}
-                                title="แก้ไข"
-                                className={clsx(
-                                  'text-xs px-2.5 py-1.5 rounded border transition-colors whitespace-nowrap',
-                                  disabled ? 'opacity-25 cursor-not-allowed border-slate-800 text-slate-600' :
-                                  'border-slate-600 text-slate-400 hover:text-white hover:border-slate-400'
-                                )}>✎</button>
                               {/* ✕ Delete */}
                               <button
                                 onClick={() => !disabled && deleteAction(a.id)}
@@ -2629,9 +3355,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                                 title="ลบ"
                                 className={clsx(
                                   'text-xs px-2.5 py-1.5 rounded border transition-colors whitespace-nowrap',
-                                  disabled ? 'opacity-25 cursor-not-allowed border-slate-800 text-slate-600' :
+                                  disabled ? 'opacity-25 cursor-not-allowed border-gray-200 dark:border-slate-800 text-gray-400 dark:text-slate-600' :
                                   isConfirmDel ? 'bg-red-600 border-red-600 text-white animate-pulse' :
-                                  'border-slate-700 text-red-500 hover:border-red-700 hover:bg-red-950/30'
+                                  'border-gray-300 dark:border-slate-700 text-red-500 hover:border-red-700 hover:bg-red-950/30'
                                 )}>
                                 {isConfirmDel ? '?' : '✕'}
                               </button>
@@ -2648,10 +3374,10 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
                   {/* ── Pagination — bottom ── */}
                   {actions.length > 0 && (
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 pt-1">
+                    <div className="flex items-center justify-between gap-2 text-xs text-gray-400 dark:text-slate-500 pt-1">
                       {/* Page size selector */}
                       <div className="flex items-center gap-1">
-                        <span className="text-slate-600">แสดง:</span>
+                        <span className="text-gray-400 dark:text-slate-600">แสดง:</span>
                         {PAGE_SIZE_OPTIONS.map(s => (
                           <button key={s}
                             onClick={() => { setPageSize(s); setActionPage(0); }}
@@ -2659,7 +3385,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                               'px-2 py-0.5 rounded border transition-colors',
                               pageSize === s
                                 ? 'border-brand-600 bg-brand-900/40 text-brand-300'
-                                : 'border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500'
+                                : 'border-gray-300 dark:border-slate-700 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:text-slate-300 hover:border-slate-500'
                             )}>
                             {s === 0 ? `ทั้งหมด${actions.length > 500 ? ' ⚠️' : ''}` : s}
                           </button>
@@ -2692,13 +3418,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                             {/* ‹ */}
                             <button onClick={() => setActionPage(p => Math.max(0, p - 1))}
                               disabled={safePage === 0}
-                              className="px-2 py-0.5 rounded border border-slate-700 text-slate-400 disabled:opacity-30 hover:text-white hover:border-slate-500 transition-colors">
+                              className="px-2 py-0.5 rounded border border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 disabled:opacity-30 hover:text-gray-800 dark:hover:text-white hover:border-gray-500 dark:hover:border-slate-500 transition-colors">
                               ‹
                             </button>
                             {/* Page numbers */}
                             {withEllipsis.map((p, i) =>
                               p === null ? (
-                                <span key={`e${i}`} className="px-1 text-slate-600 select-none">…</span>
+                                <span key={`e${i}`} className="px-1 text-gray-400 dark:text-slate-600 select-none">…</span>
                               ) : (
                                 <button key={p}
                                   onClick={() => setActionPage(p)}
@@ -2706,7 +3432,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                                     'min-w-[28px] px-1.5 py-0.5 rounded border font-medium transition-colors',
                                     p === safePage
                                       ? 'border-brand-600 bg-brand-900/50 text-brand-300'
-                                      : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                                      : 'border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:border-gray-500 dark:hover:border-slate-500'
                                   )}>
                                   {p + 1}
                                 </button>
@@ -2715,10 +3441,10 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                             {/* › */}
                             <button onClick={() => setActionPage(p => Math.min(totalPages - 1, p + 1))}
                               disabled={safePage >= totalPages - 1}
-                              className="px-2 py-0.5 rounded border border-slate-700 text-slate-400 disabled:opacity-30 hover:text-white hover:border-slate-500 transition-colors">
+                              className="px-2 py-0.5 rounded border border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 disabled:opacity-30 hover:text-gray-800 dark:hover:text-white hover:border-gray-500 dark:hover:border-slate-500 transition-colors">
                               ›
                             </button>
-                            <span className="ml-1 text-slate-600">{actions.length} รายการ</span>
+                            <span className="ml-1 text-gray-400 dark:text-slate-600">{actions.length} รายการ</span>
                           </div>
                         );
                       })()}
@@ -2763,7 +3489,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                           'px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
                           simType === t.id
                             ? 'bg-violet-700/60 border-violet-500 text-violet-200'
-                            : 'bg-[#1a1f30] border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                            : 'bg-white dark:bg-[#1a1f30] border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:text-slate-200 hover:border-slate-500'
                         )}>
                         {t.label}
                       </button>
@@ -2794,8 +3520,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                       <div className="relative flex-1">
                         <input type="number" min={1} value={simCoins} onChange={e => setSimCoins(Math.max(1, parseInt(e.target.value) || 1))}
                           placeholder="จำนวนเหรียญ"
-                          className="w-full bg-[#1a1f30] border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 pr-9 outline-none focus:border-violet-500 transition" />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">💎</span>
+                          className="w-full bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-slate-700 text-gray-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 pr-9 outline-none focus:border-violet-500 transition" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-slate-500">💎</span>
                       </div>
                       <button onClick={() => simulateEvent()} disabled={simulating}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition disabled:opacity-50 shrink-0">
@@ -2809,17 +3535,17 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                         <div className="relative w-40">
                           <input type="number" min={1} value={simLikes} onChange={e => setSimLikes(Math.max(1, parseInt(e.target.value) || 1))}
                             placeholder="จำนวน Like"
-                            className="w-full bg-[#1a1f30] border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition" />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">likes</span>
+                            className="w-full bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-slate-700 text-gray-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition" />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-slate-500">likes</span>
                         </div>
                       )}
                       {simType === 'chat' && (
                         <input value={simComment} onChange={e => setSimComment(e.target.value)}
                           placeholder="พิมพ์ข้อความ เช่น !สุ่ม หรือ สวัสดี"
-                          className="flex-1 bg-[#1a1f30] border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition" />
+                          className="flex-1 bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-slate-700 text-gray-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition" />
                       )}
                       {['follow','share','join'].includes(simType) && (
-                        <span className="flex-1 text-sm text-slate-500 py-2">
+                        <span className="flex-1 text-sm text-gray-400 dark:text-slate-500 py-2">
                           {simType === 'follow' ? 'ผู้ใช้ "ทดสอบ" กด Follow' : simType === 'share' ? 'ผู้ใช้ "ทดสอบ" กด Share' : 'ผู้ใช้ "ทดสอบ" เข้า Live'}
                         </span>
                       )}
@@ -2836,7 +3562,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                       'rounded-lg border p-3 text-xs',
                       simResult.matched?.length
                         ? 'border-green-700/50 bg-green-950/30'
-                        : 'border-slate-700/50 bg-[#1a1f30]'
+                        : 'border-gray-300 dark:border-slate-700/50 bg-white dark:bg-[#1a1f30]'
                     )}>
                       {simResult.matched?.length ? (<>
                         <p className="font-semibold text-green-400 mb-2">
@@ -2845,9 +3571,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                         <div className="space-y-2">
                           {simResult.matched.map((m, i) => (
                             <div key={i} className="border-l-2 border-green-700/60 pl-2">
-                              <span className="text-slate-400">Event </span>
-                              <span className="text-green-300 font-mono text-[10px]">{m.trigger}</span>
-                              <span className="text-slate-500"> →</span>
+                              <span className="text-gray-500 dark:text-slate-400">Event </span>
+                              <span className="text-green-700 dark:text-green-300 font-mono text-[10px]">{m.trigger}</span>
+                              <span className="text-gray-400 dark:text-slate-500"> →</span>
                               {m.actions.map(a => (
                                 <span key={a.id} className="ml-1.5 px-1.5 py-0.5 rounded bg-brand-900/60 border border-brand-700/40 text-brand-300">{a.name}</span>
                               ))}
@@ -2860,7 +3586,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                           ))}
                         </div>
                       </>) : (
-                        <p className="text-slate-500">
+                        <p className="text-gray-400 dark:text-slate-500">
                           🔍 ไม่มี Event ที่ match —{' '}
                           {simResult.type === 'gift'
                             ? (simResult.payload?.giftName
@@ -2881,7 +3607,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {tab === 'events' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-400 leading-snug">
+              <p className="text-sm text-gray-500 dark:text-slate-400 leading-snug">
                 Events คือตัว trigger ที่จะเรียก Actions เมื่อเกิดเหตุการณ์ใน Live
               </p>
               <button onClick={() => setEventModal({ data: null })}
@@ -2891,10 +3617,10 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             </div>
 
             {events.length === 0 && !loading && (
-              <div className="text-center py-14 text-slate-600 border border-dashed border-slate-700/40 rounded-xl">
+              <div className="text-center py-14 text-gray-400 dark:text-slate-600 border border-dashed border-gray-300 dark:border-slate-700/40 rounded-xl">
                 <p className="text-4xl mb-3">🔗</p>
-                <p className="text-sm font-medium text-slate-500">ยังไม่มี Events</p>
-                <p className="text-xs text-slate-600 mt-1">กดปุ่ม "+ สร้าง Event" เพื่อเริ่ม</p>
+                <p className="text-sm font-medium text-gray-400 dark:text-slate-500">ยังไม่มี Events</p>
+                <p className="text-xs text-gray-400 dark:text-slate-600 mt-1">กดปุ่ม "+ สร้าง Event" เพื่อเริ่ม</p>
               </div>
             )}
 
@@ -2913,7 +3639,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                         ? <img src={gInfo.pictureUrl} alt="" className="w-5 h-5 rounded object-cover shrink-0" onError={e => { e.target.style.display='none'; }} />
                         : <span className="shrink-0 text-base leading-none">🎁</span>
                       }
-                      <span className="font-semibold text-slate-100 truncate">{ev.specificGiftName || '?'}</span>
+                      <span className="font-semibold text-gray-800 dark:text-slate-100 truncate">{ev.specificGiftName || '?'}</span>
                     </span>
                   );
                 }
@@ -2950,14 +3676,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
               return (
                 <div className="overflow-x-auto">
-                  <div className="rounded-xl border border-[#252d42]" style={{ minWidth: minTotalW + 'px' }}>
+                  <div className="rounded-xl border border-gray-200 dark:border-[#252d42]" style={{ minWidth: minTotalW + 'px' }}>
 
                     {/* ── Header ── */}
-                    <div className="grid border-b border-[#2a3347] bg-[#131825] sticky top-0 z-10"
+                    <div className="grid border-b border-gray-200 dark:border-[#2a3347] bg-[#ededeb] dark:bg-[#131825] sticky top-0 z-10"
                       style={{ gridTemplateColumns: gridTemplate }}>
                       {EVT_COL_DEFS.map((col, ci) => (
                         <div key={col.id} className="relative flex items-center select-none">
-                          <span className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate flex-1">
+                          <span className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 truncate flex-1">
                             {col.label}
                           </span>
                           {ci < EVT_COL_DEFS.length - 1 && (
@@ -2965,7 +3691,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                               onMouseDown={(e) => startEvtColResize(e, ci)}
                               className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center cursor-col-resize group z-20"
                               title="ลากเพื่อปรับความกว้าง">
-                              <div className="w-px h-4 bg-[#2a3347] group-hover:bg-brand-500 transition-colors" />
+                              <div className="w-px h-4 bg-gray-300 dark:bg-[#2a3347] group-hover:bg-brand-500 transition-colors" />
                             </div>
                           )}
                         </div>
@@ -2984,8 +3710,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                         <div
                           key={ev.id}
                           className={clsx(
-                            'grid border-b border-[#1e2638]/70 last:border-b-0 transition-colors',
-                            isOdd ? 'bg-[#1a1f30]' : 'bg-[#161b28]',
+                            'grid border-b border-gray-200/70 dark:border-[#1e2638]/70 last:border-b-0 transition-colors',
+                            isOdd ? 'bg-white dark:bg-[#1a1f30]' : 'bg-[#f4f4f3] dark:bg-[#161b28]',
                             !ev.enabled && 'opacity-50'
                           )}
                           style={{ gridTemplateColumns: gridTemplate }}>
@@ -2996,7 +3722,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                               onClick={() => toggleEvent(ev)}
                               className={clsx(
                                 'shrink-0 w-9 h-5 rounded-full transition-colors flex items-center px-0.5',
-                                ev.enabled ? 'bg-green-600' : 'bg-slate-700'
+                                ev.enabled ? 'bg-green-600' : 'bg-gray-200 dark:bg-slate-700'
                               )}>
                               <div className={clsx('w-4 h-4 rounded-full bg-white transition-transform shadow-sm', ev.enabled ? 'translate-x-4' : 'translate-x-0')} />
                             </button>
@@ -3004,11 +3730,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
                           {/* col: condition / title */}
                           <div className={clsx(cellBase, 'py-2 gap-2 min-w-0')}>
-                            <span className="flex items-center gap-1.5 min-w-0 flex-1 text-sm font-semibold text-slate-100 leading-snug">
+                            <span className="flex items-center gap-1.5 min-w-0 flex-1 text-sm font-semibold text-gray-800 dark:text-slate-100 leading-snug">
                               {getEventTitle(ev)}
                             </span>
                             {typeTag && (
-                              <span className="shrink-0 text-[10px] bg-[#1e2638] text-brand-400 px-1.5 py-0.5 rounded border border-brand-800/40 font-mono whitespace-nowrap">
+                              <span className="shrink-0 text-[10px] bg-blue-50 dark:bg-[#1e2638] text-brand-400 px-1.5 py-0.5 rounded border border-brand-800/40 font-mono whitespace-nowrap">
                                 {typeTag}
                               </span>
                             )}
@@ -3016,7 +3742,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
                           {/* col: who */}
                           <div className={clsx(cellBase, 'py-1')}>
-                            <span className="text-xs text-slate-500 truncate">
+                            <span className="text-xs text-gray-400 dark:text-slate-500 truncate">
                               {ev.whoCanTrigger === 'specific_user'
                                 ? <span className="text-brand-400 font-medium">@{ev.specificUser || '?'}</span>
                                 : WHO_LIST.find(w => w.id === ev.whoCanTrigger)?.label || ev.whoCanTrigger
@@ -3047,14 +3773,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                             <button
                               onClick={() => setEventModal({ data: { ...ev } })}
                               title="แก้ไข"
-                              className="text-xs px-2.5 py-1.5 rounded border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition-colors">
+                              className="text-xs px-2.5 py-1.5 rounded border border-gray-400 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:border-gray-600 dark:hover:border-slate-400 transition-colors">
                               ✎
                             </button>
                             {/* duplicate */}
                             <button
                               onClick={() => duplicateEvent(ev)}
                               title="Duplicate"
-                              className="text-xs px-2.5 py-1.5 rounded border border-slate-700 text-slate-400 hover:text-violet-300 hover:border-violet-600 transition-colors">
+                              className="text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-violet-300 hover:border-violet-600 transition-colors">
                               ⧉
                             </button>
                             {/* delete */}
@@ -3065,7 +3791,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                                 'text-xs px-2.5 py-1.5 rounded border transition-colors',
                                 isConfirmDel
                                   ? 'bg-red-600 border-red-600 text-white animate-pulse'
-                                  : 'border-slate-700 text-red-500 hover:border-red-700 hover:bg-red-950/30'
+                                  : 'border-gray-300 dark:border-slate-700 text-red-500 hover:border-red-700 hover:bg-red-950/30'
                               )}>
                               {isConfirmDel ? '?' : '✕'}
                             </button>
@@ -3085,28 +3811,56 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* ── Tab: Overlay URL ── */}
         {tab === 'overlay' && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-gray-500 dark:text-slate-400">
               Copy URL ด้านล่างไปวางใน OBS Browser Source เพื่อให้ Actions แสดงบน stream
             </p>
+
+            {/* Queue info banner */}
+            <div className="bg-blue-950/40 border border-blue-800/50 rounded-lg px-4 py-3 text-xs text-blue-300 space-y-1">
+              <p className="font-medium text-blue-200 text-sm">🗂 ระบบคิว (Queue)</p>
+              <p>แต่ละ Screen มีคิวเป็นของตัวเอง — Actions ที่เข้ามาพร้อมกันจะเรียงเล่นทีละตัวตามลำดับ</p>
+              <p>ถ้าคิวเต็ม (เกิน Max Queue) Action ใหม่จะถูกข้ามทิ้งโดยอัตโนมัติ</p>
+            </div>
+
             {!user && <p className="text-yellow-500 text-sm">⚠️ Login ก่อนเพื่อดู URL</p>}
             {user && overlayUrls.map((url, i) => (
-              <div key={i} className="border border-[#252d42] rounded-lg p-4 space-y-2 bg-[#1a1f30]">
-                <p className="text-sm font-medium text-white">Screen {i + 1}</p>
-                <p className="text-xs text-slate-500">แนะนำ: Width 800, Height 600 ใน OBS</p>
+              <div key={i} className="border border-gray-200 dark:border-[#252d42] rounded-lg p-4 space-y-3 bg-white dark:bg-[#1a1f30]">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-white">Screen {i + 1}</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">แนะนำ: Width 800, Height 600 ใน OBS</p>
+                </div>
+
+                {/* Max Queue size */}
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">Max Queue:</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={maxQueueSizes[i]}
+                    onChange={e => {
+                      const val = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                      setMaxQueueSizes(prev => { const n = [...prev]; n[i] = val; return n; });
+                    }}
+                    className="w-20 bg-[#ededeb] dark:bg-[#111520] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1 text-xs text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-400 dark:text-slate-500">items (ถ้าคิวเต็มจะ drop Action ใหม่)</span>
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs text-brand-400 bg-[#111520] rounded px-2 py-1.5 break-all">{url}</code>
+                  <code className="flex-1 text-xs text-brand-400 bg-[#ededeb] dark:bg-[#111520] rounded px-2 py-1.5 break-all">{url}</code>
                   <button onClick={() => { navigator.clipboard.writeText(url); toast.success('Copy แล้ว!'); }}
-                    className="shrink-0 bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded">
+                    className="shrink-0 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded">
                     Copy
                   </button>
                 </div>
               </div>
             ))}
-            <div className="bg-[#1a1f30] border border-[#252d42] rounded-lg p-4 text-xs text-slate-500 space-y-1">
-              <p className="font-medium text-slate-400">วิธีใช้ใน OBS:</p>
+            <div className="bg-white dark:bg-[#1a1f30] border border-gray-200 dark:border-[#252d42] rounded-lg p-4 text-xs text-gray-400 dark:text-slate-500 space-y-1">
+              <p className="font-medium text-gray-500 dark:text-slate-400">วิธีใช้ใน OBS:</p>
               <p>1. Add Source → Browser</p>
               <p>2. วาง URL ด้านบน → ตั้ง Width: 800, Height: 600</p>
-              <p>3. Actions จะแสดงอัตโนมัติเมื่อมี Event trigger</p>
+              <p>3. Actions จะแสดงอัตโนมัติเมื่อมี Event trigger และเล่นต่อเนื่องตามลำดับคิว</p>
             </div>
           </div>
         )}
@@ -3114,11 +3868,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         {/* ── Tab: OBS Settings ── */}
         {tab === 'obs' && (
           <div className="space-y-4 max-w-md">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-gray-500 dark:text-slate-400">
               เชื่อมต่อ OBS WebSocket เพื่อให้ Actions สลับ Scene / เปิดปิด Source ได้
             </p>
-            <div className="bg-[#1a1f30] border border-[#252d42] rounded-lg p-4 text-xs text-slate-500 space-y-1">
-              <p className="font-medium text-slate-400 text-sm">วิธีเปิด OBS WebSocket:</p>
+            <div className="bg-white dark:bg-[#1a1f30] border border-gray-200 dark:border-[#252d42] rounded-lg p-4 text-xs text-gray-400 dark:text-slate-500 space-y-1">
+              <p className="font-medium text-gray-500 dark:text-slate-400 text-sm">วิธีเปิด OBS WebSocket:</p>
               <p>1. OBS → Tools → WebSocket Server Settings</p>
               <p>2. ✅ Enable WebSocket server</p>
               <p>3. ปิด Authentication ได้ (ไม่ต้องใส่ password)</p>
@@ -3138,7 +3892,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 obsStatus.includes('✅') ? 'bg-green-900/30 text-green-400' :
                 obsStatus.includes('❌') ? 'bg-red-900/30 text-red-400' :
                 obsStatus.includes('กำลัง') ? 'bg-yellow-900/30 text-yellow-400' :
-                'bg-slate-800 text-slate-500')}>
+                'bg-slate-800 text-gray-400 dark:text-slate-500')}>
               สถานะ: {obsStatus}
             </div>
 
@@ -3148,7 +3902,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 🔌 เชื่อมต่อ + Scan
               </button>
               <button onClick={saveObsSettings}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2 text-sm">
+                className="flex-1 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-white rounded-lg py-2 text-sm">
                 💾 บันทึก
               </button>
             </div>
@@ -3159,13 +3913,13 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                 <div className={clsx('flex-1 text-xs px-3 py-2 rounded-lg',
                   obsScanStatus.startsWith('✅') ? 'bg-green-900/20 text-green-400' :
                   obsScanStatus.startsWith('❌') ? 'bg-red-900/20 text-red-400' :
-                  'bg-slate-800/60 text-slate-400')}>
+                  'bg-slate-800/60 text-gray-500 dark:text-slate-400')}>
                   {obsScanStatus || `✅ ${Object.keys(obsSourceMap).length} source พร้อมใช้`}
                 </div>
                 <button
                   onClick={scanObsSources}
                   title="Scan Scene/Source ใหม่ (ถ้าเพิ่ม Scene หรือ Source ใน OBS)"
-                  className="text-xs px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:border-slate-400 transition-colors whitespace-nowrap">
+                  className="text-xs px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:border-gray-400 dark:hover:border-slate-400 transition-colors whitespace-nowrap">
                   🔄 Refresh
                 </button>
               </div>
@@ -3181,6 +3935,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           onClose={() => setActionModal(null)}
           obsHost={obsHost}
           obsPort={obsPort}
+          audioEnabled={audioEnabled}
         />
       )}
       {eventModal && (
@@ -3219,10 +3974,10 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       {/* Login Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-[#1a1f30] border border-[#252d42] rounded-xl p-6 w-80 space-y-4">
-            <h3 className="text-slate-100 font-bold">Login เพื่อใช้งาน</h3>
+          <div className="bg-white dark:bg-[#1a1f30] border border-gray-200 dark:border-[#252d42] rounded-xl p-6 w-80 space-y-4">
+            <h3 className="text-gray-800 dark:text-slate-100 font-bold">Login เพื่อใช้งาน</h3>
             <button onClick={handleGoogleLogin} disabled={loginLoading}
-              className="w-full bg-white text-gray-900 rounded-lg py-2 text-sm font-medium hover:bg-gray-100">
+              className="w-full bg-white text-gray-800 rounded-lg py-2 text-sm font-medium hover:bg-[#ededeb]">
               {loginLoading ? 'กำลัง Login...' : '🔑 Login ด้วย Google'}
             </button>
             <button onClick={() => setShowLoginModal(false)} className="w-full text-gray-500 text-sm">ยกเลิก</button>
@@ -3251,31 +4006,28 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         className="hidden md:flex flex-shrink-0 w-1.5 cursor-col-resize items-center justify-center group hover:bg-brand-600/30 transition-colors"
         title="ลากเพื่อปรับขนาด"
       >
-        <div className="w-px h-full bg-slate-700/60 group-hover:bg-brand-500/70 transition-colors" />
+        <div className="w-px h-full bg-gray-200 dark:bg-slate-700/60 group-hover:bg-brand-500/70 transition-colors" />
       </div>
 
       {/* ── Right panel: OBS Queue Monitor ── */}
       <div
-        className={clsx(
-          'hidden md:flex flex-col flex-shrink-0 overflow-hidden border-l',
-          theme === 'dark' ? 'border-slate-800 bg-[#0d1120]' : 'border-gray-200 bg-gray-50'
-        )}
+        className="hidden md:flex flex-col flex-shrink-0 overflow-hidden border-l border-gray-200 dark:border-slate-800 bg-[#f4f4f3] dark:bg-[#0d1120]"
         style={{ width: rightPanelWidth }}
       >
         {/* OBS Queue Monitor — เต็ม panel */}
         {user ? (
           <div className="flex flex-col h-full overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-700/40 bg-[#1a1f30] flex-shrink-0">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-300 dark:border-slate-700/40 bg-white dark:bg-[#1a1f30] flex-shrink-0">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm font-semibold text-slate-200 whitespace-nowrap">🎬 OBS Queue Monitor</span>
+                <span className="text-sm font-semibold text-gray-800 dark:text-slate-200 whitespace-nowrap">🎬 OBS Queue Monitor</span>
                 {queueDisplay.length > 0 && (
                   <span className="text-[11px] font-mono bg-brand-900/60 border border-brand-700/50 text-brand-300 px-1.5 py-0.5 rounded whitespace-nowrap">
                     {queueDisplay.filter(i => !i.playing).length} รอ
                   </span>
                 )}
                 {queueDisplay.length === 0 && (
-                  <span className="text-[11px] text-slate-600">ว่าง</span>
+                  <span className="text-[11px] text-gray-400 dark:text-slate-600">ว่าง</span>
                 )}
               </div>
               {queueDisplay.length > 0 && (
@@ -3290,24 +4042,24 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             {/* Queue list */}
             <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
               {queueDisplay.length === 0 ? (
-                <div className="px-4 py-6 text-center text-xs text-slate-600">ไม่มี Action ในคิว</div>
+                <div className="px-4 py-6 text-center text-xs text-gray-400 dark:text-slate-600">ไม่มี Action ในคิว</div>
               ) : (
                 queueDisplay.map((item) => (
                   <div key={item.id} className={clsx(
                     'flex items-center justify-between gap-2 px-3 py-2 text-xs',
-                    item.playing ? 'bg-green-950/20 text-green-400' : 'text-slate-400 hover:bg-slate-800/30'
+                    item.playing ? 'bg-green-950/20 text-green-400' : 'text-gray-500 dark:text-slate-400 hover:bg-slate-800/30'
                   )}>
                     <div className="flex items-center gap-2 min-w-0">
                       {item.playing
                         ? <span className="shrink-0 animate-pulse">▶</span>
-                        : <span className="shrink-0 text-slate-600">◦</span>
+                        : <span className="shrink-0 text-gray-400 dark:text-slate-600">◦</span>
                       }
                       <span className="truncate font-medium">{item.name}</span>
                     </div>
                     {!item.playing && (
                       <button
                         onClick={() => skipQueueItem(item.key, item.idx)}
-                        className="shrink-0 text-slate-600 hover:text-red-400 transition-colors px-1">
+                        className="shrink-0 text-gray-400 dark:text-slate-600 hover:text-red-400 transition-colors px-1">
                         ✕
                       </button>
                     )}
@@ -3317,35 +4069,35 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
             </div>
 
             {/* Settings footer */}
-            <div className="flex flex-col gap-2.5 px-3 py-3 border-t border-slate-700/40 bg-[#1a1f30] flex-shrink-0">
-              <label className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="shrink-0 text-slate-500">⏱ Gap:</span>
+            <div className="flex flex-col gap-2.5 px-3 py-3 border-t border-gray-300 dark:border-slate-700/40 bg-white dark:bg-[#1a1f30] flex-shrink-0">
+              <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                <span className="shrink-0 text-gray-400 dark:text-slate-500">⏱ Gap:</span>
                 <input
                   type="number" min={0} max={5000} step={50} value={obsGap}
                   onChange={e => {
                     const v = Math.max(0, Math.min(5000, Number(e.target.value) || 0));
                     setObsGap(v); obsGapRef.current = v;
                   }}
-                  className="flex-1 min-w-0 bg-[#111520] border border-slate-700 rounded px-2 py-0.5 text-slate-200 text-xs text-right focus:outline-none focus:border-brand-500"
+                  className="flex-1 min-w-0 bg-[#ededeb] dark:bg-[#111520] border border-gray-300 dark:border-slate-700 rounded px-2 py-0.5 text-gray-800 dark:text-slate-200 text-xs text-right focus:outline-none focus:border-brand-500"
                 />
-                <span className="shrink-0 text-slate-600">ms</span>
+                <span className="shrink-0 text-gray-400 dark:text-slate-600">ms</span>
               </label>
-              <label className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="shrink-0 text-slate-500">🔢 Max:</span>
+              <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                <span className="shrink-0 text-gray-400 dark:text-slate-500">🔢 Max:</span>
                 <input
                   type="number" min={1} max={1000} step={1} value={obsMaxQueue}
                   onChange={e => {
                     const v = Math.max(1, Math.min(1000, Number(e.target.value) || 1));
                     setObsMaxQueue(v); obsMaxQueueRef.current = v;
                   }}
-                  className="flex-1 min-w-0 bg-[#111520] border border-slate-700 rounded px-2 py-0.5 text-slate-200 text-xs text-right focus:outline-none focus:border-brand-500"
+                  className="flex-1 min-w-0 bg-[#ededeb] dark:bg-[#111520] border border-gray-300 dark:border-slate-700 rounded px-2 py-0.5 text-gray-800 dark:text-slate-200 text-xs text-right focus:outline-none focus:border-brand-500"
                 />
-                <span className="shrink-0 text-slate-600">items</span>
+                <span className="shrink-0 text-gray-400 dark:text-slate-600">items</span>
               </label>
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-xs text-slate-600">
+          <div className="flex items-center justify-center h-full text-xs text-gray-400 dark:text-slate-600">
             Login เพื่อใช้งาน
           </div>
         )}

@@ -1,7 +1,7 @@
 // widget/pinchat.js — Pin Chat Widget สำหรับ OBS
 // รับข้อความ pin มาจาก Chat Overlay ผ่าน BroadcastChannel
 // OBS Size แนะนำ: 500 x 100
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { parseWidgetStyles, rawToStyle, tcCssProps } from '../../lib/widgetStyles';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import { SkinParticles } from '../../lib/chatSkins';
@@ -10,14 +10,41 @@ import SKINS from '../../lib/chatSkins';
 export default function PinChatWidget() {
   const [pinned,  setPinned]  = useState(null);
   const [visible, setVisible] = useState(false);
+  const [hiding,  setHiding]  = useState(false); // true = กำลัง fade-out ก่อน setVisible(false)
   const [pinKey,  setPinKey]  = useState(0); // เปลี่ยนทุกครั้งที่ pin → force remount → animation เล่นใหม่
   const [styles,  setStyles]  = useState(null);
+  const hideTimerRef  = useRef(null); // timer สำหรับ auto-hide
+  const fadeTimerRef  = useRef(null); // timer สำหรับ fade-out ก่อน hide
+  const pinDurationRef = useRef(0);  // sync กับ styles.pinDuration เสมอ (closure-safe)
+
+  // sync pinDurationRef เมื่อ styles เปลี่ยน (style_update จาก socket)
+  useEffect(() => {
+    if (styles) pinDurationRef.current = styles.pinDuration ?? 0;
+  }, [styles]);
+
+  // helper: เริ่ม auto-hide timer สำหรับ pin ใหม่
+  const scheduleHide = () => {
+    clearTimeout(hideTimerRef.current);
+    clearTimeout(fadeTimerRef.current);
+    setHiding(false);
+    const dur = pinDurationRef.current;
+    if (dur > 0) {
+      hideTimerRef.current = setTimeout(() => {
+        setHiding(true);
+        fadeTimerRef.current = setTimeout(() => {
+          setVisible(false);
+          setHiding(false);
+        }, 400);
+      }, dur * 1000);
+    }
+  };
 
   useEffect(() => {
     const params      = new URLSearchParams(window.location.search);
     const widgetToken = params.get('cid') ?? params.get('wt');
     const isPreview   = params.get('preview') === '1';
     const s           = parseWidgetStyles(params, 'pinchat');
+    pinDurationRef.current = s.pinDuration ?? 0;
     setStyles(s);
 
     if (isPreview) {
@@ -36,6 +63,7 @@ export default function PinChatWidget() {
             setPinned(e.data.message);
             setVisible(true);
             setPinKey(k => k + 1);
+            scheduleHide();
           }
         };
       } catch { /* ไม่รองรับ BroadcastChannel */ }
@@ -50,6 +78,7 @@ export default function PinChatWidget() {
           setPinned(style._pin);
           setVisible(true);
           setPinKey(k => k + 1);
+          scheduleHide();
           return;
         }
         setStyles(rawToStyle(style, 'pinchat'));
@@ -59,8 +88,10 @@ export default function PinChatWidget() {
     return () => {
       try { ch?.close(); } catch { /* ignore */ }
       socket?.disconnect();
+      clearTimeout(hideTimerRef.current);
+      clearTimeout(fadeTimerRef.current);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!styles) return <div style={{ background: 'transparent' }} />;
 
@@ -70,6 +101,15 @@ export default function PinChatWidget() {
   const skinBubble   = activeSkin ? activeSkin.bubbleStyle(pinColor, styles.ac, bga) : {};
   const skinNameSt   = activeSkin ? activeSkin.nameStyle(pinColor, styles.ac)        : {};
   const skinTextSt   = activeSkin ? activeSkin.textStyle(styles.ac)                  : {};
+
+  // ── Enter animation string ──────────────────────────────────────────────────
+  const ENTER_ANIMS = {
+    default:   'pinDrop 0.7s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.7s infinite',
+    warpslam:  'warpSlam 0.9s linear forwards, pinFloat 3s ease-in-out 0.9s infinite',
+    spinslam:  'spinSlam 0.85s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.85s infinite',
+    warpslam2: 'warpSlam2 1.0s linear forwards, pinFloat 3s ease-in-out 1.0s infinite',
+  };
+  const enterAnimation = ENTER_ANIMS[styles.enterAnim] ?? ENTER_ANIMS.default;
 
   return (
     <>
@@ -84,6 +124,8 @@ export default function PinChatWidget() {
         transform:       styles.transform3D,
         transformOrigin: 'center center',
         transformStyle:  'preserve-3d',
+        // perspective บน parent ทำให้ warpSlam2 มีความลึก 3D จริง
+        perspective:     styles.enterAnim === 'warpslam2' ? '600px' : undefined,
         position:        'relative',
         zIndex:          1,
       }}>
@@ -91,16 +133,19 @@ export default function PinChatWidget() {
           <div
             key={pinKey}  /* key เปลี่ยน → React unmount+remount → animation restart */
             style={{
-              background:   styles.bgRgba,
-              padding:      '10px 14px',
-              borderLeft:   `4px solid ${pinColor}`,
-              display:      'flex',
-              alignItems:   'flex-start',
-              gap:          8,
-              animation:    'pinDrop 0.7s cubic-bezier(0.22,1.2,0.36,1) forwards, pinFloat 3s ease-in-out 0.7s infinite',
-              position:     'relative',
-              width:        '100%',
-              boxSizing:    'border-box',
+              background:        styles.bgRgba,
+              padding:           '10px 14px',
+              borderLeft:        `4px solid ${pinColor}`,
+              display:           'flex',
+              alignItems:        'flex-start',
+              gap:               8,
+              animation:         enterAnimation,
+              animationPlayState: hiding ? 'paused' : 'running',
+              opacity:           hiding ? 0 : 1,
+              transition:        hiding ? 'opacity 0.4s ease' : 'none',
+              position:          'relative',
+              width:             '100%',
+              boxSizing:         'border-box',
               ...skinBubble,
               // br ต้องอยู่หลัง skinBubble เสมอ — ให้ user slider ชนะเสมอ
               borderRadius: styles.br,

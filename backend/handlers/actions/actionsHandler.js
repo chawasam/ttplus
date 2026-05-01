@@ -15,6 +15,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getUidForCid, registerCid } = require('../../utils/widgetToken');
 const { trackRead } = require('../../utils/readTracker');
 const { fillTemplate } = require('./eventProcessor');
+const { emitToUser, emitToWidgetRoom } = require('../../lib/emitter');
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ async function createAction(req, res) {
       // Display settings
       displayDuration: data.displayDuration ?? 5,   // วินาที
       overlayScreen:   data.overlayScreen   ?? 1,   // 1 หรือ 2
+      volume:          data.volume          ?? 100, // ระดับเสียง 0-100
       globalCooldown:  data.globalCooldown  ?? 0,   // วินาที
       userCooldown:    data.userCooldown    ?? 0,
       fadeInOut:       data.fadeInOut       ?? true,
@@ -119,7 +121,7 @@ async function updateAction(req, res) {
     const allowed = [
       'name','types','pictureUrl','videoUrl','audioUrl','alertText','ttsText',
       'obsScene','obsSceneReturn','obsSceneDuration','obsSource','obsSourceReturn','obsSourceDuration',
-      'displayDuration','overlayScreen','globalCooldown','userCooldown',
+      'displayDuration','overlayScreen','volume','globalCooldown','userCooldown',
       'fadeInOut','repeatWithCombos','enabled',
     ];
     for (const k of allowed) {
@@ -435,28 +437,50 @@ async function fireAction(req, res) {
     const action = { id: snap.id, ...snap.data() };
     const context = { username: 'ทดสอบ', giftname: 'Rose', coins: 100, likeCount: 0 };
 
-    await db().collection('tt_action_queue').add({
-      vjUid:          uid,
-      screen:         action.overlayScreen || 1,
-      actionId:       action.id,
-      types:          action.types,
-      pictureUrl:     action.pictureUrl  || '',
-      videoUrl:       action.videoUrl    || '',
-      audioUrl:       action.audioUrl    || '',
-      alertText:      fillTemplate(action.alertText),
-      ttsText:        fillTemplate(action.ttsText),
-      obsScene:       action.obsScene        || '',
-      obsSceneReturn: action.obsSceneReturn  ?? false,
-      obsSource:      action.obsSource       || '',
-      obsSourceReturn:action.obsSourceReturn ?? false,
-      displayDuration:action.displayDuration ?? 5,
-      fadeInOut:      action.fadeInOut       ?? true,
-      username:       context.username,
-      giftname:       context.giftname,
-      played:         false,
-      queuedAt:       Date.now(),
-      isPreview:      true,
-    });
+    // OBS path: ส่งผ่าน socket ไปหา dashboard ก่อน (ถ้า dashboard เปิดอยู่)
+    const OBS_TYPES = ['switch_obs_scene', 'activate_obs_source'];
+    const hasObs = action.types?.some(t => OBS_TYPES.includes(t));
+    let obsHandledBySocket = false;
+    if (hasObs) {
+      obsHandledBySocket = emitToUser(uid, 'obs_action', {
+        types:           action.types,
+        obsScene:        action.obsScene        || '',
+        obsSceneReturn:  action.obsSceneReturn  ?? false,
+        obsSource:       action.obsSource       || '',
+        obsSourceReturn: action.obsSourceReturn ?? false,
+        displayDuration: action.displayDuration ?? 5,
+        name:            action.name || '',
+      });
+    }
+
+    const item = {
+      vjUid:           uid,
+      screen:          action.overlayScreen || 1,
+      actionId:        action.id,
+      types:           action.types,
+      pictureUrl:      action.pictureUrl  || '',
+      videoUrl:        action.videoUrl    || '',
+      audioUrl:        action.audioUrl    || '',
+      alertText:       fillTemplate(action.alertText  || '', context),
+      ttsText:         fillTemplate(action.ttsText    || '', context),
+      obsScene:        action.obsScene        || '',
+      obsSceneReturn:  action.obsSceneReturn  ?? false,
+      obsSource:       action.obsSource       || '',
+      obsSourceReturn: action.obsSourceReturn ?? false,
+      obsHandledBySocket,
+      displayDuration: action.displayDuration ?? 5,
+      fadeInOut:       action.fadeInOut       ?? true,
+      volume:          action.volume          ?? 100,
+      username:        context.username,
+      giftname:        context.giftname,
+      queuedAt:        Date.now(),
+      isPreview:       true,
+    };
+
+    await db().collection('tt_action_queue').add(item);
+
+    // Socket push — widget รับ action ทันทีโดยไม่ต้องรอ poll
+    emitToWidgetRoom(uid, 'new_action', item);
 
     return res.json({ success: true, actionName: action.name });
   } catch (err) {

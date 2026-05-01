@@ -2,7 +2,7 @@
 // เรียกจาก tiktok.js ทุกครั้งที่รับ event จาก TikTok Live
 
 const admin = require('firebase-admin');
-const { emitToUser } = require('../../lib/emitter');
+const { emitToUser, emitToWidgetRoom } = require('../../lib/emitter');
 const { trackRead } = require('../../utils/readTracker');
 
 function db() { return admin.firestore(); }
@@ -111,13 +111,17 @@ function canTrigger(event, data) {
 async function queueAction(vjUid, action, context) {
   const OBS_TYPES = ['switch_obs_scene', 'activate_obs_source'];
   const hasObs = action.types?.some(t => OBS_TYPES.includes(t));
+  const hasTts = action.types?.includes('read_tts') && !!action.ttsText;
 
-  // ── Direct OBS path: ส่งผ่าน Socket.IO ตรงไปยัง dashboard ของ user ──
-  // dashboard/actions page รับแล้วยิง OBS WebSocket โดยไม่ต้องผ่าน overlay widget
-  // คืนค่า true ถ้า dashboard connected (มี socket) — ใช้ flag ป้องกัน overlay ยิง OBS ซ้ำ
+  // ── Direct dashboard path: ส่งผ่าน Socket.IO ตรงไปยัง dashboard ของ user ──
+  // dashboard/actions page รับแล้ว:
+  //   - ยิง OBS WebSocket (ถ้ามี OBS types)
+  //   - เล่น TTS ผ่าน browser ของ user โดยตรง (ได้ยินผ่านลำโพง ไม่ต้องผ่าน OBS widget)
+  // emit เมื่อ hasObs หรือ hasTts — คืนค่า true ถ้า dashboard connected
   let obsHandledBySocket = false;
-  if (hasObs) {
+  if (hasObs || hasTts) {
     obsHandledBySocket = emitToUser(vjUid, 'obs_action', {
+      actionId:        action.id            || '',
       types:           action.types,
       obsScene:        action.obsScene        || '',
       obsSceneReturn:  action.obsSceneReturn  ?? false,
@@ -125,6 +129,9 @@ async function queueAction(vjUid, action, context) {
       obsSourceReturn: action.obsSourceReturn ?? false,
       displayDuration: action.displayDuration ?? 5,
       name:            action.name || '',
+      // TTS — เล่นใน browser ของ user โดยตรง (actions page)
+      ttsText:  fillTemplate(action.ttsText || '', context),
+      volume:   action.volume ?? 100,
     });
   }
 
@@ -132,7 +139,7 @@ async function queueAction(vjUid, action, context) {
   // obsHandledBySocket = true  → overlay จะข้าม OBS commands (dashboard ยิงแล้วผ่าน socket)
   // obsHandledBySocket = false → overlay เป็น fallback ยิง OBS แทน (กรณี dashboard ไม่ได้เปิด)
   try {
-    await db().collection('tt_action_queue').add({
+    const item = {
       vjUid,
       screen:    action.overlayScreen || 1,
       actionId:  action.id,
@@ -154,12 +161,21 @@ async function queueAction(vjUid, action, context) {
       // Display
       displayDuration: action.displayDuration ?? 5,
       fadeInOut:       action.fadeInOut        ?? true,
+      volume:          action.volume           ?? 100,
       // Context
       username:   context.username  || '',
       giftname:   context.giftname  || '',
       // Queue state — ไม่ต้องเก็บ played เพราะ doc ถูกลบทันทีหลัง overlay อ่าน
       queuedAt:  Date.now(),
-    });
+    };
+
+    await db().collection('tt_action_queue').add(item);
+
+    // ── Socket.IO push: ส่ง action ตรงไปหา widget ทันที (~50ms) ──
+    // widget รับแล้วแสดงเลยโดยไม่ต้องรอ poll รอบถัดไป
+    // ถ้า socket ไม่ได้ connected (OBS ปิด / หลุด) → Firestore เป็น fallback
+    emitToWidgetRoom(vjUid, 'new_action', item);
+
   } catch (err) {
     console.error('[EventProcessor] queueAction:', err.message);
   }

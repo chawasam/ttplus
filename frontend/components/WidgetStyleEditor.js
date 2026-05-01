@@ -451,6 +451,88 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
+      {/* ── Pin Chat + Pin Profile: Enter Animation + Auto-hide Duration ── */}
+      {(widgetId === 'pinchat' || widgetId === 'pinprofile') && (
+        <div className="space-y-4">
+
+          {/* Enter Animation */}
+          <div className="space-y-2">
+            <span className={label}>รูปแบบการปรากฏ</span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  val: 'default',
+                  icon: '📌',
+                  title: 'แบบดั้งเดิม',
+                  desc: 'เด้งลงจากด้านบนพร้อม bounce',
+                },
+                {
+                  val: 'warpslam',
+                  icon: '🌀',
+                  title: 'Warp Slam',
+                  desc: 'ขยายจากจุดเล็ก หมุน 2 รอบ กระแทก',
+                },
+                {
+                  val: 'spinslam',
+                  icon: '🔄',
+                  title: 'Spin Slam',
+                  desc: 'หมุนแกนเดียว 1 รอบ กระแทกหน้าจอ',
+                },
+                {
+                  val: 'warpslam2',
+                  icon: '🌐',
+                  title: 'Warp Slam 3D',
+                  desc: 'หมุน 3 มิติ X+Y+Z tumble กระแทก',
+                },
+              ].map(opt => {
+                const active = (style.enterAnim ?? 'default') === opt.val;
+                return (
+                  <button
+                    key={opt.val}
+                    onClick={() => set('enterAnim', opt.val)}
+                    className={clsx(
+                      'py-2.5 px-3 rounded-lg text-xs font-semibold transition border text-left flex flex-col gap-0.5',
+                      active
+                        ? 'bg-brand-500 border-brand-500 text-white'
+                        : theme === 'dark'
+                          ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+                          : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                    )}>
+                    <span className="text-sm">{opt.icon} {opt.title}</span>
+                    <span className={clsx('text-[10px] leading-snug', active ? 'text-white/80' : (theme === 'dark' ? 'text-gray-500' : 'text-gray-400'))}>
+                      {opt.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Auto-hide Duration */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className={label}>ค้างหน้าจอนานเท่าไหร่</span>
+              <span className={clsx('text-xs font-semibold tabular-nums', theme === 'dark' ? 'text-amber-400' : 'text-amber-600')}>
+                {(style.pinDuration ?? 0) === 0 ? 'ค้างตลอด ♾' : `${style.pinDuration}s`}
+              </span>
+            </div>
+            <input
+              type="range" min="0" max="120" step="5"
+              value={style.pinDuration ?? 0}
+              onChange={e => set('pinDuration', parseInt(e.target.value))}
+              className="w-full accent-amber-500"
+            />
+            <div className="flex justify-between text-[10px] text-gray-400 dark:text-slate-600">
+              <span>ค้างตลอด</span>
+              <span>30s</span>
+              <span>60s</span>
+              <span>120s</span>
+            </div>
+          </div>
+
+        </div>
+      )}
+
       {/* ── Coinjar: ตำแหน่งโถ + ของขวัญสูงสุด ── */}
       {widgetId === 'coinjar' && (
         <div className="space-y-3 pt-1">
@@ -742,8 +824,8 @@ export default function WidgetStyleEditor({ widgetId, style: styleProp, onChange
         </div>
       )}
 
-      {/* ── 3D Transform (chat + pinchat เท่านั้น) ── */}
-      {(widgetId === 'chat' || widgetId === 'pinchat') && (
+      {/* ── 3D Transform (chat + pinchat + gift-carousel) ── */}
+      {(widgetId === 'chat' || widgetId === 'pinchat' || widgetId === 'gift-carousel') && (
         <div className="space-y-3 pt-1">
           {/* Section header */}
           <div className={row}>

@@ -203,6 +203,27 @@ const WIDGETS = [
     ],
   },
   {
+    id: 'gift-carousel', icon: '🎠', name: 'Gift Carousel',
+    desc: 'สไลด์การ์ด Top 10 ผู้ส่งของขวัญ — เลื่อนต่อเนื่อง', size: '900 × 200',
+    configFields: [
+      { key: 'scrollDir',   label: '↔ ทิศทางเลื่อน', type: 'select', default: 'left',
+        options: [
+          { value: 'left',  label: '← ซ้าย' },
+          { value: 'right', label: '→ ขวา' },
+          { value: 'up',    label: '↑ ขึ้น' },
+          { value: 'down',  label: '↓ ลง' },
+        ],
+      },
+      { key: 'scrollSpeed', label: '⚡ ความเร็ว (px/วิ)',     type: 'number',  default: 50,  min: 10, max: 200, step: 5 },
+      { key: 'maxRows',     label: '📋 จำนวนการ์ดสูงสุด',      type: 'number',  default: 10,  min: 3,  max: 20,  step: 1 },
+      { key: 'showCoins',   label: '💎 แสดงจำนวน Diamond',       type: 'toggle',  default: 1,   onLabel: 'เปิด', offLabel: 'ปิด' },
+      { key: 'showMsg',     label: '💬 แสดงข้อความ Chat ล่าสุด', type: 'toggle',  default: 1,   onLabel: 'เปิด', offLabel: 'ปิด' },
+      { key: '_gCard',      label: '🃏 พื้นหลังการ์ด',            type: 'group' },
+      { key: 'cardBg',      label: '🎨 สีพื้นหลังการ์ด',          type: 'colorhex', default: '0a0a14' },
+      { key: 'cardBga',     label: '💧 ความเข้ม',                 type: 'number',  default: 30,  min: 0, max: 100, step: 5 },
+    ],
+  },
+  {
     id: 'gift-leaderboard',  icon: '🎁', name: 'Gift Leaderboard',
     desc: 'Top 10 ผู้ส่งของขวัญมากที่สุด ตอนไลฟ์', size: '300 × 520',
     configFields: [
@@ -288,7 +309,7 @@ const WIDGETS = [
 // ── Widget groups — ลำดับและสมาชิกในแต่ละหมวด ──────────────────────────────
 const WIDGET_GROUPS = [
   { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
-  { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard'] },
+  { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard', 'gift-carousel'] },
   { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
   { id: 'music', label: '🎵 Music',                   ids: ['nowplaying', 'spotifyqueue'] },
 ];
