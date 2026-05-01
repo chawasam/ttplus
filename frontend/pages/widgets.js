@@ -349,6 +349,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
   // select field ที่กำลัง "ขยาย" สกินอื่นๆ — key = f.key, value = boolean
   const [expandedSelects, setExpandedSelects] = useState({});
 
+  // ── Hover Preview (desktop only) ──
+  // hoverPreview = { id, previewUrl, panelStyle, iframeW, iframeH, scale } | null
+  const [hoverPreview, setHoverPreview]   = useState(null);
+  const hoverEnterTimer = useRef(null);
+  const hoverLeaveTimer = useRef(null);
+
 
   // ── ฟังเสียง Alert ใน Browser (default OFF) ──
   // เริ่มต้น false เสมอ (SSR ไม่มี localStorage) แล้ว sync จาก localStorage ใน useEffect
@@ -643,6 +649,50 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
     return styleQ ? `${base}&${styleQ}` : base;
   }, [baseUrl, widgetCid, styles, buildCustomParams, customConfigs]);
 
+  // ── Hover Preview helpers ──
+  // Parse "300 × 400" → { w: 300, h: 400 }
+  function parseWidgetSize(sizeStr) {
+    const m = (sizeStr || '').match(/(\d+)\s*[×x]\s*(\d+)/);
+    return m ? { w: parseInt(m[1], 10), h: parseInt(m[2], 10) } : { w: 400, h: 300 };
+  }
+
+  function handleCardEnter(e, w) {
+    // desktop only — ไม่ทำงานบน touch device หรือ viewport แคบ
+    if (typeof window !== 'undefined' && window.innerWidth < 1200) return;
+    clearTimeout(hoverLeaveTimer.current);
+    clearTimeout(hoverEnterTimer.current);
+    const cardEl = e.currentTarget;
+    hoverEnterTimer.current = setTimeout(() => {
+      const rect  = cardEl.getBoundingClientRect();
+      const pUrl  = getPreviewUrl(w.id);
+      const dims  = parseWidgetSize(w.size);
+
+      // Scale ให้พอดีในกรอบ max 300×400 — รักษา aspect ratio
+      const PANEL_MAX_W = 300;
+      const PANEL_MAX_H = 400;
+      const scale   = Math.min(PANEL_MAX_W / dims.w, PANEL_MAX_H / dims.h, 0.65);
+      const panelW  = Math.round(dims.w * scale);
+      const panelH  = Math.round(dims.h * scale);
+
+      // วางทางขวาของ card ก่อน ถ้าออกนอก viewport ให้ย้ายซ้าย
+      let left = rect.right + 14;
+      if (left + panelW > window.innerWidth - 8) left = rect.left - panelW - 14;
+      left = Math.max(8, left);
+
+      // top align กับ card แต่ clamp ไม่ให้เกิน viewport
+      let top = rect.top;
+      top = Math.min(top, window.innerHeight - panelH - 8);
+      top = Math.max(8, top);
+
+      setHoverPreview({ id: w.id, previewUrl: pUrl, iframeW: dims.w, iframeH: dims.h, scale, panelW, panelH, left, top });
+    }, 280); // delay 280ms ป้องกัน trigger จาก cursor ผ่าน
+  }
+
+  function handleCardLeave() {
+    clearTimeout(hoverEnterTimer.current);
+    hoverLeaveTimer.current = setTimeout(() => setHoverPreview(null), 180);
+  }
+
   const saveStyleForWidget = useCallback(async (widgetId, style) => {
     if (!user) { setShowLoginModal(true); return; }
     const newStyles = { ...styles, [widgetId]: style };
@@ -872,7 +922,12 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                       const isDrawerOpen = drawerWidget === w.id;
                       const widgetReady  = w.noToken ? !!user?.uid : tokenReady;
                       return (
-                        <div key={w.id} className={clsx('rounded-xl border overflow-hidden', card)}>
+                        <div
+                          key={w.id}
+                          className={clsx('rounded-xl border overflow-hidden', card)}
+                          onMouseEnter={(e) => handleCardEnter(e, w)}
+                          onMouseLeave={handleCardLeave}
+                        >
                           <div className="p-4">
                             {/* Top: icon + name + size */}
                             <div className="flex items-start justify-between mb-3">
@@ -1059,6 +1114,57 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
         </div>
 
       </main>
+
+      {/* ── Hover Widget Preview Panel (desktop only, 1 iframe ต่อครั้ง) ── */}
+      {hoverPreview && (
+        <div
+          style={{
+            position:     'fixed',
+            zIndex:       45,
+            left:         hoverPreview.left,
+            top:          hoverPreview.top,
+            width:        hoverPreview.panelW,
+            height:       hoverPreview.panelH,
+            pointerEvents: 'none',
+            overflow:     'hidden',
+            borderRadius: 12,
+            boxShadow:    '0 8px 32px rgba(0,0,0,0.5)',
+            border:       isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.12)',
+            background:   '#111',
+          }}
+        >
+          {/* label */}
+          <div style={{
+            position:   'absolute',
+            top: 6, left: 10,
+            zIndex:     2,
+            fontSize:   10,
+            color:      'rgba(255,255,255,0.5)',
+            fontFamily: 'monospace',
+            letterSpacing: '0.05em',
+            pointerEvents: 'none',
+          }}>
+            PREVIEW
+          </div>
+          {/* scaled iframe */}
+          <div style={{
+            width:           hoverPreview.iframeW,
+            height:          hoverPreview.iframeH,
+            transform:       `scale(${hoverPreview.scale})`,
+            transformOrigin: 'top left',
+          }}>
+            <iframe
+              key={hoverPreview.id}
+              src={hoverPreview.previewUrl}
+              width={hoverPreview.iframeW}
+              height={hoverPreview.iframeH}
+              style={{ border: 'none', background: 'transparent', display: 'block' }}
+              sandbox="allow-scripts allow-same-origin"
+              title={`Preview ${hoverPreview.id}`}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Customize Drawer ── */}
       {drawerWidget && (() => {

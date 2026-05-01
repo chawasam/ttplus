@@ -32,7 +32,17 @@ export default function LeaderboardWidget() {
     const MAX_BOARD = 300;
     const board = new Map();
 
+    // helper: sort board และ update state
+    function flushBoard() {
+      setLeaderboard(
+        Array.from(board.values())
+          .sort((a, b) => b.diamonds - a.diamonds)
+          .slice(0, 5)
+      );
+    }
+
     const socket = createWidgetSocket(wt, {
+      // รับ gift event แบบ real-time → สะสม local
       gift: (data) => {
         const safe     = sanitizeEvent(data);
         const diamonds = safe.diamondCount * safe.repeatCount;
@@ -53,11 +63,27 @@ export default function LeaderboardWidget() {
           top.forEach(([k, v]) => board.set(k, v));
         }
 
-        setLeaderboard(
-          Array.from(board.values())
-            .sort((a, b) => b.diamonds - a.diamonds)
-            .slice(0, 5)
-        );
+        flushBoard();
+      },
+
+      // restore state เมื่อ widget join (backend ส่ง leaderboard ปัจจุบันทันที)
+      // ป้องกัน widget เริ่มนับจากศูนย์เมื่อ OBS reload กลางเซสชัน
+      leaderboard_update: ({ type, data }) => {
+        if (type !== 'gifts' || !Array.isArray(data) || data.length === 0) return;
+        // merge server state → local board (server มี totalCoins, local ใช้ diamonds)
+        data.forEach(item => {
+          if (!item.uniqueId) return;
+          const existing = board.get(item.uniqueId);
+          // ใช้ค่าสูงกว่าระหว่าง local กับ server (กรณี gift มาระหว่าง join)
+          const serverDiamonds = item.totalCoins || item.diamonds || 0;
+          board.set(item.uniqueId, {
+            uniqueId:          item.uniqueId,
+            nickname:          item.nickname || item.uniqueId,
+            profilePictureUrl: safeTikTokImageUrl(item.profilePictureUrl || ''),
+            diamonds:          Math.max(existing?.diamonds || 0, serverDiamonds),
+          });
+        });
+        flushBoard();
       },
     });
     if (!socket) return;
