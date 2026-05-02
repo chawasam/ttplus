@@ -380,13 +380,13 @@ app.get('/api/stats', verifyToken, async (req, res) => {
 // ===== PK Panel static files (วิดีโอที่ user อัพโหลด) =====
 // NOTE: Railway มี ephemeral filesystem — ถ้า deploy บน Railway ให้ใช้ Firebase Storage หรือ persistent volume แทน
 const _path = require('path');
-app.use('/uploads/pk', express.static(_path.join(__dirname, 'uploads', 'pk'), {
-  maxAge: '1d',
-  setHeaders: (res) => {
-    res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL);
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  },
-}));
+// CORP/CORS headers ต้องอยู่บน middleware ก่อน static — ไม่งั้น 404 response จะไม่มี header
+// (express.static.setHeaders ทำงานเฉพาะตอน serve ไฟล์สำเร็จ → 404 ติด helmet default CORP=same-origin)
+app.use('/uploads/pk', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
+  next();
+}, express.static(_path.join(__dirname, 'uploads', 'pk'), { maxAge: '1d' }));
 
 // ===== PK Panel Routes =====
 const pkRouter = require('./routes/pk');
