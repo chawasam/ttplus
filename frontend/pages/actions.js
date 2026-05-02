@@ -1,5 +1,5 @@
 // pages/actions.js — ลูกเล่น TT: Actions & Events
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import api from '../lib/api';
@@ -729,8 +729,242 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
   );
 }
 
+// ── OBS Source Picker — Modal เปิดมาเห็นทุก source แบ่งตาม scene + ค้นหา ─────
+function ObsSourcePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, onClose, currentValue }) {
+  const [search, setSearch] = useState('');
+
+  // auto-scan ครั้งเดียวตอนเปิด — ใช้ obsSourceMap เก่าก่อน แล้วค่อยอัพเดท
+  useEffect(() => { onScan?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // group by scene: { sceneName: [sourceName, ...] }
+  const sceneGroups = useMemo(() => {
+    const g = {};
+    for (const [src, locs] of Object.entries(obsSourceMap || {})) {
+      for (const loc of locs || []) {
+        const scene = loc?.sceneName || '(no scene)';
+        if (!g[scene]) g[scene] = new Set();
+        g[scene].add(src);
+      }
+    }
+    return Object.entries(g)
+      .map(([scene, set]) => ({ scene, sources: Array.from(set).sort((a, b) => a.localeCompare(b, 'th')) }))
+      .sort((a, b) => a.scene.localeCompare(b.scene, 'th'));
+  }, [obsSourceMap]);
+
+  // filter ด้วย search (match ทั้ง source และ scene)
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return sceneGroups;
+    return sceneGroups
+      .map(g => {
+        const sceneMatch = g.scene.toLowerCase().includes(q);
+        const sources = sceneMatch ? g.sources : g.sources.filter(s => s.toLowerCase().includes(q));
+        return { scene: g.scene, sources };
+      })
+      .filter(g => g.sources.length > 0);
+  }, [sceneGroups, search]);
+
+  const totalSources = sceneGroups.reduce((sum, g) => sum + g.sources.length, 0);
+  const filteredCount = filtered.reduce((sum, g) => sum + g.sources.length, 0);
+  const isEmpty = totalSources === 0;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-lg flex flex-col"
+        style={{ maxHeight: '80vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <h3 className="text-gray-800 dark:text-white font-bold text-sm">
+            👁 เลือก OBS Source
+            {!isEmpty && (
+              <span className="text-xs text-gray-500 font-normal ml-2">
+                {search ? `${filteredCount}/${totalSources}` : `${totalSources} sources · ${sceneGroups.length} scenes`}
+              </span>
+            )}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onScan}
+              className="text-xs text-brand-400 hover:text-brand-300 px-2 py-1 rounded border border-gray-300 dark:border-gray-700"
+              title="รีเฟรช source list จาก OBS"
+            >
+              🔄 รีเฟรช
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-white text-xl leading-none px-2">×</button>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <input
+            type="text"
+            autoFocus
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 ค้นหา source หรือ scene..."
+            className="w-full bg-[#f5f5f3] dark:bg-[#0e1220] border border-gray-300 dark:border-[#2d3550] rounded px-3 py-2 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none"
+          />
+          {obsScanStatus && (
+            <p className="text-[10px] text-gray-500 mt-1">{obsScanStatus}</p>
+          )}
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {isEmpty ? (
+            <div className="p-6 text-center text-sm text-gray-500">
+              <p className="mb-2">⚠ ยังไม่มีข้อมูล source</p>
+              <p className="text-xs">เปิด OBS WebSocket Server (port 4455) แล้วกด 🔄 รีเฟรช</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-500">
+              ไม่พบ source ที่ตรงกับ "<span className="text-brand-400">{search}</span>"
+            </div>
+          ) : (
+            filtered.map(g => (
+              <div key={g.scene}>
+                {/* Scene header — sticky */}
+                <div className="sticky top-0 bg-[#ededeb] dark:bg-[#0e1220] px-4 py-1.5 border-b border-gray-200 dark:border-gray-800 z-10">
+                  <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+                    📁 {g.scene}
+                    <span className="text-gray-500 font-normal ml-1">({g.sources.length})</span>
+                  </p>
+                </div>
+                {/* Sources */}
+                {g.sources.map(src => {
+                  const isSelected = src === currentValue;
+                  return (
+                    <button
+                      key={`${g.scene}__${src}`}
+                      type="button"
+                      onClick={() => { onSelect(src); onClose(); }}
+                      className={`w-full text-left px-4 py-2 text-sm border-b border-gray-100 dark:border-gray-900/50 transition-colors ${
+                        isSelected
+                          ? 'bg-brand-500/20 text-brand-400 font-medium'
+                          : 'text-gray-700 dark:text-slate-300 hover:bg-[#ededeb] dark:hover:bg-[#252d42]'
+                      }`}
+                    >
+                      {isSelected ? '✓ ' : ''}{src}
+                    </button>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── OBS Scene Picker — Modal เลือก scene พร้อม search ────────────────────────
+function ObsScenePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, onClose, currentValue }) {
+  const [search, setSearch] = useState('');
+  useEffect(() => { onScan?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ดึงรายชื่อ scene ที่ unique จาก obsSourceMap (scene → source map)
+  const scenes = useMemo(() => {
+    const set = new Set();
+    for (const locs of Object.values(obsSourceMap || {})) {
+      for (const loc of locs || []) {
+        if (loc?.sceneName) set.add(loc.sceneName);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
+  }, [obsSourceMap]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return scenes;
+    return scenes.filter(s => s.toLowerCase().includes(q));
+  }, [scenes, search]);
+
+  const isEmpty = scenes.length === 0;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-lg flex flex-col"
+        style={{ maxHeight: '80vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <h3 className="text-gray-800 dark:text-white font-bold text-sm">
+            🎬 เลือก OBS Scene
+            {!isEmpty && (
+              <span className="text-xs text-gray-500 font-normal ml-2">
+                {search ? `${filtered.length}/${scenes.length}` : `${scenes.length} scenes`}
+              </span>
+            )}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onScan}
+              className="text-xs text-brand-400 hover:text-brand-300 px-2 py-1 rounded border border-gray-300 dark:border-gray-700"
+              title="รีเฟรช scene list จาก OBS"
+            >
+              🔄 รีเฟรช
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-white text-xl leading-none px-2">×</button>
+          </div>
+        </div>
+
+        <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <input
+            type="text"
+            autoFocus
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 ค้นหา scene..."
+            className="w-full bg-[#f5f5f3] dark:bg-[#0e1220] border border-gray-300 dark:border-[#2d3550] rounded px-3 py-2 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none"
+          />
+          {obsScanStatus && (
+            <p className="text-[10px] text-gray-500 mt-1">{obsScanStatus}</p>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {isEmpty ? (
+            <div className="p-6 text-center text-sm text-gray-500">
+              <p className="mb-2">⚠ ยังไม่มีข้อมูล scene</p>
+              <p className="text-xs">เปิด OBS WebSocket Server (port 4455) แล้วกด 🔄 รีเฟรช</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-500">
+              ไม่พบ scene ที่ตรงกับ "<span className="text-brand-400">{search}</span>"
+            </div>
+          ) : (
+            filtered.map(sc => {
+              const isSelected = sc === currentValue;
+              return (
+                <button
+                  key={sc}
+                  type="button"
+                  onClick={() => { onSelect(sc); onClose(); }}
+                  className={`w-full text-left px-4 py-2 text-sm border-b border-gray-100 dark:border-gray-900/50 transition-colors ${
+                    isSelected
+                      ? 'bg-brand-500/20 text-brand-400 font-medium'
+                      : 'text-gray-700 dark:text-slate-300 hover:bg-[#ededeb] dark:hover:bg-[#252d42]'
+                  }`}
+                >
+                  {isSelected ? '✓ ' : '🎬 '}{sc}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Action Form Modal ────────────────────────────────────────────────────────
-function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled }) {
+function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled, obsSourceMap, obsScanStatus, scanObsSources }) {
   const [form, setForm] = useState({
     ...DEFAULT_ACTION,
     ...(initial || {}),
@@ -782,6 +1016,10 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled 
   const [obsInputs,  setObsInputs]  = useState([]);
   const [obsLoading, setObsLoading] = useState(false);
   const [obsError,   setObsError]   = useState('');
+
+  // OBS Source / Scene Picker modal — เปิดเมื่อกดเลือก
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const [showScenePicker,  setShowScenePicker]  = useState(false);
 
   const loadObsLists = () => {
     setObsLoading(true);
@@ -1427,15 +1665,31 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled 
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">🎬 OBS Scene</p>
             {obsError && <p className="text-[10px] text-red-400">{obsError}</p>}
-            <ObsSelect
-              label="Scene ที่จะสลับไป"
-              value={form.obsScene}
-              onChange={v => set('obsScene', v)}
-              items={obsScenes}
-              loading={obsLoading}
-              onFetch={loadObsLists}
-              placeholder="เช่น Scene ของขวัญ"
-            />
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">Scene ที่จะสลับไป</label>
+              <button
+                type="button"
+                onClick={() => setShowScenePicker(true)}
+                className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] hover:border-brand-500 rounded px-3 py-2 text-sm text-left text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full flex items-center justify-between transition-colors"
+              >
+                <span className={form.obsScene ? '' : 'text-gray-500'}>
+                  {form.obsScene ? `🎬 ${form.obsScene}` : '— กดเพื่อเลือก Scene —'}
+                </span>
+                <span className="text-xs text-gray-500">▾</span>
+              </button>
+              <details className="text-[10px] text-gray-500 mt-1">
+                <summary className="cursor-pointer hover:text-gray-400">พิมพ์ชื่อเอง (ถ้า OBS ไม่ connect)</summary>
+                <input
+                  type="text"
+                  value={form.obsScene}
+                  onChange={e => set('obsScene', e.target.value)}
+                  placeholder="เช่น Scene ของขวัญ"
+                  className="mt-1 bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full"
+                />
+              </details>
+            </div>
+
             <Toggle
               label={`↩ กลับ Scene เดิมหลังจบ (${form.displayDuration}s)`}
               checked={!!form.obsSceneReturn}
@@ -1446,6 +1700,17 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled 
                 สลับไป "{form.obsScene || '...'}" → รอ {form.displayDuration}s → กลับ Scene เดิม
               </p>
             )}
+
+            {showScenePicker && (
+              <ObsScenePickerModal
+                obsSourceMap={obsSourceMap}
+                obsScanStatus={obsScanStatus}
+                onScan={() => scanObsSources?.()}
+                onSelect={v => set('obsScene', v)}
+                onClose={() => setShowScenePicker(false)}
+                currentValue={form.obsScene}
+              />
+            )}
           </div>
         );
       case 'activate_obs_source':
@@ -1453,15 +1718,33 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled 
           <div className="space-y-3">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">👁 OBS Source</p>
             {obsError && <p className="text-[10px] text-red-400">{obsError}</p>}
-            <ObsSelect
-              label="Source ที่จะเปิด"
-              value={form.obsSource}
-              onChange={v => set('obsSource', v)}
-              items={obsInputs}
-              loading={obsLoading}
-              onFetch={loadObsLists}
-              placeholder="เช่น ภาพ Rose Animation"
-            />
+
+            {/* ── ปุ่มเปิด Picker Modal — แทน dropdown ของเดิม ───────────── */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">Source ที่จะเปิด</label>
+              <button
+                type="button"
+                onClick={() => setShowSourcePicker(true)}
+                className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] hover:border-brand-500 rounded px-3 py-2 text-sm text-left text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full flex items-center justify-between transition-colors"
+              >
+                <span className={form.obsSource ? '' : 'text-gray-500'}>
+                  {form.obsSource ? `📌 ${form.obsSource}` : '— กดเพื่อเลือก Source —'}
+                </span>
+                <span className="text-xs text-gray-500">▾</span>
+              </button>
+              {/* Fallback text input — กรณี OBS ไม่ connect/scan ไม่ได้ */}
+              <details className="text-[10px] text-gray-500 mt-1">
+                <summary className="cursor-pointer hover:text-gray-400">พิมพ์ชื่อเอง (ถ้า OBS ไม่ connect)</summary>
+                <input
+                  type="text"
+                  value={form.obsSource}
+                  onChange={e => set('obsSource', e.target.value)}
+                  placeholder="เช่น ภาพ Rose Animation"
+                  className="mt-1 bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded px-2 py-1.5 text-sm text-gray-800 dark:text-slate-200 focus:border-brand-500 focus:outline-none w-full"
+                />
+              </details>
+            </div>
+
             <Toggle
               label={`↩ ปิด Source กลับหลังจบ (${form.displayDuration}s)`}
               checked={!!form.obsSourceReturn}
@@ -1471,6 +1754,17 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled 
               <p className="text-[10px] text-gray-500">
                 เปิด "{form.obsSource || '...'}" → รอ {form.displayDuration}s → ปิดกลับ
               </p>
+            )}
+
+            {showSourcePicker && (
+              <ObsSourcePickerModal
+                obsSourceMap={obsSourceMap}
+                obsScanStatus={obsScanStatus}
+                onScan={() => scanObsSources?.()}
+                onSelect={v => set('obsSource', v)}
+                onClose={() => setShowSourcePicker(false)}
+                currentValue={form.obsSource}
+              />
             )}
           </div>
         );
@@ -4217,6 +4511,9 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           obsHost={obsHost}
           obsPort={obsPort}
           audioEnabled={audioEnabled}
+          obsSourceMap={obsSourceMap}
+          obsScanStatus={obsScanStatus}
+          scanObsSources={scanObsSources}
         />
       )}
       {eventModal && (
