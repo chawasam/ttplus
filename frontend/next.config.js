@@ -30,7 +30,10 @@ const mainCSP = [
 const widgetCSP = [
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://static.cloudflareinsights.com",
-  "style-src 'self' 'unsafe-inline'",
+  // fonts.googleapis.com = stylesheet (style-src), fonts.gstatic.com = font files (font-src)
+  // ใช้ใน widget/chat.js (@import Noto Sans Thai + Sarabun)
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
   // ต้องใส่ทั้ง BACKEND (Railway URL) และ api.ttsam.app (custom domain)
   // เพราะ widget เรียก now-playing / socket ผ่าน api.ttsam.app โดยตรง
   // Firebase Auth URLs จำเป็นเพราะ _app.js initialize Firebase ทุกหน้า (รวม /widget/*)
@@ -42,7 +45,6 @@ const widgetCSP = [
   "worker-src blob:",              // keepAlive.js สร้าง blob: worker (_app.js รันบนทุกหน้า รวม /widget/*)
   "frame-src https://www.youtube.com https://www.youtube-nocookie.com", // YouTube embed ใน myactions widget
   "frame-ancestors *",   // OBS / TikTok Studio ต้องการ embed
-  "font-src 'self' data:",
 ].join('; ');
 
 const nextConfig = {
