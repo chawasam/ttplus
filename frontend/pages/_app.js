@@ -5,6 +5,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { loadSettings as loadSbSettings } from '../lib/soundboardStore';
 import { startKeepAlive } from '../lib/keepAlive';
+import '../lib/previewMute'; // side-effect: mute all audio when ?preview=1 (no-op otherwise)
 import '../styles/globals.css';
 
 // โหลดทุกหน้าพร้อมกัน — ไม่ unmount เมื่อสลับแถบ
