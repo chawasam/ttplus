@@ -36,6 +36,7 @@ function validateEvent(data) {
   const validTriggers = [
     'join','first_activity','share','follow','subscribe',
     'likes','chat','command','gift_min_coins','specific_gift',
+    // hidden จาก UI แต่ยอมรับ id เก่าไว้ — กัน data เก่า save/update ไม่ผ่าน
     'subscriber_emote','fan_club_sticker','tiktok_shop',
   ];
   if (!validTriggers.includes(data.trigger)) return `trigger "${data.trigger}" ไม่รองรับ`;
@@ -194,8 +195,9 @@ async function createEvent(req, res) {
       uid,
       trigger:         data.trigger,
       // Who can trigger
-      whoCanTrigger:   data.whoCanTrigger || 'everyone', // everyone/follower/subscriber/moderator/top_gifter/specific_user
-      specificUser:    data.specificUser  || '',
+      whoCanTrigger:   data.whoCanTrigger || 'everyone', // everyone/follower/subscriber/moderator/specific_user
+      // strip "@" + trim — TikTok uniqueId ไม่มี @ นำหน้า
+      specificUser:    String(data.specificUser || '').replace(/^@+/, '').trim(),
       teamMemberLevel: data.teamMemberLevel ?? 0,
       // Trigger params
       keyword:         data.keyword        || '',   // สำหรับ command trigger
@@ -236,6 +238,10 @@ async function updateEvent(req, res) {
     ];
     for (const k of allowed) {
       if (data[k] !== undefined) updates[k] = data[k];
+    }
+    // sanitize specificUser ตอน update ด้วย — strip "@" + trim
+    if (updates.specificUser !== undefined) {
+      updates.specificUser = String(updates.specificUser || '').replace(/^@+/, '').trim();
     }
     updates.updatedAt = Date.now();
     await ref.update(updates);

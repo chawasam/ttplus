@@ -466,6 +466,30 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       recordKnownViewer(userId, safe, 'follow');
     });
 
+    // ── Subscribe (คนจ่ายเงิน subscribe channel ของ VJ) ──
+    connection.on('subscribe', (data) => {
+      const safe = sanitizeTikTokEvent(data);
+      const subPayload = {
+        type: 'subscribe',
+        uniqueId:          safe.uniqueId,
+        nickname:          safe.nickname,
+        profilePictureUrl: safe.profilePictureUrl,
+        followRole:    Number(data.followRole) || 0,
+        isSubscriber:  true, // กำลัง subscribe อยู่
+        isModerator:   !!(data.isModerator   ?? data.userDetails?.isModerator),
+        isTopGifter:   !!(data.isTopGifter),
+        timestamp:     Date.now(),
+      };
+      emitAll('subscribe', subPayload);
+      bumpEvent('subscribe');
+      // ลูกเล่น TT — fire subscribe events + first_activity
+      processEvent(userId, 'subscribe', subPayload).catch(() => {});
+      if (checkFirstActivity(userId, safe.uniqueId)) {
+        processEvent(userId, 'first_activity', subPayload).catch(() => {});
+      }
+      recordKnownViewer(userId, safe, 'subscribe');
+    });
+
     connection.on('share', (data) => {
       const safe = sanitizeTikTokEvent(data);
       const sharePayload = {

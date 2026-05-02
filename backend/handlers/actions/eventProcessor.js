@@ -105,8 +105,12 @@ function canTrigger(event, data) {
   if (who === 'follower'    && data.followRole >= 1) return true;
   if (who === 'subscriber'  && data.isSubscriber)   return true;
   if (who === 'moderator'   && data.isModerator)    return true;
-  if (who === 'top_gifter'  && data.isTopGifter)    return true;
-  if (who === 'specific_user' && data.uniqueId === event.specificUser) return true;
+  if (who === 'specific_user') {
+    // กัน data เก่าใน DB ที่อาจถูกบันทึก "@" ติดมา + เทียบ case-insensitive
+    const target = String(event.specificUser || '').replace(/^@+/, '').trim().toLowerCase();
+    const sender = String(data.uniqueId       || '').toLowerCase();
+    return target.length > 0 && sender === target;
+  }
   return false;
 }
 
@@ -229,6 +233,9 @@ async function processEvent(vjUid, eventType, data, options = {}) {
         case 'specific_gift':
           return eventType === 'gift' &&
             data.giftName?.toLowerCase() === (ev.specificGiftName || '').toLowerCase();
+        // ── Hidden/legacy triggers — UI ซ่อนแล้วแต่ logic ยังใช้กับ data เก่า ──
+        // หมายเหตุ: tiktok-live-connector v1.2.x ไม่ส่ง flag เหล่านี้ใน chat event
+        // → fall through false ตลอด ไม่มี side effect
         case 'subscriber_emote':
           return eventType === 'chat' && data.isSubscriberEmote;
         case 'fan_club_sticker':
@@ -333,6 +340,7 @@ async function simulateEventWithResult(vjUid, eventType, data) {
         case 'specific_gift':
           return eventType === 'gift' &&
             data.giftName?.toLowerCase() === (ev.specificGiftName || '').toLowerCase();
+        // legacy/hidden triggers (mirror production logic)
         case 'subscriber_emote': return eventType === 'chat' && data.isSubscriberEmote;
         case 'fan_club_sticker': return eventType === 'chat' && data.isFanClubSticker;
         case 'tiktok_shop':      return eventType === 'shop_purchase';

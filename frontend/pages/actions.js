@@ -54,9 +54,13 @@ const TRIGGER_LIST = [
   { id: 'command',          label: '⌨️ พิมพ์ keyword ในแชท' },
   { id: 'gift_min_coins',   label: '🪙 ส่งของขวัญ ≥ X coins' },
   { id: 'specific_gift',    label: '🎀 ส่ง Gift ชิ้นนั้นๆ', popular: true },
-  { id: 'subscriber_emote', label: '😄 ส่ง Subscriber Emote' },
-  { id: 'fan_club_sticker', label: '🏅 ส่ง Fan Club Sticker' },
-  { id: 'tiktok_shop',      label: '🛒 ซื้อของจาก TikTok Shop' },
+  // ── HIDDEN triggers ────────────────────────────────────────────────────
+  // Library tiktok-live-connector v1.2.x ไม่ส่ง flag เหล่านี้ใน chat event
+  // → trigger จะไม่ fire เลย จึงซ่อนจาก UI ให้ user ไม่เลือก
+  // เก็บ case ใน label switch + backend logic ไว้กัน data เก่า
+  // { id: 'subscriber_emote', label: '😄 ส่ง Subscriber Emote' },
+  // { id: 'fan_club_sticker', label: '🏅 ส่ง Fan Club Sticker' },
+  // { id: 'tiktok_shop',      label: '🛒 ซื้อของจาก TikTok Shop' },
 ];
 
 const WHO_LIST = [
@@ -64,7 +68,6 @@ const WHO_LIST = [
   { id: 'follower',       label: 'Follower' },
   { id: 'subscriber',     label: 'Subscriber' },
   { id: 'moderator',      label: 'Moderator' },
-  { id: 'top_gifter',     label: 'Top Gifter' },
   { id: 'specific_user',  label: 'ผู้ใช้ที่ระบุ' },
 ];
 
@@ -429,7 +432,13 @@ function UsernameCombobox({ label, value, onChange, placeholder = '@username' })
       <input
         type="text"
         value={value || ''}
-        onChange={e => { onChange(e.target.value); setOpen(true); setHighlighted(0); }}
+        onChange={e => {
+          // strip "@" prefix + trim whitespace — uniqueId จาก TikTok ไม่มี @ นำ
+          const clean = e.target.value.replace(/^@+/, '').trim();
+          onChange(clean);
+          setOpen(true);
+          setHighlighted(0);
+        }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
@@ -511,7 +520,10 @@ function ActionChipPicker({ actions, selectedIds, onToggle, accent = 'emerald', 
   const selectedActions = selectedIds
     .map(id => actions.find(a => a.id === id))
     .filter(Boolean);
-  const unselected = actions.filter(a => !selectedIds.includes(a.id));
+  // sort สร้างใหม่ก่อน — newest createdAt อยู่บนสุดของ dropdown
+  const unselected = actions
+    .filter(a => !selectedIds.includes(a.id))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const filtered = search.trim()
     ? unselected.filter(a => a.name.toLowerCase().includes(search.trim().toLowerCase()))
     : unselected;
@@ -730,26 +742,39 @@ function ObsSelect({ label, value, onChange, items, loading, onFetch, placeholde
 }
 
 // ── OBS Source Picker — Modal เปิดมาเห็นทุก source แบ่งตาม scene + ค้นหา ─────
-function ObsSourcePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, onClose, currentValue }) {
+function ObsSourcePickerModal({ obsSourceMap, obsSceneOrder, obsScanStatus, onScan, onSelect, onClose, currentValue }) {
   const [search, setSearch] = useState('');
 
   // auto-scan ครั้งเดียวตอนเปิด — ใช้ obsSourceMap เก่าก่อน แล้วค่อยอัพเดท
   useEffect(() => { onScan?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // group by scene: { sceneName: [sourceName, ...] }
+  // group by scene + เรียงตาม OBS native order:
+  //   - source ใน scene → ตาม layer position (top→bottom เหมือน UI ของ OBS)
+  //   - scene → ตาม obsSceneOrder ที่ scan มา (ใหม่→เก่า)
   const sceneGroups = useMemo(() => {
+    // g: { sceneName: [{ source, position }, ...] }
     const g = {};
     for (const [src, locs] of Object.entries(obsSourceMap || {})) {
       for (const loc of locs || []) {
         const scene = loc?.sceneName || '(no scene)';
-        if (!g[scene]) g[scene] = new Set();
-        g[scene].add(src);
+        if (!g[scene]) g[scene] = [];
+        g[scene].push({ source: src, position: typeof loc.position === 'number' ? loc.position : 0 });
       }
     }
-    return Object.entries(g)
-      .map(([scene, set]) => ({ scene, sources: Array.from(set).sort((a, b) => a.localeCompare(b, 'th')) }))
-      .sort((a, b) => a.scene.localeCompare(b.scene, 'th'));
-  }, [obsSourceMap]);
+    // sort source ตาม position ภายใน scene
+    const groups = Object.entries(g).map(([scene, items]) => ({
+      scene,
+      sources: items.sort((a, b) => a.position - b.position).map(x => x.source),
+    }));
+    // sort scene ตาม obsSceneOrder; scene ที่ไม่อยู่ใน order list → ไปท้ายสุด
+    const orderIdx = new Map((obsSceneOrder || []).map((s, i) => [s, i]));
+    return groups.sort((a, b) => {
+      const ai = orderIdx.has(a.scene) ? orderIdx.get(a.scene) : Number.MAX_SAFE_INTEGER;
+      const bi = orderIdx.has(b.scene) ? orderIdx.get(b.scene) : Number.MAX_SAFE_INTEGER;
+      if (ai !== bi) return ai - bi;
+      return a.scene.localeCompare(b.scene, 'th'); // tie-break
+    });
+  }, [obsSourceMap, obsSceneOrder]);
 
   // filter ด้วย search (match ทั้ง source และ scene)
   const filtered = useMemo(() => {
@@ -862,12 +887,14 @@ function ObsSourcePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, o
 }
 
 // ── OBS Scene Picker — Modal เลือก scene พร้อม search ────────────────────────
-function ObsScenePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, onClose, currentValue }) {
+function ObsScenePickerModal({ obsSourceMap, obsSceneOrder, obsScanStatus, onScan, onSelect, onClose, currentValue }) {
   const [search, setSearch] = useState('');
   useEffect(() => { onScan?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ดึงรายชื่อ scene ที่ unique จาก obsSourceMap (scene → source map)
+  // ดึงรายชื่อ scene — ใช้ obsSceneOrder เป็นหลัก (รวม scene ที่ไม่มี source ด้วย)
+  // fallback ดึงจาก obsSourceMap ถ้า sceneOrder ยังว่าง
   const scenes = useMemo(() => {
+    if (Array.isArray(obsSceneOrder) && obsSceneOrder.length > 0) return [...obsSceneOrder];
     const set = new Set();
     for (const locs of Object.values(obsSourceMap || {})) {
       for (const loc of locs || []) {
@@ -875,7 +902,7 @@ function ObsScenePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, on
       }
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
-  }, [obsSourceMap]);
+  }, [obsSourceMap, obsSceneOrder]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -964,7 +991,7 @@ function ObsScenePickerModal({ obsSourceMap, obsScanStatus, onScan, onSelect, on
 }
 
 // ── Action Form Modal ────────────────────────────────────────────────────────
-function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled, obsSourceMap, obsScanStatus, scanObsSources }) {
+function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled, obsSourceMap, obsSceneOrder, obsScanStatus, scanObsSources }) {
   const [form, setForm] = useState({
     ...DEFAULT_ACTION,
     ...(initial || {}),
@@ -1704,6 +1731,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled,
             {showScenePicker && (
               <ObsScenePickerModal
                 obsSourceMap={obsSourceMap}
+                obsSceneOrder={obsSceneOrder}
                 obsScanStatus={obsScanStatus}
                 onScan={() => scanObsSources?.()}
                 onSelect={v => set('obsScene', v)}
@@ -1759,6 +1787,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled,
             {showSourcePicker && (
               <ObsSourcePickerModal
                 obsSourceMap={obsSourceMap}
+                obsSceneOrder={obsSceneOrder}
                 obsScanStatus={obsScanStatus}
                 onScan={() => scanObsSources?.()}
                 onSelect={v => set('obsSource', v)}
@@ -1775,7 +1804,7 @@ function ActionModal({ initial, onSave, onClose, obsHost, obsPort, audioEnabled,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-4xl flex flex-col" style={{ height: '85vh' }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
@@ -2062,7 +2091,7 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-white dark:bg-[#1a1f30] border border-gray-300 dark:border-[#2d3550] rounded-xl w-full max-w-4xl flex flex-col" style={{ height: '85vh' }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
@@ -2693,8 +2722,11 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const firingSetRef  = useRef(new Set());
 
   // ── OBS Source Map — สร้างตอน connect ครั้งแรก ──────────────────────────
-  // { sourceName: [{ sceneName, sceneItemId }, ...], ... }
+  // { sourceName: [{ sceneName, sceneItemId, position }, ...], ... }
+  // position = index ใน sceneItems[] ของ scene นั้น (เพื่อ sort เรียงตาม OBS layer order)
   const [obsSourceMap,  setObsSourceMap]  = useState({});
+  // obsSceneOrder = ลำดับ scene ตามที่ OBS GetSceneList ส่งมา
+  const [obsSceneOrder, setObsSceneOrder] = useState([]);
   const [obsScanStatus, setObsScanStatus] = useState('');
 
   // hostArg/portArg — ใช้เมื่อเรียกก่อน state จะอัปเดต (เช่น ทันทีหลัง loadData)
@@ -2714,12 +2746,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       ws.send(JSON.stringify({ op: 6, d: { requestType: type, requestId: id, requestData: data } }));
     };
 
-    const map = {};          // sourceName → [{ sceneName, sceneItemId }]
+    const map = {};          // sourceName → [{ sceneName, sceneItemId, position }]
+    let sceneOrder = [];     // [sceneName] ตามลำดับที่ OBS ส่งมา
     let totalScenes   = 0;
     let doneScenesCount = 0;
 
     const finish = () => {
       setObsSourceMap(map);
+      setObsSceneOrder(sceneOrder);
       const srcCount = Object.keys(map).length;
       setObsScanStatus(`✅ ${srcCount} source จาก ${totalScenes} scene`);
       try { localStorage.setItem('ttplus_obs_was_connected', '1'); } catch {}
@@ -2748,17 +2782,20 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         if (entry.type === 'GetSceneList') {
           const scenes = msg.d.responseData?.scenes || [];
           totalScenes = scenes.length;
+          // OBS GetSceneList ส่ง scene เรียงจากเก่า→ใหม่ — reverse ให้ใหม่ก่อนเหมือน UI
+          sceneOrder = scenes.map(s => s.sceneName).filter(Boolean).reverse();
           if (totalScenes === 0) { clearTimeout(scanTimeout); finish(); return; }
           for (const s of scenes) send('GetSceneItemList', { sceneName: s.sceneName }, { sceneName: s.sceneName });
 
         } else if (entry.type === 'GetSceneItemList') {
           const sceneName = entry.meta?.sceneName || '';
           const items     = msg.d.responseData?.sceneItems || [];
-          for (const item of items) {
-            if (!item.sourceName) continue;
+          // เก็บ position เพื่อ sort ตาม OBS layer order ใน picker
+          items.forEach((item, idx) => {
+            if (!item.sourceName) return;
             if (!map[item.sourceName]) map[item.sourceName] = [];
-            map[item.sourceName].push({ sceneName, sceneItemId: item.sceneItemId });
-          }
+            map[item.sourceName].push({ sceneName, sceneItemId: item.sceneItemId, position: idx });
+          });
           doneScenesCount++;
           if (doneScenesCount >= totalScenes) { clearTimeout(scanTimeout); finish(); }
         }
@@ -4227,6 +4264,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
                   case 'share':            return '🔗 กด Share';
                   case 'subscribe':        return '⭐ Subscribe';
                   case 'chat':             return '💬 ทุก comment';
+                  // legacy/hidden triggers — เก็บ label ให้ list แสดงชื่อสวยถ้ามี data เก่า
                   case 'subscriber_emote': return '😄 Subscriber Emote';
                   case 'fan_club_sticker': return '🏅 Fan Club Sticker';
                   case 'tiktok_shop':      return '🛒 TikTok Shop';
@@ -4512,6 +4550,7 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
           obsPort={obsPort}
           audioEnabled={audioEnabled}
           obsSourceMap={obsSourceMap}
+          obsSceneOrder={obsSceneOrder}
           obsScanStatus={obsScanStatus}
           scanObsSources={scanObsSources}
         />
