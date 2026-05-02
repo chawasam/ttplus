@@ -489,11 +489,12 @@ io.on('connection', (socket) => {
   socket.on('pk_trigger', (data) => {
     if (!socket.userId) return;
     if (!socketRateLimit(socket.id, 30, 5000)) return;
-    const { videoUrl, videoType, category } = data || {};
+    const { videoUrl, videoType, category, volume } = data || {};
     if (typeof videoUrl !== 'string' || videoUrl.length > 600) return;
     if (!['webm', 'mp4'].includes(String(videoType || ''))) return;
     const safeCategory = typeof category === 'string' ? category.slice(0, 30) : '';
-    io.to(`widget_${socket.userId}`).emit('pk_play', { videoUrl, videoType, category: safeCategory });
+    const safeVolume   = (typeof volume === 'number' && volume >= 0 && volume <= 1) ? volume : 0.8;
+    io.to(`widget_${socket.userId}`).emit('pk_play', { videoUrl, videoType, category: safeCategory, volume: safeVolume });
   });
 
   // ===== Real-time style update (authenticated user → widget room) =====
