@@ -477,6 +477,146 @@ function UsernameCombobox({ label, value, onChange, placeholder = '@username' })
   );
 }
 
+// ── ActionChipPicker — chip-based multi-select with dropdown ───────────────
+// คลิก zone ว่าง → dropdown เปิด → เลือก action → กลายเป็น chip · กดอีกรอบเพื่อเพิ่ม
+const PICKER_ACCENT = {
+  emerald: {
+    border: 'border-emerald-500/30',
+    chipBg: 'bg-emerald-500/15',
+    chipBorder: 'border-emerald-400/40',
+    chipText: 'text-emerald-100',
+    chipRemove: 'text-emerald-300 hover:text-white hover:bg-emerald-500/40',
+    hint: 'text-emerald-300/70',
+    optionHover: 'hover:bg-emerald-500/15',
+  },
+  purple: {
+    border: 'border-purple-500/30',
+    chipBg: 'bg-purple-500/15',
+    chipBorder: 'border-purple-400/40',
+    chipText: 'text-purple-100',
+    chipRemove: 'text-purple-300 hover:text-white hover:bg-purple-500/40',
+    hint: 'text-purple-300/70',
+    optionHover: 'hover:bg-purple-500/15',
+  },
+};
+
+function ActionChipPicker({ actions, selectedIds, onToggle, accent = 'emerald', extraInfo }) {
+  const [open,   setOpen]   = useState(false);
+  const [search, setSearch] = useState('');
+  const wrapRef = useRef(null);
+  const searchRef = useRef(null);
+
+  const c = PICKER_ACCENT[accent] || PICKER_ACCENT.emerald;
+
+  const selectedActions = selectedIds
+    .map(id => actions.find(a => a.id === id))
+    .filter(Boolean);
+  const unselected = actions.filter(a => !selectedIds.includes(a.id));
+  const filtered = search.trim()
+    ? unselected.filter(a => a.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : unselected;
+
+  // click outside → close
+  useEffect(() => {
+    function onClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+        setSearch('');
+      }
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  // focus search input เมื่อ dropdown เปิด
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 0);
+  }, [open]);
+
+  function handleBoxClick() {
+    if (unselected.length === 0) return;
+    setOpen(true);
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div
+        onClick={handleBoxClick}
+        className={clsx(
+          'min-h-[60px] rounded-lg border-2 border-dashed bg-[#0f172a]/60 p-2 flex flex-wrap gap-1.5 items-center transition-colors',
+          c.border,
+          unselected.length > 0 && 'cursor-pointer hover:bg-[#1a1f30]/80'
+        )}>
+        {selectedActions.map(a => (
+          <span
+            key={a.id}
+            onClick={e => e.stopPropagation()}
+            className={clsx(
+              'inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-md border text-xs font-medium',
+              c.chipBg, c.chipBorder, c.chipText
+            )}>
+            <span className="max-w-[180px] truncate">{a.name}</span>
+            {extraInfo && extraInfo(a) && (
+              <span className="text-[10px] opacity-70 ml-0.5">{extraInfo(a)}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => onToggle(a.id)}
+              className={clsx('w-4 h-4 rounded flex items-center justify-center text-xs leading-none transition-colors', c.chipRemove)}
+              aria-label="ลบออก">
+              ×
+            </button>
+          </span>
+        ))}
+        {unselected.length > 0 && (
+          <span className={clsx('text-xs italic', c.hint, selectedActions.length > 0 ? 'ml-1' : 'mx-auto')}>
+            {selectedActions.length === 0 ? 'คลิกเพื่อเพิ่ม action' : '+ เพิ่ม'}
+          </span>
+        )}
+        {unselected.length === 0 && selectedActions.length > 0 && (
+          <span className="text-xs italic text-gray-500 mx-auto">เลือกครบทุก action แล้ว</span>
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 rounded-lg border border-gray-300 dark:border-[#2d3550] bg-white dark:bg-[#1a1f30] shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-gray-200 dark:border-[#2d3550]">
+            <input
+              ref={searchRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={`🔍 ค้นหา (เหลือ ${unselected.length} action)`}
+              className="w-full bg-[#0f172a] border border-[#2d3550] rounded px-2 py-1.5 text-sm text-slate-200 focus:border-brand-500 focus:outline-none"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-gray-500 text-center">
+                {search ? `ไม่พบ "${search}"` : 'ไม่มี action ให้เพิ่ม'}
+              </div>
+            ) : (
+              filtered.map(a => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => onToggle(a.id)}
+                  className={clsx(
+                    'w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-200 transition-colors',
+                    c.optionHover
+                  )}>
+                  <span className="text-gray-500 text-base leading-none">+</span>
+                  <span className="flex-1 truncate">{a.name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── OBS WebSocket v5 helper — fetch scenes & sources ─────────────────────────
 function fetchObsLists(host, port, onResult) {
   // onResult({ scenes: string[], inputs: string[], error?: string })
@@ -1580,27 +1720,12 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                     )}
                   </div>
                   <p className="text-[11px] text-gray-400 mb-3 ml-3">เมื่อ trigger — ทำ action เหล่านี้ทุกอันพร้อมกัน</p>
-                  <div className="space-y-1">
-                    {actions.map(a => {
-                      const on = form.actionIds.includes(a.id);
-                      return (
-                        <label key={a.id} className={clsx(
-                          'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
-                          on ? 'border-brand-500 bg-brand-900/20 text-white' : 'border-gray-300 dark:border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-700 dark:text-gray-300'
-                        )}>
-                          <span className={clsx(
-                            'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
-                            on ? 'bg-brand-600 border-brand-500' : 'border-gray-600'
-                          )}>
-                            {on && <span className="text-white text-[9px] leading-none">✓</span>}
-                          </span>
-                          <input type="checkbox" className="hidden" checked={on}
-                            onChange={() => toggleActionId(a.id, 'actionIds')} />
-                          <span className="flex-1 truncate">{a.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <ActionChipPicker
+                    actions={actions}
+                    selectedIds={form.actionIds}
+                    onToggle={id => toggleActionId(id, 'actionIds')}
+                    accent="emerald"
+                  />
                 </div>
 
                 {/* ── สุ่ม 1 จาก pool ── */}
@@ -1624,32 +1749,13 @@ function EventModal({ initial, actions, giftList, onSave, onClose }) {
                       </span>
                     )}
                   </p>
-                  <div className="space-y-1">
-                    {actions.map(a => {
-                      const on = form.randomActionIds.includes(a.id);
-                      return (
-                        <label key={a.id} className={clsx(
-                          'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-pointer text-sm transition-colors',
-                          on ? 'border-purple-500 bg-purple-900/20 text-white' : 'border-gray-300 dark:border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-700 dark:text-gray-300'
-                        )}>
-                          <span className={clsx(
-                            'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
-                            on ? 'bg-purple-600 border-purple-500' : 'border-gray-600'
-                          )}>
-                            {on && <span className="text-white text-[9px] leading-none">✓</span>}
-                          </span>
-                          <input type="checkbox" className="hidden" checked={on}
-                            onChange={() => toggleActionId(a.id, 'randomActionIds')} />
-                          <span className="flex-1 truncate">{a.name}</span>
-                          {on && randomCount >= 2 && (
-                            <span className="text-[10px] text-purple-600 dark:text-purple-400 shrink-0">
-                              ~{Math.round(100 / randomCount)}%
-                            </span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <ActionChipPicker
+                    actions={actions}
+                    selectedIds={form.randomActionIds}
+                    onToggle={id => toggleActionId(id, 'randomActionIds')}
+                    accent="purple"
+                    extraInfo={() => randomCount >= 2 ? `~${Math.round(100 / randomCount)}%` : ''}
+                  />
                 </div>
               </>
             )}
