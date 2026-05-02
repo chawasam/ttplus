@@ -192,7 +192,8 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   const [saving,          setSaving]          = useState(false);
   const [uploading,       setUploading]       = useState(false);
   const [sharingVideoId,  setSharingVideoId]  = useState(null); // id ของวิดีโอที่กำลัง upload-shared
-  const [deletePreset,    setDeletePreset]    = useState(null); // { cat, filename, countdown } — pending delete countdown
+  const [deletePreset,    setDeletePreset]    = useState(null); // { cat, filename, countdown } — pending delete countdown (SERVER)
+  const [deletingVideo,   setDeletingVideo]   = useState(null); // { cat, id, countdown } — pending delete countdown (personal)
 
   const OWNER_EMAIL = 'cksamg@gmail.com';
   const isOwner = user?.email === OWNER_EMAIL;
@@ -205,7 +206,8 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   const saveTimer        = useRef(null);
   const socketRef        = useRef(null);
   const importRef        = useRef(null);
-  const deleteCountTimer = useRef(null); // interval สำหรับ countdown ลบ preset
+  const deleteCountTimer  = useRef(null); // interval สำหรับ countdown ลบ preset (SERVER)
+  const deleteVideoTimer  = useRef(null); // interval สำหรับ countdown ลบ video (personal)
 
   // ─── Load config + presets ───────────────────────────────────────────────
   // อ่าน masterVolume จาก localStorage หลัง hydration
@@ -413,6 +415,29 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     } catch (err) {
       toast.error(`ลบไม่สำเร็จ: ${err.response?.data?.error || err.message}`);
     }
+  }
+
+  // startDeleteVideo — countdown 5 วินาที ก่อนลบวิดีโอส่วนตัว
+  function startDeleteVideo(catId, video) {
+    // กดซ้ำ = ยกเลิก
+    if (deletingVideo?.cat === catId && deletingVideo?.id === video.id) {
+      clearInterval(deleteVideoTimer.current);
+      setDeletingVideo(null);
+      return;
+    }
+    clearInterval(deleteVideoTimer.current);
+    setDeletingVideo({ cat: catId, id: video.id, countdown: 5 });
+    let count = 5;
+    deleteVideoTimer.current = setInterval(() => {
+      count -= 1;
+      if (count <= 0) {
+        clearInterval(deleteVideoTimer.current);
+        setDeletingVideo(null);
+        deleteVideo(catId, video); // video captured in closure — ลบจริง
+      } else {
+        setDeletingVideo(prev => prev ? { ...prev, countdown: count } : null);
+      }
+    }, 1000);
   }
 
   // uploadFile — owner only: อัพโหลดไฟล์ไปเก็บใน uploads/pk/{uid}/ (ส่วนตัว)
@@ -801,7 +826,24 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                             style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${accent}55`, background: 'transparent', color: accent, fontSize: 12, cursor: isSharing ? 'wait' : 'pointer', flexShrink: 0, opacity: isSharing ? 0.5 : 1 }}
                           >{isSharing ? '⏳' : '📤'}</button>
                         )}
-                        <button onClick={e => { e.stopPropagation(); deleteVideo(activeTab, video); }} style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid #ef444433`, background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>🗑</button>
+                        {/* ปุ่มลบ + countdown 5 วินาที */}
+                        {(() => {
+                          const isPending = deletingVideo?.cat === activeTab && deletingVideo?.id === video.id;
+                          return isPending ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', minWidth: 18, textAlign: 'center' }}>{deletingVideo.countdown}</span>
+                              <button onClick={() => { clearInterval(deleteVideoTimer.current); setDeletingVideo(null); }} style={{
+                                fontSize: 11, padding: '2px 8px', borderRadius: 4, border: `1px solid ${border}`,
+                                background: isDark ? '#2a2a2a' : '#f5f5f5', color: txt, cursor: 'pointer',
+                              }}>ยกเลิก</button>
+                            </div>
+                          ) : (
+                            <button onClick={e => { e.stopPropagation(); startDeleteVideo(activeTab, video); }} style={{
+                              padding: '4px 8px', borderRadius: 6, border: `1px solid #ef444433`,
+                              background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer', flexShrink: 0,
+                            }}>🗑</button>
+                          );
+                        })()}
                       </div>
                     );
                   })}
