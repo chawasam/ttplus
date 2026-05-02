@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>วิธีสร้าง Google Cloud TTS API Key</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f0f14;
+    color: #e8e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .guide-wrap {
+    width: 100%;
+    max-width: 760px;
+  }
+
+  /* ─── Header ─── */
+  .guide-header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .guide-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .guide-header p {
+    font-size: 13px;
+    color: #888;
+  }
+
+  /* ─── Progress bar ─── */
+  .progress-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 24px;
+    justify-content: center;
+  }
+  .progress-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #333;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .progress-dot.active { background: #4f8ef7; width: 24px; border-radius: 4px; }
+  .progress-dot.done   { background: #3ecf8e; }
+
+  /* ─── Step card ─── */
+  .step-card {
+    background: #1a1a24;
+    border: 1px solid #2a2a38;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .step-meta {
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid #2a2a38;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .step-num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: #4f8ef7;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .step-sub {
+    font-size: 12px;
+    color: #888;
+    margin-top: 2px;
+  }
+
+  /* ─── Mock browser ─── */
+  .mock-browser {
+    background: #13131c;
+    border-top: none;
+  }
+  .mock-browser-bar {
+    background: #1e1e2a;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #2a2a38;
+  }
+  .mock-dots { display: flex; gap: 5px; }
+  .mock-dot  { width: 10px; height: 10px; border-radius: 50%; }
+  .mock-dot.r { background: #ff5f57; }
+  .mock-dot.y { background: #febc2e; }
+  .mock-dot.g { background: #28c840; }
+  .mock-url {
+    flex: 1;
+    background: #2a2a38;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: #aaa;
+    font-family: monospace;
+  }
+  .mock-screen {
+    position: relative;
+    overflow: hidden;
+    min-height: 280px;
+  }
+
+  /* ─── Google Cloud mock UI ─── */
+  .gc-top {
+    background: #1a73e8;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: #fff;
+  }
+  .gc-logo { font-weight: 700; font-size: 14px; letter-spacing: -0.3px; }
+  .gc-project-pill {
+    background: rgba(255,255,255,0.15);
+    border-radius: 100px;
+    padding: 3px 10px;
+    font-size: 11px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .gc-search {
+    flex: 1; max-width: 300px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.8);
+  }
+
+  .gc-body { display: flex; min-height: 240px; }
+
+  .gc-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    background: #1a1a26;
+    padding: 10px 0;
+    border-right: 1px solid #2a2a38;
+  }
+  .gc-nav-item {
+    padding: 7px 16px;
+    font-size: 12px;
+    color: #aaa;
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer;
+    border-radius: 0 20px 20px 0;
+    margin-right: 10px;
+    transition: background 0.2s;
+  }
+  .gc-nav-item:hover { background: rgba(79,142,247,0.08); color: #fff; }
+  .gc-nav-item.active { background: rgba(79,142,247,0.15); color: #4f8ef7; }
+
+  .gc-content { flex: 1; padding: 16px; overflow-y: auto; }
+
+  /* ─── Highlight pulse animation ─── */
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(79,142,247,0.6); }
+    70%  { box-shadow: 0 0 0 8px rgba(79,142,247,0); }
+    100% { box-shadow: 0 0 0 0 rgba(79,142,247,0); }
+  }
+  @keyframes pulse-green {
+    0%   { box-shadow: 0 0 0 0 rgba(62,207,142,0.6); }
+    70%  { box-shadow: 0 0 0 8px rgba(62,207,142,0); }
+    100% { box-shadow: 0 0 0 0 rgba(62,207,142,0); }
+  }
+  .hl { animation: pulse-ring 1.5s infinite; }
+  .hl-green { animation: pulse-green 1.5s infinite; }
+
+  /* ─── Step-specific content ─── */
+  .step-content { display: none; }
+  .step-content.visible { display: block; }
+
+  /* step 0 — navigate */
+  .big-url-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 36px 24px;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .url-chip {
+    background: #1e1e2a;
+    border: 1px solid #4f8ef7;
+    border-radius: 10px;
+    padding: 12px 24px;
+    font-family: monospace;
+    font-size: 16px;
+    color: #4f8ef7;
+    letter-spacing: 0.3px;
+  }
+  .url-note { font-size: 12px; color: #888; text-align: center; }
+
+  /* API card */
+  .api-card {
+    background: #1e1e2a;
+    border: 1px solid #2a2a38;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .api-card:hover { border-color: #4f8ef7; }
+  .api-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #4f8ef7, #1a73e8);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .api-name { font-size: 13px; font-weight: 600; color: #fff; }
+  .api-desc { font-size: 11px; color: #888; margin-top: 2px; }
+
+  /* Enable button */
+  .enable-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .enabled-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(62,207,142,0.12);
+    color: #3ecf8e;
+    border: 1px solid #3ecf8e;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* Key reveal */
+  .key-box {
+    background: #0d0d14;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #4f8ef7;
+    word-break: break-all;
+    position: relative;
+  }
+  .copy-btn {
+    position: absolute; right: 8px; top: 8px;
+    background: #2a2a38;
+    border: none; border-radius: 5px;
+    color: #aaa; font-size: 11px; padding: 3px 7px; cursor: pointer;
+  }
+  .copy-btn:hover { background: #3a3a50; color: #fff; }
+
+  /* Settings mock */
+  .settings-field {
+    background: #1e1e2a;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #aaa;
+    font-family: monospace;
+    width: 100%;
+  }
+  .settings-field.filled { border-color: #3ecf8e; color: #3ecf8e; }
+
+  /* ─── Nav buttons ─── */
+  .nav-row {
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid #2a2a38;
+  }
+  .nav-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+  .nav-btn.prev { background: #2a2a38; color: #aaa; }
+  .nav-btn.prev:hover { background: #3a3a50; color: #fff; }
+  .nav-btn.next { background: #4f8ef7; color: #fff; }
+  .nav-btn.next:hover { background: #3d7de8; }
+  .nav-btn.finish { background: #3ecf8e; color: #0d0d14; }
+  .nav-btn.finish:hover { background: #2ebf7e; }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+  .step-counter { font-size: 12px; color: #555; }
+
+  /* ─── Final success ─── */
+  .success-screen {
+    text-align: center;
+    padding: 48px 24px;
+  }
+  .success-icon { font-size: 56px; margin-bottom: 16px; }
+  .success-title { font-size: 20px; font-weight: 700; color: #3ecf8e; margin-bottom: 8px; }
+  .success-desc { font-size: 13px; color: #888; }
+
+  /* ─── Tip box ─── */
+  .tip-box {
+    background: rgba(79,142,247,0.06);
+    border: 1px solid rgba(79,142,247,0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #aaa;
+    margin: 12px 24px;
+    display: flex; gap: 8px;
+  }
+  .tip-box span:first-child { flex-shrink: 0; }
+
+  /* cursor indicator */
+  .cursor-dot {
+    width: 16px; height: 16px;
+    background: rgba(79,142,247,0.9);
+    border-radius: 50%;
+    position: absolute;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 3px rgba(79,142,247,0.3);
+    transition: all 0.5s cubic-bezier(.4,0,.2,1);
+    z-index: 10;
+  }
+
+  /* search result highlight */
+  .search-result {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 6px;
+    font-size: 12px; color: #ccc;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .search-result:hover, .search-result.active { background: rgba(79,142,247,0.1); color: #fff; }
+
+  /* cred type cards */
+  .cred-option {
+    background: #1e1e2a;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    margin-bottom: 6px;
+  }
+  .cred-option:hover, .cred-option.active { border-color: #4f8ef7; }
+  .cred-option-title { font-weight: 600; color: #fff; margin-bottom: 2px; }
+  .cred-option-desc  { color: #888; font-size: 11px; }
+
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body>
+<div class="guide-wrap fade-in">
+  <div class="guide-header">
+    <h1>🔑 วิธีสร้าง Google Cloud TTS API Key</h1>
+    <p>ทำตามขั้นตอนด้านล่าง เพื่อเปิดใช้ Text-to-Speech ใน TTplus</p>
+  </div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <div class="step-card">
+    <!-- ═══ STEP 0: ไปที่ Google Cloud Console ═══ -->
+    <div class="step-content" id="step-0">
+      <div class="step-meta">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">เปิด Google Cloud Console</div>
+          <div class="step-sub">เข้าเว็บไซต์ console.cloud.google.com แล้ว Login ด้วย Google Account</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="big-url-box">
+          <div style="font-size:13px;color:#888;margin-bottom:4px;">คัดลอก URL แล้ววางในเบราว์เซอร์</div>
+          <div class="url-chip">console.cloud.google.com</div>
+          <div class="url-note">ถ้ายังไม่มี Google Account ให้สร้างก่อน<br/>(ใช้ account เดียวกับที่ login TTplus ได้เลย)</div>
+        </div>
+      </div>
+      <div class="tip-box">
+        <span>💡</span>
+        <span>บัญชี Google Cloud ใหม่จะได้รับ <strong style="color:#3ecf8e">เครดิตฟรี $300</strong> ใช้ได้ 90 วัน — Text-to-Speech มี Free Tier 1 ล้านอักขระ/เดือนด้วย</span>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 1: สร้าง Project ═══ -->
+    <div class="step-content" id="step-1">
+      <div class="step-meta">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">สร้างหรือเลือก Project</div>
+          <div class="step-sub">คลิก Dropdown ชื่อ Project มุมบนซ้าย → "New Project"</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-browser-bar">
+          <div class="mock-dots">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+          </div>
+          <div class="mock-url">console.cloud.google.com/projectselector2</div>
+        </div>
+        <div class="mock-screen" style="min-height:220px;">
+          <div class="gc-top">
+            <div class="gc-logo">Google Cloud</div>
+            <div class="gc-project-pill hl" style="border-radius:100px;border:2px solid #fff;cursor:pointer;" id="projPill">
+              <span>📁</span> My Project <span>▾</span>
+            </div>
+            <div class="gc-search">🔍 ค้นหา APIs, เอกสาร...</div>
+          </div>
+          <div style="padding:24px;text-align:center;">
+            <div id="projModal" style="display:none;background:#1e1e2a;border:1px solid #3a3a50;border-radius:12px;padding:16px;max-width:320px;margin:0 auto;text-align:left;">
+              <div style="font-size:13px;font-weight:600;margin-bottom:12px;">เลือก Project</div>
+              <div style="font-size:11px;color:#888;margin-bottom:8px;">Projects ของคุณ</div>
+              <div class="search-result active">📁 My Project (มีอยู่แล้ว)</div>
+              <div style="border-top:1px solid #2a2a38;margin:8px 0;"></div>
+              <div class="search-result hl" style="color:#4f8ef7;border:1px dashed rgba(79,142,247,0.4);border-radius:6px;">
+                ➕ New Project
+              </div>
+            </div>
+            <div id="projHint" style="color:#888;font-size:12px;">
+              คลิกที่ Dropdown เพื่อดู
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box">
+        <span>💡</span>
+        <span>ถ้ามี Project อยู่แล้ว <strong style="color:#fff">ใช้ Project เดิมได้เลย</strong> ไม่จำเป็นต้องสร้างใหม่</span>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 2: เปิด API Library ═══ -->
+    <div class="step-content" id="step-2">
+      <div class="step-meta">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">ค้นหา Text-to-Speech API</div>
+          <div class="step-sub">ไปที่ APIs & Services → Library แล้วค้นหา "Text-to-Speech"</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-browser-bar">
+          <div class="mock-dots">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+          </div>
+          <div class="mock-url">console.cloud.google.com/apis/library</div>
+        </div>
+        <div class="mock-screen" style="min-height:230px;">
+          <div class="gc-top">
+            <div class="gc-logo">Google Cloud</div>
+            <div class="gc-project-pill"><span>📁</span> My Project</div>
+          </div>
+          <div class="gc-body">
+            <div class="gc-sidebar">
+              <div class="gc-nav-item active">📚 Library</div>
+              <div class="gc-nav-item">🔑 Credentials</div>
+              <div class="gc-nav-item">📊 Dashboard</div>
+            </div>
+            <div class="gc-content">
+              <div style="font-size:13px;font-weight:600;margin-bottom:10px;">API Library</div>
+              <div style="background:#1e1e2a;border:1px solid #3a3a50;border-radius:7px;padding:6px 10px;font-size:11px;color:#aaa;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                🔍 <span id="searchText">text-to-speech</span>
+              </div>
+              <div class="api-card hl" style="border-color:rgba(79,142,247,0.5);">
+                <div class="api-icon">🗣️</div>
+                <div>
+                  <div class="api-name">Cloud Text-to-Speech API</div>
+                  <div class="api-desc">Synthesizes natural-sounding speech by applying AI</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 3: Enable API ═══ -->
+    <div class="step-content" id="step-3">
+      <div class="step-meta">
+        <div class="step-num">4</div>
+        <div>
+          <div class="step-title">เปิดใช้งาน API</div>
+          <div class="step-sub">คลิกที่ Cloud Text-to-Speech API แล้วกดปุ่ม "Enable"</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-browser-bar">
+          <div class="mock-dots">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+          </div>
+          <div class="mock-url">console.cloud.google.com/apis/library/texttospeech.googleapis.com</div>
+        </div>
+        <div class="mock-screen" style="min-height:230px;">
+          <div class="gc-top">
+            <div class="gc-logo">Google Cloud</div>
+            <div class="gc-project-pill"><span>📁</span> My Project</div>
+          </div>
+          <div class="gc-content" style="padding:16px;">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+              <div class="api-icon" style="width:48px;height:48px;font-size:24px;">🗣️</div>
+              <div>
+                <div style="font-size:15px;font-weight:700;">Cloud Text-to-Speech API</div>
+                <div style="font-size:11px;color:#888;">Google Enterprise APIs</div>
+              </div>
+            </div>
+            <div id="enableState">
+              <button class="enable-btn hl" onclick="document.getElementById('enableState').innerHTML='<div class=\\'enabled-badge hl-green\\'>✓ API Enabled</div><div style=\\'margin-top:10px;font-size:11px;color:#888;\\'>เปิดใช้งานแล้ว — ไปสร้าง Credentials ได้เลย</div>'"
+              >ENABLE</button>
+            </div>
+            <div style="margin-top:16px;font-size:11px;color:#666;line-height:1.6;">
+              Synthesizes natural-sounding speech. 1 million characters/month ฟรี<br/>
+              อัตรา: $4.00 USD / 1 ล้านอักขระ (Wavenet)
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box">
+        <span>⚡</span>
+        <span>กดปุ่ม <strong style="color:#fff">ENABLE</strong> ในหน้าจำลองด้านบนเพื่อดู animation</span>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 4: สร้าง Credentials ═══ -->
+    <div class="step-content" id="step-4">
+      <div class="step-meta">
+        <div class="step-num">5</div>
+        <div>
+          <div class="step-title">สร้าง API Key</div>
+          <div class="step-sub">ไปที่ APIs & Services → Credentials → "+ CREATE CREDENTIALS" → "API key"</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-browser-bar">
+          <div class="mock-dots">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+          </div>
+          <div class="mock-url">console.cloud.google.com/apis/credentials</div>
+        </div>
+        <div class="mock-screen" style="min-height:230px;">
+          <div class="gc-top">
+            <div class="gc-logo">Google Cloud</div>
+            <div class="gc-project-pill"><span>📁</span> My Project</div>
+          </div>
+          <div class="gc-body">
+            <div class="gc-sidebar">
+              <div class="gc-nav-item">📚 Library</div>
+              <div class="gc-nav-item active">🔑 Credentials</div>
+            </div>
+            <div class="gc-content">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div style="font-size:13px;font-weight:600;">Credentials</div>
+                <button class="enable-btn hl" style="font-size:11px;padding:6px 12px;" id="createCredBtn"
+                  onclick="document.getElementById('credDropdown').style.display='block';this.style.animation='none'">
+                  + CREATE CREDENTIALS
+                </button>
+              </div>
+              <div id="credDropdown" style="display:none;background:#2a2a3a;border:1px solid #3a3a50;border-radius:8px;overflow:hidden;max-width:220px;">
+                <div class="cred-option active hl-green" onclick="showApiKeyModal()">
+                  <div class="cred-option-title">API key</div>
+                  <div class="cred-option-desc">สำหรับ server-side calls</div>
+                </div>
+                <div class="cred-option">
+                  <div class="cred-option-title">OAuth 2.0 Client IDs</div>
+                  <div class="cred-option-desc">สำหรับ web apps</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 5: Copy API Key ═══ -->
+    <div class="step-content" id="step-5">
+      <div class="step-meta">
+        <div class="step-num">6</div>
+        <div>
+          <div class="step-title">Copy API Key</div>
+          <div class="step-sub">Copy API Key ที่ได้รับ — อย่าแชร์ key นี้กับใคร</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-browser-bar">
+          <div class="mock-dots">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+          </div>
+          <div class="mock-url">console.cloud.google.com/apis/credentials</div>
+        </div>
+        <div class="mock-screen" style="min-height:200px;">
+          <div style="padding:24px;">
+            <div style="background:#1e2a1e;border:1px solid #3ecf8e;border-radius:10px;padding:16px;max-width:400px;margin:0 auto;">
+              <div style="font-size:13px;font-weight:600;color:#3ecf8e;margin-bottom:4px;">✓ API Key สร้างเรียบร้อย</div>
+              <div style="font-size:11px;color:#888;margin-bottom:12px;">เก็บ key นี้ไว้ที่ปลอดภัย</div>
+              <div class="key-box">
+                AIzaSyD<span style="filter:blur(4px)">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
+                <button class="copy-btn" onclick="
+                  this.textContent='✓ Copied';
+                  setTimeout(()=>{this.textContent='Copy'},1500);
+                ">Copy</button>
+              </div>
+              <div style="font-size:10px;color:#888;margin-top:8px;">
+                ⚠️ หลังจากปิดหน้าต่างนี้ จะไม่สามารถดู Key เต็มได้อีก
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box">
+        <span>🔒</span>
+        <span>แนะนำให้ <strong style="color:#fff">Restrict key</strong> ให้ใช้ได้เฉพาะ Cloud Text-to-Speech API เพื่อความปลอดภัย</span>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 6: วาง Key ใน TTplus ═══ -->
+    <div class="step-content" id="step-6">
+      <div class="step-meta">
+        <div class="step-num">7</div>
+        <div>
+          <div class="step-title">วาง API Key ใน TTplus</div>
+          <div class="step-sub">ไปที่ TTplus → Settings → วาง key ในช่อง Google Cloud TTS API Key</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-browser-bar">
+          <div class="mock-dots">
+            <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+          </div>
+          <div class="mock-url">ttsam.app/settings</div>
+        </div>
+        <div class="mock-screen" style="min-height:200px;">
+          <div style="padding:20px;max-width:420px;margin:0 auto;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:14px;">⚙️ Settings — TTS</div>
+            <div style="margin-bottom:10px;">
+              <div style="font-size:11px;color:#888;margin-bottom:5px;">Google Cloud TTS API Key</div>
+              <div style="position:relative;">
+                <input id="fakeKeyInput" class="settings-field" type="text" value="" placeholder="วาง API Key ที่นี่..." style="font-family:monospace;font-size:11px;"
+                  oninput="this.className='settings-field'+(this.value?'filled':'')" />
+              </div>
+            </div>
+            <div id="saveRow" style="display:flex;justify-content:flex-end;margin-top:10px;">
+              <button class="enable-btn hl-green" style="font-size:12px;padding:7px 16px;background:#3ecf8e;color:#0d0d14;"
+                onclick="
+                  document.getElementById('fakeKeyInput').value='AIzaSyD...xxxxxxxxxx';
+                  document.getElementById('fakeKeyInput').className='settings-field filled';
+                  this.textContent='✓ บันทึกแล้ว';
+                  this.style.background='#2a9e6a';
+                  this.style.animation='none';
+                ">บันทึก</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ STEP 7: Done ═══ -->
+    <div class="step-content" id="step-7">
+      <div class="mock-browser" style="border:none;">
+        <div class="success-screen">
+          <div class="success-icon">🎉</div>
+          <div class="success-title">เรียบร้อย! พร้อมใช้งาน TTS แล้ว</div>
+          <div class="success-desc" style="margin-top:8px;">
+            Google Cloud Text-to-Speech เชื่อมต่อกับ TTplus สำเร็จ<br/>
+            ตอนนี้คุณสามารถใช้เสียงพูดระดับ AI ใน stream ได้เลย
+          </div>
+          <div style="margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+            <div style="background:rgba(62,207,142,0.08);border:1px solid rgba(62,207,142,0.2);border-radius:8px;padding:10px 16px;font-size:12px;color:#3ecf8e;">
+              ✓ Cloud Text-to-Speech API Enabled
+            </div>
+            <div style="background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:10px 16px;font-size:12px;color:#4f8ef7;">
+              ✓ API Key เชื่อมต่อแล้ว
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <div class="nav-row">
+      <button class="nav-btn prev" id="btnPrev" onclick="navigate(-1)">← ย้อนกลับ</button>
+      <span class="step-counter" id="stepCounter"></span>
+      <button class="nav-btn next" id="btnNext" onclick="navigate(1)">ถัดไป →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: API key created -->
+<div id="apiKeyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;display:none;align-items:center;justify-content:center;">
+  <div style="background:#1a1a24;border:1px solid #3ecf8e;border-radius:14px;padding:24px;max-width:360px;width:90%;text-align:center;">
+    <div style="font-size:20px;margin-bottom:10px;">🔑</div>
+    <div style="font-weight:700;color:#3ecf8e;margin-bottom:6px;">API Key Created!</div>
+    <div class="key-box" style="text-align:left;margin:12px 0;">
+      AIzaSyD<span style="filter:blur(4px)">xxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
+      <button class="copy-btn" onclick="this.textContent='✓';setTimeout(()=>this.textContent='Copy',1200)">Copy</button>
+    </div>
+    <button onclick="document.getElementById('apiKeyModal').style.display='none'"
+      style="background:#4f8ef7;color:#fff;border:none;border-radius:7px;padding:8px 20px;cursor:pointer;font-size:13px;">
+      ปิด
+    </button>
+  </div>
+</div>
+
+<script>
+  const TOTAL = 8;
+  let cur = 0;
+
+  function showApiKeyModal() {
+    document.getElementById('apiKeyModal').style.display = 'flex';
+  }
+
+  function render() {
+    // steps
+    document.querySelectorAll('.step-content').forEach((el, i) => {
+      el.classList.toggle('visible', i === cur);
+    });
+
+    // progress
+    const bar = document.getElementById('progressBar');
+    bar.innerHTML = '';
+    for (let i = 0; i < TOTAL; i++) {
+      const d = document.createElement('div');
+      d.className = 'progress-dot' + (i === cur ? ' active' : i < cur ? ' done' : '');
+      d.onclick = () => { cur = i; render(); };
+      bar.appendChild(d);
+    }
+
+    // buttons
+    document.getElementById('btnPrev').disabled = cur === 0;
+    const next = document.getElementById('btnNext');
+    if (cur === TOTAL - 1) {
+      next.textContent = 'เริ่มใหม่ ↺';
+      next.className = 'nav-btn finish';
+    } else {
+      next.textContent = 'ถัดไป →';
+      next.className = 'nav-btn next';
+    }
+    document.getElementById('stepCounter').textContent = `${cur + 1} / ${TOTAL}`;
+  }
+
+  function navigate(dir) {
+    if (dir === 1 && cur === TOTAL - 1) { cur = 0; }
+    else { cur = Math.max(0, Math.min(TOTAL - 1, cur + dir)); }
+    render();
+    // scroll to top of card
+    document.querySelector('.step-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // step 1 project pill interaction
+  document.addEventListener('DOMContentLoaded', () => {
+    const pill = document.getElementById('projPill');
+    if (pill) {
+      pill.addEventListener('click', () => {
+        const modal = document.getElementById('projModal');
+        const hint  = document.getElementById('projHint');
+        if (modal) { modal.style.display = modal.style.display === 'block' ? 'none' : 'block'; }
+        if (hint)  hint.style.display = 'none';
+      });
+    }
+  });
+
+  // keyboard nav
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigate(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(-1);
+  });
+
+  render();
+</script>
+</body>
+</html>

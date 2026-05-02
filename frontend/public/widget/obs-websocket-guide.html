@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ตั้งค่า OBS WebSocket Server</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f0f14; color: #e8e8f0;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .wrap { width: 100%; max-width: 700px; }
+
+  .guide-header { text-align: center; margin-bottom: 22px; }
+  .guide-header h1 { font-size: 21px; font-weight: 700; color: #fff; margin-bottom: 5px; }
+  .guide-header p  { font-size: 13px; color: #888; }
+
+  /* Why banner */
+  .why-banner {
+    background: rgba(255,82,82,0.06); border: 1px solid rgba(255,82,82,0.2);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
+    display: flex; gap: 10px; align-items: flex-start; font-size: 12px; color: #aaa;
+  }
+
+  /* Progress */
+  .progress-bar { display: flex; gap: 6px; margin-bottom: 20px; justify-content: center; }
+  .progress-dot { width: 8px; height: 8px; border-radius: 50%; background: #2a2a38; transition: all 0.3s; cursor: pointer; }
+  .progress-dot.active { background: #ff5252; width: 24px; border-radius: 4px; }
+  .progress-dot.done   { background: #3ecf8e; }
+
+  /* Card */
+  .step-card { background: #1a1a24; border: 1px solid #2a2a38; border-radius: 16px; overflow: hidden; }
+  .step-meta { padding: 16px 22px 13px; border-bottom: 1px solid #2a2a38; display: flex; align-items: center; gap: 12px; }
+  .step-num { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,82,82,0.15); color: #ff5252; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-title { font-size: 15px; font-weight: 600; color: #fff; }
+  .step-sub   { font-size: 12px; color: #888; margin-top: 2px; }
+
+  .step-content { display: none; }
+  .step-content.visible { display: block; }
+
+  /* OBS mock */
+  .obs-wrap { background: #1e1e1e; }
+
+  .obs-titlebar {
+    background: #333; padding: 6px 10px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #444;
+  }
+  .obs-titlebar-dots { display: flex; gap: 5px; }
+  .obs-titlebar-dot  { width: 10px; height: 10px; border-radius: 50%; }
+  .r{background:#ff5f57;}.y{background:#febc2e;}.g{background:#28c840;}
+  .obs-titlebar-name { font-size: 11px; color: #999; margin-left: 4px; }
+
+  .obs-menubar { background: #2d2d2d; padding: 2px 6px; display: flex; gap: 2px; border-bottom: 1px solid #444; }
+  .obs-menu { padding: 4px 10px; font-size: 11px; color: #ccc; border-radius: 3px; cursor: pointer; transition: background 0.1s; user-select: none; position: relative; }
+  .obs-menu:hover, .obs-menu.open { background: #444; }
+
+  /* Tools dropdown */
+  .obs-tools-dropdown {
+    position: absolute; top: 100%; left: 0;
+    background: #2d2d2d; border: 1px solid #555; border-radius: 3px;
+    min-width: 200px; z-index: 50; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  }
+  .obs-tools-item { padding: 7px 14px; font-size: 11px; color: #ccc; cursor: pointer; white-space: nowrap; }
+  .obs-tools-item:hover, .obs-tools-item.active { background: #3d82f7; color: #fff; }
+  .obs-tools-sep { height: 1px; background: #444; margin: 3px 0; }
+
+  /* OBS main area */
+  .obs-main { display: flex; min-height: 160px; }
+  .obs-canvas { flex: 1; background: #111; display: flex; align-items: center; justify-content: center; }
+  .obs-canvas-label { font-size: 11px; color: #333; }
+
+  .obs-controls-bar {
+    background: #232323; border-top: 1px solid #444; padding: 8px 12px;
+    display: flex; gap: 8px; align-items: center; justify-content: flex-end;
+  }
+  .obs-control-btn { padding: 5px 14px; border-radius: 3px; border: 1px solid #555; font-size: 11px; color: #ccc; background: #3d3d3d; cursor: pointer; }
+  .obs-control-btn.red { background: #c0392b; border-color: #e74c3c; color: #fff; }
+
+  /* Dialog */
+  .obs-dialog-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .obs-dialog {
+    background: #2d2d2d; border: 1px solid #555; border-radius: 5px;
+    min-width: 380px; max-width: 440px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,.7);
+  }
+  .obs-dialog-titlebar {
+    background: #3d3d3d; padding: 9px 14px; font-size: 12px; font-weight: 600; color: #fff;
+    border-bottom: 1px solid #555; display: flex; align-items: center; gap: 8px;
+  }
+  .obs-dialog-body { padding: 16px 14px; }
+  .obs-field { margin-bottom: 14px; }
+  .obs-field-label { font-size: 11px; color: #aaa; margin-bottom: 5px; display: flex; align-items: center; gap: 6px; }
+  .obs-field-input { width: 100%; background: #1e1e1e; border: 1px solid #555; border-radius: 3px; padding: 6px 9px; font-size: 12px; color: #fff; font-family: monospace; }
+  .obs-checkbox-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  .obs-checkbox-row label { font-size: 11px; color: #ccc; cursor: pointer; }
+  .obs-checkbox { accent-color: #4f8ef7; width: 14px; height: 14px; cursor: pointer; }
+  .obs-dialog-footer { padding: 10px 14px; border-top: 1px solid #444; display: flex; justify-content: flex-end; gap: 6px; }
+  .obs-btn { padding: 6px 16px; border-radius: 3px; border: 1px solid #555; font-size: 11px; cursor: pointer; color: #ccc; background: #3d3d3d; }
+  .obs-btn.primary { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
+
+  /* Highlight animations */
+  @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(255,82,82,.5);}50%{box-shadow:0 0 0 6px rgba(255,82,82,0);} }
+  .hl { animation: pulse-red 1.5s infinite; }
+  @keyframes pulse-blue { 0%,100%{box-shadow:0 0 0 0 rgba(79,142,247,.5);}50%{box-shadow:0 0 0 6px rgba(79,142,247,0);} }
+  .hl-blue { animation: pulse-blue 1.5s infinite; }
+  @keyframes pulse-green { 0%,100%{box-shadow:0 0 0 0 rgba(62,207,142,.5);}50%{box-shadow:0 0 0 6px rgba(62,207,142,0);} }
+  .hl-green { animation: pulse-green 1.5s infinite; }
+
+  /* Arrow annotation */
+  .annotation {
+    display: flex; align-items: center; gap: 8px; padding: 10px 18px;
+    font-size: 12px; color: #888;
+  }
+  .annotation-arrow { font-size: 18px; color: #ff5252; }
+
+  /* Port highlight */
+  .port-highlight { border-color: #4f8ef7 !important; box-shadow: 0 0 0 2px rgba(79,142,247,0.3); }
+
+  /* Tip */
+  .tip-box { background: rgba(79,142,247,0.06); border: 1px solid rgba(79,142,247,0.2); border-radius: 8px; padding: 9px 13px; font-size: 12px; color: #aaa; margin: 10px 18px; display: flex; gap: 8px; }
+
+  /* Nav */
+  .nav-row { padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #2a2a38; }
+  .nav-btn { padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .nav-btn.prev { background: #2a2a38; color: #aaa; }
+  .nav-btn.prev:hover { background: #3a3a50; color: #fff; }
+  .nav-btn.next { background: #ff5252; color: #fff; }
+  .nav-btn.next:hover { background: #e04040; }
+  .nav-btn.finish { background: #3ecf8e; color: #0d0d14; }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 12px; color: #555; }
+
+  /* success */
+  .success-screen { text-align: center; padding: 44px 20px; }
+  .success-icon { font-size: 52px; margin-bottom: 14px; }
+  .success-title { font-size: 19px; font-weight: 700; color: #3ecf8e; margin-bottom: 8px; }
+  .success-desc { font-size: 13px; color: #888; line-height: 1.6; }
+  .success-badges { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+  .badge { border-radius: 8px; padding: 8px 14px; font-size: 12px; }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;} }
+  .fade-in { animation: fadeIn 0.25s ease; }
+</style>
+</head>
+<body>
+<div class="wrap fade-in">
+  <div class="guide-header">
+    <h1>🔌 ตั้งค่า OBS WebSocket Server</h1>
+    <p>จำเป็นสำหรับ Actions — ให้ TTplus สั่ง OBS ได้โดยตรง</p>
+  </div>
+
+  <div class="why-banner">
+    <span style="font-size:16px;flex-shrink:0">⚡</span>
+    <span><strong style="color:#fff">ทำไมต้องทำ?</strong> — Actions ของ TTplus ส่งคำสั่งไปหา OBS ผ่าน WebSocket (port 4455) เช่น เปลี่ยน Scene, เปิด/ปิด Source ถ้า WebSocket ยังไม่เปิด OBS จะไม่รับคำสั่งเหล่านั้น</span>
+  </div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <div class="step-card">
+
+    <!-- Step 0: เปิด OBS → Tools ── -->
+    <div class="step-content" id="step-0">
+      <div class="step-meta">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">เปิด OBS Studio แล้วไปที่เมนู Tools</div>
+          <div class="step-sub">คลิก "Tools" บน menu bar ด้านบน</div>
+        </div>
+      </div>
+      <div class="obs-wrap">
+        <div class="obs-titlebar">
+          <div class="obs-titlebar-dots"><div class="obs-titlebar-dot r"></div><div class="obs-titlebar-dot y"></div><div class="obs-titlebar-dot g"></div></div>
+          <div class="obs-titlebar-name">OBS Studio 30.0.0</div>
+        </div>
+        <div class="obs-menubar">
+          <div class="obs-menu">File</div>
+          <div class="obs-menu">Edit</div>
+          <div class="obs-menu">View</div>
+          <div class="obs-menu">Add</div>
+          <div class="obs-menu open hl" id="toolsMenu" onclick="document.getElementById('toolsDD').style.display='block'">
+            Tools
+            <div class="obs-tools-dropdown" id="toolsDD" style="display:none;">
+              <div class="obs-tools-item">Auto-Configuration Wizard...</div>
+              <div class="obs-tools-item">Output Timer</div>
+              <div class="obs-tools-item">Captions</div>
+              <div class="obs-tools-sep"></div>
+              <div class="obs-tools-item active hl-blue">WebSocket Server Settings...</div>
+              <div class="obs-tools-sep"></div>
+              <div class="obs-tools-item">Scripts</div>
+              <div class="obs-tools-item">Lua Scripts</div>
+            </div>
+          </div>
+          <div class="obs-menu">Help</div>
+        </div>
+        <div class="obs-main">
+          <div class="obs-canvas"><div class="obs-canvas-label">OBS Preview</div></div>
+        </div>
+        <div class="obs-controls-bar">
+          <div class="obs-control-btn">Start Recording</div>
+          <div class="obs-control-btn red">Start Streaming</div>
+        </div>
+      </div>
+      <div class="annotation"><span class="annotation-arrow">↑</span> คลิก <strong style="color:#fff">Tools</strong> แล้วเลือก <strong style="color:#4f8ef7">WebSocket Server Settings...</strong></div>
+    </div>
+
+    <!-- Step 1: Enable WebSocket ── -->
+    <div class="step-content" id="step-1">
+      <div class="step-meta">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">เปิดใช้งาน WebSocket Server</div>
+          <div class="step-sub">ติ๊ก "Enable WebSocket Server" → ตรวจ Server Port เป็น 4455</div>
+        </div>
+      </div>
+      <div class="obs-wrap" style="position:relative;min-height:240px;display:flex;align-items:center;justify-content:center;padding:16px;">
+        <div style="background:#1e1e1e;width:100%;">
+          <!-- dim bg -->
+          <div class="obs-main" style="min-height:80px;opacity:0.3;">
+            <div class="obs-canvas"><div class="obs-canvas-label">OBS Preview</div></div>
+          </div>
+          <!-- dialog positioned over -->
+          <div class="obs-dialog" style="position:relative;margin-top:-40px;z-index:10;">
+            <div class="obs-dialog-titlebar">
+              <span>🔌</span> WebSocket Server Settings
+            </div>
+            <div class="obs-dialog-body">
+              <!-- Enable checkbox -->
+              <div class="obs-checkbox-row" style="background:rgba(79,142,247,0.06);border:1px solid rgba(79,142,247,0.2);border-radius:6px;padding:8px 10px;margin-bottom:12px;">
+                <input type="checkbox" class="obs-checkbox hl-blue" id="cbEnable" checked />
+                <label for="cbEnable" style="font-size:12px;color:#fff;font-weight:600;">Enable WebSocket Server</label>
+              </div>
+              <!-- Server Port -->
+              <div class="obs-field">
+                <div class="obs-field-label">Server Port <span style="color:#888;font-weight:normal;">(ค่าเริ่มต้น: 4455)</span></div>
+                <input class="obs-field-input port-highlight" value="4455" style="width:120px;" />
+              </div>
+              <!-- Auth -->
+              <div class="obs-checkbox-row">
+                <input type="checkbox" class="obs-checkbox" />
+                <label style="font-size:11px;color:#aaa;">Enable Authentication (ไม่จำเป็นต้องเปิด)</label>
+              </div>
+            </div>
+            <div class="obs-dialog-footer">
+              <button class="obs-btn">Cancel</button>
+              <button class="obs-btn primary hl-blue" onclick="nextStep()">Apply</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>🔢</span><span>Port <strong style="color:#fff">4455</strong> คือค่า default ที่ TTplus ใช้ ไม่ต้องเปลี่ยน ถ้าเปลี่ยนจะต้องแก้ใน TTplus Settings ด้วย</span></div>
+    </div>
+
+    <!-- Step 2: กด Apply/OK ── -->
+    <div class="step-content" id="step-2">
+      <div class="step-meta">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">กด Apply → OK</div>
+          <div class="step-sub">OBS จะ start WebSocket server ทันที ไม่ต้อง restart</div>
+        </div>
+      </div>
+      <div class="obs-wrap" style="position:relative;padding:16px;">
+        <div class="obs-dialog" style="margin:0 auto;">
+          <div class="obs-dialog-titlebar"><span>🔌</span> WebSocket Server Settings</div>
+          <div class="obs-dialog-body">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;background:rgba(62,207,142,0.06);border:1px solid rgba(62,207,142,0.2);border-radius:6px;padding:8px 10px;">
+              <span style="font-size:16px;">✅</span>
+              <span style="font-size:12px;color:#3ecf8e;font-weight:600;">WebSocket Server: <strong>เปิดอยู่</strong></span>
+            </div>
+            <div style="font-size:11px;color:#888;margin-bottom:10px;">Server ทำงานที่ <span style="color:#4f8ef7;font-family:monospace;">ws://localhost:4455</span></div>
+            <div class="obs-field">
+              <div class="obs-field-label">Server Port</div>
+              <input class="obs-field-input" value="4455" style="width:120px;" readonly />
+            </div>
+          </div>
+          <div class="obs-dialog-footer">
+            <button class="obs-btn hl-green" onclick="nextStep()" style="background:#3ecf8e;border-color:#3ecf8e;color:#0d0d14;font-weight:600;">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: ตรวจสอบใน TTplus ── -->
+    <div class="step-content" id="step-3">
+      <div class="step-meta">
+        <div class="step-num">4</div>
+        <div>
+          <div class="step-title">ตรวจสอบการเชื่อมต่อใน TTplus</div>
+          <div class="step-sub">ไปหน้า Actions → dashboard จะแสดงสถานะ OBS Connected</div>
+        </div>
+      </div>
+      <div style="background:#0d0d14;padding:16px;">
+        <div style="background:#1a1a24;border:1px solid #2a2a38;border-radius:10px;overflow:hidden;max-width:440px;margin:0 auto;">
+          <!-- TTplus header -->
+          <div style="background:#111118;padding:8px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #2a2a38;">
+            <span style="font-weight:800;font-size:13px;color:#fff;">TTplus</span>
+            <span style="margin-left:auto;font-size:11px;color:#888;">Actions</span>
+          </div>
+          <div style="padding:14px;">
+            <!-- OBS status -->
+            <div style="display:flex;align-items:center;gap:10px;background:rgba(62,207,142,0.08);border:1px solid rgba(62,207,142,0.25);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+              <span style="font-size:16px;">🟢</span>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:#3ecf8e;">OBS Connected</div>
+                <div style="font-size:10px;color:#888;">ws://localhost:4455</div>
+              </div>
+            </div>
+            <!-- Actions toggle -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;">
+              <span style="font-size:12px;color:#aaa;">⚡ Actions</span>
+              <div style="width:36px;height:20px;background:#3ecf8e;border-radius:10px;position:relative;cursor:pointer;">
+                <div style="position:absolute;right:3px;top:3px;width:14px;height:14px;background:#fff;border-radius:50%;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>⚠️</span><span>ถ้าเห็น <strong style="color:#ff5252">OBS Disconnected</strong> ให้ตรวจว่า OBS เปิดอยู่ และ port ตรงกัน (4455) แล้วกด Reconnect</span></div>
+    </div>
+
+    <!-- Step 4: Done ── -->
+    <div class="step-content" id="step-4">
+      <div style="border:none;">
+        <div class="success-screen">
+          <div class="success-icon">🔌</div>
+          <div class="success-title">OBS WebSocket พร้อมแล้ว!</div>
+          <div class="success-desc">TTplus สามารถส่งคำสั่งไปยัง OBS ได้แล้ว<br/>ตอนนี้ Actions เช่น เปลี่ยน Scene, เปิด/ปิด Source จะทำงานได้</div>
+          <div class="success-badges">
+            <div class="badge" style="background:rgba(255,82,82,0.1);color:#ff5252;border:1px solid rgba(255,82,82,0.3);">✓ OBS WebSocket เปิด</div>
+            <div class="badge" style="background:rgba(62,207,142,0.1);color:#3ecf8e;border:1px solid rgba(62,207,142,0.3);">✓ port 4455</div>
+            <div class="badge" style="background:rgba(79,142,247,0.1);color:#4f8ef7;border:1px solid rgba(79,142,247,0.3);">✓ Actions พร้อม</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="nav-btn prev" id="btnPrev" onclick="navigate(-1)">← ย้อนกลับ</button>
+      <span class="step-counter" id="stepCounter"></span>
+      <button class="nav-btn next" id="btnNext" onclick="navigate(1)">ถัดไป →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TOTAL = 5;
+  let cur = 0;
+
+  function nextStep() { navigate(1); }
+
+  function render() {
+    document.querySelectorAll('.step-content').forEach((el, i) => el.classList.toggle('visible', i === cur));
+    const bar = document.getElementById('progressBar');
+    bar.innerHTML = '';
+    for (let i = 0; i < TOTAL; i++) {
+      const d = document.createElement('div');
+      d.className = 'progress-dot' + (i === cur ? ' active' : i < cur ? ' done' : '');
+      d.onclick = () => { cur = i; render(); };
+      bar.appendChild(d);
+    }
+    document.getElementById('btnPrev').disabled = cur === 0;
+    const next = document.getElementById('btnNext');
+    if (cur === TOTAL - 1) { next.textContent = 'เริ่มใหม่ ↺'; next.className = 'nav-btn finish'; }
+    else { next.textContent = 'ถัดไป →'; next.className = 'nav-btn next'; }
+    document.getElementById('stepCounter').textContent = `${cur + 1} / ${TOTAL}`;
+  }
+
+  function navigate(dir) {
+    if (dir === 1 && cur === TOTAL - 1) cur = 0;
+    else cur = Math.max(0, Math.min(TOTAL - 1, cur + dir));
+    render();
+  }
+  document.addEventListener('keydown', e => { if(e.key==='ArrowRight') navigate(1); if(e.key==='ArrowLeft') navigate(-1); });
+  render();
+</script>
+</body>
+</html>

@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>วิธีตั้งค่า Actions + Events</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f0f14; color: #e8e8f0;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .wrap { width: 100%; max-width: 780px; }
+
+  .guide-header { text-align: center; margin-bottom: 22px; }
+  .guide-header h1 { font-size: 21px; font-weight: 700; color: #fff; margin-bottom: 5px; }
+  .guide-header p  { font-size: 13px; color: #888; }
+
+  /* Concept banner */
+  .concept-banner {
+    background: rgba(79,142,247,0.05); border: 1px solid rgba(79,142,247,0.18);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center;
+  }
+  .concept-box { background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 8px; padding: 10px 14px; }
+  .concept-box-title { font-size: 11px; color: #888; margin-bottom: 3px; }
+  .concept-box-name  { font-size: 13px; font-weight: 700; }
+  .concept-arrow { font-size: 20px; color: #4f8ef7; text-align: center; }
+
+  /* Progress */
+  .progress-bar { display: flex; gap: 6px; margin-bottom: 20px; justify-content: center; }
+  .progress-dot { width: 8px; height: 8px; border-radius: 50%; background: #2a2a38; transition: all 0.3s; cursor: pointer; }
+  .progress-dot.active { background: #f7c94f; width: 24px; border-radius: 4px; }
+  .progress-dot.done   { background: #3ecf8e; }
+
+  /* Card */
+  .step-card { background: #1a1a24; border: 1px solid #2a2a38; border-radius: 16px; overflow: hidden; }
+  .step-meta { padding: 16px 22px 13px; border-bottom: 1px solid #2a2a38; display: flex; align-items: center; gap: 12px; }
+  .step-num { width: 30px; height: 30px; border-radius: 50%; background: rgba(247,201,79,0.12); color: #f7c94f; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-title { font-size: 15px; font-weight: 600; color: #fff; }
+  .step-sub   { font-size: 12px; color: #888; margin-top: 2px; }
+
+  .step-content { display: none; }
+  .step-content.visible { display: block; }
+
+  /* ── TTplus Actions Page Mock ── */
+  .ttp-page { background: #0d0d14; }
+  .ttp-header {
+    background: #111118; padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #2a2a38;
+  }
+  .ttp-logo { font-weight: 800; font-size: 14px; color: #fff; }
+  .ttp-nav { padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #888; cursor: pointer; }
+  .ttp-nav.active { background: rgba(247,201,79,0.1); color: #f7c94f; }
+
+  .ttp-body { padding: 14px 16px; }
+  .ttp-section-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .ttp-section-title { font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; }
+  .ttp-create-btn {
+    padding: 6px 14px; border-radius: 7px; border: none;
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .ttp-create-btn.action { background: rgba(247,201,79,0.12); color: #f7c94f; border: 1px solid rgba(247,201,79,0.3); }
+  .ttp-create-btn.action:hover { background: rgba(247,201,79,0.2); }
+  .ttp-create-btn.event  { background: rgba(79,142,247,0.12); color: #4f8ef7; border: 1px solid rgba(79,142,247,0.3); }
+  .ttp-create-btn.event:hover  { background: rgba(79,142,247,0.2); }
+
+  /* Action card */
+  .action-card {
+    background: #1e1e2a; border: 1px solid #2a2a38;
+    border-radius: 10px; padding: 11px 14px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .action-card.new-glow { border-color: rgba(247,201,79,0.4); animation: glow-yellow 1s ease; }
+  @keyframes glow-yellow { 0%{box-shadow:0 0 0 0 rgba(247,201,79,0.4);}100%{box-shadow:0 0 0 8px rgba(247,201,79,0);} }
+
+  .action-type-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px;
+    border-radius: 100px; flex-shrink: 0;
+  }
+  .badge-obs-scene { background: rgba(255,82,82,0.12); color: #ff5252; border: 1px solid rgba(255,82,82,0.25); }
+  .badge-obs-src   { background: rgba(255,140,0,0.12); color: #ff8c00; border: 1px solid rgba(255,140,0,0.25); }
+  .badge-sound     { background: rgba(62,207,142,0.12); color: #3ecf8e; border: 1px solid rgba(62,207,142,0.25); }
+  .badge-tts       { background: rgba(79,142,247,0.12); color: #4f8ef7; border: 1px solid rgba(79,142,247,0.25); }
+
+  .action-name { font-size: 12px; font-weight: 600; color: #fff; flex: 1; }
+  .action-scene { font-size: 10px; color: #888; }
+  .action-toggle {
+    width: 32px; height: 18px; border-radius: 9px; position: relative;
+    flex-shrink: 0; cursor: pointer; transition: background 0.2s;
+  }
+  .action-toggle.on { background: #3ecf8e; }
+  .action-toggle.off { background: #333; }
+  .action-toggle::after {
+    content: ''; position: absolute; top: 3px;
+    width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left 0.2s;
+  }
+  .action-toggle.on::after { left: 17px; }
+  .action-toggle.off::after { left: 3px; }
+
+  .action-edit-btn { background: none; border: 1px solid #2a2a38; border-radius: 5px; padding: 3px 8px; font-size: 10px; color: #888; cursor: pointer; }
+  .action-edit-btn:hover { background: #2a2a38; color: #fff; }
+
+  /* Event card */
+  .event-card {
+    background: #1e1e2a; border: 1px solid #2a2a38;
+    border-radius: 10px; padding: 11px 14px; margin-bottom: 8px;
+  }
+  .event-card.new-glow { border-color: rgba(79,142,247,0.4); animation: glow-blue 1s ease; }
+  @keyframes glow-blue { 0%{box-shadow:0 0 0 0 rgba(79,142,247,0.4);}100%{box-shadow:0 0 0 8px rgba(79,142,247,0);} }
+
+  .event-row { display: flex; align-items: center; gap: 10px; }
+  .event-trigger-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px;
+    border-radius: 100px;
+  }
+  .badge-gift { background: rgba(255,215,0,0.12); color: #ffd700; border: 1px solid rgba(255,215,0,0.25); }
+  .badge-follow { background: rgba(100,200,255,0.12); color: #64c8ff; border: 1px solid rgba(100,200,255,0.25); }
+  .badge-share { background: rgba(130,100,255,0.12); color: #8264ff; border: 1px solid rgba(130,100,255,0.25); }
+
+  .event-name { font-size: 12px; font-weight: 600; color: #fff; flex: 1; }
+  .event-actions-row { margin-top: 7px; padding-top: 7px; border-top: 1px solid #2a2a38; display: flex; gap: 5px; flex-wrap: wrap; }
+  .linked-action {
+    font-size: 10px; padding: 2px 8px; border-radius: 100px;
+    background: rgba(247,201,79,0.08); color: #f7c94f; border: 1px solid rgba(247,201,79,0.2);
+  }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 24px; color: #555; font-size: 12px; }
+
+  /* Drawer mock */
+  .drawer-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .drawer-box {
+    background: #1a1a24; border: 1px solid #2a2a38; border-bottom: none;
+    border-radius: 16px 16px 0 0; width: 100%; max-width: 480px;
+    padding: 0; overflow: hidden;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from{transform:translateY(100%);}to{transform:none;} }
+  .drawer-handle { width: 36px; height: 4px; background: #333; border-radius: 2px; margin: 10px auto 0; }
+  .drawer-title { font-size: 14px; font-weight: 700; color: #fff; padding: 12px 18px 8px; border-bottom: 1px solid #2a2a38; }
+  .drawer-body  { padding: 14px 18px; max-height: 65vh; overflow-y: auto; }
+  .drawer-footer { padding: 12px 18px; border-top: 1px solid #2a2a38; display: flex; gap: 8px; justify-content: flex-end; }
+
+  .field-label { font-size: 11px; color: #888; margin-bottom: 5px; }
+  .field-input {
+    width: 100%; background: #0d0d14; border: 1px solid #2a2a38;
+    border-radius: 7px; padding: 8px 10px; font-size: 12px; color: #fff; margin-bottom: 12px;
+  }
+  .field-input:focus { outline: none; border-color: #4f8ef7; }
+  .field-input.yellow:focus, .field-input.yellow { border-color: rgba(247,201,79,0.4); }
+
+  .field-select {
+    width: 100%; background: #0d0d14; border: 1px solid #2a2a38;
+    border-radius: 7px; padding: 8px 10px; font-size: 12px; color: #fff; margin-bottom: 12px; cursor: pointer;
+  }
+  .field-row { display: flex; gap: 10px; }
+  .field-row > * { flex: 1; }
+
+  .save-btn { padding: 8px 20px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .save-btn.action { background: #f7c94f; color: #0d0d14; }
+  .save-btn.event  { background: #4f8ef7; color: #fff; }
+  .save-btn:hover  { opacity: 0.9; }
+  .cancel-btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; background: #2a2a38; color: #888; cursor: pointer; }
+
+  /* Master toggle row */
+  .master-toggle-row {
+    background: #1e1e2a; border: 1px solid #2a2a38; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .master-label { flex: 1; font-size: 12px; font-weight: 600; color: #fff; }
+  .master-sub { font-size: 10px; color: #888; }
+
+  /* Simulate */
+  .simulate-bar {
+    background: rgba(62,207,142,0.06); border: 1px solid rgba(62,207,142,0.2);
+    border-radius: 10px; padding: 12px 14px; margin-top: 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sim-btn {
+    padding: 6px 14px; background: #3ecf8e; color: #0d0d14;
+    border: none; border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer;
+    flex-shrink: 0; transition: background 0.15s;
+  }
+  .sim-btn:hover { background: #2ebf7e; }
+
+  /* Tip */
+  .tip-box { background: rgba(79,142,247,0.06); border: 1px solid rgba(79,142,247,0.2); border-radius: 8px; padding: 9px 13px; font-size: 12px; color: #aaa; margin: 10px 18px; display: flex; gap: 8px; }
+
+  /* Animations */
+  @keyframes pulse-yellow { 0%,100%{box-shadow:0 0 0 0 rgba(247,201,79,.5);}50%{box-shadow:0 0 0 6px rgba(247,201,79,0);} }
+  .hl { animation: pulse-yellow 1.5s infinite; }
+  @keyframes pulse-blue { 0%,100%{box-shadow:0 0 0 0 rgba(79,142,247,.5);}50%{box-shadow:0 0 0 6px rgba(79,142,247,0);} }
+  .hl-blue { animation: pulse-blue 1.5s infinite; }
+  @keyframes pulse-green { 0%,100%{box-shadow:0 0 0 0 rgba(62,207,142,.5);}50%{box-shadow:0 0 0 6px rgba(62,207,142,0);} }
+  .hl-green { animation: pulse-green 1.5s infinite; }
+
+  /* Nav */
+  .nav-row { padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #2a2a38; }
+  .nav-btn { padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .nav-btn.prev { background: #2a2a38; color: #aaa; }
+  .nav-btn.prev:hover { background: #3a3a50; color: #fff; }
+  .nav-btn.next { background: #f7c94f; color: #0d0d14; }
+  .nav-btn.next:hover { opacity: 0.85; }
+  .nav-btn.finish { background: #3ecf8e; color: #0d0d14; }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 12px; color: #555; }
+
+  /* success */
+  .success-screen { text-align: center; padding: 44px 20px; }
+  .success-icon  { font-size: 52px; margin-bottom: 14px; }
+  .success-title { font-size: 19px; font-weight: 700; color: #3ecf8e; margin-bottom: 8px; }
+  .success-desc  { font-size: 13px; color: #888; line-height: 1.6; }
+  .success-badges { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+  .sbadge { border-radius: 8px; padding: 8px 14px; font-size: 12px; }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;} }
+  .fade-in { animation: fadeIn 0.25s ease; }
+</style>
+</head>
+<body>
+<div class="wrap fade-in">
+  <div class="guide-header">
+    <h1>⚡ วิธีตั้งค่า Actions + Events</h1>
+    <p>ให้ OBS เปลี่ยน Scene อัตโนมัติเมื่อมี Gift หรือ Follow</p>
+  </div>
+
+  <!-- Concept -->
+  <div class="concept-banner">
+    <div class="concept-box">
+      <div class="concept-box-title">🎯 Action</div>
+      <div class="concept-box-name" style="color:#f7c94f;">"จะทำอะไร"</div>
+      <div style="font-size:10px;color:#888;margin-top:3px;">เช่น เปลี่ยน Scene → Gaming</div>
+    </div>
+    <div class="concept-arrow">+</div>
+    <div class="concept-box">
+      <div class="concept-box-title">🔔 Event</div>
+      <div class="concept-box-name" style="color:#4f8ef7;">"เมื่อไหร่จะทำ"</div>
+      <div style="font-size:10px;color:#888;margin-top:3px;">เช่น เมื่อได้รับ Gift ≥ 100 coins</div>
+    </div>
+  </div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <div class="step-card">
+
+    <!-- Step 0: หน้า Actions ── -->
+    <div class="step-content" id="step-0">
+      <div class="step-meta">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">เปิดหน้า Actions</div>
+          <div class="step-sub">ไปที่เมนู "Actions" ใน TTplus sidebar</div>
+        </div>
+      </div>
+      <div class="ttp-page">
+        <div class="ttp-header">
+          <div class="ttp-logo">TTplus</div>
+          <div class="ttp-nav">Dashboard</div>
+          <div class="ttp-nav">Widgets</div>
+          <div class="ttp-nav active hl" style="border-radius:6px;">⚡ Actions</div>
+          <div class="ttp-nav">TTS</div>
+        </div>
+        <div class="ttp-body">
+          <div class="master-toggle-row">
+            <div>
+              <div class="master-label">⚡ Actions</div>
+              <div class="master-sub">เปิดใช้งาน Auto-Actions ทั้งหมด</div>
+            </div>
+            <div class="action-toggle off" id="masterToggle" onclick="this.classList.toggle('on');this.classList.toggle('off')"></div>
+          </div>
+          <div class="ttp-section-row">
+            <div class="ttp-section-title">🎯 Actions</div>
+            <button class="ttp-create-btn action">+ สร้าง Action</button>
+          </div>
+          <div class="empty-state">ยังไม่มี Action — กด "+ สร้าง Action" เพื่อเริ่ม</div>
+          <div class="ttp-section-row" style="margin-top:16px;">
+            <div class="ttp-section-title">🔔 Events</div>
+            <button class="ttp-create-btn event">+ สร้าง Event</button>
+          </div>
+          <div class="empty-state">ยังไม่มี Event</div>
+        </div>
+      </div>
+      <div class="tip-box"><span>💡</span><span>ต้องทำ <strong style="color:#fff">Action ก่อน</strong> แล้วค่อยสร้าง Event ผูกเข้า — ลำดับสำคัญมาก</span></div>
+    </div>
+
+    <!-- Step 1: กด สร้าง Action → กรอก form ── -->
+    <div class="step-content" id="step-1">
+      <div class="step-meta">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">สร้าง Action ใหม่</div>
+          <div class="step-sub">กด "+ สร้าง Action" → กรอกชื่อ, เลือก Type → กด บันทึก</div>
+        </div>
+      </div>
+      <div class="ttp-page" style="position:relative;min-height:380px;">
+        <!-- bg page dimmed -->
+        <div style="opacity:0.25;pointer-events:none;">
+          <div class="ttp-header">
+            <div class="ttp-logo">TTplus</div>
+            <div class="ttp-nav active">⚡ Actions</div>
+          </div>
+          <div class="ttp-body">
+            <div class="ttp-section-row"><div class="ttp-section-title">🎯 Actions</div></div>
+            <div class="empty-state">ยังไม่มี Action</div>
+          </div>
+        </div>
+        <!-- Drawer -->
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;">
+          <div class="drawer-box">
+            <div class="drawer-handle"></div>
+            <div class="drawer-title">🎯 สร้าง Action ใหม่</div>
+            <div class="drawer-body">
+              <div class="field-label">ชื่อ Action</div>
+              <input class="field-input yellow" value="เปลี่ยน Scene → Gaming" />
+
+              <div class="field-label">ประเภท</div>
+              <select class="field-select">
+                <option>OBS Scene Switch</option>
+                <option>OBS Source Toggle</option>
+                <option>Play Sound</option>
+                <option>Text-to-Speech</option>
+              </select>
+
+              <div class="field-label">ชื่อ Scene ใน OBS <span style="color:#888;">(ต้องตรงกับชื่อจริงใน OBS)</span></div>
+              <input class="field-input" value="Gaming Scene" />
+
+              <div class="field-row">
+                <div>
+                  <div class="field-label">ระยะเวลา (วินาที)</div>
+                  <input class="field-input" value="30" />
+                </div>
+                <div>
+                  <div class="field-label">Cooldown (วินาที)</div>
+                  <input class="field-input" value="60" />
+                </div>
+              </div>
+            </div>
+            <div class="drawer-footer">
+              <button class="cancel-btn">ยกเลิก</button>
+              <button class="save-btn action hl">บันทึก Action</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>📝</span><span>ชื่อ Scene ต้อง <strong style="color:#fff">ตรงกับชื่อ Scene ใน OBS</strong> ทุกตัวอักษร รวมถึง ตัวใหญ่-เล็ก</span></div>
+    </div>
+
+    <!-- Step 2: Action ปรากฏในรายการ ── -->
+    <div class="step-content" id="step-2">
+      <div class="step-meta">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">Action บันทึกเรียบร้อย</div>
+          <div class="step-sub">Action จะปรากฏในรายการ — ต่อไปสร้าง Event เพื่อบอกว่า "เมื่อไหร่จะทำ"</div>
+        </div>
+      </div>
+      <div class="ttp-page">
+        <div class="ttp-header">
+          <div class="ttp-logo">TTplus</div>
+          <div class="ttp-nav active">⚡ Actions</div>
+        </div>
+        <div class="ttp-body">
+          <div class="ttp-section-row">
+            <div class="ttp-section-title">🎯 Actions <span style="background:rgba(247,201,79,0.12);color:#f7c94f;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;margin-left:4px;">1</span></div>
+            <button class="ttp-create-btn action">+ สร้าง Action</button>
+          </div>
+          <div class="action-card new-glow">
+            <span class="action-type-badge badge-obs-scene">OBS Scene</span>
+            <div>
+              <div class="action-name">เปลี่ยน Scene → Gaming</div>
+              <div class="action-scene">Gaming Scene · 30s · cooldown 60s</div>
+            </div>
+            <button class="action-edit-btn">แก้ไข</button>
+            <div class="action-toggle on"></div>
+          </div>
+
+          <div class="ttp-section-row" style="margin-top:16px;">
+            <div class="ttp-section-title">🔔 Events</div>
+            <button class="ttp-create-btn event hl-blue">+ สร้าง Event</button>
+          </div>
+          <div class="empty-state">ยังไม่มี Event — ↑ กด "+ สร้าง Event" เพื่อบอกว่าเมื่อไหร่จะทำ</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: สร้าง Event ── -->
+    <div class="step-content" id="step-3">
+      <div class="step-meta">
+        <div class="step-num">4</div>
+        <div>
+          <div class="step-title">สร้าง Event + เลือก Trigger</div>
+          <div class="step-sub">กด "+ สร้าง Event" → เลือกว่า "เมื่อไหร่" (Gift, Follow, Share...) → เลือก Action ที่จะทำ</div>
+        </div>
+      </div>
+      <div class="ttp-page" style="position:relative;min-height:400px;">
+        <div style="opacity:0.25;pointer-events:none;">
+          <div class="ttp-header"><div class="ttp-logo">TTplus</div><div class="ttp-nav active">⚡ Actions</div></div>
+          <div class="ttp-body">
+            <div class="action-card"><span class="action-type-badge badge-obs-scene">OBS Scene</span><div class="action-name">เปลี่ยน Scene → Gaming</div></div>
+          </div>
+        </div>
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;">
+          <div class="drawer-box">
+            <div class="drawer-handle"></div>
+            <div class="drawer-title">🔔 สร้าง Event ใหม่</div>
+            <div class="drawer-body">
+              <div class="field-label">ชื่อ Event</div>
+              <input class="field-input" value="Big Gift → Gaming Scene" />
+
+              <div class="field-label">Trigger — เมื่อเกิดอะไรขึ้น?</div>
+              <select class="field-select" id="triggerSelect" onchange="toggleCoinsField(this)">
+                <option>🎁 ได้รับ Gift (ขั้นต่ำ X coins)</option>
+                <option>❤️ มีคนกด Follow</option>
+                <option>🔄 มีคนกด Share</option>
+                <option>💬 มีคน Comment</option>
+              </select>
+
+              <div id="coinsField">
+                <div class="field-label">Coins ขั้นต่ำ</div>
+                <input class="field-input" value="100" style="width:100px;" />
+              </div>
+
+              <div class="field-label" style="margin-top:4px;">Action ที่จะทำ <span style="color:#888;">(เลือกได้หลายอัน)</span></div>
+              <!-- Action checkboxes -->
+              <div style="background:#0d0d14;border:1px solid #2a2a38;border-radius:7px;overflow:hidden;margin-bottom:12px;">
+                <div style="padding:8px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(247,201,79,0.06);border-bottom:1px solid #2a2a38;">
+                  <input type="checkbox" checked style="accent-color:#f7c94f;width:14px;height:14px;" />
+                  <span style="font-size:12px;color:#fff;">เปลี่ยน Scene → Gaming</span>
+                  <span class="action-type-badge badge-obs-scene" style="margin-left:auto;">OBS Scene</span>
+                </div>
+              </div>
+            </div>
+            <div class="drawer-footer">
+              <button class="cancel-btn">ยกเลิก</button>
+              <button class="save-btn event hl-blue">บันทึก Event</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: ทั้งคู่ปรากฏ ── -->
+    <div class="step-content" id="step-4">
+      <div class="step-meta">
+        <div class="step-num">5</div>
+        <div>
+          <div class="step-title">Event ผูกกับ Action เรียบร้อย</div>
+          <div class="step-sub">เปิด Master Switch แล้วระบบพร้อมทำงาน</div>
+        </div>
+      </div>
+      <div class="ttp-page">
+        <div class="ttp-header">
+          <div class="ttp-logo">TTplus</div>
+          <div class="ttp-nav active">⚡ Actions</div>
+        </div>
+        <div class="ttp-body">
+          <div class="master-toggle-row" style="border-color:rgba(62,207,142,0.3);">
+            <div>
+              <div class="master-label">⚡ Actions</div>
+              <div class="master-sub" style="color:#3ecf8e;">เปิดอยู่ — พร้อมทำงาน</div>
+            </div>
+            <div class="action-toggle on hl-green"></div>
+          </div>
+
+          <div class="ttp-section-row">
+            <div class="ttp-section-title">🎯 Actions <span style="background:rgba(247,201,79,0.12);color:#f7c94f;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;margin-left:4px;">1</span></div>
+          </div>
+          <div class="action-card">
+            <span class="action-type-badge badge-obs-scene">OBS Scene</span>
+            <div>
+              <div class="action-name">เปลี่ยน Scene → Gaming</div>
+              <div class="action-scene">Gaming Scene · 30s</div>
+            </div>
+            <div class="action-toggle on"></div>
+          </div>
+
+          <div class="ttp-section-row" style="margin-top:14px;">
+            <div class="ttp-section-title">🔔 Events <span style="background:rgba(79,142,247,0.12);color:#4f8ef7;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;margin-left:4px;">1</span></div>
+          </div>
+          <div class="event-card new-glow">
+            <div class="event-row">
+              <span class="event-trigger-badge badge-gift">🎁 Gift ≥ 100 coins</span>
+              <span class="event-name">Big Gift → Gaming Scene</span>
+              <div class="action-toggle on"></div>
+            </div>
+            <div class="event-actions-row">
+              <span style="font-size:10px;color:#888;">ทำ:</span>
+              <span class="linked-action">⚡ เปลี่ยน Scene → Gaming</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: ทดสอบด้วย Simulate ── -->
+    <div class="step-content" id="step-5">
+      <div class="step-meta">
+        <div class="step-num">6</div>
+        <div>
+          <div class="step-title">ทดสอบด้วย Simulate</div>
+          <div class="step-sub">กดปุ่ม Simulate Gift เพื่อทดสอบว่า OBS เปลี่ยน Scene จริงหรือไม่</div>
+        </div>
+      </div>
+      <div class="ttp-page">
+        <div class="ttp-header"><div class="ttp-logo">TTplus</div><div class="ttp-nav active">⚡ Actions</div></div>
+        <div class="ttp-body">
+          <div class="event-card">
+            <div class="event-row">
+              <span class="event-trigger-badge badge-gift">🎁 Gift ≥ 100 coins</span>
+              <span class="event-name">Big Gift → Gaming Scene</span>
+            </div>
+            <div class="event-actions-row">
+              <span class="linked-action">⚡ เปลี่ยน Scene → Gaming</span>
+            </div>
+          </div>
+          <div class="simulate-bar">
+            <div style="flex:1;">
+              <div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:2px;">🧪 ทดสอบ Event นี้</div>
+              <div style="font-size:11px;color:#888;">จำลอง Gift ≥ 100 coins เพื่อดูว่า OBS เปลี่ยน Scene หรือเปล่า</div>
+            </div>
+            <button class="sim-btn hl-green" id="simBtn" onclick="
+              this.textContent='✓ ส่งแล้ว!';
+              this.style.background='#2a8a5e';
+              this.style.animation='none';
+              document.getElementById('simResult').style.display='block';
+              setTimeout(()=>{this.textContent='Simulate';this.style.background='';this.style.animation='';},2000);
+            ">Simulate</button>
+          </div>
+          <div id="simResult" style="display:none;margin-top:8px;background:rgba(62,207,142,0.06);border:1px solid rgba(62,207,142,0.2);border-radius:8px;padding:10px 12px;font-size:11px;color:#3ecf8e;" class="fade-in">
+            ✓ ส่งคำสั่งไปยัง OBS แล้ว — ตรวจดู OBS ว่า Scene เปลี่ยนหรือไม่
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>⚠️</span><span>ถ้า Simulate แล้ว OBS ไม่เปลี่ยน → ตรวจว่า <strong style="color:#fff">OBS WebSocket เปิดอยู่</strong> ที่ port 4455 และ Master Switch เปิดแล้ว</span></div>
+    </div>
+
+    <!-- Step 6: Done ── -->
+    <div class="step-content" id="step-6">
+      <div>
+        <div class="success-screen">
+          <div class="success-icon">⚡</div>
+          <div class="success-title">Actions พร้อมทำงานแล้ว!</div>
+          <div class="success-desc">
+            ตอนนี้เมื่อมีคน Gift ≥ 100 coins<br/>
+            OBS จะเปลี่ยน Scene ไปที่ Gaming Scene อัตโนมัติ
+          </div>
+          <div class="success-badges">
+            <div class="sbadge" style="background:rgba(247,201,79,0.1);color:#f7c94f;border:1px solid rgba(247,201,79,0.3);">✓ Action สร้างแล้ว</div>
+            <div class="sbadge" style="background:rgba(79,142,247,0.1);color:#4f8ef7;border:1px solid rgba(79,142,247,0.3);">✓ Event ผูกแล้ว</div>
+            <div class="sbadge" style="background:rgba(62,207,142,0.1);color:#3ecf8e;border:1px solid rgba(62,207,142,0.3);">✓ Master Switch เปิด</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="nav-btn prev" id="btnPrev" onclick="navigate(-1)">← ย้อนกลับ</button>
+      <span class="step-counter" id="stepCounter"></span>
+      <button class="nav-btn next" id="btnNext" onclick="navigate(1)">ถัดไป →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TOTAL = 7;
+  let cur = 0;
+  function render() {
+    document.querySelectorAll('.step-content').forEach((el, i) => el.classList.toggle('visible', i === cur));
+    const bar = document.getElementById('progressBar');
+    bar.innerHTML = '';
+    for (let i = 0; i < TOTAL; i++) {
+      const d = document.createElement('div');
+      d.className = 'progress-dot' + (i === cur ? ' active' : i < cur ? ' done' : '');
+      d.onclick = () => { cur = i; render(); };
+      bar.appendChild(d);
+    }
+    document.getElementById('btnPrev').disabled = cur === 0;
+    const next = document.getElementById('btnNext');
+    if (cur === TOTAL - 1) { next.textContent = 'เริ่มใหม่ ↺'; next.className = 'nav-btn finish'; }
+    else { next.textContent = 'ถัดไป →'; next.className = 'nav-btn next'; }
+    document.getElementById('stepCounter').textContent = `${cur + 1} / ${TOTAL}`;
+  }
+  function navigate(dir) {
+    if (dir === 1 && cur === TOTAL - 1) cur = 0;
+    else cur = Math.max(0, Math.min(TOTAL - 1, cur + dir));
+    render();
+  }
+  document.addEventListener('keydown', e => { if(e.key==='ArrowRight') navigate(1); if(e.key==='ArrowLeft') navigate(-1); });
+  render();
+</script>
+</body>
+</html>

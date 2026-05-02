@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>วิธีเพิ่ม Widget ใน OBS / TikTok LIVE Studio</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f0f14;
+    color: #e8e8f0;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .wrap { width: 100%; max-width: 760px; }
+
+  /* Header */
+  .guide-header { text-align: center; margin-bottom: 22px; }
+  .guide-header h1 { font-size: 21px; font-weight: 700; color: #fff; margin-bottom: 5px; }
+  .guide-header p  { font-size: 13px; color: #888; }
+
+  /* App switcher */
+  .app-tabs {
+    display: flex; gap: 8px; margin-bottom: 20px;
+    background: #1a1a24; border: 1px solid #2a2a38;
+    border-radius: 12px; padding: 6px;
+  }
+  .app-tab {
+    flex: 1; padding: 9px 12px; border-radius: 8px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    transition: all 0.2s;
+    color: #666; background: transparent;
+  }
+  .app-tab.active { background: #252534; color: #fff; }
+  .app-tab.obs.active    { box-shadow: 0 0 0 1px rgba(255,82,82,0.4); color: #ff5252; }
+  .app-tab.tiktok.active { box-shadow: 0 0 0 1px rgba(0,186,162,0.4); color: #00baa2; }
+  .app-tab:hover:not(.active) { color: #aaa; }
+
+  /* Progress */
+  .progress-bar { display: flex; gap: 6px; margin-bottom: 20px; justify-content: center; }
+  .progress-dot { width: 8px; height: 8px; border-radius: 50%; background: #2a2a38; transition: all 0.3s; cursor: pointer; }
+  .progress-dot.active { background: #4f8ef7; width: 24px; border-radius: 4px; }
+  .progress-dot.done   { background: #3ecf8e; }
+
+  /* Card */
+  .step-card { background: #1a1a24; border: 1px solid #2a2a38; border-radius: 16px; overflow: hidden; }
+  .step-meta {
+    padding: 16px 22px 13px; border-bottom: 1px solid #2a2a38;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .step-num {
+    width: 30px; height: 30px; border-radius: 50%; font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .num-obs    { background: rgba(255,82,82,0.15); color: #ff5252; }
+  .num-tiktok { background: rgba(0,186,162,0.15); color: #00baa2; }
+  .num-shared { background: rgba(79,142,247,0.15); color: #4f8ef7; }
+  .step-title { font-size: 15px; font-weight: 600; color: #fff; }
+  .step-sub   { font-size: 12px; color: #888; margin-top: 2px; }
+
+  /* Mock browser */
+  .mock-browser { background: #0d0d14; }
+  .mock-bar {
+    background: #1e1e2a; padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #2a2a38;
+  }
+  .mock-dots { display: flex; gap: 5px; }
+  .mock-dot  { width: 10px; height: 10px; border-radius: 50%; }
+  .r { background:#ff5f57; } .y { background:#febc2e; } .g { background:#28c840; }
+  .mock-url { flex:1; background:#2a2a38; border-radius:5px; padding:3px 9px; font-size:11px; color:#888; font-family:monospace; }
+
+  /* Steps visibility */
+  .step-content { display: none; }
+  .step-content.visible { display: block; }
+
+  /* TTplus Widgets mock */
+  .ttplus-header {
+    background: #111118; padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #2a2a38;
+  }
+  .ttplus-logo { font-weight: 800; font-size: 14px; color: #fff; letter-spacing: -0.3px; }
+  .ttplus-nav-item {
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #888; cursor: pointer;
+  }
+  .ttplus-nav-item.active { background: rgba(79,142,247,0.12); color: #4f8ef7; }
+
+  .widget-grid { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .widget-card {
+    background: #1e1e2a; border: 1px solid #2a2a38; border-radius: 10px;
+    padding: 12px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .widget-card:hover, .widget-card.selected { border-color: #4f8ef7; }
+  .widget-card-icon { font-size: 20px; margin-bottom: 6px; }
+  .widget-card-name { font-size: 12px; font-weight: 600; color: #fff; }
+  .widget-card-desc { font-size: 10px; color: #666; margin-top: 2px; }
+
+  /* URL copy bar */
+  .url-copy-bar {
+    background: #0d0d14; border: 1px solid #4f8ef7;
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+    font-family: monospace; font-size: 11px; color: #aaa;
+    max-width: 460px; margin: 0 auto;
+  }
+  .copy-pill {
+    background: #4f8ef7; color: #fff; border: none; border-radius: 6px;
+    padding: 5px 12px; font-size: 11px; font-weight: 600; cursor: pointer; flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .copy-pill:hover { background: #3d7de8; }
+
+  /* OBS mock */
+  .obs-window {
+    background: #1e1e1e; border-top: none;
+  }
+  .obs-menubar {
+    background: #2d2d2d; padding: 3px 8px;
+    display: flex; gap: 2px; border-bottom: 1px solid #444;
+  }
+  .obs-menu {
+    padding: 4px 10px; font-size: 11px; color: #ccc; border-radius: 3px;
+    cursor: pointer; transition: background 0.1s; user-select: none;
+  }
+  .obs-menu:hover, .obs-menu.active { background: #444; }
+
+  .obs-body { display: flex; min-height: 200px; }
+  .obs-canvas {
+    flex: 1; background: #000; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 160px;
+  }
+  .obs-canvas-label { font-size: 10px; color: #333; }
+  .obs-panels { width: 180px; background: #1e1e1e; border-left: 1px solid #444; }
+  .obs-panel-title {
+    background: #2d2d2d; padding: 5px 10px; font-size: 10px;
+    color: #aaa; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center;
+  }
+  .obs-panel-add {
+    width: 18px; height: 18px; border-radius: 3px; background: #4f8ef7;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: #fff; cursor: pointer; line-height: 1;
+  }
+  .obs-source-item {
+    padding: 6px 10px; font-size: 10px; color: #bbb;
+    border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; gap: 6px;
+  }
+  .obs-source-item.highlight { background: rgba(79,142,247,0.1); color: #4f8ef7; }
+
+  /* OBS add source dropdown */
+  .obs-dropdown {
+    position: absolute; left: 8px; bottom: 8px;
+    background: #2d2d2d; border: 1px solid #555; border-radius: 4px;
+    min-width: 160px; z-index: 10; overflow: hidden;
+  }
+  .obs-dropdown-item {
+    padding: 6px 12px; font-size: 11px; color: #ccc; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .obs-dropdown-item:hover, .obs-dropdown-item.active { background: #3d82f7; color: #fff; }
+
+  /* OBS Properties dialog */
+  .obs-dialog {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center; z-index: 20;
+  }
+  .obs-dialog-box {
+    background: #2d2d2d; border: 1px solid #555; border-radius: 4px;
+    padding: 0; min-width: 320px; overflow: hidden;
+  }
+  .obs-dialog-title {
+    background: #3d3d3d; padding: 8px 14px; font-size: 12px; font-weight: 600; color: #fff;
+    border-bottom: 1px solid #555;
+  }
+  .obs-dialog-body { padding: 14px; }
+  .obs-field-label { font-size: 10px; color: #aaa; margin-bottom: 4px; }
+  .obs-field-input {
+    width: 100%; background: #1e1e1e; border: 1px solid #555; border-radius: 3px;
+    padding: 6px 8px; font-size: 11px; color: #fff; font-family: monospace;
+    margin-bottom: 10px;
+  }
+  .obs-field-row { display: flex; gap: 8px; }
+  .obs-field-row .obs-field-input { flex: 1; }
+  .obs-dialog-footer {
+    padding: 8px 14px; border-top: 1px solid #444;
+    display: flex; justify-content: flex-end; gap: 6px;
+  }
+  .obs-btn {
+    padding: 5px 14px; border-radius: 3px; border: 1px solid #555;
+    font-size: 11px; cursor: pointer; color: #ccc; background: #3d3d3d;
+  }
+  .obs-btn.primary { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
+
+  /* TikTok Studio mock */
+  .tk-window { background: #0e0e0e; }
+  .tk-topbar {
+    background: #1a1a1a; padding: 8px 14px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .tk-logo { color: #00baa2; font-weight: 800; font-size: 13px; }
+  .tk-body { display: flex; min-height: 200px; }
+  .tk-canvas {
+    flex: 1; background: #000; position: relative;
+    display: flex; align-items: center; justify-content: center; min-height: 160px;
+  }
+  .tk-canvas-label { font-size: 10px; color: #333; }
+  .tk-sidebar { width: 180px; background: #141414; border-left: 1px solid #2a2a2a; }
+  .tk-panel-title {
+    background: #1a1a1a; padding: 6px 10px; font-size: 10px; color: #888;
+    border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; align-items: center;
+  }
+  .tk-add-btn {
+    width: 18px; height: 18px; border-radius: 3px; background: #00baa2;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: #fff; cursor: pointer;
+  }
+  .tk-layer {
+    padding: 6px 10px; font-size: 10px; color: #999;
+    border-bottom: 1px solid #1e1e1e; display: flex; align-items: center; gap: 6px;
+  }
+  .tk-layer.highlight { background: rgba(0,186,162,0.08); color: #00baa2; }
+
+  /* TK source picker */
+  .tk-picker {
+    position: absolute; right: 8px; top: 8px;
+    background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
+    min-width: 160px; z-index: 10; overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .tk-picker-title { padding: 8px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #2a2a2a; }
+  .tk-picker-item {
+    padding: 8px 12px; font-size: 11px; color: #ccc; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.1s;
+  }
+  .tk-picker-item:hover, .tk-picker-item.active { background: rgba(0,186,162,0.1); color: #00baa2; }
+
+  /* TK dialog */
+  .tk-dialog {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center; z-index: 20;
+  }
+  .tk-dialog-box {
+    background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
+    min-width: 300px; overflow: hidden;
+  }
+  .tk-dialog-title { padding: 12px 16px; font-size: 13px; font-weight: 600; color: #fff; border-bottom: 1px solid #2a2a2a; }
+  .tk-dialog-body  { padding: 14px 16px; }
+  .tk-field-label  { font-size: 11px; color: #888; margin-bottom: 5px; }
+  .tk-field-input  {
+    width: 100%; background: #0e0e0e; border: 1px solid #333; border-radius: 6px;
+    padding: 7px 10px; font-size: 11px; color: #fff; font-family: monospace; margin-bottom: 10px;
+  }
+  .tk-field-row { display: flex; gap: 8px; }
+  .tk-dialog-footer { padding: 10px 16px; border-top: 1px solid #2a2a2a; display: flex; justify-content: flex-end; gap: 8px; }
+  .tk-btn { padding: 7px 16px; border-radius: 7px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .tk-btn.cancel { background: #2a2a2a; color: #aaa; }
+  .tk-btn.primary { background: #00baa2; color: #fff; }
+
+  /* Step shown in canvas */
+  .canvas-widget-preview {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(79,142,247,0.15); border: 2px solid #4f8ef7;
+    border-radius: 4px; padding: 4px 8px; font-size: 10px; color: #4f8ef7;
+    pointer-events: none;
+  }
+
+  /* Tip */
+  .tip-box {
+    background: rgba(79,142,247,0.06); border: 1px solid rgba(79,142,247,0.2);
+    border-radius: 8px; padding: 9px 13px; font-size: 12px; color: #aaa;
+    margin: 10px 20px; display: flex; gap: 8px;
+  }
+
+  /* Nav */
+  .nav-row {
+    padding: 14px 20px; display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid #2a2a38;
+  }
+  .nav-btn { padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .nav-btn.prev { background: #2a2a38; color: #aaa; }
+  .nav-btn.prev:hover { background: #3a3a50; color: #fff; }
+  .nav-btn.next { background: #4f8ef7; color: #fff; }
+  .nav-btn.next:hover { background: #3d7de8; }
+  .nav-btn.finish { background: #3ecf8e; color: #0d0d14; }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 12px; color: #555; }
+
+  /* Success */
+  .success-screen { text-align: center; padding: 44px 20px; }
+  .success-icon { font-size: 52px; margin-bottom: 14px; }
+  .success-title { font-size: 19px; font-weight: 700; color: #3ecf8e; margin-bottom: 8px; }
+  .success-desc { font-size: 13px; color: #888; }
+  .success-badges { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+  .badge { border-radius: 8px; padding: 8px 14px; font-size: 12px; }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;} }
+  .fade-in { animation: fadeIn 0.25s ease; }
+
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(79,142,247,.5);}50%{box-shadow:0 0 0 6px rgba(79,142,247,0);} }
+  .hl { animation: pulse 1.5s infinite; }
+  @keyframes pulse-tk { 0%,100%{box-shadow:0 0 0 0 rgba(0,186,162,.5);}50%{box-shadow:0 0 0 6px rgba(0,186,162,0);} }
+  .hl-tk { animation: pulse-tk 1.5s infinite; }
+</style>
+</head>
+<body>
+<div class="wrap fade-in">
+  <div class="guide-header">
+    <h1>📺 วิธีเพิ่ม Widget ใน Live Software</h1>
+    <p>เลือกโปรแกรมที่คุณใช้ แล้วทำตามขั้นตอน</p>
+  </div>
+
+  <!-- App switcher -->
+  <div class="app-tabs">
+    <button class="app-tab tiktok active" id="tabTikTok" onclick="switchApp('tiktok')">
+      <span>🎵</span> TikTok LIVE Studio
+    </button>
+    <button class="app-tab obs" id="tabObs" onclick="switchApp('obs')">
+      <span style="color:#ff5252">⬤</span> OBS Studio
+    </button>
+  </div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <div class="step-card">
+
+    <!-- ══ STEP 0 (shared): Copy URL จาก TTplus ══ -->
+    <div class="step-content" id="step-0">
+      <div class="step-meta">
+        <div class="step-num num-shared">1</div>
+        <div>
+          <div class="step-title">Copy Widget URL จาก TTplus</div>
+          <div class="step-sub">ไปหน้า Widgets → เลือก Widget ที่ต้องการ → กด Customize → Copy URL</div>
+        </div>
+      </div>
+      <div class="mock-browser">
+        <div class="mock-bar">
+          <div class="mock-dots"><div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div></div>
+          <div class="mock-url">ttsam.app/widgets</div>
+        </div>
+        <div style="background:#0d0d14;">
+          <!-- TTplus header -->
+          <div class="ttplus-header">
+            <div class="ttplus-logo">TTplus</div>
+            <div class="ttplus-nav-item">Dashboard</div>
+            <div class="ttplus-nav-item active">Widgets</div>
+            <div class="ttplus-nav-item">TTS</div>
+            <div class="ttplus-nav-item">Actions</div>
+          </div>
+          <!-- Widget grid -->
+          <div class="widget-grid">
+            <div class="widget-card selected" onclick="showCopyBar(this)">
+              <div class="widget-card-icon">🎁</div>
+              <div class="widget-card-name">Gift Jar</div>
+              <div class="widget-card-desc">ของขวัญตกลงขวด</div>
+            </div>
+            <div class="widget-card" onclick="showCopyBar(this)">
+              <div class="widget-card-icon">💥</div>
+              <div class="widget-card-name">Boss Battle</div>
+              <div class="widget-card-desc">สู้บอส</div>
+            </div>
+            <div class="widget-card" onclick="showCopyBar(this)">
+              <div class="widget-card-icon">🎆</div>
+              <div class="widget-card-name">Fireworks</div>
+              <div class="widget-card-desc">พลุ</div>
+            </div>
+            <div class="widget-card" onclick="showCopyBar(this)">
+              <div class="widget-card-icon">🔊</div>
+              <div class="widget-card-name">Now Playing</div>
+              <div class="widget-card-desc">เพลงปัจจุบัน</div>
+            </div>
+          </div>
+          <!-- Copy bar -->
+          <div id="copyBar" style="padding:12px 16px 14px;display:none;" class="fade-in">
+            <div style="font-size:11px;color:#888;margin-bottom:7px;">🔗 Widget URL (คลิก Copy)</div>
+            <div class="url-copy-bar">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                https://ttsam.app/widget/gift-jar?cid=<span style="color:#4f8ef7">abc123</span>
+              </span>
+              <button class="copy-pill hl" id="copyBtn" onclick="
+                this.textContent='✓ Copied!';
+                this.style.background='#3ecf8e';
+                this.style.animation='none';
+                setTimeout(()=>{this.textContent='Copy';this.style.background='';this.style.animation='';},1800)
+              ">Copy</button>
+            </div>
+          </div>
+          <div id="copyHint" style="padding:10px 16px 14px;font-size:12px;color:#555;text-align:center;">
+            ← คลิก Widget ที่ต้องการเพื่อดู URL
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>💡</span><span>URL มี <strong style="color:#fff">?cid=...</strong> ต่อท้ายเสมอ — นี่คือรหัส session ของคุณ อย่าแชร์ให้คนอื่น</span></div>
+    </div>
+
+    <!-- ══ STEP 1 TikTok: เปิด TikTok LIVE Studio ══ -->
+    <div class="step-content app-tiktok" id="step-1-tiktok">
+      <div class="step-meta">
+        <div class="step-num num-tiktok">2</div>
+        <div>
+          <div class="step-title">เปิด TikTok LIVE Studio</div>
+          <div class="step-sub">เปิดแอป → เลือก Layout ที่ต้องการ → เข้า Scene Editor</div>
+        </div>
+      </div>
+      <div class="mock-browser" style="background:#0e0e0e;">
+        <div class="tk-window">
+          <div class="tk-topbar">
+            <div class="tk-logo">TikTok LIVE Studio</div>
+            <div style="margin-left:auto;font-size:11px;color:#888;">Scene: Main Scene</div>
+          </div>
+          <div class="tk-body">
+            <div class="tk-canvas">
+              <div class="tk-canvas-label">Preview Canvas</div>
+            </div>
+            <div class="tk-sidebar">
+              <div class="tk-panel-title">
+                <span>LAYERS</span>
+                <div class="tk-add-btn hl-tk" onclick="document.getElementById('tkPicker').style.display='block'">+</div>
+              </div>
+              <div class="tk-layer">🎵 Music</div>
+              <div class="tk-layer">📹 Camera</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>📌</span><span>ถ้ายังไม่เห็น Scene Editor ให้คลิกที่ Layout แล้วเลือก <strong style="color:#fff">Custom</strong></span></div>
+    </div>
+
+    <!-- ══ STEP 2 TikTok: Add Browser Source ══ -->
+    <div class="step-content app-tiktok" id="step-2-tiktok">
+      <div class="step-meta">
+        <div class="step-num num-tiktok">3</div>
+        <div>
+          <div class="step-title">เพิ่ม Browser Source</div>
+          <div class="step-sub">กด "+" ใน Layers panel → เลือก "Web Browser"</div>
+        </div>
+      </div>
+      <div class="mock-browser" style="background:#0e0e0e;">
+        <div class="tk-window">
+          <div class="tk-topbar"><div class="tk-logo">TikTok LIVE Studio</div></div>
+          <div class="tk-body">
+            <div class="tk-canvas">
+              <div class="tk-canvas-label">Preview Canvas</div>
+              <!-- picker -->
+              <div id="tkPicker" style="display:block" class="tk-picker">
+                <div class="tk-picker-title">เพิ่ม Source</div>
+                <div class="tk-picker-item">🎥 Camera / Webcam</div>
+                <div class="tk-picker-item">🖥️ Screen Capture</div>
+                <div class="tk-picker-item active hl-tk">🌐 Web Browser</div>
+                <div class="tk-picker-item">🖼️ Image</div>
+                <div class="tk-picker-item">🎵 Audio Output</div>
+              </div>
+            </div>
+            <div class="tk-sidebar">
+              <div class="tk-panel-title"><span>LAYERS</span><div class="tk-add-btn">+</div></div>
+              <div class="tk-layer">🎵 Music</div>
+              <div class="tk-layer">📹 Camera</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ STEP 3 TikTok: วาง URL ══ -->
+    <div class="step-content app-tiktok" id="step-3-tiktok">
+      <div class="step-meta">
+        <div class="step-num num-tiktok">4</div>
+        <div>
+          <div class="step-title">วาง URL และตั้งขนาด</div>
+          <div class="step-sub">วาง Widget URL ในช่อง URL → ตั้งขนาด Width/Height → กด Add</div>
+        </div>
+      </div>
+      <div class="mock-browser" style="background:#0e0e0e;">
+        <div class="tk-window">
+          <div class="tk-body" style="min-height:220px;">
+            <div class="tk-canvas">
+              <div class="tk-dialog">
+                <div class="tk-dialog-box">
+                  <div class="tk-dialog-title">🌐 Web Browser</div>
+                  <div class="tk-dialog-body">
+                    <div class="tk-field-label">ชื่อ Layer</div>
+                    <input class="tk-field-input" value="Gift Jar Widget" />
+                    <div class="tk-field-label">URL</div>
+                    <input class="tk-field-input hl-tk" value="https://ttsam.app/widget/gift-jar?cid=abc123" />
+                    <div class="tk-field-row">
+                      <div style="flex:1">
+                        <div class="tk-field-label">Width</div>
+                        <input class="tk-field-input" value="600" />
+                      </div>
+                      <div style="flex:1">
+                        <div class="tk-field-label">Height</div>
+                        <input class="tk-field-input" value="600" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="tk-dialog-footer">
+                    <button class="tk-btn cancel">ยกเลิก</button>
+                    <button class="tk-btn primary hl-tk">Add Layer</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>📐</span><span>Width/Height ค่าแนะนำอยู่ที่ปุ่ม Customize ในหน้า Widgets ของ TTplus</span></div>
+    </div>
+
+    <!-- ══ STEP 4 TikTok: Done ══ -->
+    <div class="step-content app-tiktok" id="step-4-tiktok">
+      <div class="mock-browser" style="border:none;">
+        <div class="success-screen">
+          <div class="success-icon">🎉</div>
+          <div class="success-title">Widget พร้อมใช้งานแล้ว!</div>
+          <div class="success-desc">Widget จะแสดงใน TikTok LIVE Studio<br/>และ Viewer จะเห็นได้ตอน Live</div>
+          <div class="success-badges">
+            <div class="badge" style="background:rgba(0,186,162,0.1);color:#00baa2;border:1px solid rgba(0,186,162,0.3);">✓ TikTok LIVE Studio</div>
+            <div class="badge" style="background:rgba(62,207,142,0.1);color:#3ecf8e;border:1px solid rgba(62,207,142,0.3);">✓ Widget ทำงานแล้ว</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ STEP 1 OBS: เปิด OBS + Sources ══ -->
+    <div class="step-content app-obs" id="step-1-obs">
+      <div class="step-meta">
+        <div class="step-num num-obs">2</div>
+        <div>
+          <div class="step-title">เปิด OBS Studio</div>
+          <div class="step-sub">ดูที่ panel Sources ด้านล่าง → กดปุ่ม "+" เพื่อเพิ่ม source ใหม่</div>
+        </div>
+      </div>
+      <div class="mock-browser" style="background:#1e1e1e;">
+        <div class="obs-window">
+          <div class="obs-menubar">
+            <div class="obs-menu">File</div><div class="obs-menu">Edit</div>
+            <div class="obs-menu">View</div><div class="obs-menu">Tools</div><div class="obs-menu">Help</div>
+          </div>
+          <div class="obs-body">
+            <div class="obs-canvas">
+              <div class="obs-canvas-label">OBS Preview</div>
+            </div>
+            <div class="obs-panels">
+              <div class="obs-panel-title">
+                <span>SOURCES</span>
+                <div class="obs-panel-add hl" onclick="document.getElementById('obsDropdown1').style.display='block'">+</div>
+              </div>
+              <div class="obs-source-item">🖥️ Screen Capture</div>
+              <div class="obs-source-item">📹 Video Capture</div>
+              <div id="obsDropdown1" style="display:none;position:relative;">
+                <div class="obs-dropdown" style="left:0;top:0;position:relative;">
+                  <div class="obs-dropdown-item">Image</div>
+                  <div class="obs-dropdown-item active hl">Browser</div>
+                  <div class="obs-dropdown-item">Screen Capture</div>
+                  <div class="obs-dropdown-item">Media Source</div>
+                  <div class="obs-dropdown-item">Text (GDI+)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>💡</span><span>Sources panel อยู่ด้านล่างซ้ายของ OBS ถ้าหาไม่เจอไปที่ View → Docks → Sources</span></div>
+    </div>
+
+    <!-- ══ STEP 2 OBS: กรอก URL ══ -->
+    <div class="step-content app-obs" id="step-2-obs">
+      <div class="step-meta">
+        <div class="step-num num-obs">3</div>
+        <div>
+          <div class="step-title">ตั้งค่า Browser Source</div>
+          <div class="step-sub">วาง Widget URL → ตั้ง Width/Height → กด OK</div>
+        </div>
+      </div>
+      <div class="mock-browser" style="background:#1e1e1e;">
+        <div class="obs-window">
+          <div class="obs-body" style="min-height:220px;">
+            <div class="obs-canvas">
+              <div class="obs-dialog">
+                <div class="obs-dialog-box">
+                  <div class="obs-dialog-title">Properties — Browser</div>
+                  <div class="obs-dialog-body">
+                    <div class="obs-field-label">URL</div>
+                    <input class="obs-field-input hl" value="https://ttsam.app/widget/gift-jar?cid=abc123" />
+                    <div class="obs-field-row">
+                      <div style="flex:1">
+                        <div class="obs-field-label">Width</div>
+                        <input class="obs-field-input" value="600" />
+                      </div>
+                      <div style="flex:1">
+                        <div class="obs-field-label">Height</div>
+                        <input class="obs-field-input" value="600" />
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                      <input type="checkbox" checked style="accent-color:#4f8ef7" />
+                      <span style="font-size:10px;color:#aaa;">Shutdown source when not visible</span>
+                    </div>
+                  </div>
+                  <div class="obs-dialog-footer">
+                    <button class="obs-btn">Cancel</button>
+                    <button class="obs-btn primary hl">OK</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip-box"><span>📐</span><span>Width/Height ปกติ 600×600 สำหรับ Gift Jar, 1920×1080 สำหรับ Fireworks — ดูได้ที่ปุ่ม Customize</span></div>
+    </div>
+
+    <!-- ══ STEP 3 OBS: Done ══ -->
+    <div class="step-content app-obs" id="step-3-obs">
+      <div class="mock-browser" style="border:none;">
+        <div class="success-screen">
+          <div class="success-icon">🎉</div>
+          <div class="success-title">Widget พร้อมใช้งานแล้ว!</div>
+          <div class="success-desc">Widget จะแสดงใน OBS preview<br/>ลาก/ปรับขนาดใน canvas ได้เลย</div>
+          <div class="success-badges">
+            <div class="badge" style="background:rgba(255,82,82,0.1);color:#ff5252;border:1px solid rgba(255,82,82,0.3);">✓ OBS Studio</div>
+            <div class="badge" style="background:rgba(62,207,142,0.1);color:#3ecf8e;border:1px solid rgba(62,207,142,0.3);">✓ Widget ทำงานแล้ว</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="nav-btn prev" id="btnPrev" onclick="navigate(-1)">← ย้อนกลับ</button>
+      <span class="step-counter" id="stepCounter"></span>
+      <button class="nav-btn next" id="btnNext" onclick="navigate(1)">ถัดไป →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let app = 'tiktok'; // 'tiktok' | 'obs'
+  let cur = 0;
+
+  // Steps per app (step 0 is shared)
+  const appSteps = {
+    tiktok: ['step-0', 'step-1-tiktok', 'step-2-tiktok', 'step-3-tiktok', 'step-4-tiktok'],
+    obs:    ['step-0', 'step-1-obs',    'step-2-obs',    'step-3-obs'],
+  };
+
+  function getSteps() { return appSteps[app]; }
+
+  function switchApp(newApp) {
+    app = newApp;
+    cur = 0;
+    document.getElementById('tabTikTok').className = 'app-tab tiktok' + (app === 'tiktok' ? ' active' : '');
+    document.getElementById('tabObs').className    = 'app-tab obs'    + (app === 'obs'    ? ' active' : '');
+    render();
+  }
+
+  function showCopyBar(card) {
+    document.querySelectorAll('.widget-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    document.getElementById('copyBar').style.display = 'block';
+    document.getElementById('copyHint').style.display = 'none';
+  }
+
+  function render() {
+    const steps = getSteps();
+    const total = steps.length;
+
+    document.querySelectorAll('.step-content').forEach(el => el.classList.remove('visible'));
+    document.getElementById(steps[cur]).classList.add('visible');
+
+    const bar = document.getElementById('progressBar');
+    bar.innerHTML = '';
+    for (let i = 0; i < total; i++) {
+      const d = document.createElement('div');
+      d.className = 'progress-dot' + (i === cur ? ' active' : i < cur ? ' done' : '');
+      d.onclick = () => { cur = i; render(); };
+      bar.appendChild(d);
+    }
+
+    document.getElementById('btnPrev').disabled = cur === 0;
+    const next = document.getElementById('btnNext');
+    if (cur === total - 1) {
+      next.textContent = 'เริ่มใหม่ ↺';
+      next.className = 'nav-btn finish';
+    } else {
+      next.textContent = 'ถัดไป →';
+      next.className = 'nav-btn next';
+    }
+    document.getElementById('stepCounter').textContent = `${cur + 1} / ${total}`;
+  }
+
+  function navigate(dir) {
+    const steps = getSteps();
+    if (dir === 1 && cur === steps.length - 1) cur = 0;
+    else cur = Math.max(0, Math.min(steps.length - 1, cur + dir));
+    render();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') navigate(1);
+    if (e.key === 'ArrowLeft')  navigate(-1);
+  });
+
+  render();
+</script>
+</body>
+</html>
