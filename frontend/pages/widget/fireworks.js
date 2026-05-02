@@ -433,17 +433,16 @@ function tickRocket(ctx, r, now) {
 }
 
 // ── Web Audio helpers ────────────────────────────────────────────────────────
-// Strategy:
-//   1. Fetch MP3 bytes eagerly — ไม่ต้องมี AudioContext
-//   2. สร้าง AudioContext แค่ครั้งเดียว (ตอน first playback หรือ click)
-//      ถ้า browser block (no user gesture) → ลองแค่ครั้งเดียว ไม่ retry ซ้ำ
-//      เพื่อหลีกเลี่ยง "AudioContext not allowed" warning ×N
-//   3. เมื่อ user คลิก → ลอง init ใหม่ (ใช้ได้ใน browser preview)
-//   OBS CEF: ไม่มี autoplay restriction → init สำเร็จจากกิจกรรมแรก
-let _audioCtx     = null;
-let _fireworkBuf  = null;
-let _rawMp3       = null;    // raw ArrayBuffer จาก fetch
-let _initAttempted = false;  // ลอง init ไปแล้วหรือยัง (ป้องกัน retry loop)
+// แยก 2 phase เพื่อไม่ยิง "AudioContext not allowed" warning:
+//   Phase 1 (_prepareAudio): สร้าง context + decode buffer — ทำได้แม้ context suspended
+//                            ไม่เรียก resume() ดังนั้นไม่มี warning
+//   Phase 2 (_unlockAudio):  เรียก resume() — เฉพาะจาก user gesture (browser preview)
+//                            OBS CEF: ไม่มี autoplay restriction → context start เป็น 'running' อยู่แล้ว
+//   playFirework: เช็ค state==='running' ก่อนเล่น → suspended ก็ skip เงียบๆ ไม่ warning
+let _audioCtx    = null;
+let _fireworkBuf = null;
+let _rawMp3      = null;
+let _prepared    = false;
 
 async function prefetchFireworkBytes() {
   try {
@@ -452,34 +451,37 @@ async function prefetchFireworkBytes() {
   } catch (_) {}
 }
 
-async function _initAudio() {
-  if (_fireworkBuf)   return;  // ready แล้ว
-  if (!_rawMp3)       return;  // ยังไม่ได้ fetch
-  if (_initAttempted) return;  // ลองแล้ว ไม่ retry (หลีกเลี่ยง warning loop)
-  _initAttempted = true;
+async function _prepareAudio() {
+  if (_prepared) return;
+  if (!_rawMp3)  return;
+  _prepared = true;
   try {
-    if (!_audioCtx) {
-      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (_audioCtx.state === 'suspended') await _audioCtx.resume();
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     _fireworkBuf = await _audioCtx.decodeAudioData(_rawMp3.slice(0));
   } catch (_) {}
 }
 
-// เมื่อ user คลิก → reset flag แล้วลอง init ใหม่ (สำหรับ browser preview)
+async function _unlockAudio() {
+  await _prepareAudio();
+  if (!_audioCtx) return;
+  if (_audioCtx.state === 'suspended') {
+    try { await _audioCtx.resume(); } catch (_) {}
+  }
+}
+
+// User gesture → resume (browser preview)
 if (typeof window !== 'undefined') {
-  window.addEventListener('click', () => {
-    _initAttempted = false;
-    _initAudio();
-  }, { once: true });
+  ['click', 'keydown', 'touchstart'].forEach(ev =>
+    window.addEventListener(ev, _unlockAudio, { once: true })
+  );
 }
 
 function playFirework(vol) {
   if (vol <= 0) return;
-  _initAudio().then(() => {
+  _prepareAudio().then(() => {
     if (!_fireworkBuf || !_audioCtx) return;
+    if (_audioCtx.state !== 'running') return;  // suspended → skip ไม่ยิง warning
     try {
-      if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
       const src  = _audioCtx.createBufferSource();
       src.buffer = _fireworkBuf;
       const gain = _audioCtx.createGain();
