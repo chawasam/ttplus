@@ -2378,14 +2378,17 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
       .catch(() => {}); // fail silently — overlay URLs fallback to vjId
   }, [user]);
 
-  // ── อ่าน localStorage หลัง mount (client-only) เพื่อหลีกเลี่ยง hydration mismatch ──
+  // ── อ่าน localStorage หลัง mount → dispatch ทันทีเพื่อ sync StatusBar ──
+  // dispatch ทุกกรณี (ไม่ใช่แค่ '0') เพราะ StatusBar เริ่มต้นเป็น false รอค่าจากนี้
   useEffect(() => {
     try {
       const saved = localStorage.getItem('ttplus_actions_system');
-      if (saved === '0') {
-        setSystemEnabled(false);
-        window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: false } }));
+      if (saved !== null) {
+        const enabled = saved !== '0';
+        setSystemEnabled(enabled);
+        window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled } }));
       }
+      // null → รอ API call ใน loadData() ที่จะ dispatch และ set localStorage ให้ถูกต้อง
     } catch {}
     try {
       if (localStorage.getItem('ttplus_actions_audio') === '1') setAudioEnabled(true);

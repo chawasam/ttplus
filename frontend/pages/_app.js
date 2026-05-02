@@ -20,16 +20,22 @@ import FaqPage        from './faq';
 
 // ── Minimal status bar — แสดงสถานะ TikTok / Soundboard / TTS ──
 function StatusBar({ theme, setTheme }) {
+  const [mounted,    setMounted]    = useState(false); // ป้องกัน flash + hydration mismatch
   const [conn,       setConn]       = useState({ connected: false, username: '' });
   const [sbOn,       setSbOn]       = useState(false);
   const [ttsOn,      setTtsOn]      = useState(false);
-  const [actionsOn,  setActionsOn]  = useState(() => {
-    try { return localStorage.getItem('ttplus_actions_system') !== '0'; } catch { return true; }
-  });
+  const [actionsOn,  setActionsOn]  = useState(false);
 
   useEffect(() => {
-    // อ่านค่าเริ่มต้น soundboard จาก localStorage
+    // อ่านค่าเริ่มต้นจาก localStorage หลัง hydration เสร็จ — ไม่ flash, ไม่ mismatch
     setSbOn(loadSbSettings().enabled || false);
+    try {
+      const saved = localStorage.getItem('ttplus_actions_system');
+      // null → ยังไม่รู้ค่า รอ dispatch จาก actions.js (ค้าง false ไว้ก่อน)
+      // '1' → on, '0' → off
+      if (saved !== null) setActionsOn(saved !== '0');
+    } catch {}
+    setMounted(true);
 
     const onConn    = (e) => setConn({ connected: e.detail.connected, username: e.detail.username || '' });
     const onTts     = (e) => setTtsOn(!!e.detail.enabled);
@@ -95,8 +101,8 @@ function StatusBar({ theme, setTheme }) {
     }}>
       {/* TikTok connection */}
       <span style={item}>
-        <span style={dot(conn.connected)} />
-        {conn.connected
+        <span style={dot(mounted && conn.connected)} />
+        {mounted && conn.connected
           ? <span style={{ color: textOn }}>@{conn.username}</span>
           : <span>ไม่ได้เชื่อมต่อ</span>
         }
@@ -106,24 +112,24 @@ function StatusBar({ theme, setTheme }) {
 
       {/* Soundboard */}
       <span style={item}>
-        <span style={dot(sbOn)} />
-        <span style={sbOn ? { color: textOn } : {}}>Soundboard</span>
+        <span style={dot(mounted && sbOn)} />
+        <span style={mounted && sbOn ? { color: textOn } : {}}>Soundboard</span>
       </span>
 
       <span style={{ width: 1, height: 12, background: divider, flexShrink: 0 }} />
 
       {/* TTS */}
       <span style={item}>
-        <span style={dot(ttsOn)} />
-        <span style={ttsOn ? { color: textOn } : {}}>TTS</span>
+        <span style={dot(mounted && ttsOn)} />
+        <span style={mounted && ttsOn ? { color: textOn } : {}}>TTS</span>
       </span>
 
       <span style={{ width: 1, height: 12, background: divider, flexShrink: 0 }} />
 
       {/* Actions */}
       <span style={item}>
-        <span style={dot(actionsOn)} />
-        <span style={actionsOn ? { color: textOn } : {}}>Action</span>
+        <span style={dot(mounted && actionsOn)} />
+        <span style={mounted && actionsOn ? { color: textOn } : {}}>Action</span>
       </span>
 
       {/* Theme toggle — ขวาสุด */}
