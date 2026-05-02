@@ -9,6 +9,7 @@ const { reportError, getErrors, resolveError } = require('../handlers/admin/erro
 const { getGameMetrics }                 = require('../handlers/admin/gameMetrics');
 const { listEvents, createEvent, updateEvent, deleteEvent } = require('../handlers/admin/seasonEvents');
 const { getFirebaseUsage } = require('../handlers/admin/firebaseUsage');
+const { listIdeas, createIdea, updateIdea, deleteIdea, bulkImportIdeas } = require('../handlers/admin/ideas');
 const { stopConnection }                 = require('../handlers/tiktok');
 const { getReadStats, resetReadStats }   = require('../utils/readTracker');
 
@@ -44,6 +45,13 @@ router.get('/season-events',      listEvents);
 router.post('/season-events',     createEvent);
 router.put('/season-events/:id',  updateEvent);
 router.delete('/season-events/:id', deleteEvent);
+
+// ─── Product Lab — Ideas ────────────────────────────────────────────────────
+router.get('/ideas',              listIdeas);
+router.post('/ideas',             createIdea);
+router.post('/ideas/bulk',        bulkImportIdeas);
+router.patch('/ideas/:id',        updateIdea);
+router.delete('/ideas/:id',       deleteIdea);
 
 // Kick a TikTok connection (force disconnect)
 router.post('/connections/:userId/kick', async (req, res) => {
