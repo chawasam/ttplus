@@ -167,7 +167,7 @@ export default function GiftCarouselWidget() {
             }}
           >
             {[...cards, ...cards].map((user, idx) =>
-              renderCard(user, idx % cards.length, accentColor, styles, showCoins, showMsg, lastMsgs, cardBg, cardBga)
+              renderCard(user, idx, idx % cards.length, accentColor, styles, showCoins, showMsg, lastMsgs, cardBg, cardBga)
             )}
           </div>
         </div>
@@ -184,7 +184,7 @@ export default function GiftCarouselWidget() {
 }
 
 // ─── render การ์ดแต่ละใบ ──────────────────────────────────────────────────────
-function renderCard(user, rankIdx, accentColor, styles, showCoins, showMsg, lastMsgs, cardBgHex, cardBga) {
+function renderCard(user, idx, rankIdx, accentColor, styles, showCoins, showMsg, lastMsgs, cardBgHex, cardBga) {
   const isTop3      = rankIdx < 3;
   const medal       = MEDALS[rankIdx] || `#${rankIdx + 1}`;
   const initLetter  = ((user.nickname || user.uniqueId || '?')[0] || '?').toUpperCase();
@@ -198,7 +198,7 @@ function renderCard(user, rankIdx, accentColor, styles, showCoins, showMsg, last
 
   return (
     <div
-      key={`${user.uniqueId}_${rankIdx}`}
+      key={`${user.uniqueId}_${idx}`}
       style={{
         flexShrink:    0,
         width:         CARD_W,
