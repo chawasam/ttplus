@@ -6,6 +6,7 @@ const { processGift }  = require('./game/tiktokCurrency');
 const { checkChatVerify } = require('./game/account');
 const { processEvent, invalidateCache, clearVjCooldowns } = require('./actions/eventProcessor');
 const { emitToWidgetRoom } = require('../lib/emitter');
+const { recordKnownViewer, flushAllPending } = require('../utils/knownViewers');
 const crypto = require('crypto');
 const IP_HASH_SALT = process.env.IP_HASH_SALT || 'default_salt';
 
@@ -323,6 +324,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       if (checkFirstActivity(userId, safe.uniqueId)) {
         processEvent(userId, 'first_activity', chatEvPayload).catch(() => {});
       }
+      recordKnownViewer(userId, safe, 'chat');
     });
 
     connection.on('gift', (data) => {
@@ -409,6 +411,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       if (checkFirstActivity(userId, safe.uniqueId)) {
         processEvent(userId, 'first_activity', giftPayload).catch(() => {});
       }
+      recordKnownViewer(userId, safe, 'gift');
     });
 
     connection.on('like', (data) => {
@@ -437,6 +440,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       schedulePersistLeaderboard(userId); // debounced Firestore write
       // ลูกเล่น TT — fire like events
       processEvent(userId, 'like', likePayload).catch(() => {});
+      recordKnownViewer(userId, safe, 'like');
     });
 
     connection.on('follow', (data) => {
@@ -459,6 +463,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       if (checkFirstActivity(userId, safe.uniqueId)) {
         processEvent(userId, 'first_activity', followPayload).catch(() => {});
       }
+      recordKnownViewer(userId, safe, 'follow');
     });
 
     connection.on('share', (data) => {
@@ -480,6 +485,7 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
       if (checkFirstActivity(userId, safe.uniqueId)) {
         processEvent(userId, 'first_activity', sharePayload).catch(() => {});
       }
+      recordKnownViewer(userId, safe, 'share');
     });
 
     // ── Member join (คนกดเข้าดู live) ──
@@ -541,6 +547,9 @@ async function startConnection(userId, tiktokUsername, io, socketId, isReconnect
 
       activeConnections.delete(userId);
       await logSession({ userId, tiktokUsername, action: 'disconnect' });
+
+      // Flush pending known_viewers writes — ไม่ให้ data หายตอน auto-reconnect/crash
+      flushAllPending().catch(() => {});
 
       // ล้าง in-memory state เมื่อ manual disconnect — ป้องกัน memory leak
       if (wasManual) {

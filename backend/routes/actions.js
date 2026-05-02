@@ -6,6 +6,7 @@ const { widgetLimiter } = require('../middleware/rateLimiter');
 const h = require('../handlers/actions/actionsHandler');
 const { getGiftCatalog } = require('../handlers/tiktok');
 const { simulateEventWithResult } = require('../handlers/actions/eventProcessor');
+const { listKnownViewers } = require('../utils/knownViewers');
 
 // Actions CRUD
 router.get   ('/',          verifyToken, h.getActions);
@@ -76,6 +77,17 @@ router.post('/simulate-event', verifyToken, async (req, res) => {
 
   if (error) return res.status(500).json({ error });
   res.json({ ok: true, type, payload: { giftName: payload.giftName, diamondCount: payload.diamondCount, comment: payload.comment, nickname: fake }, matched });
+});
+
+// Known viewers — autocomplete suggestions สำหรับช่อง specific_user ใน Event builder
+// คนที่เคย chat/gift/like/follow/share ระหว่าง stream → upsert ลง known_viewers/{vjUid}/list
+router.get('/known-users', verifyToken, async (req, res) => {
+  try {
+    const users = await listKnownViewers(req.user.uid);
+    res.json({ users });
+  } catch (e) {
+    res.status(500).json({ error: 'ดึงรายชื่อผู้ชมไม่ได้' });
+  }
 });
 
 // Overlay queue — ไม่ต้อง auth (OBS Browser Source เรียกเอง)
