@@ -74,9 +74,10 @@ const nextConfig = {
           { key: 'Referrer-Policy',               value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy',            value: 'camera=(), microphone=(), geolocation=(), payment=()' },
           { key: 'Content-Security-Policy',       value: mainCSP },
-          // same-origin-allow-popups: Firebase signInWithPopup ต้องการ
-          // (same-origin จะบล็อก popup ไม่ให้ส่งข้อมูลกลับมา)
-          { key: 'Cross-Origin-Opener-Policy',    value: 'same-origin-allow-popups' },
+          // unsafe-none: Firebase signInWithPopup poll window.closed บน cross-origin popup
+          // (same-origin-allow-popups เปิด popup ได้แต่ block การอ่าน window.closed → console warning)
+          // โปรเจกต์ไม่ได้ใช้ SharedArrayBuffer/cross-origin isolation จึงปลอดภัยที่จะตั้ง unsafe-none
+          { key: 'Cross-Origin-Opener-Policy',    value: 'unsafe-none' },
           ...(isDev ? [] : [
             // HSTS เฉพาะ production (บังคับ HTTPS)
             { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
