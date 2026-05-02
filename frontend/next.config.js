@@ -10,8 +10,8 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
 const mainCSP = [
   "default-src 'self'",
   isDev
-    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://accounts.google.com"
-    : "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com",
+    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://static.cloudflareinsights.com"
+    : "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline'",
   `connect-src 'self' ${BACKEND} wss: ws: https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com`,
   "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://lh3.googleusercontent.com",
@@ -33,10 +33,11 @@ const widgetCSP = [
   // เพราะ widget เรียก now-playing / socket ผ่าน api.ttsam.app โดยตรง
   // Firebase Auth URLs จำเป็นเพราะ _app.js initialize Firebase ทุกหน้า (รวม /widget/*)
   `connect-src 'self' ${BACKEND} https://api.ttsam.app wss://api.ttsam.app wss: ws: https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com`,
-  // img-src: เพิ่ม Spotify CDN (i.scdn.co) สำหรับ album art
-  "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://i.scdn.co https://*.scdn.co https://mosaic.scdn.co",
+  // img-src: เปิดกว้าง https: เพราะ overlay widget ต้องโหลดรูปจากทุกแหล่ง (Giphy, Imgur ฯลฯ)
+  "img-src 'self' data: blob: https:",
   // media-src: อนุญาต backend (วิดีโอ PK, เสียง) และ blob: (AudioContext)
-  `media-src 'self' ${BACKEND} https://api.ttsam.app blob:`,
+  `media-src 'self' ${BACKEND} https://api.ttsam.app blob: https://drive.google.com https://*.googleapis.com https://*.googleusercontent.com https://files.catbox.moe https://litter.catbox.moe https://*.uguu.se`,
+  "frame-src https://www.youtube.com https://www.youtube-nocookie.com", // YouTube embed ใน myactions widget
   "frame-ancestors *",   // OBS / TikTok Studio ต้องการ embed
   "font-src 'self' data:",
 ].join('; ');

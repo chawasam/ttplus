@@ -8,7 +8,23 @@ html, body {
   transition: background-color 0.2s ease;
 }
 html:not(.dark), html:not(.dark) body {
-  background-color: #f9fafb; /* gray-50 — light mode */
+  background-color: #fdf0f7; /* sakura — light mode */
+}
+
+/* ===== Sakura Light Mode — pattern + scrollbar ===== */
+html:not(.dark) body {
+  /* Subtle dot-petal background */
+  background-image:
+    radial-gradient(circle, #f9a8d420 1.5px, transparent 1.5px),
+    radial-gradient(circle, #fbb6d915 1px,   transparent 1px);
+  background-size: 28px 28px, 14px 14px;
+  background-position: 0 0, 7px 7px;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: #f0abcb;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: #ec4899;
 }
 
 /* ===== Smooth theme transition สำหรับ background + text =====

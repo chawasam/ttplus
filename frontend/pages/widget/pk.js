@@ -22,8 +22,9 @@ export default function PKWidget() {
   const gapTimer    = useRef(null);
 
   // Queue state — ใช้ ref เพื่อไม่ให้ closure stale ใน event handler
-  const queueRef    = useRef([]);   // [{ url, type }]
+  const queueRef    = useRef([]);   // [{ url, type, volume }]
   const playingRef  = useRef(false);
+  const volumeRef   = useRef(0.8);
 
   // ── เล่น item ต่อไปในคิว ───────────────────────────────────────────────
   function playNext() {
@@ -32,7 +33,8 @@ export default function PKWidget() {
       return;
     }
     playingRef.current = true;
-    const { url, type } = queueRef.current.shift();
+    const { url, type, volume } = queueRef.current.shift();
+    volumeRef.current = (typeof volume === 'number' && volume >= 0 && volume <= 1) ? volume : 0.8;
 
     if (hideTimer.current) clearTimeout(hideTimer.current);
 
@@ -58,13 +60,13 @@ export default function PKWidget() {
     const cid    = params.get('cid') ?? params.get('wt');
 
     // ── รับ event pk_play → เข้าคิว ──────────────────────────────────────
-    function onPkPlay({ videoUrl: url, videoType: type }) {
+    function onPkPlay({ videoUrl: url, videoType: type, volume }) {
       if (!url) return;
 
       // คิวเต็ม → ทิ้ง
       if (queueRef.current.length >= MAX_QUEUE) return;
 
-      queueRef.current.push({ url, type: type || 'mp4' });
+      queueRef.current.push({ url, type: type || 'mp4', volume: volume ?? 0.8 });
 
       // ถ้ายังไม่มีอะไรเล่นอยู่ → เริ่มเลย
       if (!playingRef.current) {
@@ -97,6 +99,7 @@ export default function PKWidget() {
     if (!videoUrl || !videoRef.current) return;
     const video = videoRef.current;
     video.load();
+    video.volume = volumeRef.current;
     video.play().catch(() => {});
   }, [videoUrl]);
 

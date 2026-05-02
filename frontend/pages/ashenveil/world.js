@@ -130,20 +130,41 @@ const GRADE_COLOR = {
 };
 
 const GRADE_BORDER = {
-  COMMON:    'border-l-gray-700',
-  UNCOMMON:  'border-l-green-700',
-  RARE:      'border-l-blue-600',
-  EPIC:      'border-l-purple-600',
-  LEGENDARY: 'border-l-orange-500',
-  MYTHIC:    'border-l-red-500',
+  COMMON:    'border-l-2 border-l-gray-700',
+  UNCOMMON:  'border-l-2 border-l-green-700',
+  RARE:      'border-l-2 border-l-blue-600',
+  EPIC:      'border-l-2 border-l-purple-500',
+  LEGENDARY: 'border-l-2 border-l-orange-500',
+  MYTHIC:    'border-l-2 border-l-red-500',
+};
+
+const GRADE_BG = {
+  COMMON:    '',
+  UNCOMMON:  '',
+  RARE:      'bg-blue-950/20',
+  EPIC:      'bg-purple-950/25',
+  LEGENDARY: 'bg-orange-950/20',
+  MYTHIC:    'bg-red-950/25',
 };
 
 const GRADE_LABEL = {
-  UNCOMMON:  'UC',
-  RARE:      'R',
-  EPIC:      'EP',
+  COMMON:    '',
+  UNCOMMON:  '',
+  RARE:      'RARE',
+  EPIC:      'EPIC',
   LEGENDARY: 'LEG',
-  MYTHIC:    'MYT',
+  MYTHIC:    'MYTHIC',
+};
+
+// Status effect display config
+const STATUS_ICON = {
+  STUN:   { emoji: '😵', label: 'STUN',   cls: 'text-yellow-300 border-yellow-700' },
+  SLOW:   { emoji: '🐢', label: 'SLOW',   cls: 'text-cyan-300   border-cyan-800'   },
+  BURN:   { emoji: '🔥', label: 'BURN',   cls: 'text-orange-400 border-orange-700' },
+  POISON: { emoji: '☠️', label: 'POISON', cls: 'text-green-400  border-green-800'  },
+  BLEED:  { emoji: '🩸', label: 'BLEED',  cls: 'text-red-400    border-red-800'    },
+  CURSE:  { emoji: '💜', label: 'CURSE',  cls: 'text-purple-400 border-purple-800' },
+  MARKED: { emoji: '🎯', label: 'MARKED', cls: 'text-blue-400   border-blue-800'   },
 };
 
 export default function GameWorld() {
@@ -1305,6 +1326,12 @@ export default function GameWorld() {
     try {
       const { data } = await explore(zone);
       setAtmosphere(data.atmosphere);
+
+      // แจ้งเตือนถ้าสำรวจโดยไม่มีสตามิน่า
+      if (data.noStamina) {
+        addLog('⚡ Stamina หมด — เจอได้แค่มอนสเตอร์เท่านั้น');
+      }
+
       addLog(`"${data.atmosphere}"`);
       addLog(data.msg);
 
@@ -2642,8 +2669,13 @@ export default function GameWorld() {
                   <div className="flex gap-1.5 mb-3">
                     {zone !== 'town_square' && (
                       <button onClick={handleExplore} disabled={busy}
-                        className="flex-1 px-2 py-2 border border-amber-700/60 bg-amber-900/20 text-amber-300 hover:bg-amber-900/40 transition text-sm disabled:opacity-40 rounded font-semibold">
-                        🔍 สำรวจ
+                        title={(char?.stamina || 0) < 20 ? '⚡ Stamina หมด — จะเจอแค่มอนสเตอร์' : ''}
+                        className={`flex-1 px-2 py-2 border transition text-sm disabled:opacity-40 rounded font-semibold ${
+                          (char?.stamina || 0) < 20
+                            ? 'border-gray-700/60 bg-gray-900/20 text-gray-400 hover:bg-gray-900/40'
+                            : 'border-amber-700/60 bg-amber-900/20 text-amber-300 hover:bg-amber-900/40'
+                        }`}>
+                        {(char?.stamina || 0) < 20 ? '🔍 สำรวจ ⚡' : '🔍 สำรวจ'}
                       </button>
                     )}
                     <Btn onClick={handleRestPrompt} disabled={busy} className="flex-1">💤 พักผ่อน</Btn>
@@ -3040,15 +3072,31 @@ export default function GameWorld() {
                         </div>
                       )}
 
-                      {/* ── Player status chips ── */}
+                      {/* ── Player status debuffs ── */}
                       {battle.player?.status?.length > 0 && (
                         <div className="flex gap-1 mb-1 flex-wrap">
                           {battle.player.status.map((s, i) => {
-                            const statusColor = { STUN:'text-yellow-300 border-yellow-700', SLOW:'text-blue-300 border-blue-700', BURN:'text-orange-300 border-orange-700', BLEED:'text-red-300 border-red-700', POISON:'text-green-300 border-green-700', CURSE:'text-purple-300 border-purple-700' }[s.type] || 'text-gray-300 border-gray-600';
-                            const statusIcon  = { STUN:'😵', SLOW:'🐢', BURN:'🔥', BLEED:'🩸', POISON:'☠️', CURSE:'💜' }[s.type] || '⚠️';
+                            const cfg = STATUS_ICON[s.type] || { emoji: '⚠️', label: s.type, cls: 'text-gray-300 border-gray-600' };
                             return (
-                              <span key={i} className={`text-xs px-1 border rounded ${statusColor} bg-gray-900/40`}>
-                                {statusIcon} คุณ {s.type}({s.duration})
+                              <span key={i} className={`text-xs px-1.5 py-0.5 border rounded flex items-center gap-0.5 ${cfg.cls} bg-gray-900/50`}>
+                                {cfg.emoji} <span className="font-semibold">{cfg.label}</span>
+                                <span className="opacity-70">({s.duration}t)</span>
+                                {s.dmgPerTurn > 0 && <span className="text-gray-500 ml-0.5">-{s.dmgPerTurn}/t</span>}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* ── Enemy status effects ── */}
+                      {battle.enemy?.status?.filter(s => s.duration > 0).length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                          {battle.enemy.status.filter(s => s.duration > 0).map((s, i) => {
+                            const cfg = STATUS_ICON[s.type] || { emoji: '⚠️', label: s.type, cls: 'text-gray-400 border-gray-700' };
+                            return (
+                              <span key={i} className={`text-xs px-1 border rounded opacity-75 ${cfg.cls}`}>
+                                {cfg.emoji} {battle.enemy.name}: {cfg.label}({s.duration}t)
+                                {s.dmgPerTurn > 0 && <span className="opacity-60"> -{s.dmgPerTurn}/t</span>}
                               </span>
                             );
                           })}
@@ -3067,8 +3115,14 @@ export default function GameWorld() {
                       )}
 
                       {/* ── Action buttons ── */}
+                      {(() => {
+                        const isStunned = battle.player?.status?.some(s => s.type === 'STUN');
+                        return (
                       <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-                        <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>⚔️ โจมตี</Btn>
+                        <Btn onClick={() => handleBattleAction('attack')} disabled={busy || isStunned}
+                          className={isStunned ? 'opacity-40 cursor-not-allowed' : ''}>
+                          {isStunned ? '😵 ถูกสตัน' : '⚔️ โจมตี'}
+                        </Btn>
                         <button
                           onClick={() => handleBattleAction('guard')} disabled={busy}
                           className="px-2 py-1.5 border border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-800/40 transition text-sm disabled:opacity-30 rounded font-semibold">
@@ -3080,6 +3134,8 @@ export default function GameWorld() {
                           🏃 หนี
                         </button>
                       </div>
+                        );
+                      })()}
 
                       {/* Phase 2C: Limit Break button — spans full width when ready */}
                       {battle.limitBreakReady && (
@@ -3326,7 +3382,7 @@ export default function GameWorld() {
                     return shown.map(item => (
                     <div key={item.instanceId}
                       onClick={() => setItemModal({ item, context: 'inv' })}
-                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-sm cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
+                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-sm cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'} ${GRADE_BG[item.grade] || ''}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
                         {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
@@ -3360,7 +3416,7 @@ export default function GameWorld() {
                   {shopItems.map(item => (
                     <div key={item.itemId}
                       onClick={() => setItemModal({ item, context: 'shop' })}
-                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-sm cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'}`}>
+                      className={`flex items-center gap-2 py-1.5 border-b border-gray-900 border-l-2 pl-2 text-sm cursor-pointer hover:bg-gray-900/40 active:bg-gray-900/70 ${GRADE_BORDER[item.grade] || 'border-l-gray-800'} ${GRADE_BG[item.grade] || ''}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>{item.name}</span>
                       <span className="text-yellow-600 shrink-0">{item.buyPrice}G</span>

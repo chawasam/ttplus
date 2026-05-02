@@ -73,6 +73,47 @@ const GRADE_COLOR = {
   MYTHIC:    'text-red-400',
 };
 
+// Rarity border for item rows (left border accent)
+const GRADE_BORDER = {
+  COMMON:    'border-l-2 border-l-gray-700',
+  UNCOMMON:  'border-l-2 border-l-green-700',
+  RARE:      'border-l-2 border-l-blue-600',
+  EPIC:      'border-l-2 border-l-purple-500',
+  LEGENDARY: 'border-l-2 border-l-orange-500',
+  MYTHIC:    'border-l-2 border-l-red-500',
+};
+
+// Rarity subtle background tint
+const GRADE_BG = {
+  COMMON:    '',
+  UNCOMMON:  '',
+  RARE:      'bg-blue-950/20',
+  EPIC:      'bg-purple-950/25',
+  LEGENDARY: 'bg-orange-950/25',
+  MYTHIC:    'bg-red-950/25',
+};
+
+// Short badge label for each grade
+const GRADE_LABEL = {
+  COMMON:    '',
+  UNCOMMON:  '',
+  RARE:      'RARE',
+  EPIC:      'EPIC',
+  LEGENDARY: 'LEG',
+  MYTHIC:    'MYTHIC',
+};
+
+// Status effect display config
+const STATUS_ICON = {
+  STUN:    { emoji: '😵', label: 'STUN',   color: 'text-yellow-300 border-yellow-700' },
+  SLOW:    { emoji: '🐢', label: 'SLOW',   color: 'text-cyan-300   border-cyan-800'   },
+  BURN:    { emoji: '🔥', label: 'BURN',   color: 'text-orange-400 border-orange-700' },
+  POISON:  { emoji: '☠️', label: 'POISON', color: 'text-green-400  border-green-800'  },
+  BLEED:   { emoji: '🩸', label: 'BLEED',  color: 'text-red-400    border-red-800'    },
+  CURSE:   { emoji: '💜', label: 'CURSE',  color: 'text-purple-400 border-purple-800' },
+  MARKED:  { emoji: '🎯', label: 'MARKED', color: 'text-blue-400   border-blue-800'   },
+};
+
 export default function GameWorld() {
   const router    = useRouter();
   const logEndRef = useRef(null);
@@ -1105,7 +1146,7 @@ export default function GameWorld() {
                         <span className="text-blue-400 ml-2">💧 {battle.player?.mp}/{battle.player?.mpMax} MP</span>
                         <span className="ml-auto">Turn {battle.turn}</span>
                       </div>
-                      {/* Active buffs */}
+                      {/* Active buffs (positive) */}
                       {battle.player?.buffs?.length > 0 && (
                         <div className="flex gap-1 mb-1 flex-wrap">
                           {battle.player.buffs.map((b, i) => (
@@ -1115,8 +1156,37 @@ export default function GameWorld() {
                           ))}
                         </div>
                       )}
+                      {/* Active status debuffs */}
+                      {battle.player?.status?.length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                          {battle.player.status.map((s, i) => {
+                            const cfg = STATUS_ICON[s.type] || { emoji: '⚠️', label: s.type, color: 'text-gray-400 border-gray-700' };
+                            return (
+                              <span key={i} className={`text-xs px-1.5 py-0.5 border rounded flex items-center gap-0.5 ${cfg.color}`}>
+                                {cfg.emoji} {cfg.label}{s.duration > 0 ? ` (${s.duration}t)` : ''}
+                                {s.dmgPerTurn > 0 && <span className="text-gray-500 ml-0.5">-{s.dmgPerTurn}/t</span>}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Enemy status effects */}
+                      {battle.enemy?.status?.length > 0 && (
+                        <div className="flex gap-1 mb-1 flex-wrap">
+                          {battle.enemy.status.map((s, i) => {
+                            const cfg = STATUS_ICON[s.type] || { emoji: '⚠️', label: s.type, color: 'text-gray-500 border-gray-700' };
+                            return (
+                              <span key={i} className={`text-xs px-1 border rounded opacity-70 ${cfg.color}`}>
+                                {cfg.emoji} {battle.enemy.name}: {cfg.label}{s.duration > 0 ? ` (${s.duration}t)` : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-2 mb-2">
-                        <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>⚔️ โจมตี</Btn>
+                        <Btn onClick={() => handleBattleAction('attack')} disabled={busy}>
+                          {battle.player?.status?.some(s => s.type === 'STUN') ? '😵 ถูกสตัน' : '⚔️ โจมตี'}
+                        </Btn>
                         <Btn onClick={() => handleBattleAction('flee')}   disabled={busy}>🏃 หนี</Btn>
                       </div>
                       {/* Skill buttons */}
@@ -1147,11 +1217,16 @@ export default function GameWorld() {
                   <p className="text-gray-600 text-xs mb-2">[ Inventory — คลิกเพื่อจัดการ ]</p>
                   {inventory.length === 0 && <p className="text-gray-700 text-xs">ว่างเปล่า...</p>}
                   {inventory.map(item => (
-                    <div key={item.instanceId} className="flex items-center gap-2 py-1 border-b border-gray-900 text-xs">
+                    <div key={item.instanceId} className={`flex items-center gap-2 py-1 pl-2 border-b border-gray-900 text-xs ${GRADE_BORDER[item.grade] || ''} ${GRADE_BG[item.grade] || ''}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>
                         {item.name}{item.enhancement > 0 ? ` +${item.enhancement}` : ''}
                       </span>
+                      {GRADE_LABEL[item.grade] && (
+                        <span className={`text-[9px] px-1 border rounded ${GRADE_COLOR[item.grade]} border-current opacity-70`}>
+                          {GRADE_LABEL[item.grade]}
+                        </span>
+                      )}
                       {item.equipped && <span className="text-amber-600 text-xs">[ใส่อยู่]</span>}
                       {!item.equipped && ['HEAD','CHEST','MAIN_HAND','OFF_HAND','GLOVES','LEGS','FEET'].includes(item.type) && (
                         <button onClick={() => handleEquip(item.instanceId, item.type)}
@@ -1176,9 +1251,14 @@ export default function GameWorld() {
                 <div className="max-h-60 overflow-y-auto">
                   <p className="text-gray-600 text-xs mb-2">[ ร้านค้า — Gold: {gold.toLocaleString()} ]</p>
                   {shopItems.map(item => (
-                    <div key={item.itemId} className="flex items-center gap-2 py-1 border-b border-gray-900 text-xs">
+                    <div key={item.itemId} className={`flex items-center gap-2 py-1 pl-2 border-b border-gray-900 text-xs ${GRADE_BORDER[item.grade] || ''} ${GRADE_BG[item.grade] || ''}`}>
                       <span>{item.emoji}</span>
                       <span className={`flex-1 ${GRADE_COLOR[item.grade] || 'text-gray-400'}`}>{item.name}</span>
+                      {GRADE_LABEL[item.grade] && (
+                        <span className={`text-[9px] px-1 border rounded ${GRADE_COLOR[item.grade]} border-current opacity-60`}>
+                          {GRADE_LABEL[item.grade]}
+                        </span>
+                      )}
                       <span className="text-yellow-600">{item.buyPrice}G</span>
                       <button onClick={() => handleBuy(item.itemId, item.name, item.buyPrice)}
                         disabled={gold < item.buyPrice}
@@ -1774,8 +1854,15 @@ export default function GameWorld() {
                     </div>
                   ) : (
                     <>
-                      <div className="border border-gray-800 rounded p-2 text-xs">
-                        <p className="text-amber-300 font-bold">{enhanceInfo.itemName} +{enhanceInfo.currentEnhance} → +{enhanceInfo.nextLevel}</p>
+                      <div className={`border rounded p-2 text-xs ${GRADE_BORDER[enhanceInfo.grade] || 'border-gray-800'} ${GRADE_BG[enhanceInfo.grade] || ''}`}>
+                        <p className={`font-bold flex items-center gap-2 ${GRADE_COLOR[enhanceInfo.grade] || 'text-amber-300'}`}>
+                          {enhanceInfo.itemName} +{enhanceInfo.currentEnhance} → +{enhanceInfo.nextLevel}
+                          {GRADE_LABEL[enhanceInfo.grade] && (
+                            <span className={`text-[9px] px-1 border rounded ${GRADE_COLOR[enhanceInfo.grade]} border-current opacity-70`}>
+                              {GRADE_LABEL[enhanceInfo.grade]}
+                            </span>
+                          )}
+                        </p>
                         <div className="mt-1 space-y-0.5 text-gray-400">
                           <p>💰 Gold: <span className={enhanceInfo.currentGold >= enhanceInfo.recipe?.gold ? 'text-yellow-400' : 'text-red-400'}>
                             {(enhanceInfo.currentGold || 0).toLocaleString()} / {(enhanceInfo.recipe?.gold || 0).toLocaleString()}

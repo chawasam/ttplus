@@ -10,7 +10,7 @@ import Head from 'next/head';
 import { io } from 'socket.io-client';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
-const POLL_MS = 1500; // fallback เท่านั้น — ใช้ตอน socket ไม่ได้ connected
+const POLL_MS = 5000; // fallback เท่านั้น — ใช้ตอน socket ไม่ได้ connected
 
 // ── OBS WebSocket v5 helper ───────────────────────────────────────────────
 class ObsWs {

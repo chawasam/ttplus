@@ -297,11 +297,19 @@ export function saveEngineOrder(order) {
 // ===== Internal: process queue =====
 const ENGINE_PRIORITY = DEFAULT_ENGINE_ORDER; // backward compat
 
+// ── Dispatch window event เมื่อ TTS queue active state เปลี่ยน ──────────────
+// ใช้โดย _app.js เพื่อแสดง audio indicator ใน Sidebar
+function _emitTtsActive(active) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('ttplus-tts-active', { detail: { active } }));
+}
+
 async function _next() {
   if (_busy || _queue.length === 0) return;
   if (typeof window === 'undefined') return;
 
   _busy = true;
+  _emitTtsActive(true);  // queue เริ่มประมวลผล
   const text = _queue.shift();
 
   // ใช้ custom order จาก user (drag-to-reorder) กรองเฉพาะที่ user เปิด
@@ -377,6 +385,7 @@ async function _next() {
   }
 
   _busy = false;
+  if (_queue.length === 0) _emitTtsActive(false);  // queue ว่าง — หยุดพูดแล้ว
   _next();
 }
 

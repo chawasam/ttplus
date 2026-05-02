@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { loadSettings as loadSbSettings } from '../lib/soundboardStore';
+import { startKeepAlive } from '../lib/keepAlive';
 import '../styles/globals.css';
 
 // โหลดทุกหน้าพร้อมกัน — ไม่ unmount เมื่อสลับแถบ
@@ -18,43 +19,51 @@ import DonatePage     from './donate';
 import FaqPage        from './faq';
 
 // ── Minimal status bar — แสดงสถานะ TikTok / Soundboard / TTS ──
-function StatusBar({ theme }) {
-  const [conn, setConn]       = useState({ connected: false, username: '' });
-  const [sbOn, setSbOn]       = useState(false);
-  const [ttsOn, setTtsOn]     = useState(false);
+function StatusBar({ theme, setTheme }) {
+  const [conn,       setConn]       = useState({ connected: false, username: '' });
+  const [sbOn,       setSbOn]       = useState(false);
+  const [ttsOn,      setTtsOn]      = useState(false);
+  const [actionsOn,  setActionsOn]  = useState(() => {
+    try { return localStorage.getItem('ttplus_actions_system') !== '0'; } catch { return true; }
+  });
 
   useEffect(() => {
     // อ่านค่าเริ่มต้น soundboard จาก localStorage
     setSbOn(loadSbSettings().enabled || false);
 
-    const onConn = (e) => setConn({ connected: e.detail.connected, username: e.detail.username || '' });
-    const onTts  = (e) => setTtsOn(!!e.detail.enabled);
-    const onSb   = (e) => setSbOn(!!e.detail.enabled);
+    const onConn    = (e) => setConn({ connected: e.detail.connected, username: e.detail.username || '' });
+    const onTts     = (e) => setTtsOn(!!e.detail.enabled);
+    const onSb      = (e) => setSbOn(!!e.detail.enabled);
+    const onActions = (e) => setActionsOn(!!e.detail.enabled);
 
-    window.addEventListener('ttplus-conn', onConn);
-    window.addEventListener('ttplus-tts',  onTts);
-    window.addEventListener('ttplus-sb',   onSb);
+    window.addEventListener('ttplus-conn',    onConn);
+    window.addEventListener('ttplus-tts',     onTts);
+    window.addEventListener('ttplus-sb',      onSb);
+    window.addEventListener('ttplus-actions', onActions);
     return () => {
-      window.removeEventListener('ttplus-conn', onConn);
-      window.removeEventListener('ttplus-tts',  onTts);
-      window.removeEventListener('ttplus-sb',   onSb);
+      window.removeEventListener('ttplus-conn',    onConn);
+      window.removeEventListener('ttplus-tts',     onTts);
+      window.removeEventListener('ttplus-sb',      onSb);
+      window.removeEventListener('ttplus-actions', onActions);
     };
   }, []);
 
   const dark      = theme === 'dark';
-  const bar       = dark ? 'rgba(9,9,11,0.92)' : 'rgba(248,250,252,0.92)';
-  const border    = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)';
-  const textMuted = dark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)';
-  const divider   = dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)';
+  const bar       = dark ? 'rgba(9,9,11,0.92)' : 'rgba(252,225,240,0.96)';
+  const border    = dark ? 'rgba(255,255,255,0.07)' : 'rgba(236,72,153,0.18)';
+  const textMuted = dark ? 'rgba(255,255,255,0.38)' : 'rgba(157,23,77,0.55)';
+  const textOn    = dark ? 'rgba(255,255,255,0.82)' : 'rgba(131,24,67,0.90)';
+  const divider   = dark ? 'rgba(255,255,255,0.10)' : 'rgba(236,72,153,0.18)';
 
-  const dot = (on, onColor = '#22c55e') => ({
+  const ON_COLOR = '#60a5fa';   // blue-400 — สีเดียวทุก indicator
+  const dot = (on) => ({
     display:      'inline-block',
     width:        6, height: 6,
     borderRadius: '50%',
-    background:   on ? onColor : (dark ? '#3f3f46' : '#d4d4d8'),
+    background:   on ? ON_COLOR : (dark ? '#3f3f46' : '#f0abcb'),
     marginRight:  5,
     flexShrink:   0,
-    boxShadow:    on ? `0 0 5px ${onColor}88` : 'none',
+    boxShadow:    on ? `0 0 5px ${ON_COLOR}88` : 'none',
   });
 
   const item = {
@@ -86,11 +95,9 @@ function StatusBar({ theme }) {
     }}>
       {/* TikTok connection */}
       <span style={item}>
-        <span style={dot(conn.connected, '#22c55e')} />
+        <span style={dot(conn.connected)} />
         {conn.connected
-          ? <span style={{ color: dark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.72)' }}>
-              @{conn.username}
-            </span>
+          ? <span style={{ color: textOn }}>@{conn.username}</span>
           : <span>ไม่ได้เชื่อมต่อ</span>
         }
       </span>
@@ -99,23 +106,87 @@ function StatusBar({ theme }) {
 
       {/* Soundboard */}
       <span style={item}>
-        <span style={dot(sbOn, '#f59e0b')} />
-        <span style={sbOn ? { color: dark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.72)' } : {}}>
-          Soundboard
-        </span>
+        <span style={dot(sbOn)} />
+        <span style={sbOn ? { color: textOn } : {}}>Soundboard</span>
       </span>
 
       <span style={{ width: 1, height: 12, background: divider, flexShrink: 0 }} />
 
       {/* TTS */}
       <span style={item}>
-        <span style={dot(ttsOn, '#a78bfa')} />
-        <span style={ttsOn ? { color: dark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.72)' } : {}}>
-          TTS
-        </span>
+        <span style={dot(ttsOn)} />
+        <span style={ttsOn ? { color: textOn } : {}}>TTS</span>
       </span>
+
+      <span style={{ width: 1, height: 12, background: divider, flexShrink: 0 }} />
+
+      {/* Actions */}
+      <span style={item}>
+        <span style={dot(actionsOn)} />
+        <span style={actionsOn ? { color: textOn } : {}}>Action</span>
+      </span>
+
+      {/* Theme toggle — ขวาสุด */}
+      {setTheme && (
+        <button
+          onClick={() => setTheme(dark ? 'light' : 'dark')}
+          title={dark ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
+          style={{
+            marginLeft:  'auto',
+            flexShrink:  0,
+            background:  'none',
+            border:      'none',
+            cursor:      'pointer',
+            fontSize:    13,
+            lineHeight:  1,
+            padding:     '2px 4px',
+            borderRadius: 4,
+            color:       textMuted,
+            transition:  'opacity 0.15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+        >
+          {dark ? '🌸' : '🌙'}
+        </button>
+      )}
     </div>
   );
+}
+
+// ── Hook: ติดตาม audio activity ต่อ tab สำหรับ speaker indicator ใน Sidebar ──
+// ฟัง 2 events:
+//   ttplus-tts-active  → lib/tts.js ยิงเมื่อ TTS queue เริ่ม/จบ (map → tab 'tts')
+//   ttplus-audio-tab   → pages ยิงพร้อม { tab, active, duration? }
+export function useAudioActivity() {
+  const [activity, setActivity] = useState({});
+  const timersRef = useRef({});
+
+  useEffect(() => {
+    const onTtsActive = (e) => {
+      setActivity(prev => ({ ...prev, tts: !!e.detail?.active }));
+    };
+    const onAudioTab = (e) => {
+      const { tab, active, duration } = e.detail || {};
+      if (!tab) return;
+      clearTimeout(timersRef.current[tab]);
+      setActivity(prev => ({ ...prev, [tab]: !!active }));
+      // auto-reset หลัง duration ถ้ากำหนดมา (สำหรับ action audio ที่ไม่รู้วันจบชัดเจน)
+      if (active && duration > 0) {
+        timersRef.current[tab] = setTimeout(() => {
+          setActivity(prev => ({ ...prev, [tab]: false }));
+        }, duration);
+      }
+    };
+    window.addEventListener('ttplus-tts-active', onTtsActive);
+    window.addEventListener('ttplus-audio-tab',  onAudioTab);
+    return () => {
+      window.removeEventListener('ttplus-tts-active', onTtsActive);
+      window.removeEventListener('ttplus-audio-tab',  onAudioTab);
+    };
+  }, []);
+
+  return activity;
 }
 
 const PAGES = [
@@ -152,8 +223,8 @@ function applyTheme(t) {
   }
   const isDark = t === 'dark';
   document.documentElement.classList.toggle('dark', isDark);
-  document.documentElement.style.backgroundColor = isDark ? '#030712' : '#f9fafb';
-  document.body.style.backgroundColor            = isDark ? '#030712' : '#f9fafb';
+  document.documentElement.style.backgroundColor = isDark ? '#030712' : '#fdf0f7';
+  document.body.style.backgroundColor            = isDark ? '#030712' : '#fdf0f7';
 }
 
 export default function App({ Component, pageProps }) {
@@ -182,6 +253,9 @@ export default function App({ Component, pageProps }) {
     const href = id === 'dashboard' ? '/dashboard' : `/${id}`;
     router.replace(href, undefined, { shallow: true });
   }
+
+  // ── ป้องกัน browser throttle background tabs ────────────────────────────────
+  useEffect(() => { startKeepAlive(); }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -350,7 +424,7 @@ export default function App({ Component, pageProps }) {
 
   return (
     <>
-      <StatusBar theme={theme} />
+      <StatusBar theme={theme} setTheme={setTheme} />
       <Toaster
         position="top-right"
         toastOptions={{
