@@ -30,3 +30,10 @@ npm-debug.log*
 
 # ===== Dev Tools (ไม่ต้องขึ้น production) =====
 backend/test-api.js
+
+BATTLE_DEPTH_PLAN.html
+CLAUDE.md
+CORE_LOOP_AND_QUEST_PLAN.html
+GAME_SYSTEMS_MAP.html
+backend/uploads/
+.claude/skills/
