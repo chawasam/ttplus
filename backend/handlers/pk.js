@@ -134,7 +134,13 @@ async function getPresets(_req, res) {
 
 // ── POST upload (multer file already on req.file) ────────────────────────────
 async function uploadVideo(req, res) {
-  if (!req.file) return res.status(400).json({ error: 'ไม่มีไฟล์' });
+  if (!req.file) {
+    console.warn('[PK upload] no file. uid:', req.user?.uid,
+      '| content-type:', req.headers['content-type'],
+      '| body keys:', Object.keys(req.body || {}),
+      '| content-length:', req.headers['content-length']);
+    return res.status(400).json({ error: 'ไม่มีไฟล์' });
+  }
 
   const ext = path.extname(req.file.originalname).toLowerCase();
   if (!ALLOWED.includes(ext)) {
