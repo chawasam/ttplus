@@ -339,11 +339,12 @@ export default function CoinJarWidget() {
         const y = (currentSpawnZone.spawnY ?? JAR_BASE.nT) / 2 - physicsR; // กำเนิดกึ่งกลางระหว่าง top canvas กับปากขวด
 
         const body = Bodies.circle(x, y, physicsR, {
-          restitution:    0.05,
+          restitution:    0.02, // เด้งน้อยมาก — ตกแล้วเกือบหยุดเลย
           friction:       0.35,
           frictionStatic: 0.45,
           frictionAir:    0.04,
           density:        0.002,
+          slop:           0.02, // ยอมทับกัน 2px (default 0.05) — กองแน่น ดูแข็ง
           label:          'gift',
           sleepThreshold: 60, // 1s @ 60fps — ให้เวลากลิ้งก่อนหลับ
         });
