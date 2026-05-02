@@ -324,18 +324,21 @@ export default function CoinJarWidget() {
     const { Bodies, Body, Composite } = M;
     const n = Math.min(count, 8);
     const itemR = getItemR(diamonds, giftScaleRef.current);
+    // physics radius ใหญ่กว่า visual radius เพื่อกัน visual square (2r×2r)
+    // ทับมุมกันตอนชนทแยง — 1.18 ครอบ ~83% ของ visual diagonal (max √2≈1.414)
+    const physicsR = Math.max(3, Math.round(itemR * 1.18));
 
     for (let i = 0; i < n; i++) {
       const tid = setTimeout(() => {
         spawnTimers.current = spawnTimers.current.filter(id => id !== tid);
         if (!engineRef.current) return;
 
-        // x: สุ่มภายในช่องเปิดของ container
+        // x: สุ่มภายในช่องเปิดของ container (ใช้ physicsR กัน body จิ้มผนัง)
         const { openL, openR } = currentSpawnZone;
-        const x = openL + itemR + 4 + Math.random() * Math.max(0, openR - openL - (itemR + 4) * 2);
-        const y = (currentSpawnZone.spawnY ?? JAR_BASE.nT) / 2 - itemR; // กำเนิดกึ่งกลางระหว่าง top canvas กับปากขวด
+        const x = openL + physicsR + 4 + Math.random() * Math.max(0, openR - openL - (physicsR + 4) * 2);
+        const y = (currentSpawnZone.spawnY ?? JAR_BASE.nT) / 2 - physicsR; // กำเนิดกึ่งกลางระหว่าง top canvas กับปากขวด
 
-        const body = Bodies.circle(x, y, itemR, {
+        const body = Bodies.circle(x, y, physicsR, {
           restitution:    0.05,
           friction:       0.35,
           frictionStatic: 0.45,
@@ -346,7 +349,7 @@ export default function CoinJarWidget() {
         });
         body._img      = imgUrl;
         body._emoji    = emoji;
-        body._r        = itemR;
+        body._r        = itemR; // visual radius (เล็กกว่า physics → ไม่ clip รูป)
         body._diamonds = diamonds;
 
         Body.setVelocity(body, {
