@@ -474,6 +474,8 @@ async function fireAction(req, res) {
       username:        context.username,
       giftname:        context.giftname,
       queuedAt:        Date.now(),
+      // nonce: dedup key ป้องกัน widget เล่น action 2 ครั้งเมื่อรับทั้ง socket push + drainQueue
+      nonce:           `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       isPreview:       true,
     };
 

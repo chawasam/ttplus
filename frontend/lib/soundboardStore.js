@@ -154,7 +154,11 @@ export function saveSettings(patch) {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(next));
     if (typeof window !== 'undefined' && patch.enabled !== undefined) {
-      window.dispatchEvent(new CustomEvent('ttplus-sb', { detail: { enabled: next.enabled } }));
+      // setTimeout(0) — defer ออกจาก React render cycle
+      // saveSettings อาจถูกเรียกจาก setStore(prev => ...) updater
+      // ถ้า dispatchEvent ตรงนี้เลย → StatusBar setState during render → React warning
+      const detail = { enabled: next.enabled };
+      setTimeout(() => window.dispatchEvent(new CustomEvent('ttplus-sb', { detail })), 0);
     }
   } catch {}
   return next;

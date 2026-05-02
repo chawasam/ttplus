@@ -76,7 +76,6 @@ function WidgetPreviewCard({ widgetId, widgetIcon, previewUrl, widgetSize, isDar
             width={dims.w}
             height={dims.h}
             style={{ border: 'none', display: 'block', background: 'transparent' }}
-            sandbox="allow-scripts allow-same-origin"
             title={`preview-${widgetId}`}
           />
         </div>

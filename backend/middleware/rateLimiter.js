@@ -9,8 +9,12 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
+  // skip ใน dev environment — SPA โหลดทุกหน้าพร้อมกัน + StrictMode double-fire → เกิน limit ทันที
   // skip overlay endpoint — ไม่มี rate limit (Socket.IO push, HTTP เรียกแค่ตอน connect)
-  skip: (req) => req.path === '/health' || req.originalUrl.startsWith('/api/actions/overlay'),
+  skip: (req) => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    return req.path === '/health' || req.originalUrl.startsWith('/api/actions/overlay');
+  },
 });
 
 // Widget polling limiter — สำหรับ OBS Browser Source ที่ poll ทุก 1.5s

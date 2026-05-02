@@ -167,6 +167,8 @@ async function queueAction(vjUid, action, context) {
       giftname:   context.giftname  || '',
       // Queue state — ไม่ต้องเก็บ played เพราะ doc ถูกลบทันทีหลัง overlay อ่าน
       queuedAt:  Date.now(),
+      // nonce: dedup key ป้องกัน widget เล่น action 2 ครั้งเมื่อรับทั้ง socket push + drainQueue
+      nonce:     `${vjUid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     };
 
     await db().collection('tt_action_queue').add(item);
