@@ -641,6 +641,23 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
               </button>
             </div>
 
+            {/* ── RESOLUTION REMINDER ── */}
+            <div style={{
+              background: isDark ? 'rgba(251, 191, 36, 0.1)' : '#fffbeb',
+              border: `1px solid ${isDark ? 'rgba(251, 191, 36, 0.3)' : '#fde68a'}`,
+              borderRadius: 10,
+              padding: '8px 14px',
+              marginBottom: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+              <span style={{ fontSize: 14, flexShrink: 0 }}>📐</span>
+              <span style={{ fontSize: 12, color: isDark ? '#fbbf24' : '#92400e', lineHeight: 1.5 }}>
+                <strong>ตั้งขนาด Browser Source เป็น 720 × 1280</strong> (9:16 portrait) ใน TikTok Studio / OBS เพื่อให้ widget แสดงตรงตำแหน่ง
+              </span>
+            </div>
+
             {/* ── HOTKEY BAR ── */}
             <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '9px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, transition: 'opacity 0.2s' }}>
               <span style={{ fontSize: 14, flexShrink: 0 }}>⌨️</span>
