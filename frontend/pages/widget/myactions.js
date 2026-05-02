@@ -107,6 +107,8 @@ export default function MyActionsOverlay() {
   const pendingAudioRef = useRef(null);      // {url, volume} ที่รอ retry หลัง unlock
   const socketRef      = useRef(null);       // Socket.IO instance
   const socketReady    = useRef(false);      // true หลัง widget_joined สำเร็จ
+  const seenNonces     = useRef(new Set()); // nonces ที่ส่งไปแล้ว (ทั้ง socket + drainQueue) — dedup 2 ทิศ
+  const isDrainingRef  = useRef(false);     // ป้องกัน concurrent drainQueue (mount + widget_joined race)
   const localQueueRef  = useRef([]);         // คิว item ที่รอแสดง (per screen)
   const isPlayingRef   = useRef(false);      // true ขณะมี item แสดงอยู่บนหน้าจอ
   const playNextRef    = useRef(null);       // forward ref ป้องกัน circular dep
@@ -344,6 +346,10 @@ export default function MyActionsOverlay() {
 
   // ── Drain queue (HTTP) — ใช้ตอน connect/reconnect เพื่อ flush items ที่อาจค้างอยู่ ──
   const drainQueue = useCallback(async () => {
+    // ป้องกัน concurrent calls — drainQueue ถูกเรียกทั้งตอน mount (line ล่าง) และใน widget_joined
+    // ถ้าทั้ง 2 request วิ่งพร้อมกัน Firestore อาจ return item เดียวกันให้ทั้งคู่ก่อนที่ใครจะลบ
+    if (isDrainingRef.current) return;
+    isDrainingRef.current = true;
     try {
       const isCid     = /^\d{4,8}$/.test(vid);
       const overlayUrl = isCid
@@ -351,8 +357,23 @@ export default function MyActionsOverlay() {
         : `${BACKEND_URL}/api/actions/overlay/${vid}?screen=${screen}`;
       const res  = await fetch(overlayUrl);
       const data = await res.json();
-      if (data.item) enqueueItem(data.item);
+      if (data.item) {
+        // dedup 2 ทิศ — ไม่ว่า socket หรือ drainQueue มาก่อน ฝั่งที่มาทีหลังจะเห็น nonce แล้วข้าม
+        if (data.item.nonce) {
+          if (seenNonces.current.has(data.item.nonce)) {
+            seenNonces.current.delete(data.item.nonce); // cleanup
+          } else {
+            seenNonces.current.add(data.item.nonce); // mark ก่อน enqueue
+            enqueueItem(data.item);
+          }
+        } else {
+          enqueueItem(data.item); // ไม่มี nonce → เล่นตามปกติ
+        }
+      }
     } catch {}
+    finally {
+      isDrainingRef.current = false;
+    }
   }, [vid, screen, enqueueItem]);
 
   // ── Socket.IO push (primary) + HTTP fallback polling ──
@@ -382,6 +403,14 @@ export default function MyActionsOverlay() {
     socket.on('new_action', (item) => {
       // filter screen — backend ส่งมาทุก screen ใน room เดียวกัน
       if ((item.screen ?? 1) !== screen) return;
+      // dedup 2 ทิศ — ถ้า drainQueue เล่นไปก่อนแล้ว (seenNonces มี nonce นี้) → ข้าม
+      if (item.nonce) {
+        if (seenNonces.current.has(item.nonce)) {
+          seenNonces.current.delete(item.nonce); // cleanup
+          return;
+        }
+        seenNonces.current.add(item.nonce); // mark ก่อน enqueue
+      }
       enqueueItem(item);
     });
 

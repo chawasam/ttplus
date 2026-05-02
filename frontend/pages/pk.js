@@ -179,9 +179,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
 
   const [enabled,         setEnabled]         = useState(true);
   const [hotkeysEnabled,  setHotkeysEnabled]  = useState(true);
-  const [masterVolume,    setMasterVolume]    = useState(() => {
-    try { return parseInt(localStorage.getItem('pk_master_volume') ?? '80', 10); } catch { return 80; }
-  });
+  const [masterVolume,    setMasterVolume]    = useState(80); // server-safe default — อ่าน localStorage ใน useEffect
   const [activeTab,       setActiveTab]       = useState('taptap');
   const [hotkeys,         setHotkeys]         = useState(DEFAULT_HOTKEYS);
   const [categories,      setCategories]      = useState({
@@ -191,19 +189,33 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
   const [presetChecked, setPresetChecked] = useState({});
 
   const [cid,        setCid]        = useState(null);
-  const [saving,     setSaving]     = useState(false);
-  const [uploading,  setUploading]  = useState(false);
+  const [saving,          setSaving]          = useState(false);
+  const [uploading,       setUploading]       = useState(false);
+  const [sharingVideoId,  setSharingVideoId]  = useState(null); // id ของวิดีโอที่กำลัง upload-shared
+  const [deletePreset,    setDeletePreset]    = useState(null); // { cat, filename, countdown } — pending delete countdown
+
+  const OWNER_EMAIL = 'cksamg@gmail.com';
+  const isOwner = user?.email === OWNER_EMAIL;
   const [urlInput,   setUrlInput]   = useState('');
   const [urlName,    setUrlName]    = useState('');
   const [urlType,    setUrlType]    = useState('mp4');
   const [settingKey, setSettingKey] = useState(null);
 
-  const fileRef   = useRef(null);
-  const saveTimer = useRef(null);
-  const socketRef = useRef(null);
-  const importRef = useRef(null);
+  const fileRef          = useRef(null);
+  const saveTimer        = useRef(null);
+  const socketRef        = useRef(null);
+  const importRef        = useRef(null);
+  const deleteCountTimer = useRef(null); // interval สำหรับ countdown ลบ preset
 
   // ─── Load config + presets ───────────────────────────────────────────────
+  // อ่าน masterVolume จาก localStorage หลัง hydration
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pk_master_volume');
+      if (saved !== null) setMasterVolume(parseInt(saved, 10) || 80);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -357,7 +369,55 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     setUrlName('');
   }
 
+  // ── Delete server preset — owner only ───────────────────────────────────────
+  function startDeletePreset(catId, filename) {
+    if (!isOwner) return;
+    // ถ้ากดซ้ำตัวเดิม → ยกเลิก
+    if (deletePreset?.cat === catId && deletePreset?.filename === filename) {
+      clearInterval(deleteCountTimer.current);
+      setDeletePreset(null);
+      return;
+    }
+    clearInterval(deleteCountTimer.current);
+    setDeletePreset({ cat: catId, filename, countdown: 5 });
+    deleteCountTimer.current = setInterval(() => {
+      setDeletePreset(prev => {
+        if (!prev) return null;
+        if (prev.countdown <= 1) {
+          // countdown หมด → ลบจริง
+          clearInterval(deleteCountTimer.current);
+          doDeletePreset(prev.cat, prev.filename);
+          return null;
+        }
+        return { ...prev, countdown: prev.countdown - 1 };
+      });
+    }, 1000);
+  }
+
+  async function doDeletePreset(catId, filename) {
+    try {
+      await api.delete(`/api/pk/shared/${catId}/${encodeURIComponent(filename)}`);
+      // reload presets
+      const { data } = await api.get('/api/pk/presets');
+      if (data.presets) setPresets(data.presets);
+      // ล้าง presetChecked ที่ตรงกัน
+      setPresetChecked(prev => {
+        const next = { ...prev };
+        if (next[catId]) {
+          next[catId] = { ...next[catId] };
+          delete next[catId][filename];
+        }
+        return next;
+      });
+      toast.success(`🗑 ลบ "${filename.replace(/\.[^.]+$/, '')}" จาก Server แล้ว`);
+    } catch (err) {
+      toast.error(`ลบไม่สำเร็จ: ${err.response?.data?.error || err.message}`);
+    }
+  }
+
+  // uploadFile — owner only: อัพโหลดไฟล์ไปเก็บใน uploads/pk/{uid}/ (ส่วนตัว)
   async function uploadFile(e) {
+    if (!isOwner) return; // ผู้ใช้ทั่วไปใช้ไม่ได้
     const file = e.target.files?.[0];
     if (!file || !user) return;
     const ext = file.name.split('.').pop()?.toLowerCase();
@@ -365,21 +425,59 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
     setUploading(true);
     try {
       const idToken = await user.getIdToken();
-      const csrf    = await api.get('/api/csrf-token').then(r => r.data.token).catch(() => null);
       const form    = new FormData();
       form.append('video', file);
       const res  = await fetch(`${BACKEND}/api/pk/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}`, ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
-        body: form,
+        method:  'POST',
+        headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': undefined },
+        body:    form,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       const newVideo = { id: uuidv4(), name: data.name, url: data.url, type: data.type, checked: true };
       updateCategories({ ...categories, [activeTab]: [...(categories[activeTab] || []), newVideo] });
-      toast.success(`✅ อัพโหลด ${data.name} สำเร็จ`);
+      toast.success(`✅ อัพโหลด "${data.name}" แล้ว — กด 📤 เพื่อแชร์ขึ้น Server`);
     } catch (err) { toast.error(`อัพโหลดไม่สำเร็จ: ${err.message}`); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  }
+
+  // uploadToShared — owner only: อัพโหลดวิดีโอจาก URL บน server ขึ้น _shared/{cat}/
+  async function uploadToShared(video, catId) {
+    if (!isOwner || !user) return;
+    // ดึงไฟล์จาก URL แล้วส่งขึ้น backend
+    const tid = `share_${video.id}`;
+    toast.loading(`📤 กำลังแชร์ขึ้น Server...`, { id: tid });
+    setSharingVideoId(video.id);
+    try {
+      // Fetch ไฟล์จาก backend URL
+      const fileRes  = await fetch(`${BACKEND}${video.url}`);
+      if (!fileRes.ok) throw new Error('โหลดไฟล์ไม่ได้');
+      const blob     = await fileRes.blob();
+      const ext      = video.type === 'webm' ? '.webm' : '.mp4';
+      const filename = `${video.name.replace(/[^a-zA-Z0-9ก-ฮ\s._-]/g, '').trim() || 'video'}${ext}`;
+
+      const idToken  = await user.getIdToken();
+      const form     = new FormData();
+      form.append('video', blob, filename);
+
+      const res  = await fetch(`${BACKEND}/api/pk/upload-shared/${catId}`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+        body:    form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      // Reload presets ให้ทุก user เห็น
+      const { data: pd } = await api.get('/api/pk/presets');
+      if (pd.presets) setPresets(pd.presets);
+
+      toast.success(`✅ แชร์ "${data.name}" ขึ้น Server แล้ว — ทุก user เห็นได้เลย`, { id: tid, duration: 4000 });
+    } catch (err) {
+      toast.error(`แชร์ไม่สำเร็จ: ${err.message}`, { id: tid });
+    } finally {
+      setSharingVideoId(null);
+    }
   }
 
   function togglePreset(catId, filename) {
@@ -634,17 +732,38 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                     <span style={{ fontSize: 11, color: muted }}>{curPresets.filter(p => curPresetCheck[p.filename]).length}/{curPresets.length} เลือก</span>
                   </div>
                   {curPresets.map(preset => {
-                    const isChecked = !!curPresetCheck[preset.filename];
+                    const isChecked    = !!curPresetCheck[preset.filename];
+                    const isPendingDel = isOwner && deletePreset?.cat === activeTab && deletePreset?.filename === preset.filename;
                     return (
                       <div key={preset.filename} style={{
                         display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px',
-                        borderLeft: `2px solid ${isChecked ? accent : 'transparent'}`,
-                        background: isChecked ? (isDark ? '#1c1609' : '#fff8f0') : 'transparent',
+                        borderLeft: `2px solid ${isPendingDel ? '#ef4444' : isChecked ? accent : 'transparent'}`,
+                        background: isPendingDel ? (isDark ? '#2a0a0a' : '#fff0f0') : isChecked ? (isDark ? '#1c1609' : '#fff8f0') : 'transparent',
                         cursor: 'pointer', transition: 'background 0.15s',
                       }} onClick={() => togglePreset(activeTab, preset.filename)}>
                         <Cb checked={isChecked} onChange={() => togglePreset(activeTab, preset.filename)} accent={accent} border={border} />
                         <VideoThumb url={preset.url} type={preset.type} isDark={isDark} />
                         <span style={{ flex: 1, fontSize: 13, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preset.name}</span>
+                        {isOwner && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            {isPendingDel ? (
+                              <>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', minWidth: 18, textAlign: 'center' }}>{deletePreset.countdown}</span>
+                                <button onClick={() => { clearInterval(deleteCountTimer.current); setDeletePreset(null); }} style={{
+                                  fontSize: 11, padding: '2px 8px', borderRadius: 4, border: `1px solid ${border}`,
+                                  background: isDark ? '#2a2a2a' : '#f5f5f5', color: txt, cursor: 'pointer',
+                                }}>ยกเลิก</button>
+                              </>
+                            ) : (
+                              <button onClick={() => startDeletePreset(activeTab, preset.filename)} title="ลบออกจาก SERVER" style={{
+                                fontSize: 14, background: 'none', border: 'none', cursor: 'pointer',
+                                color: isDark ? '#888' : '#aaa', padding: '0 2px', lineHeight: 1,
+                                transition: 'color 0.15s',
+                              }} onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                                 onMouseLeave={e => e.currentTarget.style.color = isDark ? '#888' : '#aaa'}>🗑</button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -660,19 +779,32 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                       <span style={{ fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.04em' }}>👤 ของฉัน</span>
                     </div>
                   )}
-                  {curList.map(video => (
-                    <div key={video.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px',
-                      borderLeft: `2px solid ${video.checked ? accent : 'transparent'}`,
-                      background: video.checked ? (isDark ? '#1c1609' : '#fff8f0') : 'transparent',
-                      transition: 'background 0.15s',
-                    }}>
-                      <Cb checked={video.checked} onChange={() => toggleChecked(activeTab, video.id)} accent={accent} border={border} />
-                      <VideoThumb url={video.url} type={video.type} isDark={isDark} />
-                      <span style={{ flex: 1, fontSize: 13, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.name}</span>
-                      <button onClick={e => { e.stopPropagation(); deleteVideo(activeTab, video); }} style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid #ef444433`, background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>🗑</button>
-                    </div>
-                  ))}
+                  {curList.map(video => {
+                    const isSharing = sharingVideoId === video.id;
+                    // แสดงปุ่ม 📤 เฉพาะ owner + วิดีโอที่อยู่ใน server ของเรา (ไม่ใช่ external link)
+                    const canShare  = isOwner && video.url.startsWith('/uploads/pk/') && !video.url.includes('/_shared/');
+                    return (
+                      <div key={video.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px',
+                        borderLeft: `2px solid ${video.checked ? accent : 'transparent'}`,
+                        background: video.checked ? (isDark ? '#1c1609' : '#fff8f0') : 'transparent',
+                        transition: 'background 0.15s',
+                      }}>
+                        <Cb checked={video.checked} onChange={() => toggleChecked(activeTab, video.id)} accent={accent} border={border} />
+                        <VideoThumb url={video.url} type={video.type} isDark={isDark} />
+                        <span style={{ flex: 1, fontSize: 13, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{video.name}</span>
+                        {canShare && (
+                          <button
+                            onClick={e => { e.stopPropagation(); uploadToShared(video, activeTab); }}
+                            disabled={isSharing}
+                            title="แชร์วิดีโอนี้ให้ผู้ใช้ทุกคน"
+                            style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${accent}55`, background: 'transparent', color: accent, fontSize: 12, cursor: isSharing ? 'wait' : 'pointer', flexShrink: 0, opacity: isSharing ? 0.5 : 1 }}
+                          >{isSharing ? '⏳' : '📤'}</button>
+                        )}
+                        <button onClick={e => { e.stopPropagation(); deleteVideo(activeTab, video); }} style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid #ef444433`, background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>🗑</button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -680,14 +812,14 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                 <p style={{ textAlign: 'center', color: muted, fontSize: 13, padding: '24px 0' }}>ยังไม่มีวิดีโอ — เพิ่มด้านล่าง</p>
               )}
 
-              {/* Add video */}
+              {/* Add video — ทุก user: เพิ่มจากลิงก์ / owner เพิ่ม: อัพโหลดไฟล์ */}
               <div style={{ padding: '12px 18px', borderTop: `1px solid ${border}`, background: isDark ? '#13131c' : '#fafafa' }}>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: isOwner ? 8 : 0 }}>
                   <input
                     value={urlInput}
                     onChange={e => setUrlInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addVideoUrl()}
-                    placeholder="วาง URL วิดีโอ (http://...)"
+                    placeholder="วาง URL วิดีโอ (https://...)"
                     style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: `1px solid ${border}`, background: isDark ? '#0f0f13' : '#fff', color: txt, fontSize: 12, outline: 'none', fontFamily: 'monospace' }}
                   />
                   <input
@@ -704,7 +836,19 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
                     + เพิ่ม
                   </button>
                 </div>
-                {/* Upload hidden — ยังไม่เปิดให้ user อัพโหลดขึ้น server */}
+                {/* อัพโหลดไฟล์ — owner เท่านั้น */}
+                {isOwner && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploading}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: `1px dashed ${accent}66`, background: 'transparent', color: accent, fontSize: 12, cursor: uploading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      {uploading ? '⏳ กำลังอัพโหลด...' : '⬆️ อัพโหลดไฟล์ (owner)'}
+                    </button>
+                    <span style={{ fontSize: 11, color: muted }}>ไฟล์จะเข้า "ของฉัน" — กด 📤 เพื่อแชร์ขึ้น Server</span>
+                  </div>
+                )}
               </div>
 
             </div>{/* /category panel */}

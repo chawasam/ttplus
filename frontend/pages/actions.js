@@ -2070,23 +2070,20 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
   const [actionPage,  setActionPage]  = useState(0); // 0-indexed
 
   // ── Master enable/disable — master switch ของทั้งระบบ Actions ──
-  const [systemEnabled, setSystemEnabled] = useState(() => {
-    try { return localStorage.getItem('ttplus_actions_system') !== '0'; } catch { return true; }
-  });
+  const [systemEnabled, setSystemEnabled] = useState(true); // server-safe default — อ่าน localStorage ใน useEffect
   const [systemSaving,  setSystemSaving]  = useState(false);
-  const toggleSystem = useCallback(async () => {
+  const toggleSystem = useCallback(() => {
     if (systemSaving) return;
     setSystemSaving(true);
-    setSystemEnabled(prev => {
-      const next = !prev;
-      try { localStorage.setItem('ttplus_actions_system', next ? '1' : '0'); } catch {}
-      // Persist ไป Firestore — backend จะ pick up ใน 5 วิ
-      api.post('/api/settings', { settings: { actionsEnabled: next } }).catch(() => {});
-      window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: next } }));
-      return next;
-    });
+    const next = !systemEnabled;
+    try { localStorage.setItem('ttplus_actions_system', next ? '1' : '0'); } catch {}
+    // Persist ไป Firestore — backend จะ pick up ใน 5 วิ
+    api.post('/api/settings', { settings: { actionsEnabled: next } }).catch(() => {});
+    setSystemEnabled(next);
+    // dispatch หลัง setState — ไม่ใช่ใน state updater (ป้องกัน "cannot update StatusBar while rendering ActionsPage")
+    window.dispatchEvent(new CustomEvent('ttplus-actions', { detail: { enabled: next } }));
     setTimeout(() => setSystemSaving(false), 600); // prevent rapid double-tap
-  }, [systemSaving]);
+  }, [systemSaving, systemEnabled]);
 
   // ── Resizable columns (Actions) ──
   const [colWidths, setColWidths] = useState(COL_DEFS.map(c => c.defaultW));
@@ -2354,6 +2351,14 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // อ่าน systemEnabled จาก localStorage หลัง hydration (ป้องกัน hydration mismatch)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ttplus_actions_system');
+      if (saved !== null) setSystemEnabled(saved !== '0');
+    } catch {}
+  }, []);
+
   // ── Fetch Widget CID (ใช้ cache เหมือน widgets.js) ──
   useEffect(() => {
     if (!user) return;
@@ -2503,11 +2508,8 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
         }));
       }
 
-      // 4) OBS commands — ผ่าน queue (ไม่ยิงตรง)
-      const hasObs = a.types?.includes('switch_obs_scene') || a.types?.includes('activate_obs_source');
-      if (hasObs) {
-        obsEnqueueRef.current?.(a);
-      }
+      // OBS: backend emitToUser → socket 'obs_action' → handleObsAction → enqueue
+      // ห้ามเรียก obsEnqueueRef โดยตรงที่นี่ — จะยิง OBS 2 ครั้ง (socket path + direct path)
 
       // Summary
       const parts = [];

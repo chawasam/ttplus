@@ -15,6 +15,7 @@ const MAX_SIZE   = 200 * 1024 * 1024; // 200 MB per file
 const ALLOWED    = ['.webm', '.mp4'];
 
 const CATEGORIES = ['taptap', 'nwm', 'x2', 'x3', 'mvp'];
+const OWNER_EMAIL = process.env.OWNER_EMAIL || '';
 
 // ── Default config structure ────────────────────────────────────────────────
 function defaultConfig() {
@@ -154,6 +155,58 @@ async function uploadVideo(req, res) {
   });
 }
 
+// ── POST upload-shared — อัพโหลดไปยัง _shared/{cat}/ (owner only) ────────────
+async function uploadSharedVideo(req, res) {
+  // Owner-only guard
+  if (!req.user?.email || req.user.email !== OWNER_EMAIL) {
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} }
+    return res.status(403).json({ error: 'เฉพาะ owner เท่านั้น' });
+  }
+  if (!req.file) return res.status(400).json({ error: 'ไม่มีไฟล์' });
+
+  const cat = req.params.catId;
+  if (!CATEGORIES.includes(cat)) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(400).json({ error: 'category ไม่ถูกต้อง' });
+  }
+
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  if (!ALLOWED.includes(ext)) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(400).json({ error: 'รองรับเฉพาะ .webm และ .mp4 เท่านั้น' });
+  }
+
+  const filename = req.file.filename;
+  const url      = `/uploads/pk/_shared/${cat}/${filename}`;
+  const type     = ext === '.webm' ? 'webm' : 'mp4';
+  const name     = filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+
+  return res.json({ success: true, filename, url, type, name });
+}
+
+// ── DELETE shared video — owner only ─────────────────────────────────────────
+async function deleteSharedVideo(req, res) {
+  if (!req.user?.email || req.user.email !== OWNER_EMAIL) {
+    return res.status(403).json({ error: 'เฉพาะ owner เท่านั้น' });
+  }
+  const { catId, filename } = req.params;
+  if (!CATEGORIES.includes(catId)) return res.status(400).json({ error: 'category ไม่ถูกต้อง' });
+  if (!filename || /[/\\]/.test(filename) || filename.startsWith('.')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const ext = path.extname(filename).toLowerCase();
+  if (!ALLOWED.includes(ext)) return res.status(400).json({ error: 'Invalid file type' });
+
+  const filePath = path.join(SHARED_DIR, catId, filename);
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[PK] deleteSharedVideo:', err.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 // ── DELETE video ─────────────────────────────────────────────────────────────
 async function deleteVideo(req, res) {
   const { filename } = req.params;
@@ -173,4 +226,4 @@ async function deleteVideo(req, res) {
   }
 }
 
-module.exports = { getConfig, saveConfig, getPresets, uploadVideo, deleteVideo, ensureUserDir, UPLOAD_DIR, SHARED_DIR, MAX_SIZE };
+module.exports = { getConfig, saveConfig, getPresets, uploadVideo, uploadSharedVideo, deleteVideo, deleteSharedVideo, ensureUserDir, UPLOAD_DIR, SHARED_DIR, MAX_SIZE, CATEGORIES };
