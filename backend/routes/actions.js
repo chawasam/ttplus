@@ -73,10 +73,16 @@ router.post('/simulate-event', verifyToken, async (req, res) => {
     }),
   };
 
-  const { matched, error } = await simulateEventWithResult(uid, type === 'chat' ? 'chat' : type, payload);
+  const { matched, warnings, error } = await simulateEventWithResult(uid, type === 'chat' ? 'chat' : type, payload);
 
   if (error) return res.status(500).json({ error });
-  res.json({ ok: true, type, payload: { giftName: payload.giftName, diamondCount: payload.diamondCount, comment: payload.comment, nickname: fake }, matched });
+  res.json({
+    ok: true,
+    type,
+    payload: { giftName: payload.giftName, diamondCount: payload.diamondCount, comment: payload.comment, nickname: fake },
+    matched,
+    warnings: warnings || {},
+  });
 });
 
 // Known viewers — autocomplete suggestions สำหรับช่อง specific_user ใน Event builder

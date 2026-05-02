@@ -3809,43 +3809,73 @@ export default function ActionsPage({ theme, setTheme, user, authLoading, active
 
                   {/* Result log */}
                   {simResult && (
-                    <div className={clsx(
-                      'rounded-lg border p-3 text-xs',
-                      simResult.matched?.length
-                        ? 'border-green-700/50 bg-green-950/30'
-                        : 'border-gray-300 dark:border-slate-700/50 bg-white dark:bg-[#1a1f30]'
-                    )}>
-                      {simResult.matched?.length ? (<>
-                        <p className="font-semibold text-green-400 mb-2">
-                          ✅ {simResult.matched.length} Event match
-                        </p>
-                        <div className="space-y-2">
-                          {simResult.matched.map((m, i) => (
-                            <div key={i} className="border-l-2 border-green-700/60 pl-2">
-                              <span className="text-gray-500 dark:text-slate-400">Event </span>
-                              <span className="text-green-700 dark:text-green-300 font-mono text-[10px]">{m.trigger}</span>
-                              <span className="text-gray-400 dark:text-slate-500"> →</span>
-                              {m.actions.map(a => (
-                                <span key={a.id} className="ml-1.5 px-1.5 py-0.5 rounded bg-brand-900/60 border border-brand-700/40 text-brand-300">{a.name}</span>
-                              ))}
-                              {m.randomPool.length > 0 && (
-                                <span className="ml-1.5 text-amber-400">
-                                  🎲 random จาก [{m.randomPool.map(a => a.name).join(', ')}]
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                    <div className="space-y-2">
+                      {/* Warnings — แสดงก่อน result ถ้ามี */}
+                      {simResult.warnings?.actionsDisabled && (
+                        <div className="rounded-lg border border-amber-500/50 bg-amber-950/30 p-2.5 text-xs">
+                          <p className="text-amber-300 font-semibold mb-0.5">⚠️ ระบบ Actions ปิดอยู่</p>
+                          <p className="text-amber-200/80">
+                            simulate ทำงานได้ แต่ใน live จริง event จะ <b>ไม่ยิง</b> — เปิด master switch ก่อน
+                          </p>
                         </div>
-                      </>) : (
-                        <p className="text-gray-400 dark:text-slate-500">
-                          🔍 ไม่มี Event ที่ match —{' '}
-                          {simResult.type === 'gift'
-                            ? (simResult.payload?.giftName
-                                ? `ลองเพิ่ม Event "specific_gift = ${simResult.payload.giftName}" หรือ "gift_min_coins ≤ ${simResult.payload.diamondCount}"`
-                                : `ลองเพิ่ม Event "gift_min_coins ≤ ${simResult.payload?.diamondCount}"`)
-                            : `ลองเพิ่ม Event trigger "${simResult.type}"`}
-                        </p>
                       )}
+                      {simResult.warnings?.cooldownBlocked?.length > 0 && (
+                        <div className="rounded-lg border border-amber-500/50 bg-amber-950/30 p-2.5 text-xs">
+                          <p className="text-amber-300 font-semibold mb-0.5">⏱️ Cooldown active</p>
+                          <p className="text-amber-200/80">
+                            ใน live จริง action เหล่านี้จะถูก skip:{' '}
+                            {simResult.warnings.cooldownBlocked.map((n, i) => (
+                              <span key={i} className="inline-block mx-0.5 px-1.5 py-0.5 rounded bg-amber-900/60 border border-amber-700/40">{n}</span>
+                            ))}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className={clsx(
+                        'rounded-lg border p-3 text-xs',
+                        simResult.matched?.length
+                          ? 'border-green-700/50 bg-green-950/30'
+                          : 'border-gray-300 dark:border-slate-700/50 bg-white dark:bg-[#1a1f30]'
+                      )}>
+                        {simResult.matched?.length ? (<>
+                          <p className="font-semibold text-green-400 mb-2">
+                            ✅ {simResult.matched.length} Event match
+                          </p>
+                          <div className="space-y-2">
+                            {simResult.matched.map((m, i) => (
+                              <div key={i} className="border-l-2 border-green-700/60 pl-2">
+                                <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                  <span className="text-white font-semibold text-xs">{m.eventName}</span>
+                                  <span className="text-green-300/70 font-mono text-[10px]">[{m.trigger}{m.triggerDetail ? ` ${m.triggerDetail}` : ''}]</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap pl-2">
+                                  <span className="text-gray-500 text-[10px]">→ ยิง:</span>
+                                  {m.actions.length === 0 && m.randomPool.length === 0 && (
+                                    <span className="text-gray-500 italic text-[10px]">(ไม่มี action)</span>
+                                  )}
+                                  {m.actions.map(a => (
+                                    <span key={a.id} className="px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/40 text-emerald-200 text-[10px]">{a.name}</span>
+                                  ))}
+                                  {m.randomPool.length > 0 && (
+                                    <span className="text-purple-300 text-[10px]">
+                                      🎲 random 1 จาก [{m.randomPool.map(a => a.name).join(', ')}]
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>) : (
+                          <p className="text-gray-400 dark:text-slate-500">
+                            🔍 ไม่มี Event ที่ match —{' '}
+                            {simResult.type === 'gift'
+                              ? (simResult.payload?.giftName
+                                  ? `ลองเพิ่ม Event "specific_gift = ${simResult.payload.giftName}" หรือ "gift_min_coins ≤ ${simResult.payload.diamondCount}"`
+                                  : `ลองเพิ่ม Event "gift_min_coins ≤ ${simResult.payload?.diamondCount}"`)
+                              : `ลองเพิ่ม Event trigger "${simResult.type}"`}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

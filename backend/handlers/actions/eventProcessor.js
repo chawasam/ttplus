@@ -76,7 +76,8 @@ function invalidateCache(vjUid) {
 }
 
 // ── Check cooldown ──────────────────────────────────────────────────────────
-function checkCooldown(vjUid, actionId, tiktokId, action) {
+// peek=true → ตรวจอย่างเดียว ไม่ stamp cooldown (ใช้ใน simulate ดูว่า production จะ block ไหม)
+function checkCooldown(vjUid, actionId, tiktokId, action, peek = false) {
   const now = Date.now();
   const gKey = `${vjUid}_${actionId}`;
   const uKey = `${vjUid}_${actionId}_${tiktokId}`;
@@ -90,8 +91,10 @@ function checkCooldown(vjUid, actionId, tiktokId, action) {
     if (now - last < action.userCooldown * 1000) return false;
   }
 
-  globalCooldowns.set(gKey, now);
-  userCooldowns.set(uKey, now);
+  if (!peek) {
+    globalCooldowns.set(gKey, now);
+    userCooldowns.set(uKey, now);
+  }
   return true;
 }
 
@@ -192,15 +195,17 @@ function fillTemplate(text, ctx) {
 }
 
 // ── Main: process TikTok event → fire matching actions ─────────────────────
-async function processEvent(vjUid, eventType, data) {
+// options:
+//   force          — bypass master switch (actionsEnabled) — ใช้ใน simulate
+//   ignoreCooldown — fire ทุก action โดยไม่ check cooldown — ใช้ใน simulate
+async function processEvent(vjUid, eventType, data, options = {}) {
   if (!vjUid) return;
-
-
+  const { force = false, ignoreCooldown = false } = options;
 
   try {
     const { events, actionsEnabled } = await getVjEvents(vjUid);
-    // ── Master switch: ถ้า VJ ปิดระบบ Actions → ไม่ทำอะไรเลย ──
-    if (!actionsEnabled) return;
+    // ── Master switch: ถ้า VJ ปิดระบบ Actions → ไม่ทำอะไรเลย (เว้นแต่ force) ──
+    if (!actionsEnabled && !force) return;
     if (!events.length) return;
 
     // หา events ที่ตรงกับ trigger
@@ -274,7 +279,7 @@ async function processEvent(vjUid, eventType, data) {
         if (firedActionIds.has(actionId)) continue;
         const action = actionsMap[actionId];
         if (!action) continue;
-        if (!checkCooldown(vjUid, actionId, data.uniqueId, action)) continue;
+        if (!ignoreCooldown && !checkCooldown(vjUid, actionId, data.uniqueId, action)) continue;
         firedActionIds.add(actionId);
         queues.push(queueAction(vjUid, action, context));
       }
@@ -285,7 +290,7 @@ async function processEvent(vjUid, eventType, data) {
         if (pool.length) {
           const pick   = pool[Math.floor(Math.random() * pool.length)];
           const action = actionsMap[pick];
-          if (action && checkCooldown(vjUid, pick, data.uniqueId, action)) {
+          if (action && (ignoreCooldown || checkCooldown(vjUid, pick, data.uniqueId, action))) {
             firedActionIds.add(pick);
             queues.push(queueAction(vjUid, action, context));
           }
@@ -301,12 +306,13 @@ async function processEvent(vjUid, eventType, data) {
 }
 
 // ── Simulate: fire event + return list of matched events/actions (for test UI) ──
+// Bypass master switch + cooldown — แต่ report เป็น warnings ให้ user รู้ว่า
+// production จะ behave ต่างไหม
 async function simulateEventWithResult(vjUid, eventType, data) {
-  if (!vjUid) return { matched: [] };
-  // Simulate ยังใช้ได้แม้ระบบจะปิด — ช่วย debug โดยไม่ต้อง toggle กลับมาเปิด
+  if (!vjUid) return { matched: [], warnings: {} };
   try {
-    const { events } = await getVjEvents(vjUid);
-    if (!events.length) return { matched: [] };
+    const { events, actionsEnabled } = await getVjEvents(vjUid);
+    if (!events.length) return { matched: [], warnings: {} };
 
     const matching = events.filter(ev => {
       if (!canTrigger(ev, data)) return false;
@@ -334,26 +340,33 @@ async function simulateEventWithResult(vjUid, eventType, data) {
       }
     });
 
-    // gift_min_coins priority
-    const giftCoinEvents = matching.filter(ev => ev.trigger === 'gift_min_coins');
-    const otherEvents    = matching.filter(ev => ev.trigger !== 'gift_min_coins');
+    // ── Priority: specific_gift hides gift_min_coins (mirror production logic) ──
+    const giftCoinEvents  = matching.filter(ev => ev.trigger === 'gift_min_coins');
+    const otherEvents     = matching.filter(ev => ev.trigger !== 'gift_min_coins');
+    const specificGiftHit = otherEvents.some(ev => ev.trigger === 'specific_gift');
     const prioritized = [
       ...otherEvents,
-      ...(giftCoinEvents.length > 0
+      ...(!specificGiftHit && giftCoinEvents.length > 0
         ? [giftCoinEvents.reduce((best, ev) =>
             (ev.minCoins || 0) > (best.minCoins || 0) ? ev : best
           )]
         : []),
     ];
 
-    const context = {
-      username:  data.uniqueId || data.nickname || 'ทดสอบ',
-      giftname:  data.giftName || '',
-      coins:     data.diamondCount || 0,
-      likeCount: data.likeCount || 0,
-    };
+    // ── Detect cooldown blocks สำหรับ warnings (ไม่ block จริง — simulate ผ่านอยู่แล้ว) ──
+    const cooldownBlocked = [];
+    for (const ev of prioritized) {
+      const actionsMap = ev._actions || {};
+      for (const actionId of [...new Set(ev.actionIds || [])]) {
+        const action = actionsMap[actionId];
+        if (!action) continue;
+        if (!checkCooldown(vjUid, actionId, data.uniqueId, action, /* peek */ true)) {
+          cooldownBlocked.push(action.name);
+        }
+      }
+    }
 
-    // สร้าง summary ก่อน fire จริง
+    // ── สร้าง summary พร้อม trigger detail ──
     const matched = prioritized.map(ev => {
       const actionsMap = ev._actions || {};
       const firedActions = (ev.actionIds || [])
@@ -364,21 +377,37 @@ async function simulateEventWithResult(vjUid, eventType, data) {
         .map(id => actionsMap[id])
         .filter(Boolean)
         .map(a => ({ id: a.id, name: a.name }));
+      // trigger detail — ขึ้นกับ trigger type
+      let triggerDetail = '';
+      switch (ev.trigger) {
+        case 'specific_gift':   triggerDetail = ev.specificGiftName || ''; break;
+        case 'gift_min_coins':  triggerDetail = `≥${ev.minCoins || 1} 🪙`; break;
+        case 'command':         triggerDetail = `"${ev.keyword || ''}"`; break;
+        case 'likes':           triggerDetail = `≥${ev.likesCount || 1} likes`; break;
+      }
       return {
-        eventId:    ev.id,
-        trigger:    ev.trigger,
-        actions:    firedActions,
-        randomPool: randomPool,
+        eventId:       ev.id,
+        eventName:     ev.name || '(unnamed)',
+        trigger:       ev.trigger,
+        triggerDetail,
+        actions:       firedActions,
+        randomPool,
       };
     });
 
-    // fire จริง
-    await processEvent(vjUid, eventType, data);
+    // ── Fire จริง โดย bypass master switch + cooldown (simulate = always fire) ──
+    await processEvent(vjUid, eventType, data, { force: true, ignoreCooldown: true });
 
-    return { matched };
+    return {
+      matched,
+      warnings: {
+        actionsDisabled: !actionsEnabled,    // master switch ปิด → production จะไม่ยิง
+        cooldownBlocked,                     // actions ที่ production จะ skip ตอน fire จริง
+      },
+    };
   } catch (err) {
     console.error('[EventProcessor] simulateEventWithResult:', err.message);
-    return { matched: [], error: err.message };
+    return { matched: [], warnings: {}, error: err.message };
   }
 }
 
