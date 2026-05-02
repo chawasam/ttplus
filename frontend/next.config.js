@@ -15,7 +15,9 @@ const mainCSP = [
   "style-src 'self' 'unsafe-inline'",
   `connect-src 'self' ${BACKEND} wss: ws: https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com`,
   "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://lh3.googleusercontent.com",
+  `media-src 'self' ${BACKEND} blob:`,  // soundboard + audio files จาก backend
   "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
+  "worker-src blob:",           // keepAlive.js สร้าง blob: worker (ถ้าไม่ set จะ fallback script-src ที่ไม่มี blob:)
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -37,6 +39,7 @@ const widgetCSP = [
   "img-src 'self' data: blob: https:",
   // media-src: อนุญาต backend (วิดีโอ PK, เสียง) และ blob: (AudioContext)
   `media-src 'self' ${BACKEND} https://api.ttsam.app blob: https://drive.google.com https://*.googleapis.com https://*.googleusercontent.com https://files.catbox.moe https://litter.catbox.moe https://*.uguu.se`,
+  "worker-src blob:",              // keepAlive.js สร้าง blob: worker (_app.js รันบนทุกหน้า รวม /widget/*)
   "frame-src https://www.youtube.com https://www.youtube-nocookie.com", // YouTube embed ใน myactions widget
   "frame-ancestors *",   // OBS / TikTok Studio ต้องการ embed
   "font-src 'self' data:",
