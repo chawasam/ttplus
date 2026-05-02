@@ -454,7 +454,7 @@ export default function PKPage({ theme, user, activePage, setActivePage, sidebar
       form.append('video', file);
       const res  = await fetch(`${BACKEND}/api/pk/upload`, {
         method:  'POST',
-        headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': undefined },
+        headers: { Authorization: `Bearer ${idToken}` },
         body:    form,
       });
       const data = await res.json();
