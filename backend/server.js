@@ -165,7 +165,7 @@ app.use((req, res, next) => {
   const exempt = ['/health', '/api/csrf-token'];
   // File upload endpoints ใช้ Bearer token auth ซึ่ง CSRF-safe โดยธรรมชาติ
   // (browser ไม่สามารถ auto-send Authorization header ใน CSRF attack ได้)
-  const exemptPrefix = ['/api/filehost/'];
+  const exemptPrefix = ['/api/filehost/', '/api/pk/upload'];
   if (exempt.includes(req.path)) return next();
   if (exemptPrefix.some(p => req.path.startsWith(p))) return next();
   csrfProtection(req, res, next);
