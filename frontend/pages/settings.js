@@ -44,6 +44,12 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [spotifyAccount,  setSpotifyAccount]  = useState(''); // displayName
 
+  // ── Now Playing (Universal) ──────────────────────────────────────────────
+  const [npSource, setNpSource] = useState('');             // '' | 'lastfm' | ...
+  const [npLastfmUsername, setNpLastfmUsername] = useState('');
+  const [npTesting, setNpTesting] = useState(false);
+  const [npTestResult, setNpTestResult] = useState(null);   // { ok, preview } | { error }
+
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -97,6 +103,51 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
   const disconnectSpotify = async () => {
     await api.delete('/api/spotify/disconnect').catch(() => {});
     setSpotifyConnected(false);
+  };
+
+  // ── Now Playing status loader ────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    api.get('/api/nowplaying/status').then(r => {
+      setNpSource(r.data?.source || '');
+      setNpLastfmUsername(r.data?.lastfm?.username || '');
+    }).catch(() => {});
+  }, [user]);
+
+  const saveNpSource = async (next) => {
+    setNpSource(next);
+    try {
+      await api.post('/api/nowplaying/source', { source: next || null });
+    } catch {
+      toast.error('บันทึก source ไม่สำเร็จ');
+    }
+  };
+
+  const saveLastfmUsername = async () => {
+    const u = (npLastfmUsername || '').trim();
+    if (!u) { toast.error('ใส่ Last.fm username ก่อน'); return; }
+    try {
+      await api.post('/api/nowplaying/lastfm', { username: u });
+      toast.success('✅ บันทึก Last.fm username แล้ว');
+    } catch {
+      toast.error('บันทึกไม่สำเร็จ');
+    }
+  };
+
+  const testLastfm = async () => {
+    const u = (npLastfmUsername || '').trim();
+    if (!u) { toast.error('ใส่ Last.fm username ก่อน'); return; }
+    setNpTesting(true);
+    setNpTestResult(null);
+    try {
+      const r = await api.post('/api/nowplaying/lastfm/test', { username: u });
+      setNpTestResult({ ok: true, preview: r.data?.preview });
+    } catch (e) {
+      const code = e?.response?.data?.error || 'failed';
+      setNpTestResult({ error: code });
+    } finally {
+      setNpTesting(false);
+    }
   };
 
   // ── Browser tab memory (JS Heap) ─────────────────────────────────────────
@@ -252,6 +303,103 @@ export default function SettingsPage({ theme, setTheme, user, authLoading, activ
                   isDark={theme === 'dark'}
                   text={"หน้าต่าง Spotify จะเปิดขึ้นมา\nกด Agree/อนุญาต แล้วปิดหน้าต่างได้เลย — ระบบจะ connect อัตโนมัติ"}
                 />
+              </div>
+            )}
+          </Section>
+
+          {/* Now Playing (Universal) — Last.fm / Manual / Extension / Companion */}
+          <Section
+            title="🎶 Now Playing (อื่นๆ)"
+            tip={"Widget แสดงเพลงที่ไม่ต้องใช้ Spotify\nรองรับ 4 source: Last.fm (MVP), Manual paste, Chrome Extension, Windows Companion app"}
+            theme={theme}>
+            {!user ? (
+              <div className={clsx(
+                'flex items-center gap-3 mt-2 px-3 py-2.5 rounded-lg border text-xs',
+                theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'
+              )}>
+                <span className="text-base">🔒</span>
+                <span>Login ก่อน แล้วกลับมาตั้งค่า source ที่นี่</span>
+              </div>
+            ) : (
+              <div className="mt-2 space-y-3">
+                <div>
+                  <Label theme={theme}>แหล่งข้อมูลเพลง</Label>
+                  <select
+                    value={npSource || ''}
+                    onChange={e => saveNpSource(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">— ปิด (ไม่เลือก) —</option>
+                    <option value="lastfm">🎧 Last.fm (แนะนำ — ใช้กับ Spotify/YouTube ที่ scrobble แล้ว)</option>
+                    <option value="manual" disabled>✏️ Manual paste (Phase 2)</option>
+                    <option value="extension" disabled>🧩 Chrome Extension (Phase 3)</option>
+                    <option value="companion" disabled>💻 Windows Companion (Phase 4)</option>
+                  </select>
+                </div>
+
+                {npSource === 'lastfm' && (
+                  <div className="space-y-2">
+                    <Label theme={theme}>Last.fm Username</Label>
+                    <div className="flex gap-2 flex-wrap">
+                      <input
+                        className={clsx(inputClass, 'flex-1 min-w-[180px]')}
+                        value={npLastfmUsername}
+                        onChange={e => setNpLastfmUsername(e.target.value)}
+                        placeholder="เช่น rj"
+                      />
+                      <button
+                        onClick={saveLastfmUsername}
+                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-violet-500 hover:bg-violet-600 text-white transition">
+                        💾 บันทึก
+                      </button>
+                      <button
+                        onClick={testLastfm}
+                        disabled={npTesting}
+                        className={clsx(
+                          'px-3 py-2 rounded-lg text-sm font-semibold transition',
+                          npTesting ? 'opacity-50 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'
+                        )}>
+                        {npTesting ? '⏳ ทดสอบ…' : '🔎 ทดสอบ'}
+                      </button>
+                    </div>
+                    {npTestResult?.ok && npTestResult.preview?.playing && (
+                      <div className={clsx(
+                        'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                        theme === 'dark' ? 'bg-green-900/20 text-green-300' : 'bg-green-50 text-green-700'
+                      )}>
+                        <span>✅</span>
+                        <span>กำลังเล่น: <strong>{npTestResult.preview.title}</strong> — {npTestResult.preview.artist}</span>
+                      </div>
+                    )}
+                    {npTestResult?.ok && !npTestResult.preview?.playing && (
+                      <div className={clsx(
+                        'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                        theme === 'dark' ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'
+                      )}>
+                        <span>ℹ️</span>
+                        <span>ตอนนี้ user นี้ไม่มีเพลงที่ scrobble — ลองเปิดเพลงแล้วทดสอบใหม่</span>
+                      </div>
+                    )}
+                    {npTestResult?.error && (
+                      <div className={clsx(
+                        'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                        theme === 'dark' ? 'bg-red-900/20 text-red-300' : 'bg-red-50 text-red-700'
+                      )}>
+                        <span>❌</span>
+                        <span>
+                          {npTestResult.error === 'user_not_found' && 'ไม่พบ Last.fm user นี้'}
+                          {npTestResult.error === 'rate_limited'   && 'ทดสอบบ่อยเกิน — รอสักครู่แล้วลองใหม่'}
+                          {npTestResult.error === 'lastfm_not_configured' && 'Server ยังไม่ได้ตั้ง LASTFM_API_KEY'}
+                          {!['user_not_found','rate_limited','lastfm_not_configured'].includes(npTestResult.error) && 'ทดสอบไม่สำเร็จ'}
+                        </span>
+                      </div>
+                    )}
+                    <InfoTip
+                      isDark={theme === 'dark'}
+                      text={"Last.fm scrobbler รองรับ Spotify / YouTube Music / Apple Music ฯลฯ\nเชื่อม Spotify → Last.fm ที่ last.fm/settings/applications แล้ว Last.fm จะ track เพลงที่กำลังฟัง"}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </Section>

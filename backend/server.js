@@ -108,6 +108,7 @@ const PUBLIC_CORS_PATHS = [
   '/health',                  // health check — เรียกจาก browser ข้าม origin ได้
   '/api/spotify/now-playing',
   '/api/spotify/queue',
+  '/api/nowplaying/current',  // Now Playing (Universal) widget poll
   '/api/widget/',             // prefix match — รองรับ endpoints ใหม่ในอนาคต
   '/api/leaderboard',
   '/api/actions/overlay',     // myactions widget — เรียกจาก OBS/localhost ได้ ไม่ใช้ credentials
@@ -407,6 +408,10 @@ app.use('/api/leaderboard', leaderboardRouter);
 // ===== Spotify Now Playing =====
 const spotifyRouter = require('./routes/spotify');
 app.use('/api/spotify', spotifyRouter);
+
+// ===== Now Playing (Universal) =====
+const nowplayingRouter = require('./routes/nowplaying');
+app.use('/api/nowplaying', nowplayingRouter);
 
 // ===== CoinJar (simulate gift) =====
 const coinjarRouter = require('./routes/coinjar');

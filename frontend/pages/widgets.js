@@ -360,6 +360,26 @@ const WIDGETS = [
     ],
   },
   {
+    id: 'nowplaying2', icon: '🎶', name: 'Now Playing (Universal)',
+    desc: 'แสดงเพลงจาก Last.fm / Manual / Extension / Companion — ไม่ต้องใช้ Spotify ตั้งค่า source ที่ Settings',
+    size: 'ขึ้นอยู่กับ Style', noStyle: true, liveConfig: true,
+    configFields: [
+      { key: 'style',        label: '🎨 เลือก Style',                     type: 'nowplaying_style', default: 'glass' },
+      { key: 'fade',         label: '🌫️ Fade รอบขอบ Widget',              type: 'toggle', default: 1,
+        onLabel: 'เปิด — ขอบ Widget จะ Fade โปร่งใส (แนะนำสำหรับ OBS)', offLabel: 'ปิด — ขอบทึบ' },
+      { key: '_g1',          label: '✏️ ข้อความ & สี',                    type: 'group' },
+      { key: 'fontSize',     label: '📏 ขนาดตัวอักษร Title (px)',         type: 'number', default: 13, min: 8, max: 36, step: 1 },
+      { key: 'titleColor',   label: '🎨 สี Title',                         type: 'colorhex', default: 'ffffff' },
+      { key: 'artistColor',  label: '🎨 สี Artist',                        type: 'colorhex', default: 'ffffff99' },
+      { key: '_g2',          label: '📜 การเลื่อนข้อความ (Marquee)',       type: 'group' },
+      { key: 'marquee',      label: '📜 เลื่อนข้อความ',                    type: 'toggle', default: 0,
+        onLabel: 'เปิด — ข้อความเลื่อนแบบ Marquee', offLabel: 'ปิด — ตัดข้อความเมื่อยาวเกิน' },
+      { key: 'marqueeDir',   label: '↔️ ทิศทางเลื่อน',                    type: 'select', default: 'left',
+        options: [{ value: 'left', label: '← เลื่อนซ้าย' }, { value: 'right', label: '→ เลื่อนขวา' }] },
+      { key: 'marqueeSpeed', label: '⚡ ความเร็ว (วินาที/รอบ — น้อย=เร็ว)', type: 'number', default: 8, min: 2, max: 30, step: 1 },
+    ],
+  },
+  {
     id: 'spotifyqueue', icon: '🎵', name: 'Spotify Queue',
     desc: 'แสดงคิวเพลง Spotify สูงสุด 20 เพลง — เชื่อมต่อ Spotify ได้ที่ Settings',
     size: '340 × ปรับอัตโนมัติ', noStyle: true, liveConfig: true,
@@ -404,7 +424,7 @@ const WIDGETS = [
 // ── Widget groups — ลำดับและสมาชิกในแต่ละหมวด ──────────────────────────────
 const WIDGET_GROUPS = [
   { id: 'gifts', label: '🎁 ของขวัญ & Leaderboard',  ids: ['coinjar', 'fireworks', 'likes-leaderboard', 'gift-leaderboard', 'gift-carousel'] },
-  { id: 'music', label: '🎵 Music',                   ids: ['nowplaying', 'spotifyqueue'] },
+  { id: 'music', label: '🎵 Music',                   ids: ['nowplaying', 'nowplaying2', 'spotifyqueue'] },
   { id: 'chat',  label: '💬 Chat',                    ids: ['chat', 'pinchat', 'pinprofile'] },
   { id: 'obs',   label: '🎛️ OBS / Stream',            ids: ['bossbattle', 'myactions', 'ttsmonitor'] },
 ];
@@ -640,6 +660,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       const base    = `${baseUrl}/widget/nowplaying?cid=${widgetCid}`;
       return configQ ? `${base}&${configQ}` : base;
     }
+    // nowplaying2 (universal) → /widget/nowplaying-universal
+    if (widgetId === 'nowplaying2') {
+      if (!baseUrl || !widgetCid) return '';
+      const w       = WIDGETS.find(ww => ww.id === 'nowplaying2');
+      const configQ = buildCustomParams(w);
+      const base    = `${baseUrl}/widget/nowplaying-universal?cid=${widgetCid}`;
+      return configQ ? `${base}&${configQ}` : base;
+    }
     if (!baseUrl || !widgetCid) return '';
     const w = WIDGETS.find(ww => ww.id === widgetId);
     // ทุก widget ใช้ ?cid= เหมือนกันหมด (leaderboard, myactions, fireworks, ฯลฯ)
@@ -715,6 +743,14 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
       const configQ   = buildCustomParams(w);
       const cidSuffix = widgetCid ? `&cid=${widgetCid}` : '';
       const base      = `${baseUrl}/widget/nowplaying?preview=1${cidSuffix}`;
+      return configQ ? `${base}&${configQ}` : base;
+    }
+    // nowplaying2 (universal) preview
+    if (widgetId === 'nowplaying2') {
+      const w         = WIDGETS.find(ww => ww.id === 'nowplaying2');
+      const configQ   = buildCustomParams(w);
+      const cidSuffix = widgetCid ? `&cid=${widgetCid}` : '';
+      const base      = `${baseUrl}/widget/nowplaying-universal?preview=1${cidSuffix}`;
       return configQ ? `${base}&${configQ}` : base;
     }
     const w = WIDGETS.find(ww => ww.id === widgetId);
@@ -1082,6 +1118,39 @@ export default function WidgetsPage({ theme, setTheme, user, authLoading, active
                               )}>
                                 <span>🔒</span>
                                 <span>Login ก่อน แล้วเชื่อมต่อ Spotify ใน Settings</span>
+                              </div>
+                            )}
+
+                            {/* Now Playing (Universal) — Settings pointer */}
+                            {w.id === 'nowplaying2' && user && (
+                              <div className={clsx(
+                                'flex items-center gap-3 mb-3 px-3 py-2.5 rounded-lg border',
+                                isDark
+                                  ? 'bg-violet-950/40 border-violet-800/50 text-violet-300'
+                                  : 'bg-violet-50 border-violet-200 text-violet-800'
+                              )}>
+                                <span className="text-2xl flex-shrink-0">🎶</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold">เลือกแหล่งข้อมูลเพลงที่ Settings</p>
+                                  <p className={clsx('text-xs mt-0.5', isDark ? 'text-violet-400/70' : 'text-violet-600/80')}>
+                                    Last.fm / Manual / Extension / Companion
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => setActivePage?.('settings')}
+                                  className="shrink-0 px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold transition"
+                                >
+                                  ⚙️ Settings
+                                </button>
+                              </div>
+                            )}
+                            {w.id === 'nowplaying2' && !user && (
+                              <div className={clsx(
+                                'flex items-center gap-2 mb-3 px-3 py-2 rounded-lg text-xs border',
+                                isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'
+                              )}>
+                                <span>🔒</span>
+                                <span>Login ก่อน แล้วตั้งค่า source ใน Settings</span>
                               </div>
                             )}
 

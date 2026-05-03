@@ -297,6 +297,29 @@ function validateSettings(raw) {
     allowed.widgetStyles = cleanStyles;
   }
 
+  // nowplayingSource — Now Playing (Universal) source selector
+  if (raw.nowplayingSource !== undefined) {
+    if (raw.nowplayingSource !== null
+        && !['lastfm','manual','extension','companion'].includes(raw.nowplayingSource)) {
+      throw new Error('nowplayingSource invalid');
+    }
+    allowed.nowplayingSource = raw.nowplayingSource;
+  }
+
+  // nowplayingConfig — เก็บแค่ public fields ที่อนุญาตจาก /api/settings
+  // (token rotation/cached push เขียนผ่าน /api/nowplaying/* เท่านั้น)
+  if (raw.nowplayingConfig !== undefined) {
+    if (typeof raw.nowplayingConfig !== 'object' || Array.isArray(raw.nowplayingConfig)) {
+      throw new Error('nowplayingConfig must be object');
+    }
+    const cfg = {};
+    if (raw.nowplayingConfig.lastfm && typeof raw.nowplayingConfig.lastfm === 'object') {
+      const u = sanitizeStr(raw.nowplayingConfig.lastfm.username || '', 50);
+      if (u) cfg.lastfm = { username: u };
+    }
+    allowed.nowplayingConfig = cfg;
+  }
+
   // widgets — nested object, validate แต่ละ key
   if (raw.widgets !== undefined) {
     if (typeof raw.widgets !== 'object') throw new Error('widgets must be object');

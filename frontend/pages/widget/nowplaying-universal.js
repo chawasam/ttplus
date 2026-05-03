@@ -1,12 +1,6 @@
-// widget/nowplaying.js — Spotify Now Playing Overlay สำหรับ OBS
-// URL params: ?cid=xxx &style=glass|eq|notes|vinyl|aurora|neon|cassette|pulse|particles|spectrum|simple
-//             &fade=0|1
-//             &fontSize=13           (ขนาดตัวอักษร title, px, ค่าเริ่มต้น 13)
-//             &titleColor=ffffff     (สี title — hex ไม่ต้องใส่ #)
-//             &artistColor=ffffff99  (สี artist — hex ไม่ต้องใส่ #)
-//             &marquee=1             (ตัวหนังสือวิ่ง, 0=off)
-//             &marqueeSpeed=8        (วินาทีต่อรอบ, ค่าเริ่มต้น 8)
-//             &marqueeDir=left|right (ทิศทางวิ่ง, ค่าเริ่มต้น left)
+// widget/nowplaying-universal.js — Now Playing (Universal) Overlay สำหรับ OBS
+// รองรับ Last.fm / Manual paste / Chrome Extension / Windows Companion (เลือก source ใน Settings)
+// URL params: ?cid=xxx & options เหมือน /widget/nowplaying ทุกตัว
 import { useEffect, useState, useRef } from 'react';
 import { createWidgetSocket } from '../../lib/widgetSocket';
 import { BASE_CSS, DEMO_TRACK, DEFAULT_CFG, parseColor } from '../../components/nowplaying/styles';
@@ -15,9 +9,7 @@ import NPStyleSwitch from '../../components/nowplaying/StyleSwitch';
 const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://api.ttsam.app';
 const POLL_MS = 10_000;
 
-// ── Main Widget ───────────────────────────────────────────────────────────────
-
-export default function NowPlayingWidget() {
+export default function NowPlayingUniversalWidget() {
   const [track,   setTrack]   = useState(null);
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -28,11 +20,10 @@ export default function NowPlayingWidget() {
   useEffect(() => {
     setMounted(true);
     const p     = new URLSearchParams(window.location.search);
-    const cid   = p.get('cid') || p.get('uid'); // รองรับ cid (ใหม่) และ uid (เก่า)
+    const cid   = p.get('cid') || p.get('uid');
     const style = p.get('style') || 'glass';
     const fade  = p.get('fade') !== '0';
 
-    // text customization
     const fontSize     = Math.max(8, Math.min(36, parseInt(p.get('fontSize') || '13', 10)));
     const titleColor   = parseColor(p.get('titleColor'), '#fff');
     const artistColor  = parseColor(p.get('artistColor'), 'rgba(255,255,255,0.6)');
@@ -49,12 +40,11 @@ export default function NowPlayingWidget() {
     }
     if (!cid) return;
 
-    // ── REST poll (primary data source) ──
     const poll = async () => {
       try {
         const isCid = /^\d{4,8}$/.test(cid);
         const qs    = isCid ? `cid=${cid}` : `uid=${cid}`;
-        const res   = await fetch(`${BACKEND}/api/spotify/now-playing?${qs}`);
+        const res   = await fetch(`${BACKEND}/api/nowplaying/current?${qs}`);
         const data  = await res.json();
         if (!data.playing) {
           setVisible(false);
@@ -79,12 +69,11 @@ export default function NowPlayingWidget() {
     poll();
     const interval = setInterval(poll, POLL_MS);
 
-    // ── Socket (style_update เมื่อ customize จาก Widgets page) ──
     let socket = null;
     if (/^\d{4,8}$/.test(cid)) {
       socket = createWidgetSocket(cid, {
         style_update: ({ widgetId, style: newStyle }) => {
-          if (widgetId !== 'nowplaying') return;
+          if (widgetId !== 'nowplaying2') return;
           if (!newStyle || newStyle._reset) return;
           setCfg(prev => {
             const next = { ...prev };
