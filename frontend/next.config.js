@@ -13,8 +13,11 @@ const mainCSP = [
     ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://static.cloudflareinsights.com"
     : "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline'",
-  `connect-src 'self' ${BACKEND} wss: ws: https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com`,
-  "img-src 'self' data: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://lh3.googleusercontent.com",
+  // *.googleapis.com ครอบคลุม generativelanguage.googleapis.com (Gemini) อยู่แล้ว
+  // api.anthropic.com ต้องใส่ตรงๆ (ใช้สำหรับ /aiprompt เรียก Claude ตรงจาก browser)
+  `connect-src 'self' ${BACKEND} wss: ws: https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://api.anthropic.com`,
+  // blob: เพิ่มสำหรับ /aiprompt — preview รูปอัพโหลดผ่าน URL.createObjectURL
+  "img-src 'self' data: blob: https://*.tiktokcdn.com https://*.tiktokcdn-us.com https://*.tiktok.com https://lh3.googleusercontent.com",
   `media-src 'self' ${BACKEND} blob:`,  // soundboard + audio files จาก backend
   "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
   "worker-src blob:",           // keepAlive.js สร้าง blob: worker (ถ้าไม่ set จะ fallback script-src ที่ไม่มี blob:)
