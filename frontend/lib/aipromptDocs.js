@@ -455,12 +455,36 @@ export function buildNarrationScriptMarkdown(project) {
 
 // ── Drive folder + multi-file upload ───────────────────────────────────────
 
-async function createDriveFolder(folderName) {
+/**
+ * แกะ folder ID จาก URL ที่ user paste มา
+ * รับได้ทั้ง: /folders/{id}, ?id={id}, หรือ ID ดิบๆ
+ * คืน null ถ้าหาไม่เจอ
+ */
+export function extractDriveFolderId(input) {
+  if (!input) return null;
+  const s = String(input).trim();
+  if (!s) return null;
+  // Pattern 1: /folders/{id}
+  const m1 = /\/folders\/([\w-]+)/.exec(s);
+  if (m1) return m1[1];
+  // Pattern 2: ?id={id} or &id={id}
+  const m2 = /[?&]id=([\w-]+)/.exec(s);
+  if (m2) return m2[1];
+  // Pattern 3: ID ดิบๆ (>= 20 char alphanumeric+_-)
+  if (/^[\w-]{20,}$/.test(s)) return s;
+  return null;
+}
+
+async function createDriveFolder(folderName, parentFolderId = null) {
   let token = await getDocsAccessToken();
   const create = async (tk) => fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${tk}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' }),
+    body: JSON.stringify({
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+      ...(parentFolderId ? { parents: [parentFolderId] } : {}),
+    }),
   });
   let res = await create(token);
   if (res.status === 401) {
@@ -472,6 +496,10 @@ async function createDriveFolder(folderName) {
     const errText = await res.text();
     const apiDisabled = checkDriveApiDisabled(res.status, errText);
     if (apiDisabled) throw apiDisabled;
+    // 403/404 ตอนระบุ parent → ส่วนใหญ่ = ไม่มีสิทธิ์ใน folder นั้น
+    if (parentFolderId && (res.status === 403 || res.status === 404)) {
+      throw new Error(`ไม่มีสิทธิ์สร้าง folder ใน parent ${parentFolderId} (HTTP ${res.status}) — ตรวจว่าเป็น folder ของคุณ หรือมีสิทธิ์ edit`);
+    }
     throw new Error(`สร้าง folder ไม่สำเร็จ (${res.status}): ${errText.slice(0, 200)}`);
   }
   const { id } = await res.json();
@@ -511,32 +539,40 @@ async function uploadOneToDrive(token, folderId, file) {
 /**
  * Export ทั้ง project ขึ้น Google Drive — flat folder
  * @param {object} project
+ * @param {object} [options]
+ * @param {string} [options.folderName] — ชื่อ folder ที่จะสร้าง (default: project name + "— TTplus Export")
+ * @param {string} [options.parentFolderId] — Drive folder ID ของ parent (ถ้า user อยากเก็บใน folder ที่มีอยู่)
  * @param {(done:number, total:number, currentName:string) => void} [onProgress]
- * @returns {Promise<{folderId, folderUrl}>}
+ * @returns {Promise<{folderId, folderUrl, fileCount}>}
  */
-export async function exportFullProjectToDrive(project, onProgress) {
+export async function exportFullProjectToDrive(project, options = {}, onProgress) {
   if (!project) throw new Error('No project');
-  const folderName = `${sanitizeFilename(project.name)} — TTplus Export`;
+  const projectPrefix = sanitizeFilename(project.name);
+  const folderName = (options.folderName || '').trim() || `${projectPrefix} — TTplus Export`;
+  const parentFolderId = options.parentFolderId || null;
+
+  // ทุกไฟล์ prefix ด้วยชื่อ project — เวลา download ทีละไฟล์จะแยกออก
+  const fname = (suffix) => `${projectPrefix}_${suffix}`;
 
   // Build file manifest
   const files = [];
 
-  // 1. Markdown docs (always include)
+  // 1. Markdown docs (always include if data exists)
   files.push({
-    name: 'image-prompts.md',
+    name: fname('image-prompts.md'),
     content: buildImagePromptsMarkdown(project),
     mimeType: 'text/markdown',
   });
   if ((project.videoPlan?.shots?.length || 0) > 0) {
     files.push({
-      name: 'video-prompts.md',
+      name: fname('video-prompts.md'),
       content: buildVideoPromptsMarkdown(project),
       mimeType: 'text/markdown',
     });
   }
   if (project.scriptText?.trim() || project.narration?.script?.trim()) {
     files.push({
-      name: 'narration-script.md',
+      name: fname('narration-script.md'),
       content: buildNarrationScriptMarkdown(project),
       mimeType: 'text/markdown',
     });
@@ -554,7 +590,7 @@ export async function exportFullProjectToDrive(project, onProgress) {
       const m = /^data:([^;]+);base64,(.+)$/.exec(image.dataUrl);
       if (m) {
         files.push({
-          name: `Shot_${shotIdx + 1}.png`,
+          name: fname(`Shot_${shotIdx + 1}.png`),
           base64: m[2],
           mimeType: m[1] || 'image/png',
         });
@@ -565,7 +601,7 @@ export async function exportFullProjectToDrive(project, onProgress) {
   // 3. TTS narration
   if (project.narration?.audio?.base64) {
     files.push({
-      name: 'narration.wav',
+      name: fname('narration.wav'),
       base64: project.narration.audio.base64,
       mimeType: project.narration.audio.mimeType || 'audio/wav',
     });
@@ -574,7 +610,7 @@ export async function exportFullProjectToDrive(project, onProgress) {
   // 4. Music (Replicate)
   if (project.musicGenerated?.base64) {
     files.push({
-      name: 'music.mp3',
+      name: fname('music.mp3'),
       base64: project.musicGenerated.base64,
       mimeType: project.musicGenerated.mimeType || 'audio/mpeg',
     });
@@ -583,7 +619,7 @@ export async function exportFullProjectToDrive(project, onProgress) {
   if (files.length === 0) throw new Error('ไม่มีอะไรให้ export — สร้าง prompts ก่อน');
 
   // Create folder + upload
-  const { folderId, token } = await createDriveFolder(folderName);
+  const { folderId, token } = await createDriveFolder(folderName, parentFolderId);
   let done = 0;
   for (const f of files) {
     await uploadOneToDrive(token, folderId, f);

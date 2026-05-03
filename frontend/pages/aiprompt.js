@@ -29,7 +29,7 @@ import {
 } from '../lib/aipromptApi';
 import {
   exportToGoogleDoc, buildImagePromptsDoc, buildVideoPromptsDoc,
-  uploadImagesToDrive, exportFullProjectToDrive,
+  uploadImagesToDrive, exportFullProjectToDrive, extractDriveFolderId,
 } from '../lib/aipromptDocs';
 import {
   generateShotImage, detectSlotsInPrompt,
@@ -873,16 +873,40 @@ export default function AiPromptPage() {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(null); // { done, total, name }
   const [lastExportUrl, setLastExportUrl] = useState(null);
+  const [exportFolderName, setExportFolderName] = useState('');
+  const [exportParentUrl, setExportParentUrl] = useState('');
+  const [showParentFolder, setShowParentFolder] = useState(false);
+
+  // Sync default folder name เมื่อเปลี่ยน project
+  useEffect(() => {
+    if (!project) return;
+    const sanitized = (project.name || 'project').replace(/[\/\\:*?"<>|]/g, '_').slice(0, 80);
+    setExportFolderName(`${sanitized} — TTplus Export`);
+  }, [project?.id, project?.name]);
 
   const handleExportToDrive = async () => {
     if (!project) return;
+    const folderName = (exportFolderName || '').trim();
+    if (!folderName) return toast.error('ตั้งชื่อ folder ก่อน');
+
+    // Parse parent URL (ถ้ามี)
+    let parentFolderId = null;
+    if (exportParentUrl?.trim()) {
+      parentFolderId = extractDriveFolderId(exportParentUrl);
+      if (!parentFolderId) {
+        return toast.error('URL parent folder ไม่ถูกต้อง — ต้องเป็นลิงก์ Drive folder');
+      }
+    }
+
     setExportBusy(true);
     setExportProgress({ done: 0, total: 0, name: '...' });
     setLastExportUrl(null);
     try {
-      const result = await exportFullProjectToDrive(project, (done, total, name) => {
-        setExportProgress({ done, total, name });
-      });
+      const result = await exportFullProjectToDrive(
+        project,
+        { folderName, parentFolderId },
+        (done, total, name) => setExportProgress({ done, total, name })
+      );
       setLastExportUrl(result.folderUrl);
       toast.success(`Export ${result.fileCount} ไฟล์ขึ้น Drive แล้ว`);
     } catch (e) {
@@ -3612,17 +3636,70 @@ export default function AiPromptPage() {
             <div style={{
               fontSize: 13, color: T.textMute, marginBottom: 14, lineHeight: 1.75,
             }}>
-              รวบทุกไฟล์ในโปรเจกต์เป็น <strong>1 folder บน Drive</strong> ของคุณ:<br/>
-              📄 image-prompts.md (image prompts ทั้งหมด)
-              {' · '}
-              {(project?.videoPlan?.shots?.length || 0) > 0 && '📄 video-prompts.md '}
-              {(project?.scriptText || project?.narration?.script) ? '· 📄 narration-script.md' : ''}
+              รวบทุกไฟล์ในโปรเจกต์เป็น <strong>1 folder บน Drive</strong> ของคุณ — ทุกไฟล์จะ prefix ด้วยชื่อ project:<br/>
+              📄 {`{project}_`}image-prompts.md
+              {(project?.videoPlan?.shots?.length || 0) > 0 && (<> · 📄 {`{project}_`}video-prompts.md</>)}
+              {(project?.scriptText || project?.narration?.script) && (<> · 📄 {`{project}_`}narration-script.md</>)}
               <br/>
-              🖼 Shot_1.png …Shot_N.png — รูปหลัก 👑 ของแต่ละ shot
-              {' · '}
-              {project?.narration?.audio?.base64 ? '🎙 narration.wav' : ''}
-              {MUSIC_GEN_ENABLED && project?.musicGenerated?.base64 ? ' · 🎵 music.mp3' : ''}
+              🖼 {`{project}_`}Shot_1.png …Shot_N.png (รูปหลัก 👑)
+              {project?.narration?.audio?.base64 && (<> · 🎙 {`{project}_`}narration.wav</>)}
+              {MUSIC_GEN_ENABLED && project?.musicGenerated?.base64 && (<> · 🎵 {`{project}_`}music.mp3</>)}
             </div>
+
+            {/* Folder name input */}
+            <div style={{ marginBottom: 10 }}>
+              <label style={{
+                fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 5,
+                display: 'block',
+              }}>
+                ชื่อ folder ใหม่ที่จะสร้าง <span style={{ color: T.err }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={exportFolderName}
+                onChange={e => setExportFolderName(e.target.value)}
+                placeholder={`${project?.name || 'project'} — TTplus Export`}
+                disabled={exportBusy}
+                style={{
+                  ...s.input, fontSize: 13, padding: '9px 12px',
+                  borderColor: T.accent + '55',
+                }}
+              />
+            </div>
+
+            {/* Optional parent folder URL */}
+            <details
+              open={showParentFolder}
+              onToggle={e => setShowParentFolder(e.target.open)}
+              style={{ marginBottom: 12 }}
+            >
+              <summary style={{
+                fontSize: 12, color: T.textMute, cursor: 'pointer',
+                userSelect: 'none', padding: '6px 0', fontWeight: 600,
+              }}>
+                〉 ตัวเลือกขั้นสูง: เก็บไว้ใน folder ที่มีอยู่ (optional)
+              </summary>
+              <div style={{ marginTop: 6 }}>
+                <input
+                  type="text"
+                  value={exportParentUrl}
+                  onChange={e => setExportParentUrl(e.target.value)}
+                  placeholder="วาง URL ของ Drive folder เช่น https://drive.google.com/drive/folders/1AbC..."
+                  disabled={exportBusy}
+                  style={{
+                    ...s.input, fontSize: 12, padding: '8px 12px',
+                    fontFamily: 'monospace',
+                  }}
+                />
+                <div style={{
+                  fontSize: 11, color: T.textDim, marginTop: 4, lineHeight: 1.55,
+                }}>
+                  💡 ถ้ากรอก — folder ใหม่จะถูกสร้างข้างใน folder ที่ระบุ · ถ้าเว้นว่าง = สร้างที่ My Drive (root) ·
+                  <strong> ต้องเป็น folder ของคุณเองหรือ folder ที่คุณมีสิทธิ์ edit</strong>
+                </div>
+              </div>
+            </details>
+
             <button
               onClick={handleExportToDrive}
               disabled={exportBusy || !project}
