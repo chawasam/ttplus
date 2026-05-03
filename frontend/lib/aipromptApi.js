@@ -47,7 +47,10 @@ function safeErrorSnippet(bodyText) {
 }
 
 function mapHttpError(status, bodyText) {
-  if (typeof console !== 'undefined') console.error('[ai api error]', status, bodyText);
+  // Log only sanitized snippet — bodyText อาจมี project ID / quota detail / token-like substring
+  if (typeof console !== 'undefined' && process.env.NODE_ENV !== 'production') {
+    console.error('[ai api error]', status, safeErrorSnippet(bodyText));
+  }
   if (status === 401 || status === 403) return 'API key ผิด หรือไม่มีสิทธิ์เรียก model นี้';
   if (status === 429)                    return 'เรียกถี่เกินไป — รอสักครู่แล้วลองใหม่';
   const snippet = safeErrorSnippet(bodyText);
@@ -61,6 +64,44 @@ function stripJsonFence(text) {
   // Claude มักห่อด้วย ```json ... ``` หรือ ``` ... ```
   const m = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
   return m ? m[1].trim() : text.trim();
+}
+
+// ── Public: Test API key (cheap call) ────────────────────────────────────────
+//
+// ทดสอบว่า key ถูกต้องเรียก provider ได้ก่อน user เริ่มใช้งานจริง
+// - gemini: GET /v1beta/models?pageSize=1  (ไม่เปลือง quota เลย ฟรี)
+// - claude: POST /v1/messages with max_tokens=1 + 1-token prompt (~$0.000003)
+export async function testApiKey({ provider, apiKey }) {
+  if (!apiKey?.trim()) throw new Error('ใส่ key ก่อน');
+  if (provider === 'gemini') {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1', {
+      method: 'GET',
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(mapHttpError(res.status, text));
+    return { ok: true, provider: 'gemini' };
+  }
+  if (provider === 'claude') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(mapHttpError(res.status, text));
+    return { ok: true, provider: 'claude' };
+  }
+  throw new Error(`provider ไม่รู้จัก: ${provider}`);
 }
 
 // ── Gemini call ──────────────────────────────────────────────────────────────
@@ -322,6 +363,179 @@ export async function generateImagePrompts({ provider, model, apiKey, project })
   // sort by index + clamp to expected count
   const sorted = [...parsed.shots].sort((a, b) => (a.index || 0) - (b.index || 0));
   return { shots: sorted };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage A (alt) — Script-Driven Mode: Voiceover Script → Storyboard → Prompts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SCHEMA_STORYBOARD = {
+  type: 'object',
+  properties: {
+    segments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          voiceoverLine: { type: 'string' },
+          visualHint:    { type: 'string' },
+        },
+        required: ['voiceoverLine', 'visualHint'],
+      },
+    },
+  },
+  required: ['segments'],
+};
+
+const SCHEMA_IMAGE_PROMPTS_WITH_VO = {
+  type: 'object',
+  properties: {
+    shots: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index:         { type: 'integer' },
+          prompt:        { type: 'string' },
+          voiceoverLine: { type: 'string' },
+        },
+        required: ['index', 'prompt'],
+      },
+    },
+  },
+  required: ['shots'],
+};
+
+function buildStoryboardSystem({ shotCount }) {
+  return `You are a Thai creative director planning a ${shotCount}-shot product advertisement video for TikTok/Reels (9:16 vertical).
+
+Your job: split the voiceover script below into EXACTLY ${shotCount} segments (one per shot, ~${Math.round(40/shotCount * 1.5)}s each in playback), then suggest a visual hint (in Thai) for each segment that LITERALLY VISUALIZES that line.
+
+CRITICAL — visual hints must DRAMATIZE the voiceover, not just illustrate the product:
+- If the line says "ไม่ต้องไปเที่ยวที่ไหน" → visual should show CONTRAST (others travelling vs heroine relaxing at home)
+- If the line says "เนื้อครีมเข้มข้น" → visual should be macro/close-up of texture
+- If the line says product name → visual should be the product hero shot
+- If the line says ingredients → flat-lay or hero ingredients shot
+- If the line is emotional/aspirational → final glamour shot of confident heroine
+
+DO NOT invent voiceover content — only re-segment what the user wrote. Combine short adjacent lines or split long lines as needed to hit EXACTLY ${shotCount} shots. Preserve the order and the user's exact wording.
+
+Output strict JSON, no prose:
+{ "segments": [{ "voiceoverLine": "...", "visualHint": "..." }, ...] }
+
+Both fields in Thai. visualHint should describe what the camera sees (subject, action, scene, framing, mood) — 1-3 sentences.`;
+}
+
+export async function generateStoryboardFromScript({ provider, model, apiKey, project }) {
+  const shotCount = Math.max(1, Math.ceil((project.totalDuration || 40) / (project.perShotDuration || 6)));
+  const system = buildStoryboardSystem({ shotCount });
+  const userText =
+    `=== PRODUCT CONTEXT (Thai, optional) ===\n${project.brief?.trim() || '(ไม่ได้กรอก — ใช้บริบทจาก script เอง)'}\n\n` +
+    `=== VOICEOVER SCRIPT (Thai, ผู้ใช้พิมพ์เอง) ===\n${project.scriptText || ''}\n\n` +
+    `Now produce the JSON with EXACTLY ${shotCount} segments.`;
+  const raw = await callAi({
+    provider, model, apiKey, system, userText, images: [],
+    expectJson: true, schema: SCHEMA_STORYBOARD,
+  });
+  const parsed = parseJsonStrict(raw);
+  if (!Array.isArray(parsed?.segments) || parsed.segments.length === 0) {
+    throw new Error('AI ไม่คืน storyboard — ลองใหม่');
+  }
+  // Trim/clamp to expected count (AI sometimes off by 1)
+  const segs = parsed.segments.slice(0, shotCount).map(s => ({
+    voiceoverLine: String(s.voiceoverLine || '').trim(),
+    visualHint:    String(s.visualHint    || '').trim(),
+  }));
+  return { segments: segs };
+}
+
+function buildStoryboardImageSystem({ shotCount, styleBlock }) {
+  return `You are a creative director crafting prompts for an AI image generator (Nano Banana / Imagen) for a ~${shotCount * 6}-second TikTok/Reels product ad video (9:16 vertical portrait).
+
+Each shot has a voiceover line + a Thai visual hint already written by the director. Your job: convert each into ONE rich English image prompt that LITERALLY visualizes that scene as the director described it.
+
+PROMPT STRUCTURE — every prompt is one comma-separated paragraph:
+1. Image type (cinematic advertising photography is the default)
+2. Subject + Object (PRODUCT consistent across all shots)
+3. Action / Scene — DIRECTLY MATCHING the visualHint provided (do not invent unrelated scenes)
+4. Style / Mood / Lighting (from style block)
+5. Camera angle / lens / F-stop / bokeh
+
+STYLE BLOCK — append this verbatim at end of every prompt:
+"${styleBlock}"
+
+REFERENCE-IMAGE PLACEHOLDERS (CRITICAL — every prompt must include all 3 verbatim):
+- "reference the product appearance from input image #1"
+- "reference the product size scale from input image #2"
+- "reference the model identity from input image #3"
+
+NO TEXT IN IMAGE — HARD RULE:
+Every prompt must include "no text, no letters, no readable typography anywhere in the image" (or natural variant).
+
+NEVER INVENT NEW NARRATIVE: translate the visualHint faithfully. If hint says "เห็นเพื่อนกำลังขนกระเป๋าเดินทาง", the prompt MUST depict that contrast scene, not a generic product shot. Trust the director's vision.
+
+RULES:
+- Generate exactly ${shotCount} prompts (matching storyboard order).
+- Prompts in English, single paragraph each.
+- Always include all 3 reference phrases.
+- Vary camera angles to keep edit dynamic.
+
+OUTPUT — strict JSON, no prose:
+{ "shots": [{ "index": 1, "prompt": "...", "voiceoverLine": "..." }, ...] }
+voiceoverLine = pass through unchanged from input.`;
+}
+
+export async function generateImagePromptsFromStoryboard({ provider, model, apiKey, project }) {
+  const shotCount = project.storyboard?.length || 0;
+  if (shotCount === 0) throw new Error('Storyboard ยังว่าง — กดปุ่ม "AI แตก storyboard" ก่อน');
+
+  const system = buildStoryboardImageSystem({ shotCount, styleBlock: project.styleBlock });
+  const images = [
+    ...(project.productImages || []),
+    ...(project.sizeRefImages || []),
+    ...(project.modelMode === 'image' ? (project.modelImages || []) : []),
+  ];
+
+  const userText = [
+    '=== STORYBOARD (Thai — director-edited, ห้ามเปลี่ยน narrative) ===',
+    project.storyboard.map((seg, i) =>
+      `Shot ${i + 1}:\n  Voiceover: "${seg.voiceoverLine}"\n  Visual: ${seg.visualHint}`
+    ).join('\n\n'),
+    '',
+    '=== REFERENCE SLOTS (placeholders #1/#2/#3 must appear in EVERY prompt) ===',
+    `- Slot #1 (product): ${(project.productImages?.length || 0) > 0
+        ? 'ATTACHED via vision — describe what you see + still emit the #1 phrase'
+        : 'NOT attached — emit only the #1 phrase, no invented details'}`,
+    `- Slot #2 (size):    ${(project.sizeRefImages?.length || 0) > 0
+        ? 'ATTACHED via vision — gauge size + still emit the #2 phrase'
+        : 'NOT attached — emit only the #2 phrase'}`,
+    `- Slot #3 (model):   ${
+      project.modelMode === 'image' && project.modelImages?.length
+        ? 'ATTACHED via vision — describe the model + still emit the #3 phrase'
+        : project.modelMode === 'text' && project.modelText?.trim()
+          ? `TEXT: "${project.modelText.trim()}" — incorporate + still emit the #3 phrase`
+          : 'NOT provided — emit only the #3 phrase'
+    }`,
+    '',
+    'Now produce the JSON with all 3 reference phrases in every prompt.',
+  ].join('\n');
+
+  const raw = await callAi({
+    provider, model, apiKey, system, userText, images,
+    expectJson: true, schema: SCHEMA_IMAGE_PROMPTS_WITH_VO,
+  });
+  const parsed = parseJsonStrict(raw);
+  if (!parsed?.shots || !Array.isArray(parsed.shots)) {
+    throw new Error('AI ตอบกลับมาแต่ไม่มี shots[]');
+  }
+  const sorted = [...parsed.shots].sort((a, b) => (a.index || 0) - (b.index || 0));
+  // Backfill voiceoverLine if AI dropped it
+  return {
+    shots: sorted.map((s, i) => ({
+      ...s,
+      voiceoverLine: s.voiceoverLine || project.storyboard[i]?.voiceoverLine || '',
+    })),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

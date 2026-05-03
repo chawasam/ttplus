@@ -155,8 +155,13 @@ export async function exportToGoogleDoc(title, paragraphs) {
     });
     if (!updateRes.ok) {
       const errText = await updateRes.text();
-      // Doc สร้างแล้ว — ส่ง URL กลับพร้อม warning
-      console.warn('batchUpdate failed:', errText);
+      // Doc สร้างแล้ว — ส่ง URL กลับพร้อม warning (sanitize log: ตัด token-like substrings)
+      if (process.env.NODE_ENV !== 'production') {
+        const safe = String(errText || '')
+          .replace(/[A-Za-z0-9_-]{30,}/g, '[redacted]')
+          .slice(0, 200);
+        console.warn('batchUpdate failed:', safe);
+      }
     }
   }
 

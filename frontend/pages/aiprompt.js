@@ -16,10 +16,14 @@ import {
   composeStyleBlock,
   getStyleFields, getDefaultStyleParts,
   CATEGORIES, clearAllGenerated,
+  clearAllNarrationAudio, clearAllGeneratedImagesAcrossProjects,
+  listProjectsWithStats, clearNarrationAudio,
 } from '../lib/aipromptStore';
 import {
   generateImagePrompts, generateVideoPrompts,
   generateMvpImagePrompts, generateMvpVideoPrompts,
+  generateStoryboardFromScript, generateImagePromptsFromStoryboard,
+  testApiKey,
   MODELS, DEFAULT_MODEL,
 } from '../lib/aipromptApi';
 import {
@@ -30,14 +34,27 @@ import {
   generateShotImage, detectSlotsInPrompt,
   MODELS_IMAGE, DEFAULT_MODEL_IMAGE,
 } from '../lib/aipromptImageGen';
+import {
+  synthesizeNarration, audioBase64ToBlobUrl, downloadAudioBase64,
+} from '../lib/aipromptTTS';
+import {
+  GEMINI_VOICES, GEMINI_PERSONAS,
+  GEMINI_31_MODEL, GEMINI_25_MODEL,
+} from '../lib/tts.js';
+
+// Gemini TTS models ที่ user เลือกได้ — ฝัง label ที่นี่ (ไม่อยู่ใน lib/tts.js)
+const TTS_MODELS = [
+  { id: GEMINI_31_MODEL, label: 'Gemini 3.1 Flash TTS', note: 'ใหม่ที่สุด · 30 voices · แนะนำ' },
+  { id: GEMINI_25_MODEL, label: 'Gemini 2.5 Flash TTS', note: 'เสถียร · fallback' },
+];
 
 // ── Slot mapping per category ───────────────────────────────────────────────
 // slot # → { name, uploadField (in project) }
 const SLOT_CONFIG = {
   ad: {
-    1: { name: 'ผลิตภัณฑ์', uploadField: 'productImages' },
-    2: { name: 'ขนาด',       uploadField: 'sizeRefImages' },
-    3: { name: 'นางแบบ',     uploadField: 'modelImages' },
+    1: { name: 'รูปผลิตภัณฑ์',  uploadField: 'productImages' },
+    2: { name: 'ขนาดผลิตภัณฑ์', uploadField: 'sizeRefImages' },
+    3: { name: 'นางแบบ',         uploadField: 'modelImages' },
   },
   mvp: {
     1: { name: 'หน้าผู้ส่ง', uploadField: 'supporterImages' },
@@ -119,16 +136,16 @@ const s = {
     background: T.panel2,
     border:     `1px solid ${T.borderHi}`,
     borderRadius: 8,
-    padding:    '9px 12px',
+    padding:    '10px 13px',
     color:      T.text,
-    fontSize:   13,
+    fontSize:   14,
     outline:    'none',
     width:      '100%',
     boxSizing:  'border-box',
     fontFamily: 'inherit',
   },
   label: {
-    fontSize:   12,
+    fontSize:   13,
     fontWeight: 600,
     color:      T.textMute,
     marginBottom: 6,
@@ -139,8 +156,8 @@ const s = {
     color:       filled ? '#0b0d12' : col,
     border:      `1px solid ${col}55`,
     borderRadius: 8,
-    padding:     '9px 16px',
-    fontSize:    13,
+    padding:     '10px 17px',
+    fontSize:    14,
     fontWeight:  600,
     cursor:      'pointer',
     fontFamily:  'inherit',
@@ -151,8 +168,8 @@ const s = {
     color:      T.textMute,
     border:     `1px solid ${T.borderHi}`,
     borderRadius: 6,
-    padding:    '6px 10px',
-    fontSize:   12,
+    padding:    '7px 12px',
+    fontSize:   13,
     cursor:     'pointer',
     fontFamily: 'inherit',
   },
@@ -162,7 +179,7 @@ const s = {
     border:     `1px solid ${col}55`,
     borderRadius: 99,
     padding:    '3px 10px',
-    fontSize:   11,
+    fontSize:   12,
     fontWeight: 700,
     display:    'inline-block',
   }),
@@ -203,10 +220,10 @@ const s = {
     gap:         10,
   },
   hint: {
-    fontSize: 11,
+    fontSize: 12,
     color:    T.textDim,
     marginTop: 4,
-    lineHeight: 1.5,
+    lineHeight: 1.55,
   },
 };
 
@@ -520,6 +537,8 @@ export default function AiPromptPage() {
   // ── Provider / API key state ─────────────────────────────────────────────
   const [provider, setProvider] = useState('gemini');
   const [apiKey,   setApiKey]   = useState('');
+  const [keyTestStatus, setKeyTestStatus] = useState(null); // null | 'busy' | 'ok' | 'fail'
+  const [keyTestMsg,    setKeyTestMsg]    = useState('');
   const [model,    setModel]    = useState(DEFAULT_MODEL.gemini);
   const [showKey,  setShowKey]  = useState(false);
 
@@ -572,6 +591,7 @@ export default function AiPromptPage() {
     const hasPrompts      = (project.imagePrompts?.shots?.length || 0) > 0;
     const hasAnyGenerated = (project.imagePrompts?.shots || []).some(s => s.generated?.length > 0);
     const hasVideoPlan    = (project.videoPlan?.shots?.length || 0) > 0;
+    const hasNarration    = !!project.narration?.audio?.base64;
 
     const steps = [
       { num: 1, label: 'Setup',          done: hasKey,           sectionId: 'setup' },
@@ -579,6 +599,7 @@ export default function AiPromptPage() {
       { num: 3, label: 'Image prompts',  done: hasPrompts,       sectionId: 'stageA' },
       { num: 4, label: 'Gen รูป',         done: hasAnyGenerated,  sectionId: 'anchors' },
       { num: 5, label: 'Video prompts',  done: hasVideoPlan,     sectionId: 'stageC' },
+      { num: 6, label: 'พากย์เสียง',      done: hasNarration,     sectionId: 'narration' },
     ];
     const firstUndone = steps.findIndex(s => !s.done);
     const currentNum = firstUndone === -1 ? steps.length : steps[firstUndone].num;
@@ -592,6 +613,7 @@ export default function AiPromptPage() {
 
   // ── UI state (not persisted) ─────────────────────────────────────────────
   const [genStageA, setGenStageA] = useState(false);
+  const [genStoryboardBusy, setGenStoryboardBusy] = useState(false);
   const [genStageC, setGenStageC] = useState(false);
   const [savingFlag, setSavingFlag] = useState(false);
 
@@ -822,6 +844,67 @@ export default function AiPromptPage() {
   // Generic image picker modal — { variants, title, hint, onPick(v), onClose() }
   const [imagePicker, setImagePicker] = useState(null);
 
+  // ── Narration (TTS) state ────────────────────────────────────────────────
+  const [narrationBusy, setNarrationBusy] = useState(false);
+
+  // ── Image lightbox (กดรูปใหญ่ดู — Chrome block data: URL ใน new tab แล้ว) ──
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const onKey = (e) => { if (e.key === 'Escape') setLightboxSrc(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightboxSrc]);
+
+  // ── Daily generation counter (localStorage — soft warning, ไม่กั้น) ────────
+  // นับเฉพาะ image gen + tts gen — text gen ถูก/เร็วไม่ต้องเตือน
+  const GEN_COUNTER_KEY = 'aiprompt_gen_counter_v1';
+  const [genCount, setGenCount] = useState(0);
+  const incGenCount = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const raw = localStorage.getItem(GEN_COUNTER_KEY);
+      const data = raw ? JSON.parse(raw) : { day: today, count: 0 };
+      const next = data.day === today ? { day: today, count: data.count + 1 } : { day: today, count: 1 };
+      localStorage.setItem(GEN_COUNTER_KEY, JSON.stringify(next));
+      setGenCount(next.count);
+      if (next.count === 50)  toast(`📊 วันนี้ gen ไปแล้ว 50 ครั้ง — เริ่มเปลือง quota แล้วนะ`, { icon: '⚠️' });
+      if (next.count === 100) toast(`📊 วันนี้ gen ไปแล้ว 100 ครั้ง!`, { icon: '🚨', duration: 6000 });
+    } catch { /* localStorage block — ข้าม */ }
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const raw = localStorage.getItem(GEN_COUNTER_KEY);
+      const data = raw ? JSON.parse(raw) : null;
+      setGenCount(data?.day === today ? data.count : 0);
+    } catch { /* ignore */ }
+  }, []);
+
+  // ── Storage usage (IndexedDB quota awareness) ────────────────────────────
+  const [storageInfo, setStorageInfo] = useState(null); // { usedMB, quotaMB, percent } | null
+  const [projectStats, setProjectStats] = useState([]); // per-project size breakdown
+  const refreshStorageInfo = useCallback(async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
+        const est = await navigator.storage.estimate();
+        const usedMB  = (est.usage  || 0) / (1024 * 1024);
+        const quotaMB = (est.quota  || 0) / (1024 * 1024);
+        const percent = quotaMB > 0 ? (usedMB / quotaMB) * 100 : 0;
+        setStorageInfo({ usedMB, quotaMB, percent });
+      }
+    } catch { /* navigator.storage ไม่ support — ไม่เป็นไร */ }
+  }, []);
+  const refreshProjectStats = useCallback(async () => {
+    try { setProjectStats(await listProjectsWithStats()); } catch {}
+  }, []);
+  useEffect(() => {
+    refreshStorageInfo();
+    refreshProjectStats();
+  }, [refreshStorageInfo, refreshProjectStats, project?.updatedAt, project?.id]);
+
   // ── Image gen helpers ────────────────────────────────────────────────────
 
   // คืน Gemini API key (ใช้สำหรับ image gen เสมอ ไม่ว่า text provider จะเป็นอะไร)
@@ -848,8 +931,9 @@ export default function AiPromptPage() {
     return { ready: missing.length === 0, missing, slots };
   }, [project]);
 
-  // Gen รูปนางแบบ (Ad mode) — text description + framing → 4 variants → pick 1
-  const handleGenModelImage = async () => {
+  // Gen รูปนางแบบ (Ad mode) — text description + framing → gen ทีละ 1 (default)
+  // append เข้า project.modelGenerated → user ดูแล้วกดเลือก 1 รูป (handleSelectModelGenerated)
+  const handleGenModelImage = async (count = 1) => {
     if (!project) return;
     if (project.category !== 'ad') return;
     if (project.modelMode !== 'text' || !project.modelText?.trim()) {
@@ -857,7 +941,6 @@ export default function AiPromptPage() {
     }
     const key = await getGeminiKeyForImage();
     if (!key) return toast.error('ใส่ Gemini API key ก่อน (ที่ Setup ด้านบน)');
-    if (!window.confirm('สร้างรูปนางแบบ 4 variants? · ประมาณ $0.16 (4 × $0.04)\n\n→ เลือก 1 รูปที่ชอบ จะกลายเป็น identity reference (slot #3) สำหรับทุก shot')) return;
 
     const framing = project.modelFraming === 'half' ? 'half' : 'full';
     const framingDesc = framing === 'full'
@@ -868,32 +951,49 @@ export default function AiPromptPage() {
     setGenModelBusy(true);
     try {
       const variants = await generateShotImage({
-        apiKey: key, model: imageModel, prompt, count: 4,
+        apiKey: key, model: imageModel, prompt, count,
       });
-      setImagePicker({
-        title: `เลือกรูปนางแบบ (${framing === 'full' ? 'เต็มตัว' : 'ครึ่งตัว'})`,
-        hint: 'คลิก 1 รูปที่ชอบ → ใช้เป็น identity reference สำหรับทุก shot ของ campaign นี้',
-        variants,
-        onPick: (v) => {
-          const newImg = {
-            id: Math.random().toString(36).slice(2),
-            name: `gen_model_${framing}.png`,
-            dataUrl: v.dataUrl,
-            mimeType: v.mimeType,
-          };
-          updateProject({
-            modelMode: 'image',
-            modelImages: [newImg],
-          });
-          setImagePicker(null);
-          toast.success('ตั้งรูปนางแบบแล้ว — ถูกย้ายไปโหมด "อัพโหลดรูป"');
-        },
+      const newOnes = variants.map(v => ({
+        id: Math.random().toString(36).slice(2),
+        name: `gen_model_${framing}.png`,
+        dataUrl: v.dataUrl,
+        mimeType: v.mimeType,
+        framing,
+      }));
+      updateProject({
+        modelGenerated: [...(project.modelGenerated || []), ...newOnes],
       });
+      newOnes.forEach(() => incGenCount());
+      toast.success(`Gen ${newOnes.length} รูปแล้ว — กดเลือก 1 รูปที่ชอบด้านล่าง`);
     } catch (e) {
       toast.error('Gen ไม่สำเร็จ: ' + e.message);
     } finally {
       setGenModelBusy(false);
     }
+  };
+
+  // เลือก 1 รูปจากที่ gen ไว้ → ตั้งเป็น modelImages[0] + สลับโหมดเป็น "อัพโหลดรูป"
+  const handleSelectModelGenerated = (genId) => {
+    const gen = (project.modelGenerated || []).find(g => g.id === genId);
+    if (!gen) return;
+    const newImg = {
+      id: Math.random().toString(36).slice(2),
+      name: gen.name || 'gen_model.png',
+      dataUrl: gen.dataUrl,
+      mimeType: gen.mimeType,
+    };
+    updateProject({
+      modelMode: 'image',
+      modelImages: [newImg],
+    });
+    toast.success('ตั้งรูปนางแบบแล้ว — สลับไปโหมด "อัพโหลดรูป" อัตโนมัติ');
+  };
+
+  // ลบรูปจาก modelGenerated
+  const handleDeleteModelGenerated = (genId) => {
+    updateProject({
+      modelGenerated: (project.modelGenerated || []).filter(g => g.id !== genId),
+    });
   };
 
   // Gen รูปต่อ shot — confirm ก่อน (มี cost)
@@ -925,6 +1025,7 @@ export default function AiPromptPage() {
             ] }
           : s);
       updateProject({ imagePrompts: { ...project.imagePrompts, shots: newShots } });
+      variants.forEach(() => incGenCount());
       toast.success(`Gen ${variants.length} รูปแล้ว`);
     } catch (e) {
       toast.error('Gen ไม่สำเร็จ: ' + e.message);
@@ -1004,6 +1105,66 @@ export default function AiPromptPage() {
     a.download = `${(project.name || 'shot').replace(/[^\w-]/g, '_')}_shot${shotIdx + 1}_v${variantIdx + 1}.png`;
     a.click();
   };
+
+  // ── Narration (TTS) handlers ─────────────────────────────────────────────
+
+  // gen เสียงพากย์ → เก็บลง project.narration.audio (base64 wav)
+  const handleGenNarration = async () => {
+    if (!project) return;
+    const key = await getGeminiKeyForImage();
+    if (!key) return toast.error('ใส่ Gemini API key ก่อน (ที่ Setup ด้านบน)');
+    const script  = (project.narration?.script  || '').trim();
+    const voice   =  project.narration?.voice   || 'Aoede';
+    const persona =  project.narration?.persona || '';
+    const model   =  project.narration?.model   || GEMINI_31_MODEL;
+    if (!script) return toast.error('พิมพ์บทพากย์ก่อน');
+
+    setNarrationBusy(true);
+    try {
+      const result = await synthesizeNarration({ apiKey: key, script, voice, persona, model });
+      updateProject({
+        narration: {
+          ...(project.narration || {}),
+          script, voice, persona, model,
+          audio: {
+            base64:       result.base64,
+            mimeType:     result.mimeType,
+            durationSec:  result.durationSec,
+            generatedAt:  Date.now(),
+            voice, persona,
+            model:        result.model,
+          },
+        },
+      });
+      incGenCount();
+      toast.success(`สร้างเสียงพากย์สำเร็จ (~${result.durationSec.toFixed(1)} วินาที)`);
+    } catch (e) {
+      toast.error('TTS ล้มเหลว: ' + e.message);
+    } finally {
+      setNarrationBusy(false);
+    }
+  };
+
+  // download เสียงพากย์เป็น .wav
+  const handleDownloadNarration = () => {
+    const a = project.narration?.audio;
+    if (!a?.base64) return;
+    const namebase = (project.name || 'project').replace(/[^\w-]/g, '_');
+    downloadAudioBase64(a.base64, `${namebase}_narration.wav`, a.mimeType || 'audio/wav');
+  };
+
+  // Blob URL สำหรับ <audio src> — re-create เมื่อ audio เปลี่ยน + revoke ตอน unmount
+  const narrationBlobUrl = useMemo(() => {
+    const a = project?.narration?.audio;
+    if (!a?.base64) return null;
+    return audioBase64ToBlobUrl(a.base64, a.mimeType || 'audio/wav');
+  }, [project?.narration?.audio]);
+
+  useEffect(() => {
+    return () => {
+      if (narrationBlobUrl) URL.revokeObjectURL(narrationBlobUrl);
+    };
+  }, [narrationBlobUrl]);
 
   // helper: ดึง main images ของทุก shot ที่ตั้งไว้
   const getMainImagesList = () => (project.imagePrompts?.shots || [])
@@ -1155,25 +1316,69 @@ export default function AiPromptPage() {
   const handleGenerateImagePrompts = async () => {
     if (!project)        return;
     if (!apiKey.trim())  return toast.error('กรอก API key ก่อน');
-    if (project.category !== 'mvp' && !project.brief?.trim()) return toast.error('กรอก brief ลูกค้าก่อน');
+
+    const isScriptMode = project.category !== 'mvp' && project.scriptMode === 'script';
+
+    if (isScriptMode) {
+      if ((project.storyboard?.length || 0) === 0) {
+        return toast.error('แตก storyboard ก่อน — กดปุ่ม "AI แตก script → storyboard"');
+      }
+    } else {
+      if (project.category !== 'mvp' && !project.brief?.trim()) return toast.error('กรอก brief ลูกค้าก่อน');
+    }
     if (project.category === 'mvp' && !project.transformationTheme?.trim()) return toast.error('กรอก Transformation theme ก่อน');
 
     // Confirm — text gen ราคาน้อยกว่า image แต่ก็ยังคิด token
-    const sc = Math.max(1, Math.ceil((project.totalDuration || 40) / (project.perShotDuration || 6)));
+    const sc = isScriptMode
+      ? project.storyboard.length
+      : Math.max(1, Math.ceil((project.totalDuration || 40) / (project.perShotDuration || 6)));
     const overwrite = (project.imagePrompts?.shots?.length || 0) > 0;
-    const msg = `สร้าง ${sc} image prompts ${overwrite ? '(ทับของเดิม)' : ''}?\n\nใช้ ${provider === 'gemini' ? 'Gemini' : 'Claude'} ${model}\n· คิดเงินตาม token usage (text gen ~$0.001-0.01)`;
+    const modeLabel = isScriptMode ? ' (Script-driven จาก storyboard)' : '';
+    const msg = `สร้าง ${sc} image prompts${modeLabel} ${overwrite ? '(ทับของเดิม)' : ''}?\n\nใช้ ${provider === 'gemini' ? 'Gemini' : 'Claude'} ${model}\n· คิดเงินตาม token usage (text gen ~$0.001-0.01)`;
     if (!window.confirm(msg)) return;
 
     setGenStageA(true);
     try {
-      const fn = project.category === 'mvp' ? generateMvpImagePrompts : generateImagePrompts;
+      const fn = project.category === 'mvp'
+        ? generateMvpImagePrompts
+        : isScriptMode
+          ? generateImagePromptsFromStoryboard
+          : generateImagePrompts;
       const result = await fn({ provider, model, apiKey, project });
       updateProject({ imagePrompts: result });
+      // Auto-fill Stage 6 narration.script ถ้ายังว่างและยังไม่ gen audio
+      if (isScriptMode && project.scriptText
+          && !project.narration?.audio?.base64
+          && !project.narration?.script) {
+        updateProject({
+          narration: { ...(project.narration || {}), script: project.scriptText },
+        });
+      }
       toast.success(`ได้ ${result.shots.length} prompts`);
     } catch (e) {
       toast.error(e.message);
     } finally {
       setGenStageA(false);
+    }
+  };
+
+  // ── Stage A (alt) — Script → Storyboard ──────────────────────────────────
+  const handleGenStoryboard = async () => {
+    if (!project) return;
+    if (!apiKey?.trim()) return toast.error('กรอก API key ก่อน');
+    if (!project.scriptText?.trim()) return toast.error('paste voiceover script ก่อน');
+    if ((project.storyboard?.length || 0) > 0) {
+      if (!window.confirm('มี storyboard อยู่แล้ว — แตกใหม่ทับของเดิม?')) return;
+    }
+    setGenStoryboardBusy(true);
+    try {
+      const result = await generateStoryboardFromScript({ provider, model, apiKey, project });
+      updateProject({ storyboard: result.segments });
+      toast.success(`แตก storyboard ${result.segments.length} segments แล้ว — แก้ visual ด้านล่างได้`);
+    } catch (e) {
+      toast.error('แตก storyboard ไม่สำเร็จ: ' + e.message);
+    } finally {
+      setGenStoryboardBusy(false);
     }
   };
 
@@ -1312,6 +1517,12 @@ export default function AiPromptPage() {
           0%, 100% { box-shadow: 0 0 0 0 ${T.accent}00; transform: scale(1); }
           50%      { box-shadow: 0 0 0 6px ${T.accent}40; transform: scale(1.02); }
         }
+        /* Stage 6 — TTS waveform skeleton (loading) */
+        @keyframes ttplusWave1 { 0%,100% { height: 18%; } 50% { height: 70%; } }
+        @keyframes ttplusWave2 { 0%,100% { height: 50%; } 50% { height: 90%; } }
+        @keyframes ttplusWave3 { 0%,100% { height: 30%; } 50% { height: 100%; } }
+        @keyframes ttplusWave4 { 0%,100% { height: 80%; } 50% { height: 25%; } }
+        @keyframes ttplusWave5 { 0%,100% { height: 40%; } 50% { height: 75%; } }
       `}</style>
 
       <div style={{
@@ -1502,7 +1713,7 @@ export default function AiPromptPage() {
                   <input
                     type={showKey ? 'text' : 'password'}
                     value={apiKey}
-                    onChange={e => setApiKey(e.target.value)}
+                    onChange={e => { setApiKey(e.target.value); setKeyTestStatus(null); }}
                     placeholder={provider === 'gemini' ? 'AIza…' : 'sk-ant-…'}
                     style={{ ...s.input, fontFamily: 'monospace', fontSize: 12 }}
                   />
@@ -1511,7 +1722,49 @@ export default function AiPromptPage() {
                     style={s.btnGhost}
                     title={showKey ? 'ซ่อน' : 'แสดง'}
                   >{showKey ? '🙈' : '👁'}</button>
+                  <button
+                    onClick={async () => {
+                      if (!apiKey?.trim()) { setKeyTestStatus('fail'); setKeyTestMsg('ใส่ key ก่อน'); return; }
+                      setKeyTestStatus('busy'); setKeyTestMsg('');
+                      try {
+                        await testApiKey({ provider, apiKey });
+                        setKeyTestStatus('ok'); setKeyTestMsg('Key ใช้งานได้');
+                      } catch (e) {
+                        setKeyTestStatus('fail'); setKeyTestMsg(e.message || 'ทดสอบไม่ผ่าน');
+                      }
+                    }}
+                    disabled={keyTestStatus === 'busy' || !apiKey?.trim()}
+                    style={{
+                      ...s.btnGhost,
+                      borderColor:
+                        keyTestStatus === 'ok'   ? T.ok :
+                        keyTestStatus === 'fail' ? T.err :
+                        T.borderHi,
+                      color:
+                        keyTestStatus === 'ok'   ? T.ok :
+                        keyTestStatus === 'fail' ? T.err :
+                        T.text,
+                      opacity: !apiKey?.trim() ? 0.5 : 1,
+                      cursor: keyTestStatus === 'busy' ? 'wait' : (!apiKey?.trim() ? 'not-allowed' : 'pointer'),
+                      whiteSpace: 'nowrap',
+                    }}
+                    title="ทดสอบว่า key เรียก API ได้จริง"
+                  >
+                    {keyTestStatus === 'busy' ? '⌛ กำลังเทส…' :
+                     keyTestStatus === 'ok'   ? '✓ Key OK' :
+                     keyTestStatus === 'fail' ? '✗ Key ไม่ผ่าน' :
+                     '🔍 Test key'}
+                  </button>
                 </div>
+                {keyTestStatus === 'fail' && keyTestMsg && (
+                  <div style={{
+                    fontSize: 11, color: T.err, marginTop: 4,
+                    background: T.err + '11', padding: '6px 10px',
+                    borderRadius: 4, lineHeight: 1.5,
+                  }}>
+                    ⚠ {keyTestMsg}
+                  </div>
+                )}
                 <div style={s.hint}>
                   เก็บใน browser ของคุณเท่านั้น (IndexedDB) ไม่ส่งไป server ttsam · {' '}
                   {provider === 'gemini'
@@ -1793,17 +2046,175 @@ export default function AiPromptPage() {
               </>
             ) : (
               <>
-                {/* ── Ad: Brief (pink — primary input) ────────────── */}
-                <div style={{ ...s.subPanel(T.pink), marginBottom: 12 }}>
-                  <div style={s.subLabel(T.pink)}>📝 Brief จากลูกค้า</div>
-                  <textarea
-                    value={project.brief}
-                    onChange={e => updateProject({ brief: e.target.value })}
-                    rows={5}
-                    placeholder="วาง brief / สคริปต์บทพูดของลูกค้าที่นี่ ~1 พารากราฟ&#10;เช่น: ครีมบำรุงผิวสำหรับวัย 30+ เน้นกระชับและยืดหยุ่น ใช้ส่วนผสมจากธรรมชาติ..."
-                    style={{ ...s.input, resize: 'vertical', borderColor: T.pink + '55' }}
-                  />
+                {/* ── Mode toggle: Brief vs Script ────────────────── */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { key: 'brief',  emoji: '📝', label: 'Brief mode',  desc: 'เขียน brief อิสระ' },
+                    { key: 'script', emoji: '🎬', label: 'Script mode', desc: 'paste บทพากย์ → AI แตก storyboard' },
+                  ].map(opt => {
+                    const active = (project.scriptMode || 'brief') === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        onClick={() => updateProject({ scriptMode: opt.key })}
+                        style={{
+                          flex: 1, padding: '12px 14px',
+                          background: active ? T.pink : T.panel2,
+                          color: active ? '#0b0d12' : T.textMute,
+                          border: `1px solid ${active ? T.pink : T.borderHi}`,
+                          borderRadius: 10,
+                          fontSize: 14, fontWeight: 700,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                          textAlign: 'left', lineHeight: 1.4,
+                        }}
+                      >
+                        <div>{opt.emoji} {opt.label}</div>
+                        <div style={{
+                          fontSize: 11, fontWeight: 400,
+                          opacity: active ? 0.85 : 0.7,
+                          marginTop: 2,
+                        }}>{opt.desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {(project.scriptMode || 'brief') === 'brief' ? (
+                  /* ── Brief mode (เดิม) ────────────────────────── */
+                  <div style={{ ...s.subPanel(T.pink), marginBottom: 12 }}>
+                    <div style={s.subLabel(T.pink)}>📝 Brief จากลูกค้า</div>
+                    <textarea
+                      value={project.brief}
+                      onChange={e => updateProject({ brief: e.target.value })}
+                      rows={5}
+                      placeholder="วาง brief / สคริปต์บทพูดของลูกค้าที่นี่ ~1 พารากราฟ&#10;เช่น: ครีมบำรุงผิวสำหรับวัย 30+ เน้นกระชับและยืดหยุ่น ใช้ส่วนผสมจากธรรมชาติ..."
+                      style={{ ...s.input, resize: 'vertical', borderColor: T.pink + '55' }}
+                    />
+                  </div>
+                ) : (
+                  /* ── Script mode (ใหม่) ───────────────────────── */
+                  <>
+                    {/* Optional product context — ใช้ brief field เดิม */}
+                    <div style={{
+                      ...s.subPanel(T.textMute), marginBottom: 10,
+                      borderColor: T.borderHi,
+                    }}>
+                      <div style={{
+                        fontSize: 12, color: T.textMute, fontWeight: 600, marginBottom: 6,
+                      }}>
+                        Product context (optional — ช่วย AI เข้าใจสินค้า)
+                      </div>
+                      <input
+                        type="text"
+                        value={project.brief || ''}
+                        onChange={e => updateProject({ brief: e.target.value })}
+                        placeholder="เช่น: ครีมขัดผิวจากกาแฟ · กลุ่มเป้าหมาย หญิง 25-40"
+                        style={{ ...s.input, fontSize: 13 }}
+                      />
+                    </div>
+
+                    {/* Script paste */}
+                    <div style={{ ...s.subPanel(T.pink), marginBottom: 10 }}>
+                      <div style={{ ...s.subLabel(T.pink), fontSize: 13 }}>
+                        🎬 Voiceover Script ทั้งคลิป
+                      </div>
+                      <textarea
+                        value={project.scriptText || ''}
+                        onChange={e => updateProject({ scriptText: e.target.value })}
+                        placeholder={`วาง voiceover ทั้งคลิปที่นี่...\n\nเช่น:\nฮันนี่ สครัปกาแฟ\nหน้าร้อนนี้ไม่ต้องสนใคร ไม่ต้องไปเที่ยวที่ไหน\nแค่พักผิวกายกับสครัปกาแฟ กลิ่นหอมๆ ก็พอ\n...`}
+                        rows={8}
+                        style={{
+                          ...s.input, minHeight: 200, fontSize: 14, lineHeight: 1.7,
+                          resize: 'vertical', borderColor: T.pink + '88', borderWidth: 1.5,
+                          padding: '12px 14px',
+                        }}
+                      />
+                      <div style={{ fontSize: 12, color: T.textDim, marginTop: 6, lineHeight: 1.55 }}>
+                        AI จะแตกเป็น <strong style={{ color: T.text }}>{Math.max(1, Math.ceil((project.totalDuration || 40) / (project.perShotDuration || 6)))} ส่วน</strong>
+                        {' '}({project.totalDuration || 40}s ÷ {project.perShotDuration || 6}s ต่อ shot) ·
+                        ลำดับและคำของคุณจะถูกรักษาไว้ · script นี้ใช้ใน Stage 6 TTS ได้ด้วย
+                      </div>
+                      <button
+                        onClick={handleGenStoryboard}
+                        disabled={genStoryboardBusy || !project.scriptText?.trim() || !apiKey?.trim()}
+                        style={{
+                          ...s.btn(T.pink, true),
+                          marginTop: 12, width: '100%',
+                          padding: '12px 16px', fontSize: 15, fontWeight: 700,
+                          opacity: (genStoryboardBusy || !project.scriptText?.trim() || !apiKey?.trim()) ? 0.5 : 1,
+                          cursor: genStoryboardBusy ? 'wait' : 'pointer',
+                        }}
+                      >
+                        {genStoryboardBusy
+                          ? '⌛ AI กำลังแตก storyboard…'
+                          : (project.storyboard?.length || 0) > 0
+                            ? '🔄 แตก storyboard ใหม่ (จะแทนของเดิม)'
+                            : '⚡ AI แตก script → storyboard'}
+                      </button>
+                    </div>
+
+                    {/* Storyboard editor */}
+                    {(project.storyboard?.length || 0) > 0 && (
+                      <div style={{ ...s.subPanel(T.accent2), marginBottom: 12 }}>
+                        <div style={{
+                          ...s.subLabel(T.accent2), fontSize: 13,
+                          display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6,
+                        }}>
+                          <span>✏ Storyboard ({project.storyboard.length} shots) — แก้ visual ได้</span>
+                          <span style={{ fontSize: 11, color: T.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                            แก้แล้วกด "🎬 สร้าง image prompts" ด้านล่าง
+                          </span>
+                        </div>
+                        {project.storyboard.map((seg, i) => (
+                          <div key={i} style={{
+                            background: T.bg, border: `1px solid ${T.border}`,
+                            borderRadius: 8, padding: 12, marginBottom: 8,
+                          }}>
+                            <div style={{
+                              fontSize: 13, fontWeight: 700, color: T.accent2, marginBottom: 6,
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                            }}>
+                              <span>🗣 Shot {i + 1} — Voiceover (แก้ได้)</span>
+                              <span style={{ fontSize: 11, color: T.textDim, fontWeight: 400 }}>
+                                ~{project.perShotDuration || 6}s
+                              </span>
+                            </div>
+                            <input
+                              type="text"
+                              value={seg.voiceoverLine}
+                              onChange={e => updateProject({
+                                storyboard: project.storyboard.map((sg, j) =>
+                                  j === i ? { ...sg, voiceoverLine: e.target.value } : sg),
+                              })}
+                              style={{
+                                ...s.input, fontSize: 13, marginBottom: 8,
+                                fontStyle: 'italic', color: T.text,
+                              }}
+                            />
+                            <div style={{
+                              fontSize: 12, fontWeight: 600, color: T.warn, marginBottom: 4,
+                            }}>
+                              🎥 Visual ที่จะ gen — เปลี่ยนได้ตามใจ
+                            </div>
+                            <textarea
+                              value={seg.visualHint}
+                              onChange={e => updateProject({
+                                storyboard: project.storyboard.map((sg, j) =>
+                                  j === i ? { ...sg, visualHint: e.target.value } : sg),
+                              })}
+                              rows={2}
+                              placeholder="เช่น: split-screen — เห็นเพื่อนขนกระเป๋าเที่ยว vs นางเอกอยู่บ้านขัดผิว"
+                              style={{
+                                ...s.input, fontSize: 13, lineHeight: 1.6,
+                                resize: 'vertical', minHeight: 56,
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {/* ── Ad: References / Uploads (purple) ────────────── */}
                 <div style={{ ...s.subPanel(T.accent2), marginBottom: 14 }}>
@@ -1917,23 +2328,89 @@ export default function AiPromptPage() {
                             })}
                           </div>
                           {/* Gen button */}
-                          <button
-                            onClick={handleGenModelImage}
-                            disabled={genModelBusy || !project.modelText?.trim()}
-                            style={{
-                              ...s.btn(T.accent2, true),
-                              padding: '8px 14px', fontSize: 12,
-                              marginTop: 8, width: '100%',
-                              opacity: (genModelBusy || !project.modelText?.trim()) ? 0.5 : 1,
-                              cursor:  genModelBusy ? 'wait' : (project.modelText?.trim() ? 'pointer' : 'not-allowed'),
-                            }}
-                            title={!project.modelText?.trim() ? 'พิมพ์รายละเอียดนางแบบก่อน' : ''}
-                          >
-                            {genModelBusy ? '⌛ กำลังสร้างรูป (4 variants)…' : '🖼 Gen รูปนางแบบ × 4 → เลือก 1'}
-                          </button>
+                          {(() => {
+                            const genList = project.modelGenerated || [];
+                            const hasGen  = genList.length > 0;
+                            const disabled = genModelBusy || !project.modelText?.trim();
+                            return (
+                              <button
+                                onClick={() => handleGenModelImage(1)}
+                                disabled={disabled}
+                                style={{
+                                  ...s.btn(T.accent2, true),
+                                  padding: '8px 14px', fontSize: 12,
+                                  marginTop: 8, width: '100%',
+                                  opacity: disabled ? 0.5 : 1,
+                                  cursor:  genModelBusy ? 'wait' : (project.modelText?.trim() ? 'pointer' : 'not-allowed'),
+                                }}
+                                title={!project.modelText?.trim() ? 'พิมพ์รายละเอียดนางแบบก่อน' : ''}
+                              >
+                                {genModelBusy
+                                  ? '⌛ กำลังสร้างรูป…'
+                                  : hasGen
+                                    ? `➕ Gen เพิ่มอีก 1 รูป (มีอยู่ ${genList.length})`
+                                    : '🖼 Gen รูปนางแบบ 1 รูป'}
+                              </button>
+                            );
+                          })()}
                           <div style={{ fontSize: 10, color: T.textDim, marginTop: 4, lineHeight: 1.5 }}>
-                            ใช้ Gemini image · ~$0.16 ต่อครั้ง · เลือก 1 รูปแล้วจะถูกย้ายไปโหมด "อัพโหลดรูป" อัตโนมัติ
+                            ใช้ Gemini image · ~$0.04 ต่อรูป · gen เพิ่มได้เรื่อยๆจนกว่าจะถูกใจ → กด ✓ เพื่อเลือก
                           </div>
+
+                          {/* Generated thumbnails — เลือก 1 รูป */}
+                          {(project.modelGenerated || []).length > 0 && (
+                            <div style={{
+                              marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${T.border}`,
+                            }}>
+                              <div style={{ fontSize: 11, color: T.accent2, marginBottom: 6, fontWeight: 700 }}>
+                                🎨 รูปที่ gen ไว้ ({project.modelGenerated.length}) — กด ✓ เพื่อเลือกใช้
+                              </div>
+                              <div style={{
+                                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 6,
+                              }}>
+                                {project.modelGenerated.map((g, gi) => (
+                                  <div key={g.id} style={{ position: 'relative' }}>
+                                    <img
+                                      src={g.dataUrl}
+                                      alt={`gen ${gi + 1}`}
+                                      onClick={() => setLightboxSrc(g.dataUrl)}
+                                      title="คลิกเพื่อดูรูปใหญ่"
+                                      style={{
+                                        width: '100%', aspectRatio: '9/16', objectFit: 'cover',
+                                        borderRadius: 6,
+                                        border: `1px solid ${T.borderHi}`,
+                                        cursor: 'zoom-in', display: 'block',
+                                        background: T.bg,
+                                      }}
+                                    />
+                                    <div style={{
+                                      position: 'absolute', bottom: 4, left: 4, right: 4,
+                                      display: 'flex', gap: 3, justifyContent: 'center',
+                                    }}>
+                                      <button
+                                        onClick={() => handleSelectModelGenerated(g.id)}
+                                        title="เลือกรูปนี้เป็นรูปนางแบบ → สลับไปโหมดอัพโหลด"
+                                        style={{
+                                          background: T.ok, color: '#0b0d12', border: 'none',
+                                          borderRadius: 4, padding: '3px 10px', fontSize: 11,
+                                          cursor: 'pointer', fontWeight: 800,
+                                        }}
+                                      >✓ เลือก</button>
+                                      <button
+                                        onClick={() => handleDeleteModelGenerated(g.id)}
+                                        title="ลบรูปนี้"
+                                        style={{
+                                          background: 'rgba(0,0,0,0.75)', color: T.err, border: 'none',
+                                          borderRadius: 4, padding: '3px 8px', fontSize: 10,
+                                          cursor: 'pointer', fontWeight: 600,
+                                        }}
+                                      >🗑</button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </>
                       ) : (
                         <>
@@ -2064,19 +2541,38 @@ export default function AiPromptPage() {
                       background: T.panel2, border: `1px solid ${T.border}`,
                       borderRadius: 10, padding: 14,
                     }}>
+                      {/* Voiceover line — แสดงเมื่อมาจาก script mode */}
+                      {sh.voiceoverLine && (
+                        <div style={{
+                          background: T.pink + '12',
+                          border: `1px solid ${T.pink}33`,
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          marginBottom: 10,
+                          fontSize: 13, color: T.pink,
+                          fontStyle: 'italic',
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          lineHeight: 1.5,
+                        }} title="Voiceover line ของ shot นี้ (จาก script)">
+                          <span style={{ flexShrink: 0 }}>🗣</span>
+                          <span>"{sh.voiceoverLine}"</span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                           <span style={s.badge(T.accent)}>Shot {i + 1} / {project.imagePrompts.shots.length}</span>
                           {slotsInThis.map(n => {
                             const slotCol = n === 1 ? T.warn : n === 2 ? T.ok : T.accent2;
                             const hasAnchor = !!getSlotAnchorImage(project, n);
+                            const slotCfg = getSlotsFor(project.category)[n];
+                            const slotLabel = slotCfg?.name || `#${n}`;
                             return (
                               <span key={n} style={{
                                 ...s.badge(slotCol),
                                 fontSize: 10, padding: '2px 8px',
                                 opacity: hasAnchor ? 1 : 0.5,
-                              }} title={hasAnchor ? `slot #${n} พร้อม` : `slot #${n} ยังไม่มี anchor`}>
-                                {hasAnchor ? '✓' : '⚠'} #{n}
+                              }} title={hasAnchor ? `${slotLabel} พร้อม` : `${slotLabel} ยังไม่มีรูป`}>
+                                {hasAnchor ? '✓' : '⚠'} {slotLabel}
                               </span>
                             );
                           })}
@@ -2144,13 +2640,16 @@ export default function AiPromptPage() {
                                       fontSize: 10, fontWeight: 800,
                                     }}>👑 MAIN</div>
                                   )}
-                                  <img src={g.dataUrl} alt={`gen ${gi + 1}`} style={{
-                                    width: '100%', aspectRatio: '1/1', objectFit: 'cover',
-                                    borderRadius: 6,
-                                    border: `${isMain ? 3 : 1}px solid ${isMain ? T.warn : T.borderHi}`,
-                                    cursor: 'pointer', display: 'block',
-                                    boxShadow: isMain ? `0 0 0 2px ${T.warn}33` : 'none',
-                                  }} onClick={() => window.open(g.dataUrl, '_blank')} />
+                                  <img src={g.dataUrl} alt={`gen ${gi + 1}`}
+                                    title="คลิกเพื่อดูรูปใหญ่"
+                                    style={{
+                                      width: '100%', aspectRatio: '9/16', objectFit: 'cover',
+                                      borderRadius: 6,
+                                      border: `${isMain ? 3 : 1}px solid ${isMain ? T.warn : T.borderHi}`,
+                                      cursor: 'zoom-in', display: 'block',
+                                      boxShadow: isMain ? `0 0 0 2px ${T.warn}33` : 'none',
+                                      background: T.bg,
+                                    }} onClick={() => setLightboxSrc(g.dataUrl)} />
                                   <div style={{
                                     position: 'absolute', bottom: 4, left: 4, right: 4,
                                     display: 'flex', gap: 3, justifyContent: 'center',
@@ -2454,13 +2953,614 @@ export default function AiPromptPage() {
             )}
           </div>
 
+          {/* Flow arrow Stage C → Narration */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+            <span style={{
+              fontSize: 28,
+              color: currentStepNum === 6 ? T.pink : T.textDim,
+              animation: currentStepNum === 6 ? 'ttplusPulseArrow 1.4s ease-in-out infinite' : 'none',
+              display: 'inline-block',
+            }}>▼</span>
+          </div>
+
+          {/* ─────────────────────────────────────────────────────── */}
+          {/* STAGE 6 — TTS Narration (พากย์เสียงโฆษณา)                 */}
+          {/* ─────────────────────────────────────────────────────── */}
+          <div id="narration" style={s.sectionCard(T.pink)}>
+            <div style={{ ...s.sectionTitle, color: T.pink, fontSize: 20 }}>
+              <span style={{
+                ...s.badge(T.pink), fontSize: 13, padding: '5px 11px',
+                background: T.pink, color: '#0b0d12',
+              }}>STEP ⑥</span>
+              <span style={{ ...s.badge(T.pink), fontSize: 12 }}>NARRATION</span>
+              🎙 พากย์เสียงโฆษณา (TTS)
+            </div>
+            <p style={{ fontSize: 14, color: T.textMute, marginTop: -8, marginBottom: 16, lineHeight: 1.65 }}>
+              พิมพ์บทพากย์ → AI สร้างเสียงพากย์ภาษาไทย/อังกฤษ → เล่น + ดาวน์โหลด .wav ไปใส่ในวีดีโอ<br />
+              ใช้ Gemini TTS · ฝัง persona ได้ (ตื่นเต้น, นุ่มนวล, ฯลฯ) · ~$0.000016/ตัวอักษร
+            </p>
+
+            {/* Sub: Model + Voice + Persona */}
+            <div style={{ ...s.subPanel(T.pink), marginBottom: 14 }}>
+              <div style={{ ...s.subLabel(T.pink), fontSize: 13 }}>🎚 เลือกเสียง</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginBottom: 6 }}>
+                    Model
+                  </div>
+                  <select
+                    value={project.narration?.model || GEMINI_31_MODEL}
+                    onChange={e => updateProject({
+                      narration: { ...(project.narration || {}), model: e.target.value },
+                    })}
+                    style={{
+                      ...s.input, padding: '9px 12px', fontSize: 14, width: '100%',
+                    }}
+                  >
+                    {TTS_MODELS.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} — {m.note}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginBottom: 6 }}>
+                    Voice ({GEMINI_VOICES.length} เสียง)
+                  </div>
+                  <select
+                    value={project.narration?.voice || 'Aoede'}
+                    onChange={e => updateProject({
+                      narration: { ...(project.narration || {}), voice: e.target.value },
+                    })}
+                    style={{
+                      ...s.input, padding: '9px 12px', fontSize: 14, width: '100%',
+                    }}
+                  >
+                    {GEMINI_VOICES.map(v => (
+                      <option key={v.name} value={v.name}>
+                        {v.name}{v.desc ? ` — ${v.desc}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginBottom: 6 }}>
+                    Persona (อารมณ์/สำเนียง) — เลือก preset หรือพิมพ์เอง
+                  </div>
+                  <select
+                    value={
+                      (project.narration?.persona || '') === ''
+                        ? ''
+                        : GEMINI_PERSONAS.some(p => p.instruction === project.narration.persona)
+                          ? project.narration.persona
+                          : '__custom__'
+                    }
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v === '__custom__') return; // ไม่ทำอะไร — ให้ textarea ขับ
+                      updateProject({
+                        narration: { ...(project.narration || {}), persona: v },
+                      });
+                    }}
+                    style={{
+                      ...s.input, padding: '9px 12px', fontSize: 14, width: '100%',
+                    }}
+                  >
+                    <option value="">— ไม่ใส่ persona (เสียงปกติ) —</option>
+                    {GEMINI_PERSONAS.map((p, i) => (
+                      <option key={i} value={p.instruction}>
+                        {p.label || p.instruction}
+                      </option>
+                    ))}
+                    <option value="__custom__">✏️ พิมพ์เอง (ดูช่องด้านล่าง)</option>
+                  </select>
+                  <textarea
+                    value={project.narration?.persona || ''}
+                    onChange={e => updateProject({
+                      narration: { ...(project.narration || {}), persona: e.target.value },
+                    })}
+                    placeholder="หรือพิมพ์ persona instruction เอง เช่น: Speak slowly with a warm grandmother voice, gentle and caring tone..."
+                    rows={2}
+                    style={{
+                      ...s.input, width: '100%', marginTop: 8,
+                      fontSize: 13, lineHeight: 1.6, fontFamily: 'inherit',
+                      resize: 'vertical', minHeight: 56,
+                      borderColor: T.pink + '88', borderWidth: 1.5,
+                    }}
+                  />
+                  <div style={{ fontSize: 12, color: T.pink, marginTop: 4, lineHeight: 1.55, fontWeight: 600 }}>
+                    ↑ ค่าที่ใช้จริง · พิมพ์ภาษาอังกฤษได้ผลดีที่สุด · ลบให้ว่าง = ไม่ใส่ persona
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sub: Script textarea */}
+            <div style={{ ...s.subPanel(T.pink), marginBottom: 14 }}>
+              <div style={{ ...s.subLabel(T.pink), fontSize: 13 }}>📝 บทพากย์</div>
+              <textarea
+                value={project.narration?.script || ''}
+                onChange={e => updateProject({
+                  narration: { ...(project.narration || {}), script: e.target.value },
+                })}
+                placeholder="พิมพ์บทพากย์โฆษณาที่นี่ — ภาษาไทยหรืออังกฤษก็ได้&#10;&#10;เช่น: ผลิตภัณฑ์ดูแลผิวอันดับ 1 ขายดีที่สุด ลองวันนี้รับส่วนลด 50% สั่งเลย!"
+                rows={6}
+                style={{
+                  ...s.input, width: '100%', minHeight: 160, fontSize: 15,
+                  fontFamily: 'inherit', lineHeight: 1.75, resize: 'vertical',
+                  padding: '12px 14px',
+                }}
+              />
+              {(() => {
+                const len = (project.narration?.script || '').length;
+                const estSec = Math.ceil(len / 15);
+                const estCost = (len * 0.000016).toFixed(4);
+                return (
+                  <div style={{
+                    fontSize: 13, color: T.textMute, marginTop: 8,
+                    display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+                    fontWeight: 500,
+                  }}>
+                    <span>{len} ตัวอักษร · ประมาณ {estSec} วินาที</span>
+                    <span>~${estCost}</span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Generate button */}
+            {(() => {
+              const len = (project.narration?.script || '').trim().length;
+              const disabled = narrationBusy || len === 0;
+              return (
+                <button
+                  onClick={handleGenNarration}
+                  disabled={disabled}
+                  style={{
+                    ...s.btn(T.pink, true),
+                    padding: '12px 18px', fontSize: 15, width: '100%',
+                    fontWeight: 700,
+                    opacity: disabled ? 0.5 : 1,
+                    cursor: narrationBusy ? 'wait' : (len === 0 ? 'not-allowed' : 'pointer'),
+                  }}
+                  title={len === 0 ? 'พิมพ์บทพากย์ก่อน' : ''}
+                >
+                  {narrationBusy
+                    ? '⌛ กำลังสร้างเสียงพากย์…'
+                    : project.narration?.audio
+                      ? '🔄 สร้างเสียงใหม่ (จะแทนที่ของเดิม)'
+                      : '🎙 สร้างเสียงพากย์'}
+                </button>
+              );
+            })()}
+
+            {/* Loading waveform skeleton — animated bars */}
+            {narrationBusy && (
+              <div style={{
+                marginTop: 14,
+                background: T.pink + '0c', border: `1px solid ${T.pink}33`,
+                borderRadius: 10, padding: '14px 16px',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'flex-end', gap: 4,
+                  width: 80, height: 40, flexShrink: 0,
+                }}>
+                  {[
+                    'ttplusWave1 0.9s ease-in-out infinite',
+                    'ttplusWave2 1.1s ease-in-out infinite 0.05s',
+                    'ttplusWave3 0.8s ease-in-out infinite 0.1s',
+                    'ttplusWave4 1.0s ease-in-out infinite 0.15s',
+                    'ttplusWave5 1.2s ease-in-out infinite 0.2s',
+                    'ttplusWave2 0.95s ease-in-out infinite 0.25s',
+                    'ttplusWave1 1.05s ease-in-out infinite 0.3s',
+                  ].map((anim, i) => (
+                    <div key={i} style={{
+                      flex: 1, background: T.pink,
+                      borderRadius: 2, animation: anim,
+                      transformOrigin: 'bottom',
+                    }} />
+                  ))}
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, color: T.pink, fontWeight: 700, marginBottom: 2 }}>
+                    🎙 Gemini กำลังสังเคราะห์เสียง…
+                  </div>
+                  <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5 }}>
+                    ส่วนใหญ่ใช้เวลา ~5-15 วินาที · อย่าปิดหน้านี้
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Audio player + download */}
+            {project.narration?.audio?.base64 && narrationBlobUrl && (
+              <div style={{
+                marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${T.border}`,
+              }}>
+                <div style={{
+                  fontSize: 14, color: T.ok, marginBottom: 10, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                }}>
+                  <span>✓ พร้อมเล่น</span>
+                  <span style={{ color: T.textDim, fontWeight: 500, fontSize: 13 }}>
+                    · {project.narration.audio.durationSec?.toFixed(1) || '?'} วินาที
+                    · เสียง {project.narration.audio.voice}
+                    {project.narration.audio.model
+                      ? ` · ${TTS_MODELS.find(m => m.id === project.narration.audio.model)?.label || project.narration.audio.model}`
+                      : ''}
+                  </span>
+                </div>
+                <audio
+                  controls
+                  src={narrationBlobUrl}
+                  style={{ width: '100%', marginBottom: 12 }}
+                >
+                  เบราว์เซอร์ของคุณไม่รองรับ HTML5 audio
+                </audio>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleDownloadNarration}
+                    style={{
+                      ...s.btn(T.ok, true), padding: '10px 16px', fontSize: 14,
+                      fontWeight: 700,
+                    }}
+                  >💾 ดาวน์โหลด .wav</button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('ลบเสียงพากย์นี้? (script ยังเก็บไว้)')) {
+                        updateProject({
+                          narration: { ...(project.narration || {}), audio: null },
+                        });
+                      }
+                    }}
+                    style={{
+                      ...s.btnGhost, padding: '10px 16px', fontSize: 13,
+                      borderColor: T.err + '55', color: T.err,
+                    }}
+                  >🗑 ลบเสียง</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Storage usage panel — IndexedDB quota awareness */}
+          {storageInfo && (
+            <div style={{
+              marginTop: 24,
+              background: T.panel2,
+              border: `1px solid ${storageInfo.percent > 80 ? T.err + '66' : T.border}`,
+              borderRadius: 10, padding: 14,
+            }}>
+              <div style={{
+                fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 8,
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+              }}>
+                💾 พื้นที่เก็บใน browser
+                <span style={{
+                  fontSize: 12, fontWeight: 500,
+                  color: storageInfo.percent > 80 ? T.err : T.textMute,
+                }}>
+                  · {storageInfo.usedMB.toFixed(1)} / {storageInfo.quotaMB.toFixed(0)} MB
+                  ({storageInfo.percent.toFixed(1)}%)
+                </span>
+              </div>
+              <div style={{
+                height: 8, background: T.bg, borderRadius: 4, overflow: 'hidden',
+                marginBottom: 10,
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min(100, storageInfo.percent)}%`,
+                  background:
+                    storageInfo.percent > 80 ? T.err :
+                    storageInfo.percent > 50 ? T.warn :
+                    T.ok,
+                  transition: 'width 0.3s ease',
+                }} />
+              </div>
+              {storageInfo.percent > 60 && (
+                <div style={{
+                  fontSize: 12, color: T.warn, marginBottom: 8, lineHeight: 1.6,
+                }}>
+                  ⚠ ใช้พื้นที่เยอะแล้ว — ถ้าเต็มจะ save project ใหม่ไม่ได้
+                </div>
+              )}
+              {genCount > 0 && (
+                <div style={{
+                  fontSize: 12, color: genCount >= 50 ? T.warn : T.textMute,
+                  marginBottom: 10, lineHeight: 1.6,
+                }}>
+                  📊 วันนี้ gen รูป + เสียง ไปแล้ว <strong>{genCount}</strong> ครั้ง
+                  {genCount >= 100 ? ' — เปลือง quota เยอะมากนะ!' :
+                   genCount >= 50  ? ' — เริ่มใช้ quota เยอะแล้ว' : ''}
+                </div>
+              )}
+
+              {/* Per-project breakdown — เรียงใหญ่ → เล็ก */}
+              {projectStats.length > 0 && (
+                <div style={{
+                  marginBottom: 12, paddingBottom: 12,
+                  borderBottom: `1px dashed ${T.border}`,
+                }}>
+                  <div style={{
+                    fontSize: 12, color: T.textMute, marginBottom: 8, fontWeight: 600,
+                    display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6,
+                  }}>
+                    <span>📂 Project ({projectStats.length}) — ใหญ่สุดก่อน</span>
+                    <span style={{ fontSize: 11, color: T.textDim }}>
+                      🎵 ล้างเฉพาะเสียง · 🗑 ลบ project
+                    </span>
+                  </div>
+                  {(() => {
+                    const maxBytes = Math.max(1, projectStats[0]?.sizeBytes || 1);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {projectStats.map(p => {
+                          const sizeMB = p.sizeBytes / (1024 * 1024);
+                          const pct = (p.sizeBytes / maxBytes) * 100;
+                          const isActive = p.id === project?.id;
+                          const sizeLabel = sizeMB >= 0.1
+                            ? `${sizeMB.toFixed(1)} MB`
+                            : `${(p.sizeBytes / 1024).toFixed(0)} KB`;
+                          return (
+                            <div key={p.id} style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'minmax(0,1fr) auto',
+                              gap: 8, alignItems: 'center',
+                              padding: '7px 10px', borderRadius: 6,
+                              background: isActive ? T.accent + '14' : T.bg + '88',
+                              border: `1px solid ${isActive ? T.accent + '55' : 'transparent'}`,
+                            }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{
+                                  fontSize: 13, fontWeight: 600, color: T.text,
+                                  display: 'flex', gap: 8, alignItems: 'center',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                  <span style={{
+                                    ...s.badge(p.category === 'mvp' ? T.pink : T.accent),
+                                    fontSize: 9, padding: '1px 6px', flexShrink: 0,
+                                  }}>{p.category === 'mvp' ? 'MVP' : 'AD'}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                                    {p.name || '(ไม่มีชื่อ)'}
+                                  </span>
+                                  {isActive && (
+                                    <span style={{
+                                      fontSize: 10, color: T.accent, fontWeight: 700, flexShrink: 0,
+                                    }}>← เปิดอยู่</span>
+                                  )}
+                                </div>
+                                <div style={{
+                                  height: 4, background: T.bg, borderRadius: 2,
+                                  overflow: 'hidden', marginTop: 5,
+                                }}>
+                                  <div style={{
+                                    height: '100%', width: `${pct}%`,
+                                    background: pct > 70 ? T.warn : T.accent2,
+                                    transition: 'width 0.3s ease',
+                                  }} />
+                                </div>
+                                <div style={{
+                                  fontSize: 11, color: T.textDim, marginTop: 4,
+                                  display: 'flex', gap: 8, flexWrap: 'wrap',
+                                }}>
+                                  <strong style={{ color: T.text }}>{sizeLabel}</strong>
+                                  {p.genImageCount > 0 && <span>· {p.genImageCount} รูป gen</span>}
+                                  {p.shotCount > 0 && <span>· {p.shotCount} shots</span>}
+                                  {p.hasAudio && <span style={{ color: T.pink }}>· 🎵 มีเสียง</span>}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                {p.hasAudio && (
+                                  <button
+                                    onClick={async () => {
+                                      if (!window.confirm(
+                                        `⚠️ ล้างเสียงพากย์ของ project นี้?\n\n` +
+                                        `"${p.name}"\n\n` +
+                                        `· script + voice + persona ยังเก็บไว้\n` +
+                                        `· gen ใหม่ได้เสมอ\n\n` +
+                                        `กด OK เพื่อยืนยัน`
+                                      )) return;
+                                      try {
+                                        await clearNarrationAudio(p.id);
+                                        if (p.id === project?.id) {
+                                          const fresh = await loadProject(p.id);
+                                          if (fresh) setProject(ensureStyleSchema(fresh));
+                                        }
+                                        await refreshStorageInfo();
+                                        await refreshProjectStats();
+                                        toast.success('ล้างเสียงแล้ว');
+                                      } catch (e) {
+                                        toast.error('ล้างไม่สำเร็จ: ' + e.message);
+                                      }
+                                    }}
+                                    style={{
+                                      ...s.btnGhost, padding: '5px 9px', fontSize: 12,
+                                      borderColor: T.pink + '55', color: T.pink,
+                                    }}
+                                    title="ล้างเฉพาะเสียงพากย์ของ project นี้ (ยืนยันก่อน)"
+                                  >🎵</button>
+                                )}
+                                <button
+                                  onClick={async () => {
+                                    if (!window.confirm(
+                                      `⚠️ ลบ project นี้ทั้งหมด?\n\n` +
+                                      `"${p.name}"\n\n` +
+                                      `จะลบ:\n` +
+                                      `· ขนาด ${sizeLabel}\n` +
+                                      `· ${p.shotCount} shots · ${p.genImageCount} รูป gen` +
+                                      (p.hasAudio ? `\n· เสียงพากย์ที่สร้างไว้` : '') +
+                                      `\n\n🚨 ลบแล้วกู้คืนไม่ได้\n\nกด OK เพื่อยืนยันการลบ`
+                                    )) return;
+                                    try {
+                                      await deleteProject(p.id);
+                                      if (p.id === project?.id) {
+                                        // active ถูกลบ → switch ไป project แรกที่เหลือ หรือ null
+                                        const list = await listProjects();
+                                        if (list.length > 0) {
+                                          const fresh = await loadProject(list[0].id);
+                                          if (fresh) setProject(ensureStyleSchema(fresh));
+                                        } else {
+                                          setProject(null);
+                                        }
+                                      }
+                                      await refreshStorageInfo();
+                                      await refreshProjectStats();
+                                      toast.success(`ลบ "${p.name}" แล้ว`);
+                                    } catch (e) {
+                                      toast.error('ลบไม่สำเร็จ: ' + e.message);
+                                    }
+                                  }}
+                                  style={{
+                                    ...s.btnGhost, padding: '5px 9px', fontSize: 12,
+                                    borderColor: T.err + '55', color: T.err,
+                                  }}
+                                  title="ลบ project ทั้งหมด — กู้คืนไม่ได้ (ยืนยันก่อน)"
+                                >🗑</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={async () => {
+                    const audioCount = projectStats.filter(p => p.hasAudio).length;
+                    if (audioCount === 0) {
+                      toast('ไม่มี project ไหนมีเสียงพากย์ — ไม่ต้องล้าง', { icon: '💡' });
+                      return;
+                    }
+                    if (!window.confirm(
+                      `⚠️ ล้างเสียงพากย์ทุก project?\n\n` +
+                      `จะล้างเสียงจาก ${audioCount} project\n\n` +
+                      `· script + voice + persona ยังเก็บไว้\n` +
+                      `· gen ใหม่ได้เสมอ (ไม่หายถาวร)\n\n` +
+                      `กด OK เพื่อยืนยัน`
+                    )) return;
+                    try {
+                      const n = await clearAllNarrationAudio();
+                      if (project?.id) {
+                        const fresh = await loadProject(project.id);
+                        if (fresh) setProject(ensureStyleSchema(fresh));
+                      }
+                      await refreshStorageInfo();
+                      await refreshProjectStats();
+                      toast.success(`ล้างเสียงไป ${n} project แล้ว`);
+                    } catch (e) {
+                      toast.error('ล้างไม่สำเร็จ: ' + e.message);
+                    }
+                  }}
+                  style={{ ...s.btnGhost, fontSize: 12, padding: '7px 12px',
+                           borderColor: T.pink + '55', color: T.pink }}
+                >🗑 ล้างเสียง (ทุก project)</button>
+                <button
+                  onClick={async () => {
+                    const total = projectStats.reduce((acc, p) => acc + p.genImageCount, 0);
+                    if (total === 0) {
+                      toast('ไม่มีรูป gen อยู่ — ไม่ต้องล้าง', { icon: '💡' });
+                      return;
+                    }
+                    if (!window.confirm(
+                      `⚠️ ลบรูปที่ gen ทั้งหมดในทุก project?\n\n` +
+                      `จะลบรูป ${total} รูปจากทุก project\n\n` +
+                      `· prompts + reference uploads ยังเก็บไว้\n` +
+                      `· รูปหลัก 👑 ที่ตั้งไว้ก็จะหาย\n` +
+                      `· gen ใหม่ได้ (ต้องเสีย Gemini quota ใหม่)\n\n` +
+                      `🚨 ลบแล้วกู้คืนไม่ได้\n\nกด OK เพื่อยืนยันการลบ`
+                    )) return;
+                    try {
+                      const n = await clearAllGeneratedImagesAcrossProjects();
+                      if (project?.id) {
+                        const fresh = await loadProject(project.id);
+                        if (fresh) setProject(ensureStyleSchema(fresh));
+                      }
+                      await refreshStorageInfo();
+                      await refreshProjectStats();
+                      toast.success(`ล้างรูปไป ${n} project แล้ว`);
+                    } catch (e) {
+                      toast.error('ล้างไม่สำเร็จ: ' + e.message);
+                    }
+                  }}
+                  style={{ ...s.btnGhost, fontSize: 12, padding: '7px 12px',
+                           borderColor: T.warn + '55', color: T.warn }}
+                >🗑 ล้างรูป gen (ทุก project)</button>
+                <button
+                  onClick={async () => {
+                    await refreshStorageInfo();
+                    await refreshProjectStats();
+                  }}
+                  style={{ ...s.btnGhost, fontSize: 12, padding: '7px 12px' }}
+                  title="คำนวณใหม่"
+                >🔄</button>
+              </div>
+            </div>
+          )}
+
           {/* Footer note */}
-          <p style={{ marginTop: 24, textAlign: 'center', fontSize: 11, color: T.textDim, lineHeight: 1.7 }}>
-            ทุกอย่างทำงานในเครื่องคุณเท่านั้น — API key, รูป, prompts ถูกเก็บใน browser (IndexedDB) ไม่ถูกส่งไป server ttsam<br />
-            แชร์ลิงก์นี้ได้ทุกคน · แต่ข้อมูลของคุณจะไม่ตามไป (แต่ละเครื่องเก็บแยกกัน)
+          <p style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: T.textDim, lineHeight: 1.75 }}>
+            <strong style={{ color: T.text }}>🔒 ทุกอย่างทำงานในเครื่องคุณเท่านั้น</strong><br />
+            API key, รูป, prompts, เสียง ถูกเก็บใน browser (IndexedDB) — <em>ไม่</em>ถูกส่งไป server ttsam<br />
+            อย่าใช้บนเครื่องสาธารณะหรือเครื่องที่ไม่ใช่ของคุณ · เปลี่ยนเครื่องต้อง paste key ใหม่<br />
+            <span style={{ color: T.textDim, fontSize: 11 }}>
+              Sign-in กับ Google จะใช้ OAuth ของ ttsam เพื่อขอ scope <code style={{ background: T.bg, padding: '0 4px', borderRadius: 3 }}>documents</code> + <code style={{ background: T.bg, padding: '0 4px', borderRadius: 3 }}>drive.file</code> สำหรับ export — token เก็บใน browser ไม่ถูกส่งกลับเรา
+            </span>
           </p>
 
         </div>
+
+        {/* ── Lightbox — รูปขยาย (Chrome block data: URL ใน new tab) ──── */}
+        {lightboxSrc && (
+          <div
+            onClick={() => setLightboxSrc(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10000,
+              background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 24, cursor: 'zoom-out',
+            }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }}
+              style={{
+                position: 'absolute', top: 16, right: 16, zIndex: 10001,
+                background: 'rgba(255,255,255,0.1)', color: '#fff',
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 999, width: 40, height: 40,
+                fontSize: 18, fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+              title="ปิด (ESC)"
+            >✕</button>
+            <img
+              src={lightboxSrc}
+              alt="preview"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '95vw', maxHeight: '92vh',
+                objectFit: 'contain',
+                borderRadius: 8,
+                boxShadow: '0 20px 60px -10px rgba(0,0,0,0.8)',
+                cursor: 'default',
+              }}
+            />
+            <div style={{
+              position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(0,0,0,0.7)', color: '#fff',
+              padding: '6px 14px', borderRadius: 99,
+              fontSize: 12, fontWeight: 500,
+              pointerEvents: 'none',
+            }}>
+              คลิกพื้นหลัง / กด ESC เพื่อปิด
+            </div>
+          </div>
+        )}
 
         {/* ── Generic image picker modal (gen รูปนางแบบ + อนาคต อื่นๆ) ──── */}
         {imagePicker && (

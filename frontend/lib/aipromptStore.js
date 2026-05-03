@@ -351,12 +351,29 @@ export function makeBlankProject(name = 'โปรเจกต์ใหม่', 
 
     // Ad-specific
     brief: '',
+
+    // Script-Driven Mode (AD only — MVP ใช้ transformationTheme แทน)
+    scriptMode:  'brief',  // 'brief' | 'script'
+    scriptText:  '',       // full voiceover script (single paste)
+    storyboard:  [],       // [{ voiceoverLine, visualHint }] — N items = shotCount
+
     productImages: [],
     sizeRefImages: [],
     modelMode: 'text',         // 'text' | 'image'
     modelText: '',
     modelImages: [],
     modelFraming: 'full',      // 'full' | 'half' — สำหรับปุ่ม Gen รูปนางแบบ
+    modelGenerated: [],        // รูปนางแบบที่ gen ไว้ (ทีละ 1) → user เลือก 1 แล้วย้ายไป modelImages
+
+    // Phase 6 — Narration (TTS voiceover)
+    // user พิมพ์บทพากย์ → Gemini TTS → audio (เก็บเป็น base64 ใน IndexedDB)
+    narration: {
+      script:  '',
+      voice:   'Aoede',                            // จาก GEMINI_VOICES (lib/tts.js)
+      persona: '',                                 // จาก GEMINI_PERSONAS (instruction string), '' = ไม่มี persona, หรือพิมพ์เอง
+      model:   'gemini-3.1-flash-tts-preview',     // 3.1 (ใหม่) | 2.5 (fallback)
+      audio:   null,                               // { base64, mimeType, generatedAt, voice, persona, model, durationSec } | null
+    },
 
     // MVP-specific
     transformationTheme: '',
@@ -423,6 +440,29 @@ export function ensureStyleSchema(proj) {
   if (typeof next.modelText !== 'string')           next.modelText = '';
   if (!Array.isArray(next.modelImages))             next.modelImages = [];
   if (next.modelFraming !== 'full' && next.modelFraming !== 'half') next.modelFraming = 'full';
+  if (!Array.isArray(next.modelGenerated))          next.modelGenerated = [];
+
+  // Script-Driven Mode
+  if (next.scriptMode !== 'script')      { next.scriptMode = 'brief'; }
+  if (typeof next.scriptText !== 'string') { next.scriptText = ''; }
+  if (!Array.isArray(next.storyboard))     { next.storyboard = []; }
+
+  // narration (Phase 6 — TTS voiceover)
+  if (!next.narration || typeof next.narration !== 'object' || Array.isArray(next.narration)) {
+    next.narration = {
+      script: '', voice: 'Aoede', persona: '',
+      model: 'gemini-3.1-flash-tts-preview', audio: null,
+    };
+    changed = true;
+  } else {
+    if (typeof next.narration.script !== 'string')  { next.narration.script  = ''; changed = true; }
+    if (typeof next.narration.voice !== 'string')   { next.narration.voice   = 'Aoede'; changed = true; }
+    if (typeof next.narration.persona !== 'string') { next.narration.persona = ''; changed = true; }
+    if (typeof next.narration.model !== 'string')   { next.narration.model   = 'gemini-3.1-flash-tts-preview'; changed = true; }
+    if (next.narration.audio !== null && typeof next.narration.audio !== 'object') {
+      next.narration.audio = null; changed = true;
+    }
+  }
 
   // Phase 3 — Image generation defaults
   if (!next.anchors || typeof next.anchors !== 'object') next.anchors = {};
@@ -443,15 +483,20 @@ export function ensureStyleSchema(proj) {
 
 // ── Image generation helpers ─────────────────────────────────────────────────
 
-// ลบรูปที่ gen ทั้งหมด (per-shot generated[] + project anchors) — สำหรับ "Clear all generated"
+// ลบรูปที่ gen ทั้งหมด (per-shot generated[] + project anchors + narration audio)
+// — สำหรับ "Clear all generated"
+// keep: script/voice/persona (input), modelImages/uploaded refs (input)
 export function clearAllGenerated(project) {
   if (!project) return project;
-  const next = { ...project, anchors: {} };
+  const next = { ...project, anchors: {}, modelGenerated: [] };
   if (project.imagePrompts?.shots?.length) {
     next.imagePrompts = {
       ...project.imagePrompts,
-      shots: project.imagePrompts.shots.map(sh => ({ ...sh, generated: [] })),
+      shots: project.imagePrompts.shots.map(sh => ({ ...sh, generated: [], mainImageId: null })),
     };
+  }
+  if (project.narration && typeof project.narration === 'object') {
+    next.narration = { ...project.narration, audio: null };
   }
   return next;
 }
@@ -497,6 +542,90 @@ export async function renameProject(id, name) {
 export async function deleteProject(id) {
   const store = await tx(STORE_PROJ, 'readwrite');
   await reqToPromise(store.delete(id));
+}
+
+// คืน array ของทุก project + ขนาดประมาณการ (เรียงใหญ่ → เล็ก)
+// ใช้สำหรับ storage breakdown UI ใน /aiprompt
+// size ประมาณการจาก JSON.stringify().length — rough แต่สอดคล้องกัน
+// ขนาดถูก dominated โดย base64 strings (audio + image dataUrls)
+export async function listProjectsWithStats() {
+  const store = await tx(STORE_PROJ);
+  const all = await reqToPromise(store.getAll());
+  return all
+    .map(p => {
+      const sizeBytes = JSON.stringify(p).length;
+      const audioBytes = p.narration?.audio?.base64
+        ? Math.floor(p.narration.audio.base64.length * 0.75) // base64 → bytes
+        : 0;
+      const genImageCount = (p.imagePrompts?.shots || [])
+        .reduce((acc, s) => acc + (s.generated?.length || 0), 0);
+      return {
+        id:            p.id,
+        name:          p.name,
+        category:      p.category || 'ad',
+        updatedAt:     p.updatedAt,
+        sizeBytes,
+        audioBytes,
+        hasAudio:      !!p.narration?.audio?.base64,
+        shotCount:     p.imagePrompts?.shots?.length || 0,
+        genImageCount,
+      };
+    })
+    .sort((a, b) => b.sizeBytes - a.sizeBytes);
+}
+
+// ลบเฉพาะ narration audio ของ project เดียว (single-project clear)
+export async function clearNarrationAudio(projectId) {
+  const proj = await loadProject(projectId);
+  if (!proj?.narration?.audio?.base64) return null;
+  proj.narration = { ...proj.narration, audio: null };
+  return saveProject(proj);
+}
+
+// ลบเฉพาะ narration audio ทุก project (กู้คืน IndexedDB quota เร็วๆ)
+// คืนจำนวน project ที่ถูกล้าง
+export async function clearAllNarrationAudio() {
+  const store = await tx(STORE_PROJ, 'readwrite');
+  const all = await reqToPromise(store.getAll());
+  let cleared = 0;
+  for (const p of all) {
+    if (p?.narration?.audio?.base64) {
+      const next = { ...p, narration: { ...p.narration, audio: null }, updatedAt: Date.now() };
+      await reqToPromise(store.put(next));
+      cleared++;
+    }
+  }
+  return cleared;
+}
+
+// ลบรูปที่ gen ทั้งหมดในทุก project (รวมถึง mainImageId + anchors + modelGenerated)
+// คืนจำนวน project ที่ถูกล้าง
+export async function clearAllGeneratedImagesAcrossProjects() {
+  const store = await tx(STORE_PROJ, 'readwrite');
+  const all = await reqToPromise(store.getAll());
+  let cleared = 0;
+  for (const p of all) {
+    const cleanedShots = (p.imagePrompts?.shots || []).map(sh =>
+      (sh.generated?.length || sh.mainImageId)
+        ? { ...sh, generated: [], mainImageId: null }
+        : sh
+    );
+    const hadGen = (p.imagePrompts?.shots || []).some(s => (s.generated?.length || 0) > 0);
+    const hadAnchor = Object.keys(p.anchors || {}).length > 0;
+    const hadModelGen = (p.modelGenerated || []).length > 0;
+    if (hadGen || hadAnchor || hadModelGen) {
+      const next = {
+        ...p,
+        imagePrompts: p.imagePrompts ? { ...p.imagePrompts, shots: cleanedShots } : p.imagePrompts,
+        anchors: {},
+        modelGenerated: [],
+        updatedAt: Date.now(),
+      };
+      await reqToPromise(store.put(next));
+      cleared++;
+    }
+  }
+  return cleared;
 }
 
 // ── API Keys ──────────────────────────────────────────────────────────────────
