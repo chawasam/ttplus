@@ -29,7 +29,7 @@ import {
 } from '../lib/aipromptApi';
 import {
   exportToGoogleDoc, buildImagePromptsDoc, buildVideoPromptsDoc,
-  uploadImagesToDrive,
+  uploadImagesToDrive, exportFullProjectToDrive,
 } from '../lib/aipromptDocs';
 import {
   generateShotImage, detectSlotsInPrompt,
@@ -38,6 +38,9 @@ import {
 import {
   synthesizeNarration, audioBase64ToBlobUrl, downloadAudioBase64,
 } from '../lib/aipromptTTS';
+import {
+  generateMusic, musicBase64ToBlobUrl, downloadMusicBase64,
+} from '../lib/aipromptMusicGen';
 import {
   GEMINI_VOICES, GEMINI_PERSONAS,
   GEMINI_31_MODEL, GEMINI_25_MODEL,
@@ -48,6 +51,12 @@ const TTS_MODELS = [
   { id: GEMINI_31_MODEL, label: 'Gemini 3.1 Flash TTS', note: 'ใหม่ที่สุด · 30 voices · แนะนำ' },
   { id: GEMINI_25_MODEL, label: 'Gemini 2.5 Flash TTS', note: 'เสถียร · fallback' },
 ];
+
+// ── Feature flags ────────────────────────────────────────────────────────────
+// MUSIC_GEN_ENABLED: เปิด/ปิด ฟีเจอร์สร้างเพลงผ่าน Replicate musicgen
+// ปิดอยู่เพราะ Replicate ไม่มี CORS → ต้อง relay ผ่าน ttsam server (กิน bandwidth)
+// เปิดได้โดย: flip นี้เป็น true + uncomment route mount ใน backend/server.js
+const MUSIC_GEN_ENABLED = false;
 
 // ── Slot mapping per category ───────────────────────────────────────────────
 // slot # → { name, uploadField (in project) }
@@ -856,6 +865,46 @@ export default function AiPromptPage() {
   // ── Narration (TTS) state ────────────────────────────────────────────────
   const [narrationBusy, setNarrationBusy] = useState(false);
 
+  // ── Music gen (Replicate musicgen) state ─────────────────────────────────
+  const [musicBusy, setMusicBusy] = useState(false);
+  const [musicProgress, setMusicProgress] = useState(null); // { status, elapsed }
+
+  // ── Drive export ────────────────────────────────────────────────────────
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportProgress, setExportProgress] = useState(null); // { done, total, name }
+  const [lastExportUrl, setLastExportUrl] = useState(null);
+
+  const handleExportToDrive = async () => {
+    if (!project) return;
+    setExportBusy(true);
+    setExportProgress({ done: 0, total: 0, name: '...' });
+    setLastExportUrl(null);
+    try {
+      const result = await exportFullProjectToDrive(project, (done, total, name) => {
+        setExportProgress({ done, total, name });
+      });
+      setLastExportUrl(result.folderUrl);
+      toast.success(`Export ${result.fileCount} ไฟล์ขึ้น Drive แล้ว`);
+    } catch (e) {
+      toast.error('Export ไม่สำเร็จ: ' + (e?.message || String(e)));
+    } finally {
+      setExportBusy(false);
+      setExportProgress(null);
+    }
+  };
+  const [replicateToken, setReplicateToken] = useState('');
+  // load Replicate token จาก IndexedDB ทุกครั้งที่ project เปลี่ยน
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await getApiConfig('replicate');
+        if (!cancelled) setReplicateToken(cfg?.apiKey || '');
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [project?.id]);
+
   // ── Image lightbox (กดรูปใหญ่ดู — Chrome block data: URL ใน new tab แล้ว) ──
   const [lightboxSrc, setLightboxSrc] = useState(null);
   useEffect(() => {
@@ -1114,6 +1163,61 @@ export default function AiPromptPage() {
     a.download = `${(project.name || 'shot').replace(/[^\w-]/g, '_')}_shot${shotIdx + 1}_v${variantIdx + 1}.png`;
     a.click();
   };
+
+  // ── Music gen (Replicate musicgen) handlers ─────────────────────────────
+
+  // Build music prompt จาก videoPlan.music recommendation
+  const buildMusicPrompt = useCallback(() => {
+    const m = project?.videoPlan?.music;
+    if (!m) return '';
+    const parts = [];
+    if (m.mood)        parts.push(m.mood);
+    if (m.tempo)       parts.push(`${m.tempo} BPM`);
+    if (m.instruments?.length) parts.push(m.instruments.join(', '));
+    if (m.references?.length)  parts.push(`reference: ${m.references.join('; ')}`);
+    return parts.join(', ');
+  }, [project?.videoPlan?.music]);
+
+  const handleGenMusic = async () => {
+    if (!project) return;
+    if (!replicateToken?.trim()) return toast.error('ใส่ Replicate API token ก่อน (ที่ Setup)');
+    const musicPrompt = buildMusicPrompt();
+    if (!musicPrompt) return toast.error('ยังไม่มี music recommendation — สร้าง video prompts ก่อน');
+    if (project.musicGenerated && !window.confirm('มีเพลงอยู่แล้ว — gen ใหม่ทับของเดิม?')) return;
+
+    setMusicBusy(true);
+    setMusicProgress({ status: 'starting', elapsed: 0 });
+    try {
+      const result = await generateMusic({
+        apiToken: replicateToken,
+        prompt: musicPrompt,
+        durationSec: 30,
+        onTick: (t) => setMusicProgress(t),
+      });
+      updateProject({ musicGenerated: result });
+      incGenCount();
+      toast.success(`สร้างเพลง ${result.durationSec}s สำเร็จ`);
+    } catch (e) {
+      toast.error('Music gen ล้มเหลว: ' + e.message);
+    } finally {
+      setMusicBusy(false);
+      setMusicProgress(null);
+    }
+  };
+
+  const handleDownloadMusic = () => {
+    const m = project?.musicGenerated;
+    if (!m?.base64) return;
+    const namebase = (project.name || 'project').replace(/[^\w-]/g, '_');
+    downloadMusicBase64(m.base64, `${namebase}_music.mp3`, m.mimeType || 'audio/mpeg');
+  };
+
+  const musicBlobUrl = useMemo(() => {
+    const m = project?.musicGenerated;
+    if (!m?.base64) return null;
+    return musicBase64ToBlobUrl(m.base64, m.mimeType || 'audio/mpeg');
+  }, [project?.musicGenerated]);
+  useEffect(() => () => { if (musicBlobUrl) URL.revokeObjectURL(musicBlobUrl); }, [musicBlobUrl]);
 
   // ── Narration (TTS) handlers ─────────────────────────────────────────────
 
@@ -1826,6 +1930,48 @@ export default function AiPromptPage() {
               </div>
             </div>
 
+            {/* Replicate API token — สำหรับ music gen (Stage 5) */}
+            {MUSIC_GEN_ENABLED && (
+            <div style={{
+              marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}`,
+            }}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'minmax(140px, auto) 1fr', gap: 12, alignItems: 'center',
+              }}>
+                <label style={{ ...s.label, marginBottom: 0 }}>
+                  🎵 Replicate token
+                  <div style={{ fontSize: 9, color: T.textDim, fontWeight: 400, marginTop: 2 }}>
+                    (สำหรับ music gen)
+                  </div>
+                </label>
+                <input
+                  type="password"
+                  value={replicateToken}
+                  onChange={async e => {
+                    const v = e.target.value;
+                    setReplicateToken(v);
+                    try { await saveApiConfig('replicate', { apiKey: v }); } catch {}
+                  }}
+                  placeholder="r8_..."
+                  style={{ ...s.input, fontFamily: 'monospace', fontSize: 12 }}
+                />
+              </div>
+              <div style={{
+                marginTop: 8,
+                background: T.pink + '11', border: `1px solid ${T.pink}33`,
+                borderRadius: 6, padding: '8px 10px',
+                fontSize: 11, color: T.textMute, lineHeight: 1.6,
+              }}>
+                💡 optional · ใช้สร้างเพลงประกอบใน Stage 5 ผ่าน <strong>meta/musicgen</strong> · ~$0.005/เพลง 30s ·{' '}
+                <a
+                  href="https://replicate.com/account/api-tokens"
+                  target="_blank" rel="noreferrer"
+                  style={{ color: T.pink, fontWeight: 600 }}
+                >ขอ token ฟรี ▶</a>
+              </div>
+            </div>
+            )}
+
             {/* Project bar */}
             <div style={{
               marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.border}`,
@@ -2097,7 +2243,7 @@ export default function AiPromptPage() {
                     {/* Script paste */}
                     <div style={{ ...s.subPanel(T.pink), marginBottom: 10 }}>
                       <div style={{ ...s.subLabel(T.pink), fontSize: 13 }}>
-                        🎬 Voiceover Script ทั้งคลิป
+                        🎬 Voiceover Script (เอาบทพูดทำ story)
                       </div>
                       <textarea
                         value={project.scriptText || ''}
@@ -2141,7 +2287,7 @@ export default function AiPromptPage() {
                           ...s.subLabel(T.accent2), fontSize: 13,
                           display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6,
                         }}>
-                          <span>✏ Storyboard ({project.storyboard.length} shots) — แก้ visual ได้</span>
+                          <span>✏ Storyboard ({project.storyboard.length} shots) — แก้ภาพที่จะได้</span>
                           <span style={{ fontSize: 11, color: T.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
                             แก้แล้วกด "🎬 สร้าง image prompts" ด้านล่าง
                           </span>
@@ -2746,6 +2892,34 @@ export default function AiPromptPage() {
                         )}
                       </div>
 
+                      {/* Pick-main reminder — แสดงเมื่อ gen แล้วยังไม่ได้กด 👑 */}
+                      {generated.length > 0 && !sh.mainImageId && (
+                        <div style={{
+                          background: T.warn + '22',
+                          border: `2px solid ${T.warn}`,
+                          borderRadius: 8,
+                          padding: '12px 16px',
+                          marginTop: 12,
+                          color: T.warn,
+                          fontSize: 14, fontWeight: 700,
+                          textAlign: 'center',
+                          animation: 'ttplusPulseGlow 2s ease-in-out infinite',
+                          lineHeight: 1.55,
+                        }}>
+                          👑 อย่าลืมกด <span style={{
+                            background: T.warn, color: '#0b0d12',
+                            padding: '2px 8px', borderRadius: 4,
+                            fontWeight: 800,
+                          }}>👑</span> ที่รูปที่ชอบ → ส่งเข้า Stage 5 video prompts
+                          <div style={{
+                            fontSize: 11, fontWeight: 500, marginTop: 4,
+                            opacity: 0.85, color: T.text,
+                          }}>
+                            ถ้าไม่กด รูปนี้จะไม่ถูกใช้ใน video prompts ของ shot นี้
+                          </div>
+                        </div>
+                      )}
+
                       {/* Generated images grid */}
                       {generated.length > 0 && (
                         <div style={{
@@ -3082,6 +3256,67 @@ export default function AiPromptPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Music gen via Replicate musicgen — feature ปิดอยู่ (MUSIC_GEN_ENABLED) */}
+                {MUSIC_GEN_ENABLED && (
+                <div style={{
+                  marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${T.pink}33`,
+                }}>
+                  <div style={{
+                    fontSize: 12, color: T.textMute, marginBottom: 8, lineHeight: 1.6,
+                  }}>
+                    🎼 <strong style={{ color: T.pink }}>Generate ด้วย AI</strong> — Replicate musicgen สร้าง mp3 30s จาก mood + tempo + instruments ด้านบน · ต้องใส่ Replicate token ที่ Setup
+                  </div>
+                  <button
+                    onClick={handleGenMusic}
+                    disabled={musicBusy || !replicateToken?.trim()}
+                    style={{
+                      ...s.btn(T.pink, true),
+                      padding: '11px 16px', fontSize: 14, fontWeight: 700,
+                      width: '100%',
+                      opacity: (musicBusy || !replicateToken?.trim()) ? 0.5 : 1,
+                      cursor: musicBusy ? 'wait' : (!replicateToken?.trim() ? 'not-allowed' : 'pointer'),
+                    }}
+                    title={!replicateToken?.trim() ? 'ใส่ Replicate token ที่ Setup ก่อน' : ''}
+                  >
+                    {musicBusy
+                      ? `⌛ Replicate กำลังสร้างเพลง… ${musicProgress?.elapsed || 0}s (${musicProgress?.status || '...'})`
+                      : project.musicGenerated
+                        ? '🔄 สร้างเพลงใหม่ (จะแทนของเดิม)'
+                        : '🎵 สร้างเพลงด้วย Replicate musicgen (30s · ~$0.005)'}
+                  </button>
+
+                  {project.musicGenerated?.base64 && musicBlobUrl && (
+                    <div style={{
+                      marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${T.pink}22`,
+                    }}>
+                      <div style={{
+                        fontSize: 13, color: T.ok, marginBottom: 8, fontWeight: 700,
+                      }}>
+                        ✓ พร้อมเล่น · {project.musicGenerated.durationSec}s · {project.musicGenerated.model}
+                      </div>
+                      <audio controls src={musicBlobUrl} style={{ width: '100%', marginBottom: 10 }}>
+                        เบราว์เซอร์ของคุณไม่รองรับ HTML5 audio
+                      </audio>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={handleDownloadMusic}
+                          style={{ ...s.btn(T.ok, true), padding: '8px 14px', fontSize: 13, fontWeight: 700 }}
+                        >💾 ดาวน์โหลด .mp3</button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm('ลบเพลงนี้? (สร้างใหม่ได้เสมอ)')) {
+                              updateProject({ musicGenerated: null });
+                            }
+                          }}
+                          style={{ ...s.btnGhost, padding: '8px 14px', fontSize: 12,
+                                   borderColor: T.err + '55', color: T.err }}
+                        >🗑 ลบเพลง</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                )}
               </div>
             )}
           </div>
@@ -3354,6 +3589,72 @@ export default function AiPromptPage() {
                     }}
                   >🗑 ลบเสียง</button>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* 📦 Export ทั้ง project ขึ้น Google Drive (1 click) */}
+          <div style={{
+            marginTop: 32,
+            background: `linear-gradient(135deg, ${T.accent}11 0%, ${T.pink}11 100%)`,
+            border: `2px solid ${T.accent}55`,
+            borderRadius: 14, padding: 20,
+          }}>
+            <div style={{
+              fontSize: 19, fontWeight: 800, color: T.accent, marginBottom: 8,
+              display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            }}>
+              📦 Export ทั้ง Project ขึ้น Google Drive
+              <span style={{ fontSize: 11, color: T.textDim, fontWeight: 500 }}>
+                (ปุ่มเดียวจบ)
+              </span>
+            </div>
+            <div style={{
+              fontSize: 13, color: T.textMute, marginBottom: 14, lineHeight: 1.75,
+            }}>
+              รวบทุกไฟล์ในโปรเจกต์เป็น <strong>1 folder บน Drive</strong> ของคุณ:<br/>
+              📄 image-prompts.md (image prompts ทั้งหมด)
+              {' · '}
+              {(project?.videoPlan?.shots?.length || 0) > 0 && '📄 video-prompts.md '}
+              {(project?.scriptText || project?.narration?.script) ? '· 📄 narration-script.md' : ''}
+              <br/>
+              🖼 Shot_1.png …Shot_N.png — รูปหลัก 👑 ของแต่ละ shot
+              {' · '}
+              {project?.narration?.audio?.base64 ? '🎙 narration.wav' : ''}
+              {MUSIC_GEN_ENABLED && project?.musicGenerated?.base64 ? ' · 🎵 music.mp3' : ''}
+            </div>
+            <button
+              onClick={handleExportToDrive}
+              disabled={exportBusy || !project}
+              style={{
+                ...s.btn(T.accent, true),
+                width: '100%', padding: '14px 20px',
+                fontSize: 15, fontWeight: 800,
+                opacity: exportBusy ? 0.7 : 1,
+                cursor: exportBusy ? 'wait' : 'pointer',
+              }}
+            >
+              {exportBusy
+                ? `⌛ กำลังอัพโหลด ${exportProgress?.done || 0}/${exportProgress?.total || '?'}${exportProgress?.name ? ` — ${exportProgress.name}` : '…'}`
+                : '☁ Export ขึ้น Google Drive'}
+            </button>
+            {lastExportUrl && (
+              <div style={{
+                marginTop: 12, padding: '10px 14px',
+                background: T.ok + '11', border: `1px solid ${T.ok}55`,
+                borderRadius: 8, fontSize: 13, color: T.ok, fontWeight: 600,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: 8,
+              }}>
+                <span>✓ Export สำเร็จแล้ว</span>
+                <a
+                  href={lastExportUrl}
+                  target="_blank" rel="noreferrer"
+                  style={{
+                    color: T.ok, textDecoration: 'underline',
+                    fontWeight: 700,
+                  }}
+                >เปิด folder ใน Drive →</a>
               </div>
             )}
           </div>
@@ -3635,6 +3936,29 @@ export default function AiPromptPage() {
               </div>
             </div>
           )}
+
+          {/* 🚨 Big red warning — last reminder before user closes tab */}
+          <div style={{
+            marginTop: 28,
+            background: T.err + '15',
+            border: `2px solid ${T.err}`,
+            borderRadius: 14, padding: '20px 22px',
+            textAlign: 'center',
+            animation: 'ttplusPulseGlow 2.5s ease-in-out infinite',
+          }}>
+            <div style={{
+              fontSize: 24, fontWeight: 900, color: T.err,
+              marginBottom: 10, letterSpacing: 0.3, lineHeight: 1.3,
+            }}>
+              🚨 อย่าลืม Export ลง Drive!
+            </div>
+            <div style={{
+              fontSize: 15, color: T.err, lineHeight: 1.75, fontWeight: 600,
+            }}>
+              ข้อมูลทั้งหมด (prompts · รูป · เสียง) อยู่ใน <strong style={{ textDecoration: 'underline' }}>browser ของคุณเท่านั้น</strong><br/>
+              ถ้า browser ล้าง cache · เปลี่ยนเครื่อง · ลบ history = <strong style={{ textDecoration: 'underline' }}>หายหมด · กู้คืนไม่ได้</strong>
+            </div>
+          </div>
 
           {/* Footer note */}
           <p style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: T.textDim, lineHeight: 1.75 }}>

@@ -338,3 +338,262 @@ export function buildVideoPromptsDoc(project) {
 
   return paragraphs;
 }
+
+// ── Full project export to Drive ───────────────────────────────────────────
+//
+// รวบรวมทุก asset ของ project (prompts text · main images · narration audio · music)
+// → upload เป็น flat folder บน Google Drive
+
+function sanitizeFilename(name) {
+  return String(name || 'project').replace(/[\/\\:*?"<>|]/g, '_').slice(0, 80);
+}
+
+function b64ToBlob(base64, mimeType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+// ── Markdown builders ───────────────────────────────────────────────────────
+
+export function buildImagePromptsMarkdown(project) {
+  const lines = [];
+  lines.push(`# ${project.name} — Image Prompts`);
+  lines.push('');
+  lines.push(`> ${project.category === 'mvp' ? 'Video MVP' : 'Video Ad'} · ${project.imagePrompts?.shots?.length || 0} shots · ${project.perShotDuration || 6}s per clip · 9:16 portrait`);
+  lines.push('');
+  if (project.brief?.trim()) {
+    lines.push('## Brief / Product context');
+    lines.push(project.brief);
+    lines.push('');
+  }
+  if (project.scriptText?.trim()) {
+    lines.push('## Voiceover Script');
+    lines.push('```');
+    lines.push(project.scriptText);
+    lines.push('```');
+    lines.push('');
+  }
+  if (project.styleBlock) {
+    lines.push('## Style Block (appended to every prompt)');
+    lines.push('```');
+    lines.push(project.styleBlock);
+    lines.push('```');
+    lines.push('');
+  }
+  lines.push('## Image Prompts');
+  lines.push('');
+  for (const [i, sh] of (project.imagePrompts?.shots || []).entries()) {
+    lines.push(`### Shot ${i + 1}`);
+    if (sh.voiceoverLine) {
+      lines.push(`**Voiceover:** _"${sh.voiceoverLine}"_`);
+      lines.push('');
+    }
+    lines.push('```');
+    lines.push(sh.prompt || '');
+    lines.push('```');
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+export function buildVideoPromptsMarkdown(project) {
+  const lines = [];
+  lines.push(`# ${project.name} — Video Prompts`);
+  lines.push('');
+  lines.push(`> ${project.videoPlan?.shots?.length || 0} shots · ${project.perShotDuration || 6}s each`);
+  lines.push('');
+  for (const [i, sh] of (project.videoPlan?.shots || []).entries()) {
+    lines.push(`## Shot ${i + 1}`);
+    if (typeof sh.sourceImageIndex === 'number') {
+      lines.push(`**Source image:** Shot_${sh.sourceImageIndex + 1}.png`);
+    }
+    if (sh.frameRole) {
+      lines.push(`**Frame role:** ${sh.frameRole}${sh.frameNote ? ` — ${sh.frameNote}` : ''}`);
+    }
+    lines.push('');
+    lines.push('```');
+    lines.push(sh.videoPromptEn || '');
+    lines.push('```');
+    lines.push('');
+  }
+  const m = project.videoPlan?.music;
+  if (m) {
+    lines.push('## Music Recommendation');
+    if (m.mood)                lines.push(`- **Mood:** ${m.mood}`);
+    if (m.tempo)               lines.push(`- **Tempo:** ${m.tempo} BPM`);
+    if (m.instruments?.length) lines.push(`- **Instruments:** ${m.instruments.join(', ')}`);
+    if (m.references?.length)  lines.push(`- **References:**\n${m.references.map(r => `  - ${r}`).join('\n')}`);
+    lines.push('');
+  }
+  if (project.musicGenerated) {
+    lines.push(`> 🎵 Music generated: ${project.musicGenerated.durationSec}s · ${project.musicGenerated.model} · see music.mp3 in this folder`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+export function buildNarrationScriptMarkdown(project) {
+  const lines = [];
+  lines.push(`# ${project.name} — Narration Script`);
+  lines.push('');
+  if (project.narration?.audio) {
+    const a = project.narration.audio;
+    lines.push(`> 🎙 TTS audio: ${a.durationSec?.toFixed(1) || '?'}s · voice **${a.voice}**${a.persona ? ` · persona "${a.persona}"` : ''} · model ${a.model || 'gemini-tts'}`);
+    lines.push('> See narration.wav in this folder');
+    lines.push('');
+  }
+  lines.push('## Script (Thai)');
+  lines.push('');
+  lines.push('```');
+  lines.push(project.narration?.script || project.scriptText || '(empty)');
+  lines.push('```');
+  lines.push('');
+  return lines.join('\n');
+}
+
+// ── Drive folder + multi-file upload ───────────────────────────────────────
+
+async function createDriveFolder(folderName) {
+  let token = await getDocsAccessToken();
+  const create = async (tk) => fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${tk}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' }),
+  });
+  let res = await create(token);
+  if (res.status === 401) {
+    clearDocsTokenCache();
+    token = await getDocsAccessToken();
+    res = await create(token);
+  }
+  if (!res.ok) {
+    const errText = await res.text();
+    const apiDisabled = checkDriveApiDisabled(res.status, errText);
+    if (apiDisabled) throw apiDisabled;
+    throw new Error(`สร้าง folder ไม่สำเร็จ (${res.status}): ${errText.slice(0, 200)}`);
+  }
+  const { id } = await res.json();
+  if (!id) throw new Error('Drive API ไม่คืน folderId');
+  return { folderId: id, token };
+}
+
+async function uploadOneToDrive(token, folderId, file) {
+  // file: { name, mimeType, blob } | { name, mimeType, content: string } | { name, mimeType, base64 }
+  let blob = file.blob;
+  if (!blob) {
+    if (file.content !== undefined)  blob = new Blob([file.content], { type: file.mimeType || 'text/plain' });
+    else if (file.base64)             blob = b64ToBlob(file.base64, file.mimeType || 'application/octet-stream');
+    else throw new Error(`upload: file "${file.name}" missing blob/content/base64`);
+  }
+  const metadata = {
+    name: file.name,
+    parents: [folderId],
+    mimeType: file.mimeType || blob.type || 'application/octet-stream',
+  };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', blob);
+
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Upload "${file.name}" ไม่สำเร็จ (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Export ทั้ง project ขึ้น Google Drive — flat folder
+ * @param {object} project
+ * @param {(done:number, total:number, currentName:string) => void} [onProgress]
+ * @returns {Promise<{folderId, folderUrl}>}
+ */
+export async function exportFullProjectToDrive(project, onProgress) {
+  if (!project) throw new Error('No project');
+  const folderName = `${sanitizeFilename(project.name)} — TTplus Export`;
+
+  // Build file manifest
+  const files = [];
+
+  // 1. Markdown docs (always include)
+  files.push({
+    name: 'image-prompts.md',
+    content: buildImagePromptsMarkdown(project),
+    mimeType: 'text/markdown',
+  });
+  if ((project.videoPlan?.shots?.length || 0) > 0) {
+    files.push({
+      name: 'video-prompts.md',
+      content: buildVideoPromptsMarkdown(project),
+      mimeType: 'text/markdown',
+    });
+  }
+  if (project.scriptText?.trim() || project.narration?.script?.trim()) {
+    files.push({
+      name: 'narration-script.md',
+      content: buildNarrationScriptMarkdown(project),
+      mimeType: 'text/markdown',
+    });
+  }
+
+  // 2. Main images per shot
+  const mains = (project.imagePrompts?.shots || [])
+    .map((sh, i) => {
+      const main = sh.generated?.find(g => g.id === sh.mainImageId);
+      return main ? { shotIdx: i, image: main } : null;
+    })
+    .filter(Boolean);
+  for (const { shotIdx, image } of mains) {
+    if (image.dataUrl?.startsWith('data:')) {
+      const m = /^data:([^;]+);base64,(.+)$/.exec(image.dataUrl);
+      if (m) {
+        files.push({
+          name: `Shot_${shotIdx + 1}.png`,
+          base64: m[2],
+          mimeType: m[1] || 'image/png',
+        });
+      }
+    }
+  }
+
+  // 3. TTS narration
+  if (project.narration?.audio?.base64) {
+    files.push({
+      name: 'narration.wav',
+      base64: project.narration.audio.base64,
+      mimeType: project.narration.audio.mimeType || 'audio/wav',
+    });
+  }
+
+  // 4. Music (Replicate)
+  if (project.musicGenerated?.base64) {
+    files.push({
+      name: 'music.mp3',
+      base64: project.musicGenerated.base64,
+      mimeType: project.musicGenerated.mimeType || 'audio/mpeg',
+    });
+  }
+
+  if (files.length === 0) throw new Error('ไม่มีอะไรให้ export — สร้าง prompts ก่อน');
+
+  // Create folder + upload
+  const { folderId, token } = await createDriveFolder(folderName);
+  let done = 0;
+  for (const f of files) {
+    await uploadOneToDrive(token, folderId, f);
+    done += 1;
+    if (typeof onProgress === 'function') onProgress(done, files.length, f.name);
+  }
+
+  return {
+    folderId,
+    folderUrl: `https://drive.google.com/drive/folders/${folderId}`,
+    fileCount: files.length,
+  };
+}

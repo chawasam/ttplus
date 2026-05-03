@@ -450,6 +450,7 @@ export function makeBlankProject(name = 'โปรเจกต์ใหม่', 
     imagePrompts: null,    // { shots: [{ index, prompt }] } หรือ null
     shotImages: [],        // จาก Stage B
     videoPlan: null,       // { shots: [...], music: {...} } หรือ null
+    musicGenerated: null,  // { base64, mimeType, generatedAt, prompt, model, durationSec } | null
 
     // Ad-specific
     brief: '',
@@ -550,6 +551,12 @@ export function ensureStyleSchema(proj) {
   }
   if (typeof next.scriptText !== 'string') { next.scriptText = ''; }
   if (!Array.isArray(next.storyboard))     { next.storyboard = []; }
+
+  // musicGenerated (Phase 7 — Replicate musicgen)
+  if (next.musicGenerated !== null && (typeof next.musicGenerated !== 'object' || Array.isArray(next.musicGenerated))) {
+    next.musicGenerated = null;
+    changed = true;
+  }
 
   // narration (Phase 6 — TTS voiceover)
   if (!next.narration || typeof next.narration !== 'object' || Array.isArray(next.narration)) {

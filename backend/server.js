@@ -113,6 +113,7 @@ const PUBLIC_CORS_PATHS = [
   '/api/leaderboard',
   '/api/actions/overlay',     // myactions widget — เรียกจาก OBS/localhost ได้ ไม่ใช้ credentials
   '/api/pk/presets',          // PK presets — public read
+  // '/api/aiprompt-music/',  // disabled — feature ปิดอยู่ (ดู comment ที่ mount)
 ];
 app.use((req, res, next) => {
   const isPublic = PUBLIC_CORS_PATHS.some(p =>
@@ -412,6 +413,15 @@ app.use('/api/spotify', spotifyRouter);
 // ===== Now Playing (Universal) =====
 const nowplayingRouter = require('./routes/nowplaying');
 app.use('/api/nowplaying', nowplayingRouter);
+
+// ===== /aiprompt — Music gen proxy (Replicate) =====
+// DISABLED: feature ถูกซ่อนชั่วคราวเพื่อหลีกเลี่ยง bandwidth/responsibility
+// ของ ttsam server ที่จะต้อง relay Replicate API + audio bytes
+// Code ทั้งหมดยังอยู่ (./routes/aiprompt-music.js + frontend/lib/aipromptMusicGen.js)
+// uncomment 2 บรรทัดล่าง + uncomment '/api/aiprompt-music/' ใน PUBLIC_CORS_PATHS
+// + flip MUSIC_GEN_ENABLED ใน frontend/pages/aiprompt.js เพื่อเปิดใช้
+// const aipromptMusicRouter = require('./routes/aiprompt-music');
+// app.use('/api/aiprompt-music', aipromptMusicRouter);
 
 // ===== CoinJar (simulate gift) =====
 const coinjarRouter = require('./routes/coinjar');
