@@ -103,7 +103,7 @@ function isRose(name = '') {
 function setupEngine(M, buildWallsFn, ox = 0) {
   const { Engine, Composite } = M;
   const engine = Engine.create({
-    gravity:              { y: 2.2 },
+    gravity:              { y: 1.5 },
     positionIterations:   12,
     velocityIterations:   10,
     constraintIterations: 4,
@@ -119,9 +119,9 @@ function setupRunner(engine, M) {
   Runner.run(runner, engine);
 
   // ── Velocity cap — ป้องกัน gift ตกเร็ว/กระเด็นออกข้างหลังชนกอง ────────────
-  // MAX_VY: ลดจาก 18→14 → ชนกองนุ่มขึ้น ถ่ายแรงน้อยลง
+  // MAX_VY: ลดจาก 14→12 → ชนกองนุ่มขึ้น impulse ลดลง (คู่กับ restitution/slop ที่ลดลง)
   // MAX_VX: cap horizontal 7 px/step — กันของกระเด็นออกทางซ้าย-ขวาหลัง collision
-  const MAX_VY = 14;
+  const MAX_VY = 12;
   const MAX_VX = 7;
   Events.on(engine, 'beforeUpdate', () => {
     for (const body of Composite.allBodies(engine.world)) {
@@ -336,12 +336,12 @@ export default function CoinJarWidget() {
         const y = (currentSpawnZone.spawnY ?? JAR_BASE.nT) / 2 - itemR; // กำเนิดกึ่งกลางระหว่าง top canvas กับปากขวด
 
         const body = Bodies.circle(x, y, itemR, {
-          restitution:    0.02, // เด้งน้อยมาก — ตกแล้วเกือบหยุดเลย
-          friction:       0.35,
+          restitution:    0.01, // เด้งน้อยมาก — ตกแล้วเกือบหยุดเลย แต่ยังพอกระดิกหาที่
+          friction:       0.25, // ลดลงเพื่อชดเชย slop ต่ำ — กลิ้งหาร่องในกองได้ง่ายขึ้น
           frictionStatic: 0.45,
-          frictionAir:    0.04,
+          frictionAir:    0.05, // drag เพิ่มนิด — ตกช้าลง impulse ลดลง
           density:        0.002,
-          slop:           0.02, // ยอมทับกัน 2px (default 0.05) — กองแน่น ดูแข็ง
+          slop:           0.01, // ยอมทับกัน ~1px (default 0.05) — กองแน่นมาก ขอบติดเป๊ะ
           label:          'gift',
           sleepThreshold: 60, // 1s @ 60fps — ให้เวลากลิ้งก่อนหลับ
         });
@@ -356,6 +356,10 @@ export default function CoinJarWidget() {
         });
 
         Composite.add(engineRef.current.world, body);
+
+        // mass scale ตามรัศมี (เชิงเส้น) แทน density × area (กำลังสอง)
+        // ลด pile compression — ของชิ้นใหญ่ไม่บีบชิ้นเล็กแรงเกินจริง
+        Body.setMass(body, Math.max(0.3, itemR * 0.05));
 
         // ── ปลุก sleeping pile ทุกครั้งที่ของใหม่ตกลงมา ─────────────────────
         // ราคาถูกมาก: iterate ≤50 bodies, check flag, wake เฉพาะที่ isSleeping
