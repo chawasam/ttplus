@@ -169,6 +169,108 @@ export const DEFAULT_STYLE_PARTS = STYLE_FIELDS.reduce((acc, f) => {
   return acc;
 }, {});
 
+// ── Quick-pick style presets — กดทีเดียว fill ทั้ง 12 fields ──────────────
+// แต่ละ preset เป็น mood/look ที่ใช้บ่อยใน TikTok/Reels ad video
+// user คลิก preset → updateProject({ styleParts: preset.parts }) ทันที
+// แล้วปรับฟิลด์ทีละ field ต่อก็ได้
+export const STYLE_PRESETS_AD = [
+  {
+    key:   'cinematic',
+    label: '🎬 Cinematic Ad',
+    desc:  'default · golden hour · 50mm soft bokeh',
+    parts: {
+      style:      'ultra-cinematic cinematography style',
+      dof:        'shallow depth of field',
+      background: 'soft blurry background with creamy bokeh',
+      focus:      'subject in sharp focus',
+      lens:       'anamorphic lens with subtle edge curvature',
+      lensFx:     'cinematic distortion, lens compression, lens flare',
+      grain:      'natural film grain',
+      atmosphere: 'atmospheric haze',
+      realism:    'realistic film style with detailed skin',
+      lighting:   'film lighting and shadow',
+      quality:    'movie still quality',
+      camera:     '35mm, professional cinema camera',
+    },
+  },
+  {
+    key:   'tiktok',
+    label: '📱 TikTok Native',
+    desc:  'handheld · raw · daylight clean',
+    parts: {
+      style:      'documentary realism style',
+      dof:        'deep depth of field, everything in focus',
+      background: 'busy environment in sharp focus',
+      focus:      'subject in sharp focus',
+      lens:       '24mm wide-angle lens',
+      lensFx:     'clean modern optics, no distortion or flare',
+      grain:      'clean digital, no grain',
+      atmosphere: 'crystal clean air, no atmosphere',
+      realism:    'natural unretouched skin',
+      lighting:   'high-key bright even lighting',
+      quality:    'magazine cover quality',
+      camera:     'shot on iPhone Pro for natural grit',
+    },
+  },
+  {
+    key:   'luxury',
+    label: '💎 Luxury Beauty',
+    desc:  'studio · macro · glossy white backdrop',
+    parts: {
+      style:      'editorial fashion photography style',
+      dof:        'very shallow depth of field',
+      background: 'clean seamless studio backdrop',
+      focus:      'subject in razor-sharp tack focus',
+      lens:       'macro lens, extreme close-up detail',
+      lensFx:     'clean modern optics, no distortion or flare',
+      grain:      'clean digital, no grain',
+      atmosphere: 'crystal clean air, no atmosphere',
+      realism:    'hyperreal magazine retouching',
+      lighting:   'studio three-point lighting',
+      quality:    'magazine cover quality',
+      camera:     'medium format Hasselblad still',
+    },
+  },
+  {
+    key:   'natural',
+    label: '🌿 Natural Lifestyle',
+    desc:  'outdoor · golden hour · candid',
+    parts: {
+      style:      'documentary realism style',
+      dof:        'medium depth of field',
+      background: 'richly detailed environment in soft focus',
+      focus:      'subject in sharp focus',
+      lens:       '50mm prime lens with sharp center',
+      lensFx:     'subtle horizontal anamorphic lens flare',
+      grain:      'subtle Kodak Portra grain',
+      atmosphere: 'soft mist in background',
+      realism:    'natural unretouched skin',
+      lighting:   'golden hour warm sunlight',
+      quality:    'editorial fashion still',
+      camera:     '35mm, professional cinema camera',
+    },
+  },
+  {
+    key:   'urban-night',
+    label: '🌃 Urban Night',
+    desc:  'neon · anamorphic · moody',
+    parts: {
+      style:      'ultra-cinematic cinematography style',
+      dof:        'shallow depth of field',
+      background: 'soft blurry background with creamy bokeh',
+      focus:      'subject in sharp focus',
+      lens:       'anamorphic lens with subtle edge curvature',
+      lensFx:     'subtle horizontal anamorphic lens flare',
+      grain:      'natural film grain',
+      atmosphere: 'volumetric light haze',
+      realism:    'soft cinematic skin glow',
+      lighting:   'neon night cyberpunk lighting',
+      quality:    'movie still quality',
+      camera:     'shot on Sony Venice with anamorphic 2x',
+    },
+  },
+];
+
 // ── STYLE_FIELDS_MVP — น้อยกว่าแต่ใหญ่ๆ ตามแนว clip MVP ของ TikTok live ───
 // เน้น "วิบ/แนวการ์ตูน/ตัวละคร" มากกว่ารายละเอียด cinematography
 export const STYLE_FIELDS_MVP = [
@@ -353,7 +455,7 @@ export function makeBlankProject(name = 'โปรเจกต์ใหม่', 
     brief: '',
 
     // Script-Driven Mode (AD only — MVP ใช้ transformationTheme แทน)
-    scriptMode:  'brief',  // 'brief' | 'script'
+    scriptMode:  'script', // 'brief' | 'script' (script = primary flow, brief = advanced fallback)
     scriptText:  '',       // full voiceover script (single paste)
     storyboard:  [],       // [{ voiceoverLine, visualHint }] — N items = shotCount
 
@@ -442,8 +544,10 @@ export function ensureStyleSchema(proj) {
   if (next.modelFraming !== 'full' && next.modelFraming !== 'half') next.modelFraming = 'full';
   if (!Array.isArray(next.modelGenerated))          next.modelGenerated = [];
 
-  // Script-Driven Mode
-  if (next.scriptMode !== 'script')      { next.scriptMode = 'brief'; }
+  // Script-Driven Mode — preserve existing value, default to 'script' for new projects
+  if (next.scriptMode !== 'script' && next.scriptMode !== 'brief') {
+    next.scriptMode = 'script';
+  }
   if (typeof next.scriptText !== 'string') { next.scriptText = ''; }
   if (!Array.isArray(next.storyboard))     { next.storyboard = []; }
 

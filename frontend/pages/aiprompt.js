@@ -15,6 +15,7 @@ import {
   makeBlankProject, ensureStyleSchema,
   composeStyleBlock,
   getStyleFields, getDefaultStyleParts,
+  STYLE_PRESETS_AD,
   CATEGORIES, clearAllGenerated,
   clearAllNarrationAudio, clearAllGeneratedImagesAcrossProjects,
   listProjectsWithStats, clearNarrationAudio,
@@ -587,15 +588,23 @@ export default function AiPromptPage() {
     const hasKey         = !!apiKey?.trim();
     const hasBriefOrTheme = project.category === 'mvp'
       ? !!project.transformationTheme?.trim()
-      : !!project.brief?.trim();
+      : project.scriptMode === 'script'
+        ? ((project.storyboard?.length || 0) > 0 || !!project.scriptText?.trim())
+        : !!project.brief?.trim();
     const hasPrompts      = (project.imagePrompts?.shots?.length || 0) > 0;
     const hasAnyGenerated = (project.imagePrompts?.shots || []).some(s => s.generated?.length > 0);
     const hasVideoPlan    = (project.videoPlan?.shots?.length || 0) > 0;
     const hasNarration    = !!project.narration?.audio?.base64;
 
+    // Stage 2 label เปลี่ยนตาม category + mode
+    const stageALabel = project.category === 'mvp'
+      ? 'Theme + Style + รูป'
+      : (project.scriptMode === 'brief'
+          ? 'Brief + Style + รูป'
+          : 'Script → Story → Style');
     const steps = [
       { num: 1, label: 'Setup',          done: hasKey,           sectionId: 'setup' },
-      { num: 2, label: project.category === 'mvp' ? 'Theme + รูป' : 'Brief + รูป', done: hasBriefOrTheme, sectionId: 'stageA' },
+      { num: 2, label: stageALabel,      done: hasBriefOrTheme,  sectionId: 'stageA' },
       { num: 3, label: 'Image prompts',  done: hasPrompts,       sectionId: 'stageA' },
       { num: 4, label: 'Gen รูป',         done: hasAnyGenerated,  sectionId: 'anchors' },
       { num: 5, label: 'Video prompts',  done: hasVideoPlan,     sectionId: 'stageC' },
@@ -1891,76 +1900,60 @@ export default function AiPromptPage() {
               </div>
             </div>
 
-            {/* ── Sub: Style block (amber — combobox dropdowns) ──── */}
-            <div style={{ ...s.subPanel(T.warn), marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ ...s.subLabel(T.warn), marginBottom: 0 }}>
-                  🎨 Style block
-                  <span style={{ marginLeft: 6, fontSize: 9, color: T.textDim, fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
-                    (ต่อท้ายทุก prompt · เลือก preset หรือพิมพ์เองได้)
-                  </span>
-                </div>
-                <button
-                  onClick={() => updateProject({ styleParts: { ...getDefaultStyleParts(project.category) }, styleExtra: '' })}
-                  style={{ ...s.btnGhost, padding: '4px 10px', fontSize: 10, borderColor: T.warn + '55', color: T.warn }}
-                  title="คืนค่า default"
-                >↺ reset all</button>
-              </div>
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: 10,
-              }}>
-                {getStyleFields(project.category).map(field => (
-                  <div key={field.key}>
-                    <div style={{ fontSize: 10, color: T.warn, marginBottom: 3, fontWeight: 700, opacity: 0.85 }}>
-                      {field.label}
-                    </div>
-                    <StyleCombobox
-                      value={project.styleParts?.[field.key] ?? ''}
-                      options={field.options}
-                      accent={T.warn}
-                      placeholder="พิมพ์ระบุเอง หรือเลือก preset…"
-                      onChange={(v) => updateProject({
-                        styleParts: { ...(project.styleParts || {}), [field.key]: v },
-                      })}
-                    />
+            {/* ── Sub: Style block (amber) — MVP เท่านั้น (AD ย้ายไปอยู่ในลำดับ Step ④) ── */}
+            {project.category === 'mvp' && (
+              <div style={{ ...s.subPanel(T.warn), marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ ...s.subLabel(T.warn), marginBottom: 0 }}>
+                    🎨 Style block
+                    <span style={{ marginLeft: 6, fontSize: 9, color: T.textDim, fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+                      (ต่อท้ายทุก prompt · เลือก preset หรือพิมพ์เองได้)
+                    </span>
                   </div>
-                ))}
-              </div>
-
-              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.warn}33` }}>
-                <div style={{ fontSize: 10, color: T.warn, marginBottom: 3, fontWeight: 700, opacity: 0.85 }}>
-                  + Custom append (อะไรก็ได้ที่อยากเติม)
+                  <button
+                    onClick={() => updateProject({ styleParts: { ...getDefaultStyleParts(project.category) }, styleExtra: '' })}
+                    style={{ ...s.btnGhost, padding: '4px 10px', fontSize: 10, borderColor: T.warn + '55', color: T.warn }}
+                    title="คืนค่า default"
+                  >↺ reset all</button>
                 </div>
-                <input
-                  type="text"
-                  value={project.styleExtra || ''}
-                  onChange={e => updateProject({ styleExtra: e.target.value })}
-                  placeholder="เช่น: warm orange teal color grading, 2.39:1 aspect ratio"
-                  style={{ ...s.input, padding: '7px 10px', fontSize: 12 }}
-                />
-              </div>
 
-              {/* Live preview */}
-              <details style={{ marginTop: 10 }}>
-                <summary style={{
-                  fontSize: 11, color: T.warn, cursor: 'pointer',
-                  userSelect: 'none', padding: '4px 0', fontWeight: 600,
-                }}>
-                  ดู style block ที่จะส่งให้ AI ({project.styleBlock?.length || 0} ตัวอักษร)
-                </summary>
                 <div style={{
-                  marginTop: 6,
-                  background: T.panel2, border: `1px solid ${T.warn}33`, borderRadius: 6,
-                  padding: '8px 10px', fontSize: 11, color: T.text,
-                  fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-word',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: 10,
                 }}>
-                  {project.styleBlock || <span style={{ color: T.textDim }}>(ว่าง)</span>}
+                  {getStyleFields(project.category).map(field => (
+                    <div key={field.key}>
+                      <div style={{ fontSize: 10, color: T.warn, marginBottom: 3, fontWeight: 700, opacity: 0.85 }}>
+                        {field.label}
+                      </div>
+                      <StyleCombobox
+                        value={project.styleParts?.[field.key] ?? ''}
+                        options={field.options}
+                        accent={T.warn}
+                        placeholder="พิมพ์ระบุเอง หรือเลือก preset…"
+                        onChange={(v) => updateProject({
+                          styleParts: { ...(project.styleParts || {}), [field.key]: v },
+                        })}
+                      />
+                    </div>
+                  ))}
                 </div>
-              </details>
-            </div>
+
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.warn}33` }}>
+                  <div style={{ fontSize: 10, color: T.warn, marginBottom: 3, fontWeight: 700, opacity: 0.85 }}>
+                    + Custom append (อะไรก็ได้ที่อยากเติม)
+                  </div>
+                  <input
+                    type="text"
+                    value={project.styleExtra || ''}
+                    onChange={e => updateProject({ styleExtra: e.target.value })}
+                    placeholder="เช่น: warm orange teal color grading, 2.39:1 aspect ratio"
+                    style={{ ...s.input, padding: '7px 10px', fontSize: 12 }}
+                  />
+                </div>
+              </div>
+            )}
 
             {project.category === 'mvp' ? (
               <>
@@ -2046,53 +2039,41 @@ export default function AiPromptPage() {
               </>
             ) : (
               <>
-                {/* ── Mode toggle: Brief vs Script ────────────────── */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  {[
-                    { key: 'brief',  emoji: '📝', label: 'Brief mode',  desc: 'เขียน brief อิสระ' },
-                    { key: 'script', emoji: '🎬', label: 'Script mode', desc: 'paste บทพากย์ → AI แตก storyboard' },
-                  ].map(opt => {
-                    const active = (project.scriptMode || 'brief') === opt.key;
-                    return (
+                {/* Default = Script mode · Brief mode = advanced option */}
+                {(project.scriptMode || 'script') === 'brief' ? (
+                  /* ── Brief mode (เปิดผ่าน collapsible เท่านั้น) ── */
+                  <>
+                    <div style={{
+                      background: T.warn + '11', border: `1px solid ${T.warn}33`,
+                      borderRadius: 8, padding: '10px 12px', marginBottom: 10,
+                      fontSize: 12, color: T.warn,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      flexWrap: 'wrap',
+                    }}>
+                      <span>
+                        ⚠ ตอนนี้อยู่ในโหมด <strong>Brief</strong> (เขียน brief อิสระ)
+                      </span>
                       <button
-                        key={opt.key}
-                        onClick={() => updateProject({ scriptMode: opt.key })}
+                        onClick={() => updateProject({ scriptMode: 'script' })}
                         style={{
-                          flex: 1, padding: '12px 14px',
-                          background: active ? T.pink : T.panel2,
-                          color: active ? '#0b0d12' : T.textMute,
-                          border: `1px solid ${active ? T.pink : T.borderHi}`,
-                          borderRadius: 10,
-                          fontSize: 14, fontWeight: 700,
-                          cursor: 'pointer', fontFamily: 'inherit',
-                          textAlign: 'left', lineHeight: 1.4,
+                          ...s.btn(T.pink, true), padding: '5px 12px', fontSize: 12,
+                          fontWeight: 700,
                         }}
-                      >
-                        <div>{opt.emoji} {opt.label}</div>
-                        <div style={{
-                          fontSize: 11, fontWeight: 400,
-                          opacity: active ? 0.85 : 0.7,
-                          marginTop: 2,
-                        }}>{opt.desc}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {(project.scriptMode || 'brief') === 'brief' ? (
-                  /* ── Brief mode (เดิม) ────────────────────────── */
-                  <div style={{ ...s.subPanel(T.pink), marginBottom: 12 }}>
-                    <div style={s.subLabel(T.pink)}>📝 Brief จากลูกค้า</div>
-                    <textarea
-                      value={project.brief}
-                      onChange={e => updateProject({ brief: e.target.value })}
-                      rows={5}
-                      placeholder="วาง brief / สคริปต์บทพูดของลูกค้าที่นี่ ~1 พารากราฟ&#10;เช่น: ครีมบำรุงผิวสำหรับวัย 30+ เน้นกระชับและยืดหยุ่น ใช้ส่วนผสมจากธรรมชาติ..."
-                      style={{ ...s.input, resize: 'vertical', borderColor: T.pink + '55' }}
-                    />
-                  </div>
+                      >🎬 กลับไปใช้ Script mode (แนะนำ)</button>
+                    </div>
+                    <div style={{ ...s.subPanel(T.pink), marginBottom: 12 }}>
+                      <div style={s.subLabel(T.pink)}>📝 Brief จากลูกค้า</div>
+                      <textarea
+                        value={project.brief}
+                        onChange={e => updateProject({ brief: e.target.value })}
+                        rows={5}
+                        placeholder="วาง brief / สคริปต์บทพูดของลูกค้าที่นี่ ~1 พารากราฟ&#10;เช่น: ครีมบำรุงผิวสำหรับวัย 30+ เน้นกระชับและยืดหยุ่น ใช้ส่วนผสมจากธรรมชาติ..."
+                        style={{ ...s.input, resize: 'vertical', borderColor: T.pink + '55' }}
+                      />
+                    </div>
+                  </>
                 ) : (
-                  /* ── Script mode (ใหม่) ───────────────────────── */
+                  /* ── Script mode (default) ─────────────────────── */
                   <>
                     {/* Optional product context — ใช้ brief field เดิม */}
                     <div style={{
@@ -2153,7 +2134,7 @@ export default function AiPromptPage() {
                       </button>
                     </div>
 
-                    {/* Storyboard editor */}
+                    {/* Storyboard editor — Step ③ purple */}
                     {(project.storyboard?.length || 0) > 0 && (
                       <div style={{ ...s.subPanel(T.accent2), marginBottom: 12 }}>
                         <div style={{
@@ -2213,12 +2194,164 @@ export default function AiPromptPage() {
                         ))}
                       </div>
                     )}
+
+                    {/* Advanced: switch to Brief mode (collapsible) */}
+                    <details style={{ marginBottom: 12 }}>
+                      <summary style={{
+                        fontSize: 11, color: T.textDim, cursor: 'pointer',
+                        userSelect: 'none', padding: '6px 10px',
+                        background: T.panel2, border: `1px dashed ${T.border}`,
+                        borderRadius: 6, fontWeight: 500,
+                      }}>
+                        ⚙ ตัวเลือกขั้นสูง — สลับไปใช้ Brief mode (สำหรับเคสไม่มีสคริปต์)
+                      </summary>
+                      <div style={{
+                        marginTop: 8, padding: '10px 12px',
+                        background: T.bg, border: `1px solid ${T.border}`,
+                        borderRadius: 6, fontSize: 12, color: T.textMute, lineHeight: 1.6,
+                      }}>
+                        Brief mode ให้พิมพ์ brief อิสระแบบ paragraph เดียว — AI จะคิด storyboard เอง<br />
+                        <strong>ไม่แนะนำ</strong>เพราะ visual จะไม่ match กับ voiceover line ตรงๆ ใช้เฉพาะตอนยังไม่มีสคริปต์
+                        <button
+                          onClick={() => {
+                            if (window.confirm('สลับไปใช้ Brief mode?\n\n· script + storyboard ที่ทำไว้จะยังเก็บอยู่ แต่จะไม่ใช้แล้ว\n· จะใช้ brief field แทน')) {
+                              updateProject({ scriptMode: 'brief' });
+                            }
+                          }}
+                          style={{
+                            ...s.btnGhost, marginTop: 8, padding: '6px 12px', fontSize: 11,
+                            borderColor: T.warn + '55', color: T.warn,
+                          }}
+                        >สลับไป Brief mode →</button>
+                      </div>
+                    </details>
                   </>
                 )}
 
-                {/* ── Ad: References / Uploads (purple) ────────────── */}
-                <div style={{ ...s.subPanel(T.accent2), marginBottom: 14 }}>
-                  <div style={s.subLabel(T.accent2)}>🖼 References (รูปประกอบ)</div>
+                {/* ── Step ④ Image Style (amber) — quick-pick presets + 12 fields ── */}
+                <div style={{ ...s.subPanel(T.warn), marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ ...s.subLabel(T.warn), marginBottom: 0, fontSize: 13 }}>
+                      🎨 Step ④ — เลือกสไตล์ภาพ
+                      <span style={{ marginLeft: 6, fontSize: 11, color: T.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                        (ต่อท้ายทุก prompt — กด preset หรือเลือกแต่ละ field เองได้)
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => updateProject({ styleParts: { ...getDefaultStyleParts('ad') }, styleExtra: '' })}
+                      style={{ ...s.btnGhost, padding: '5px 10px', fontSize: 11, borderColor: T.warn + '55', color: T.warn }}
+                      title="คืนค่า default"
+                    >↺ reset</button>
+                  </div>
+
+                  {/* Quick-pick preset chips */}
+                  <div style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 6,
+                    marginBottom: 14, paddingBottom: 12,
+                    borderBottom: `1px dashed ${T.warn}33`,
+                  }}>
+                    <div style={{
+                      width: '100%', fontSize: 11, color: T.warn,
+                      fontWeight: 700, marginBottom: 4, letterSpacing: 0.3,
+                    }}>
+                      ⚡ Quick preset — กด 1 ครั้ง fill ครบทุก field
+                    </div>
+                    {STYLE_PRESETS_AD.map(preset => {
+                      // ดูว่า preset ปัจจุบันถูกใช้อยู่ไหม (compare key field 'style')
+                      const isActive = project.styleParts?.style === preset.parts.style
+                                    && project.styleParts?.lighting === preset.parts.lighting;
+                      return (
+                        <button
+                          key={preset.key}
+                          onClick={() => updateProject({
+                            styleParts: { ...preset.parts },
+                            styleExtra: '',
+                          })}
+                          title={preset.desc}
+                          style={{
+                            background: isActive ? T.warn : T.warn + '14',
+                            color:      isActive ? '#0b0d12' : T.warn,
+                            border:     `1px solid ${T.warn}${isActive ? '' : '55'}`,
+                            borderRadius: 8,
+                            padding: '8px 14px',
+                            fontSize: 13, fontWeight: 700,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                            display: 'flex', flexDirection: 'column',
+                            alignItems: 'flex-start',
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          <span>{preset.label}</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 400,
+                            opacity: isActive ? 0.85 : 0.7,
+                            marginTop: 2,
+                          }}>{preset.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 12 individual fields */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 10,
+                  }}>
+                    {getStyleFields('ad').map(field => (
+                      <div key={field.key}>
+                        <div style={{ fontSize: 11, color: T.warn, marginBottom: 4, fontWeight: 700 }}>
+                          {field.label}
+                        </div>
+                        <StyleCombobox
+                          value={project.styleParts?.[field.key] ?? ''}
+                          options={field.options}
+                          accent={T.warn}
+                          placeholder="พิมพ์ระบุเอง หรือเลือก preset…"
+                          onChange={(v) => updateProject({
+                            styleParts: { ...(project.styleParts || {}), [field.key]: v },
+                          })}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.warn}33` }}>
+                    <div style={{ fontSize: 11, color: T.warn, marginBottom: 4, fontWeight: 700 }}>
+                      + Custom append (อะไรก็ได้ที่อยากเติม)
+                    </div>
+                    <input
+                      type="text"
+                      value={project.styleExtra || ''}
+                      onChange={e => updateProject({ styleExtra: e.target.value })}
+                      placeholder="เช่น: warm orange teal color grading, 2.39:1 aspect ratio"
+                      style={{ ...s.input, fontSize: 13 }}
+                    />
+                  </div>
+
+                  <details style={{ marginTop: 10 }}>
+                    <summary style={{
+                      fontSize: 12, color: T.warn, cursor: 'pointer',
+                      userSelect: 'none', padding: '4px 0', fontWeight: 600,
+                    }}>
+                      ดู style block ที่จะส่งให้ AI ({project.styleBlock?.length || 0} ตัวอักษร)
+                    </summary>
+                    <div style={{
+                      marginTop: 6,
+                      background: T.panel2, border: `1px solid ${T.warn}33`, borderRadius: 6,
+                      padding: '8px 10px', fontSize: 12, color: T.text,
+                      fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-word',
+                    }}>
+                      {project.styleBlock || <span style={{ color: T.textDim }}>(ว่าง)</span>}
+                    </div>
+                  </details>
+                </div>
+
+                {/* ── Step ⑤ References / Uploads (green) ─────────── */}
+                <div style={{ ...s.subPanel(T.ok), marginBottom: 14 }}>
+                  <div style={{ ...s.subLabel(T.ok), fontSize: 13 }}>
+                    🖼 Step ⑤ — References (รูปประกอบ 3 slot)
+                  </div>
                   <div style={{
                     fontSize: 11, color: T.textMute, lineHeight: 1.6,
                     background: T.panel2, border: `1px solid ${T.border}`,
